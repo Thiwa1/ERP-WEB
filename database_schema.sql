@@ -1,0 +1,2421 @@
+-- MySQL Workbench Forward Engineering
+
+SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
+SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
+SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
+
+-- -----------------------------------------------------
+-- Schema Book_keeping
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- Schema Book_keeping
+-- -----------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS `Book_keeping` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci ;
+USE `Book_keeping` ;
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`balance_sheet_category`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`balance_sheet_category` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name_of_category` VARCHAR(100) NULL DEFAULT NULL,
+  `holding_position` INT NULL DEFAULT NULL,
+  `create_date_time` DATE NULL DEFAULT NULL,
+  `create_user_code` INT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC) VISIBLE,
+  INDEX `to_new_acc` (`name_of_category` ASC) VISIBLE,
+  INDEX `holding_position_UNIQUE` (`holding_position` ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 16
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`company`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`company` (
+  `id` INT NOT NULL,
+  `company_name` VARCHAR(500) NULL DEFAULT NULL,
+  `company_log` MEDIUMBLOB NULL DEFAULT NULL,
+  `company_addras_1` VARCHAR(50) NULL DEFAULT NULL,
+  `company_addras_2` VARCHAR(50) NULL DEFAULT NULL,
+  `company_addras_3` VARCHAR(50) NULL DEFAULT NULL,
+  `company_addras_4` VARCHAR(50) NULL DEFAULT NULL,
+  `company_addras_5` VARCHAR(45) NULL DEFAULT NULL,
+  `company_land_line` VARCHAR(15) NULL DEFAULT NULL,
+  `company_fax_line` VARCHAR(15) NULL DEFAULT NULL,
+  `company_vate_code` VARCHAR(45) NULL DEFAULT NULL,
+  `company_curency` VARCHAR(4) NULL DEFAULT NULL,
+  `company_maax_user` INT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`jobs_unit`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`jobs_unit` (
+  `id` BIGINT NOT NULL,
+  `job_number` BIGINT NOT NULL,
+  `job_description` VARCHAR(100) NULL DEFAULT NULL,
+  `job_create_date` DATE NULL DEFAULT NULL,
+  `job_create_user` VARCHAR(45) NULL DEFAULT NULL,
+  `job_finsh` TINYINT NULL DEFAULT NULL,
+  `job_cancell` TINYINT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `index_job_no` (`job_number` ASC) VISIBLE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`p&l_category`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`p&l_category` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `name_of_category` VARCHAR(100) NULL DEFAULT NULL,
+  `holding_position` INT NULL DEFAULT NULL,
+  `create_date_time` DATE NULL DEFAULT NULL,
+  `create_user_code` INT NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `to_new_account` (`name_of_category` ASC) VISIBLE,
+  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC) INVISIBLE,
+  INDEX `holding_position_UNIQUE` (`holding_position` ASC) INVISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 30
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cf_catogory`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cf_catogory` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `catogory_name` VARCHAR(100) NULL,
+  `hold_level` INT NOT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `cf` (`catogory_name` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`new_account_table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `account_name` VARCHAR(60) NULL DEFAULT NULL,
+  `account_hold_possion_PL` INT NULL DEFAULT NULL,
+  `account_hold_possion_Balace_Sheet` INT NULL DEFAULT NULL,
+  `account_name_of_catogory_PL` VARCHAR(100) NULL DEFAULT NULL,
+  `account_income` TINYINT NULL DEFAULT NULL,
+  `account_expenses` TINYINT NULL DEFAULT NULL,
+  `account_assets` TINYINT NULL DEFAULT NULL,
+  `account_liabilities` TINYINT NULL DEFAULT NULL,
+  `account_equity` TINYINT NULL DEFAULT NULL,
+  `accont_create_date` DATE NULL DEFAULT NULL,
+  `account_create_user` VARCHAR(45) NULL DEFAULT NULL,
+  `account_active` TINYINT NULL DEFAULT NULL,
+  `account_basment` VARCHAR(2) NOT NULL,
+  `account_dr` DOUBLE NULL DEFAULT NULL,
+  `account_cr` DOUBLE NULL DEFAULT NULL,
+  `account_name_of_catogory_Balace_sheet` VARCHAR(100) NULL DEFAULT NULL,
+  `cf_catogory` VARCHAR(100) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `account_name_UNIQUE` (`account_name` ASC) VISIBLE,
+  INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
+  INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC) INVISIBLE,
+  INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC) VISIBLE,
+  INDEX `key_to_catogory` (`account_name_of_catogory_PL` ASC) VISIBLE,
+  INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC) VISIBLE,
+  INDEX `key_CF_Table` (`cf_catogory` ASC) VISIBLE,
+  CONSTRAINT `key_to_balace_possion`
+    FOREIGN KEY (`account_hold_possion_Balace_Sheet`)
+    REFERENCES `Book_keeping`.`balance_sheet_category` (`holding_position`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `key_to_catogory`
+    FOREIGN KEY (`account_name_of_catogory_Balace_sheet`)
+    REFERENCES `Book_keeping`.`balance_sheet_category` (`name_of_category`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `key_to_catogory_`
+    FOREIGN KEY (`account_name_of_catogory_PL`)
+    REFERENCES `Book_keeping`.`p&l_category` (`name_of_category`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `Key_to_possions`
+    FOREIGN KEY (`account_hold_possion_PL`)
+    REFERENCES `Book_keeping`.`p&l_category` (`holding_position`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `Key_to_catogory_cf`
+    FOREIGN KEY (`cf_catogory`)
+    REFERENCES `Book_keeping`.`cf_catogory` (`catogory_name`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 37
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`entry_details`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`entry_details` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `account_name` VARCHAR(60) NULL DEFAULT NULL,
+  `account_code` INT NULL DEFAULT NULL,
+  `enty_values_DR` DOUBLE NULL DEFAULT NULL,
+  `entry_effective_date` DATE NULL DEFAULT NULL,
+  `entry_create_date` DATE NULL DEFAULT NULL,
+  `entry_naration` VARCHAR(200) NULL DEFAULT NULL,
+  `entry_create_user` INT NULL DEFAULT NULL,
+  `entry_last_edit_user` VARCHAR(45) NULL DEFAULT NULL,
+  `entry_last_edit_date` DATE NULL DEFAULT NULL,
+  `enty_values_CR` DOUBLE NULL DEFAULT NULL,
+  `entry_job_number` BIGINT NULL DEFAULT NULL,
+  `entry_sub_account_code` INT NULL DEFAULT NULL,
+  `entry_jv` BIGINT NULL DEFAULT NULL,
+  `entry_Rec` TINYINT NULL DEFAULT 0,
+  `entry_save` TINYINT NULL DEFAULT 0,
+  `entry_date` DATE NULL,
+  `entry_From` INT NULL DEFAULT NULL,
+  `entry_VAT` DOUBLE NULL DEFAULT 0,
+  `entry_deleted` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `index_entry_name` (`account_name` ASC) INVISIBLE,
+  INDEX `index_sub_account` (`entry_sub_account_code` ASC) VISIBLE,
+  INDEX `index_job_no` (`entry_job_number` ASC) VISIBLE,
+  INDEX `foreing_key_jv_no_idx` (`entry_jv` ASC) VISIBLE,
+  CONSTRAINT `foreing_key_jon_no`
+    FOREIGN KEY (`entry_job_number`)
+    REFERENCES `Book_keeping`.`jobs_unit` (`job_number`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE,
+  CONSTRAINT `foreing_key_name`
+    FOREIGN KEY (`account_name`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 19
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`jv_numbers`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`jv_numbers` (
+  `jv_id` BIGINT NOT NULL AUTO_INCREMENT,
+  `jv_user_code` LONGTEXT NULL DEFAULT NULL,
+  `jv_naration` VARCHAR(300) NULL DEFAULT NULL,
+  `jv_pdf` LONGBLOB NULL DEFAULT NULL,
+  PRIMARY KEY (`jv_id`),
+  INDEX `index` (`jv_id` ASC) VISIBLE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 41
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`sub_accont_for_new_account`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`sub_accont_for_new_account` (
+  `id_sub` INT NOT NULL AUTO_INCREMENT,
+  `sub_sub_accaount_name` VARCHAR(200) NOT NULL,
+  `sub_new_account` VARCHAR(60) NULL DEFAULT NULL,
+  `creat_user` VARCHAR(45) NULL DEFAULT NULL,
+  `creat_date` DATE NULL DEFAULT NULL,
+  `active` TINYINT NULL DEFAULT NULL,
+  `sub_account_code` INT NOT NULL,
+  PRIMARY KEY (`id_sub`),
+  UNIQUE INDEX `sub_sub_accaount_name_UNIQUE` (`sub_sub_accaount_name` ASC) VISIBLE,
+  INDEX `to_new_accont` (`sub_new_account` ASC) INVISIBLE,
+  INDEX `to_new_acc_sub` (`sub_sub_accaount_name` ASC) VISIBLE,
+  CONSTRAINT `FK_new_account`
+    FOREIGN KEY (`sub_new_account`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON UPDATE CASCADE)
+ENGINE = InnoDB
+AUTO_INCREMENT = 6
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`suppliers`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers` (
+  `sup_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `supplier_name` VARCHAR(200) NULL,
+  `supplier_code` VARCHAR(200) NULL,
+  `supplier_address_1` VARCHAR(45) NULL,
+  `supplier_address_2` VARCHAR(45) NULL,
+  `supplier_address_3` VARCHAR(45) NULL,
+  `supplier_address_4` VARCHAR(45) NULL,
+  `suppliers_credit_fasility` DOUBLE NULL,
+  `suppliers_teli_1` VARCHAR(45) NULL,
+  `suppliers_teli_2` VARCHAR(45) NULL,
+  `supplier_create_date` DATE NULL,
+  `suppliers_create_user` INT NULL,
+  `suppliers_last_edit_user` INT NULL,
+  `suppliers_last_edit_date` DATE NULL,
+  `suppliers_e_mail` VARCHAR(100) NULL,
+  `suppliers_vat_regidter_no` VARCHAR(100) NULL,
+  `suppliers_salution` VARCHAR(10) NULL,
+  `Is_Suplier` TINYINT NULL,
+  `Is_Customer` TINYINT NULL,
+  PRIMARY KEY (`sup_id`),
+  UNIQUE INDEX `supplier_name_UNIQUE` (`supplier_name` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`suppliers_invoice_data`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers_invoice_data` (
+  `s_i_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `suppliers_code` VARCHAR(200) NULL,
+  `suppliers_invoice_number` VARCHAR(200) NULL,
+  `suppliers_invoice_date` DATE NULL,
+  `suppliers_invoice_total_oustanding` DOUBLE NULL,
+  `suppliers_invoice_total_payment` DOUBLE NULL,
+  `suppliers_invoice_oustanding` DOUBLE GENERATED ALWAYS AS ((`suppliers_invoice_total_oustanding` - `suppliers_invoice_total_payment`)) VIRTUAL,
+  `suppliers_invoice_final_date` DATE NULL,
+  `suppliers_invoice_buinding_supplier` BIGINT(20) NULL,
+  `suppliers_invoice_JV` BIGINT(20) NULL,
+  `suppliers_VAT_rate` DOUBLE NULL,
+  `suppliers_oustanding_delete` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`s_i_id`),
+  UNIQUE INDEX `suppliers_invoice_number_UNIQUE` (`suppliers_invoice_number` ASC) VISIBLE,
+  INDEX `fk_suplier_idx` (`suppliers_invoice_buinding_supplier` ASC) VISIBLE,
+  INDEX `fk_jv` (`suppliers_invoice_JV` ASC) VISIBLE,
+  CONSTRAINT `fk_suplier`
+    FOREIGN KEY (`suppliers_invoice_buinding_supplier`)
+    REFERENCES `Book_keeping`.`suppliers` (`sup_id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cash_book`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book` (
+  `cash_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cash_book_account_name` VARCHAR(60) NULL,
+  `cash_creat_date` DATE NULL,
+  `cash_created_user` INT NULL,
+  `Select_As` TINYINT NULL,
+  PRIMARY KEY (`cash_id`),
+  INDEX `index1` (`cash_book_account_name` ASC) VISIBLE,
+  CONSTRAINT `key_to_new_ac`
+    FOREIGN KEY (`cash_book_account_name`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cash_voucher_no`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_voucher_no` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cash_voucher_link` VARCHAR(60) NULL,
+  `cash_voucher_number` BIGINT(20) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `fk_cash_book_idx` (`cash_voucher_link` ASC) VISIBLE,
+  CONSTRAINT `fk_cash_book`
+    FOREIGN KEY (`cash_voucher_link`)
+    REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cash_book_recode`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book_recode` (
+  `chash_book_recod_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cash_book_recode_dr` DOUBLE NULL,
+  `cash_book_recode_cr` DOUBLE NULL,
+  `cash_book_recode_accont_name` VARCHAR(60) NULL,
+  `cash_book_recode_naration` VARCHAR(200) NULL,
+  `cash_book_recode_suplier_oustanding_id` BIGINT(20) NULL,
+  `cash_book_recode_suplier_name` VARCHAR(200) NULL,
+  `jv_numbers_jv_id` BIGINT(20) NOT NULL,
+  `cash_book_po_no` VARCHAR(255) NULL,
+  `cash_book_suplier_oustanding_id` BIGINT(20) NULL,
+  `cash_book_recod_voucher_no` VARCHAR(255) NULL,
+  `User_Enter` INT NULL,
+  `User_Edit` INT NULL,
+  `User_Revers` INT NULL,
+  `Payment_Date` DATE NULL,
+  `Edit_Datye` DATE NULL,
+  `Revers_Date` DATE NULL,
+  `VAT_Rate` VARCHAR(45) NULL,
+  PRIMARY KEY (`chash_book_recod_id`),
+  INDEX `fk_cash_book_recode_jv_numbers1_idx` (`jv_numbers_jv_id` ASC) VISIBLE,
+  INDEX `ss_idx` (`cash_book_recode_accont_name` ASC) VISIBLE,
+  INDEX `Fk_to_C_Suplier_idx` (`cash_book_recode_suplier_name` ASC) VISIBLE,
+  CONSTRAINT `fk_cash_book_to_new_account`
+    FOREIGN KEY (`cash_book_recode_accont_name`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`),
+  CONSTRAINT `Fk_to_C_Suplier`
+    FOREIGN KEY (`cash_book_recode_suplier_name`)
+    REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
+    ON DELETE NO ACTION
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`inventory_carogory`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_carogory` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `main_catogory` VARCHAR(45) NULL,
+  `sub_catogory` VARCHAR(45) NULL,
+  `dis_continue_main` TINYINT NULL DEFAULT 0,
+  `dis_continue_sub` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `main_catogory_UNIQUE` (`main_catogory` ASC) VISIBLE,
+  UNIQUE INDEX `sub_catogory_UNIQUE` (`sub_catogory` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`inventoy_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventoy_items` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `inventoy_name` VARCHAR(255) NULL,
+  `inventoy_code` VARCHAR(255) NULL,
+  `inventoy_suplier_code` VARCHAR(255) NULL,
+  `inventoy_bach_code` VARCHAR(25) NULL,
+  `inventoy_img` MEDIUMBLOB NULL,
+  `inventoy_creat_user_id` INT NULL,
+  `inventoy_items_creat_date` DATE NULL,
+  `inventoy_items_last_edit_user` INT NULL,
+  `inventoy_items_last_edit_date` DATE NULL,
+  `inventoy_items_messurment_unit` VARCHAR(45) NULL,
+  `Main_Catogry` VARCHAR(45) NULL,
+  `Sub_Catogory` VARCHAR(45) NULL,
+  `min_qty` DOUBLE NULL,
+  `active` TINYINT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `inventoy_name_UNIQUE` (`inventoy_name` ASC) VISIBLE,
+  UNIQUE INDEX `inventoy_code_UNIQUE` (`inventoy_code` ASC) VISIBLE,
+  INDEX `key_to_main_catogry_idx` (`Main_Catogry` ASC) VISIBLE,
+  INDEX `key_to_sub_catogory_idx` (`Sub_Catogory` ASC) VISIBLE,
+  CONSTRAINT `key_to_main_catogry`
+    FOREIGN KEY (`Main_Catogry`)
+    REFERENCES `Book_keeping`.`inventory_carogory` (`main_catogory`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `key_to_sub_catogory`
+    FOREIGN KEY (`Sub_Catogory`)
+    REFERENCES `Book_keeping`.`inventory_carogory` (`sub_catogory`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`inventory_locations`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_locations` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `inventory_locations_name` VARCHAR(60) NULL,
+  `inventory_locations_descriptions` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `inventory_locations_name_UNIQUE` (`inventory_locations_name` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`inventory_recod`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `inventoy_name` VARCHAR(255) NULL,
+  `inventoy_code` VARCHAR(255) NULL,
+  `inventory_recod_action_date` DATE NULL,
+  `inventory_recod_moument_in` DOUBLE NULL,
+  `inventory_recod_movment_out` DOUBLE NULL,
+  `inventory_recod_mesrmet` VARCHAR(45) NULL,
+  `inventory_recod_unit_price` DOUBLE NULL,
+  `inventory_recod_total_value` DOUBLE GENERATED ALWAYS AS (((`inventory_recod_moument_in` - `inventory_recod_movment_out`) * `inventory_recod_unit_price`)) VIRTUAL,
+  `inventory_recod_account` VARCHAR(60) NULL,
+  `inventory_recod_job_no` INT NULL,
+  `inventory_recod_suplier_iv_no` VARCHAR(255) NULL,
+  `inventory_recod_issue_no` VARCHAR(255) NULL,
+  `inventory_recod_user_id` INT NULL,
+  `inventory_recod_user_recod_date` DATE NULL,
+  `inventory_recod_last_edit_user` INT NULL,
+  `inventory_recod_last_edit_date` DATE NULL,
+  `inventory_recod_location` VARCHAR(60) NULL,
+  `inventory_recod_sales_invoice_link` BIGINT(20) ZEROFILL NULL,
+  `inventory_recod_link_invoice` BIGINT(20) NULL,
+  `inventory_recod_selling_price` DOUBLE NULL,
+  `inventory_recodcol_memo` VARCHAR(45) NULL,
+  `JV_No` INT NULL,
+  `IV_Deleted` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `fk_invenrty_name_idx` (`inventoy_name` ASC) VISIBLE,
+  INDEX `fk_to_locations_idx` (`inventory_recod_location` ASC) VISIBLE,
+  CONSTRAINT `fk_invenrty_name`
+    FOREIGN KEY (`inventoy_name`)
+    REFERENCES `Book_keeping`.`inventoy_items` (`inventoy_name`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE,
+  CONSTRAINT `fk_to_locations`
+    FOREIGN KEY (`inventory_recod_location`)
+    REFERENCES `Book_keeping`.`inventory_locations` (`inventory_locations_name`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`inventory_price_recod`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_price_recod` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `inventory_price_link` BIGINT(20) NULL,
+  `inventory_price_purcharsing` DOUBLE NULL DEFAULT 0,
+  `inventory_price_selling` DOUBLE NULL DEFAULT 0,
+  `inventory_price_profit_marging_comen` DOUBLE NULL DEFAULT 0,
+  `inventory_price_for_Loyality_customer` DOUBLE NULL DEFAULT 0,
+  `created_date` DATE NULL,
+  PRIMARY KEY (`id`),
+  INDEX `price_link_index` (`inventory_price_link` ASC) VISIBLE,
+  CONSTRAINT `fk_item_price`
+    FOREIGN KEY (`inventory_price_link`)
+    REFERENCES `Book_keeping`.`inventoy_items` (`id`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_book`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `bank_bookcol_account_number` VARCHAR(60) NULL,
+  `bank_book_create_date` DATE NULL,
+  `bank_book_create_user` INT NULL,
+  `bank_book_bank_name` VARCHAR(45) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `bank_bookcol_account_name_UNIQUE` (`bank_bookcol_account_number` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_book_voucher_no`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_voucher_no` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `bank_book_voucher_link` VARCHAR(60) NULL,
+  `bank_book_voucher_no` BIGINT(20) NULL,
+  `bank_book_chq_no` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `fk_bank_book_idx` (`bank_book_voucher_link` ASC) VISIBLE,
+  CONSTRAINT `fk_bank_book`
+    FOREIGN KEY (`bank_book_voucher_link`)
+    REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
+    ON DELETE RESTRICT
+    ON UPDATE RESTRICT)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_book_recod`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_recod` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `bank_book_book_recode_dr` DOUBLE NULL,
+  `bank_book__recode_cr` DOUBLE NULL,
+  `bank_book__accont_name` VARCHAR(60) NULL,
+  `bank_book__naration` VARCHAR(200) NULL,
+  `bank_book__suplier_oustanding_id` BIGINT(20) NULL,
+  `bank_book__suplier_name` VARCHAR(200) NULL,
+  `jv_numbers_jv_id` BIGINT(20) NULL,
+  `bank_book_reconciliation` TINYINT NULL,
+  `bank_book_recod_voucher_no` VARCHAR(255) NULL,
+  `bank_book_chque_no` VARCHAR(45) NULL,
+  `VAT_Rate` VARCHAR(45) NULL,
+  `Bank_Sup_Code` VARCHAR(45) NULL,
+  `Bank_Payment_Date` DATE NULL,
+  `Bank_User_Id` VARCHAR(45) NULL,
+  `Bank_Credit_Cared` TINYINT NULL,
+  `Bank_Check_Payment` TINYINT NULL,
+  `Bank_Online_Trasfer` TINYINT NULL,
+  `Bank_Merchan_ID` VARCHAR(45) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `fk_new_account_bank_idx` (`bank_book__accont_name` ASC) VISIBLE,
+  INDEX `fk_jv_no2_idx` (`jv_numbers_jv_id` ASC) VISIBLE,
+  INDEX `FK_Supplier_idx` (`bank_book__suplier_name` ASC) VISIBLE,
+  CONSTRAINT `fk_new_account_bank`
+    FOREIGN KEY (`bank_book__accont_name`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`),
+  CONSTRAINT `FK_Supplier`
+    FOREIGN KEY (`bank_book__suplier_name`)
+    REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
+    ON DELETE NO ACTION
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`suplier_suporting_1`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`suplier_suporting_1` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `salutation` VARCHAR(10) NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`setup_check`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`setup_check` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `setup_checked` INT NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`customer`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `customer_name` VARCHAR(255) NULL,
+  `customer_code` VARCHAR(45) NULL,
+  `customer_Billing_Address` VARCHAR(255) NULL,
+  `costomer_Delivery_Address` VARCHAR(255) NULL,
+  `e_mail` VARCHAR(255) NULL,
+  `coustomer_credit_limit` DOUBLE NULL,
+  `Mobile_nimber` VARCHAR(45) NULL,
+  `Is_Loyality_Customer` TINYINT NULL,
+  `Compay_Or_Not` TINYINT NULL,
+  `Create_Date` DATE NULL,
+  `Paid_Amountl` DOUBLE NULL,
+  `Create_Cashiyer` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `customer_code_UNIQUE` (`customer_code` ASC) VISIBLE,
+  UNIQUE INDEX `customer_name_UNIQUE` (`customer_name` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`customer_invoice_data`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer_invoice_data` (
+  `cos_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cos_code` VARCHAR(200) NULL,
+  `cos_iv_no` VARCHAR(200) NULL,
+  `cos_date_efective` DATE NULL,
+  `cos_iv_total_oustanding` DOUBLE NULL,
+  `cos_iv_total_payment` DOUBLE NULL,
+  `cos_total_oustanding_aft` DOUBLE GENERATED ALWAYS AS (cos_iv_total_oustanding-cos_iv_total_payment) VIRTUAL,
+  `cos_date_create` DATE NULL,
+  `cos_binding_cos` BIGINT(20) NULL,
+  `cos_jv_n0` BIGINT(20) NULL,
+  `cos_delete` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`cos_id`),
+  INDEX `key_to_cos_idx` (`cos_binding_cos` ASC) VISIBLE,
+  INDEX `key_jv_idx` (`cos_jv_n0` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_reconciliation_recodes`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_recodes` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `opene_date` DATE NULL,
+  `opene_balance` DOUBLE NULL,
+  `closing_date` DATE NULL,
+  `closing_balance` DOUBLE NULL,
+  `save_user` INT NULL,
+  `close_user` INT NULL,
+  `last_save_user` INT NULL,
+  `last_close_uer` INT NULL,
+  `period_close_or_open` TINYINT NULL DEFAULT 0,
+  `bank_accont_no` VARCHAR(45) NULL,
+  `Book_Balance` DOUBLE NULL,
+  `Bank_statment_Balance` DOUBLE NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`BankReconciliiationDitails`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`BankReconciliiationDitails` (
+  `Id` INT NOT NULL AUTO_INCREMENT,
+  `Key_to_Recode_Table` INT NULL,
+  `Transaktion_Id` INT NULL,
+  `Dr_Value` DOUBLE NULL,
+  `Cr_Value` DOUBLE NULL,
+  `Text` VARCHAR(255) NULL,
+  `Chq_No` VARCHAR(45) NULL,
+  PRIMARY KEY (`Id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`BS_Setup`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`BS_Setup` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `BS_Report_ID` INT NULL,
+  `BS_LIne_Number` VARCHAR(255) NOT NULL,
+  `BS_Text_Description` VARCHAR(255) NULL,
+  `BS_Text_Colom` VARCHAR(255) NULL,
+  `BS_Col_A` VARCHAR(255) NULL,
+  `BS_Col_B` VARCHAR(255) NOT NULL,
+  `BS_Calqulation_instraction` VARCHAR(255) NULL,
+  `BS_Text_Format` VARCHAR(255) NULL,
+  `BS_Text_line` VARCHAR(255) NULL,
+  `BS_Text_Size` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`, `BS_LIne_Number`, `BS_Col_B`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`New_BS_Format`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`New_BS_Format` (
+  `Id` INT NOT NULL AUTO_INCREMENT,
+  `Link` INT NULL,
+  `Description` VARCHAR(255) NULL,
+  PRIMARY KEY (`Id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`New_PL_Format`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`New_PL_Format` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `Link` INT NULL,
+  `Description` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`PL_Setup`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`PL_Setup` (
+  `Id` INT NOT NULL AUTO_INCREMENT,
+  `PL_Report_ID` VARCHAR(255) NULL,
+  `PL_LIne_Number` VARCHAR(25) NULL,
+  `PL_Text_Description` VARCHAR(255) NULL,
+  `PL_Text_Colom` VARCHAR(255) NULL,
+  `PL_Comparision` VARCHAR(255) NULL,
+  `PL_Rasior` VARCHAR(255) NULL,
+  `PL_Calqulation_instraction` VARCHAR(255) NULL,
+  `PL_Rasior_instraction` VARCHAR(255) NULL,
+  `PL_Text_Format` VARCHAR(255) NULL,
+  `PL_Text_line` VARCHAR(255) NULL,
+  `PL_Text_Size` VARCHAR(255) NULL,
+  PRIMARY KEY (`Id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`OP_NO_Table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`OP_NO_Table` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `OP_NO_Other` VARCHAR(45) NULL,
+  `Creator_Id` INT NULL,
+  `Create_Date` DATE NULL,
+  `Aprove_By` INT NULL,
+  `Edit_By` INT NULL,
+  `Aproed_Date` DATE NULL,
+  `Edit_date` DATE NULL,
+  `Delete_PO` TINYINT NULL,
+  `Sup_ID` BIGINT(20) NULL,
+  `Sup_Name` VARCHAR(255) NULL,
+  `Special_Instractions` VARCHAR(255) NULL,
+  `Save_Post` TINYINT NULL,
+  `Expecting_Date` DATE NULL,
+  `Deliver_Location` VARCHAR(255) NULL,
+  `VAT_Rate` VARCHAR(45) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `Index_To_Recode_Table` (`id` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`PO_Recode_Details`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`PO_Recode_Details` (
+  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `Link_OP_NO_Table` BIGINT(20) NULL,
+  `Item` VARCHAR(255) NULL,
+  `Discription` VARCHAR(255) NULL,
+  `QTY` DOUBLE NULL,
+  `Unit_price` DOUBLE NULL,
+  `Rejection_Comment` VARCHAR(255) NULL,
+  `Mesurment` VARCHAR(45) NULL,
+  PRIMARY KEY (`id`),
+  INDEX `Index_To_No_Table` (`Link_OP_NO_Table` ASC) VISIBLE,
+  CONSTRAINT `Key_No_Table`
+    FOREIGN KEY (`Link_OP_NO_Table`)
+    REFERENCES `Book_keeping`.`OP_NO_Table` (`id`)
+    ON DELETE RESTRICT
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Login_Table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Login_Table` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `User_Name` VARCHAR(45) NULL,
+  `Password` VARCHAR(45) NULL,
+  `Mobile_No` VARCHAR(45) NULL,
+  `Email` VARCHAR(45) NULL,
+  `User_Code` VARCHAR(45) NULL,
+  `User_Active` TINYINT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC) VISIBLE,
+  UNIQUE INDEX `User_Code_UNIQUE` (`User_Code` ASC) VISIBLE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`User_Rights`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`User_Rights` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `Link_To_Loging_Tabke` INT NULL,
+  `Add_New_User` TINYINT NULL,
+  `OP_Approved` TINYINT NULL,
+  `Plus_Btn` TINYINT NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Inventory_Productions`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Inventory_Productions` (
+  `ID` INT NOT NULL AUTO_INCREMENT,
+  `JV_No` BIGINT NOT NULL,
+  `Delete_Or_Note` TINYINT NULL,
+  `Effective_Date` DATE NULL,
+  PRIMARY KEY (`ID`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Invoice_Oustanding`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Oustanding` (
+  `Id` BIGINT NOT NULL AUTO_INCREMENT,
+  `code` VARCHAR(255) NULL,
+  `invoice_number` VARCHAR(255) NULL,
+  `invoice_date` DATE NULL,
+  `invoice_total_oustanding` DOUBLE NULL,
+  `invoice_oustanding_Patment` DOUBLE NULL,
+  `Invoice_Oustanding` DOUBLE GENERATED ALWAYS AS (invoice_total_oustanding-invoice_oustanding_Patment) VIRTUAL,
+  `invoice_final_date` DATE NULL,
+  `invoice_buinding_Customer` BIGINT(20) NULL,
+  `invoice_JV` BIGINT(20) NULL,
+  `VAT_rate` DOUBLE NULL,
+  `oustanding_delete` TINYINT NULL,
+  PRIMARY KEY (`Id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Invoice_Recode`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Recode` (
+  `Id` BIGINT NOT NULL AUTO_INCREMENT,
+  `Item_Name` VARCHAR(255) NULL,
+  `Qty` DOUBLE NULL,
+  `Pricing` DOUBLE NULL,
+  `Inventory_Items_Or_Not` TINYINT NULL,
+  `Natation` VARCHAR(255) NULL,
+  `JV_No` BIGINT NULL,
+  `User` VARCHAR(45) NULL,
+  `Customer_Name` VARCHAR(255) NULL,
+  `Save_Or_Not` TINYINT NULL,
+  `Buinding_To_Oustanding` INT(255) NULL,
+  `mesurment` VARCHAR(45) NULL,
+  `recode_date` DATE NULL,
+  `warety_end_date` DATE NULL,
+  PRIMARY KEY (`Id`),
+  INDEX `key_to_custome_idx` (`Customer_Name` ASC) VISIBLE,
+  CONSTRAINT `key_to_custome`
+    FOREIGN KEY (`Customer_Name`)
+    REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
+    ON DELETE NO ACTION
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Pos_Invoice_No`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pos_Invoice_No` (
+  `Id` BIGINT NOT NULL AUTO_INCREMENT,
+  `IV_No` VARCHAR(255) NULL,
+  PRIMARY KEY (`Id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Pose_Setting_Table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pose_Setting_Table` (
+  `Id` INT NOT NULL AUTO_INCREMENT,
+  `Select_Inventry_Location` VARCHAR(60) NULL,
+  `Card_Control_AC` VARCHAR(60) NULL,
+  `Cash_Account` VARCHAR(60) NULL,
+  `Sales_with_market_price` TINYINT NULL DEFAULT 0,
+  `Sales_with_Special_price` TINYINT NULL DEFAULT 0,
+  `Loyalty_Price` TINYINT NULL DEFAULT 0,
+  `VAT_Enable` TINYINT NULL DEFAULT 0,
+  `Footer_Message` VARCHAR(255) NULL,
+  `Top_Message` VARCHAR(255) NULL,
+  `Image` LONGBLOB NULL,
+  `User_Name` VARCHAR(45) NOT NULL,
+  `Password` VARCHAR(45) NULL,
+  `Mobile_Number` VARCHAR(15) NULL,
+  PRIMARY KEY (`Id`, `User_Name`),
+  INDEX `Inventry_Location_Jpin_idx` (`Select_Inventry_Location` ASC) VISIBLE,
+  INDEX `AC_Card_AC_idx` (`Card_Control_AC` ASC) VISIBLE,
+  INDEX `AC_CA_AC_idx` (`Cash_Account` ASC) VISIBLE,
+  UNIQUE INDEX `Mobile_Number_UNIQUE` (`Mobile_Number` ASC) VISIBLE,
+  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC) VISIBLE,
+  CONSTRAINT `Inventry_Location_Jpin`
+    FOREIGN KEY (`Select_Inventry_Location`)
+    REFERENCES `Book_keeping`.`inventory_locations` (`inventory_locations_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `AC_Card_AC`
+    FOREIGN KEY (`Card_Control_AC`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `AC_CA_AC`
+    FOREIGN KEY (`Cash_Account`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`POS_Sales_Invoice_01`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`POS_Sales_Invoice_01` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `ItemCoude` VARCHAR(255) NULL,
+  `ItemName` VARCHAR(255) NULL,
+  `ItemMesurmet` VARCHAR(45) NULL,
+  `SllingPrice` DOUBLE NULL,
+  `ItemPriceComen` DOUBLE NULL,
+  `ItemLoyalityPrice` DOUBLE NULL,
+  `Sales_with_market_price_Active` TINYINT NULL,
+  `Sales_with_Special_price_Active` TINYINT NULL,
+  `Loyalty_Price_Active` TINYINT NULL,
+  `RecodeUserId` INT NULL,
+  `Location` VARCHAR(60) NULL,
+  `AcctionDate` DATE NULL,
+  `QuntirySale` DOUBLE NULL,
+  `InventoryCost` DOUBLE NULL,
+  `PaymentMethord` INT NULL,
+  `CashAccountName` VARCHAR(60) NULL,
+  `BankAccountName` VARCHAR(60) NULL,
+  `Invoice_No` VARCHAR(255) NULL,
+  `Loyalty_No` VARCHAR(15) NULL,
+  `Total_Value` DOUBLE NULL,
+  `jv` BIGINT NULL,
+  `Revers` TINYINT NULL DEFAULT 0,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Main_Customer_IV`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Main_Customer_IV` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `Genarated_Iv` VARCHAR(255) NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Invoice_Save`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save` (
+  `id` INT(255) NOT NULL AUTO_INCREMENT,
+  `No` INT(255) NULL,
+  `Item_Name` VARCHAR(255) NULL,
+  `Measurement` VARCHAR(45) NULL,
+  `Quantity` DOUBLE NULL,
+  `Unit_Price` DOUBLE NULL,
+  `Total_Value` DOUBLE NULL,
+  `Customer_Name` VARCHAR(255) NULL,
+  `Recode_ID` INT NULL,
+  `IF_VAT` TINYINT NULL,
+  `VAT_Rate` DOUBLE NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Invoice_Save_Id`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save_Id` (
+  `id` INT(255) NOT NULL AUTO_INCREMENT,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Credit_Invoice_No`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Credit_Invoice_No` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_reconciliation_reversal_log`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_reversal_log` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `original_rec_id` INT(11) NOT NULL,
+  `bank_account` VARCHAR(45) NULL DEFAULT NULL,
+  `reversal_date` DATETIME NOT NULL,
+  `reversed_by_user` INT(11) NULL DEFAULT NULL,
+  `opening_balance` DOUBLE NULL DEFAULT NULL,
+  `closing_balance` DOUBLE NULL DEFAULT NULL,
+  `reversal_reason` VARCHAR(500) NULL DEFAULT NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB
+AUTO_INCREMENT = 7
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cash_bank_payment_type`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_bank_payment_type` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `manua_recipt_number` VARCHAR(255) NULL,
+  `onlie_payment_recived` TINYINT NULL,
+  `online_transaction_code` VARCHAR(255) NULL,
+  `credit_card_no` VARCHAR(45) NULL,
+  `bank_transfer` TINYINT NULL,
+  `bank_transfer_id` VARCHAR(255) NULL,
+  `bank_cheque` VARCHAR(255) NULL,
+  `JV` INT NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`cash_recipt`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_recipt` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `likn` VARCHAR(60) NULL,
+  `reciept_no` INT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `key_cash_book_rwciept_idx` (`likn` ASC) VISIBLE,
+  CONSTRAINT `key_cash_book_rwciept`
+    FOREIGN KEY (`likn`)
+    REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`bank_ecipt`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_ecipt` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `link` VARCHAR(45) NULL,
+  `reciept_no` INT NULL,
+  PRIMARY KEY (`id`),
+  INDEX `key_Bank_book_recipt_idx` (`link` ASC) VISIBLE,
+  CONSTRAINT `key_Bank_book_recipt`
+    FOREIGN KEY (`link`)
+    REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`license_Information`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`license_Information` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `tral_Date` DATE NULL,
+  `licence_date` DATE NULL,
+  `last_logging_any` DATE NULL,
+  PRIMARY KEY (`id`))
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`Inventory_vorenty_period`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`Inventory_vorenty_period` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `yeas_` INT NULL DEFAULT 0,
+  `date_` INT NULL DEFAULT 0,
+  `name` VARCHAR(255) NULL DEFAULT 0,
+  `month` INT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  INDEX `key_To_Inventory_idx` (`name` ASC) VISIBLE,
+  CONSTRAINT `key_To_Inventory`
+    FOREIGN KEY (`name`)
+    REFERENCES `Book_keeping`.`inventoy_items` (`inventoy_name`)
+    ON DELETE NO ACTION
+    ON UPDATE CASCADE)
+ENGINE = InnoDB;
+
+
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`adding_New`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`adding_New` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `yes` TINYINT NULL DEFAULT 0,
+  `ac1` VARCHAR(60) NULL DEFAULT 'null',
+  `ac2` VARCHAR(60) NULL DEFAULT 'null',
+  `ac3` VARCHAR(60) NULL DEFAULT 'null',
+  `ac4` VARCHAR(60) NULL DEFAULT 'null',
+  `ac5` VARCHAR(60) NULL DEFAULT 'null',
+  PRIMARY KEY (`id`),
+  INDEX `key_to_ac1_idx` (`ac1` ASC) VISIBLE,
+  INDEX `key_to_ac2_idx` (`ac2` ASC) VISIBLE,
+  INDEX `key_to_ac3_idx` (`ac3` ASC) VISIBLE,
+  INDEX `key_to_ac5_idx` (`ac5` ASC) VISIBLE,
+  CONSTRAINT `key_to_ac1`
+    FOREIGN KEY (`ac1`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE CASCADE,
+  CONSTRAINT `key_to_ac2`
+    FOREIGN KEY (`ac2`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `key_to_ac3`
+    FOREIGN KEY (`ac3`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `key_to_ac4`
+    FOREIGN KEY (`ac4`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION,
+  CONSTRAINT `key_to_ac5`
+    FOREIGN KEY (`ac5`)
+    REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
+    ON DELETE NO ACTION
+    ON UPDATE NO ACTION)
+ENGINE = InnoDB;
+
+USE `Book_keeping` ;
+
+-- -----------------------------------------------------
+-- procedure Bank_Transaction Revesale
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Bank_Transaction Revesale`(IN jv_No int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE var_amont DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT id,bank_book__recode_cr FROM bank_book_recod where jv_numbers_jv_id = jv_No ;
+
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id, var_amont;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `bank_book_recod`
+SET bank_book_book_recode_dr = var_amont
+WHERE id = var_id;
+
+
+
+ END LOOP;
+CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Inventory_Delete
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Inventory_Delete`(IN jv_No_ int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+
+SELECT id FROM inventory_recod where JV_No = jv_No_;
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+read_loop: LOOP
+    FETCH cur INTO var_id ;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `inventory_recod`
+SET IV_Deleted = 1
+WHERE id = var_id;
+
+
+ END LOOP;
+ CLOSE cur;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Inventory_Items_Revers_IN
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Inventory_Items_Revers_IN`(IN jv_No1 int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE var_In_Items DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT id,inventory_recod_moument_in FROM inventory_recod where JV_No = jv_No1;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id,var_In_Items;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `inventory_recod`
+SET inventory_recod_movment_out = var_In_Items,
+    IV_Deleted = var_id
+WHERE id = var_id;
+
+
+
+ END LOOP;
+ CLOSE cur;
+
+
+
+
+
+
+
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Inventory_Items_Revers_OUT
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Inventory_Items_Revers_OUT`(IN jv_No1 int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE var_In_Items DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT id,inventory_recod_movment_out FROM inventory_recod where JV_No = jv_No1;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id,var_In_Items;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `inventory_recod`
+SET  inventory_recod_moument_in  = var_In_Items,
+    IV_Deleted = var_id
+WHERE id = var_id;
+
+
+
+ END LOOP;
+ CLOSE cur;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure JV_Entry_Revers
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `JV_Entry_Revers`(IN jv_No int,	IN User01 TEXT,IN Edit_Date DATE)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE Account_Name TEXT;
+DECLARE var_amont_Dr DOUBLE;
+DECLARE var_amont_Cr DOUBLE;
+DECLARE var_sub_accout_code INT;
+DECLARE var_job_no INT;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT id,
+account_name,
+enty_values_DR,
+enty_values_CR,
+entry_sub_account_code,
+entry_job_number
+FROM entry_details where entry_jv = jv_No;
+
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id,Account_Name,var_amont_Dr,var_amont_Cr,var_sub_accout_code,var_job_no;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+IF var_amont_Dr >0 THEN
+
+
+UPDATE `entry_details`
+SET enty_values_CR=var_amont_Dr,
+entry_last_edit_user = User01,
+entry_last_edit_date = Edit_Date,
+entry_deleted = 1
+WHERE id = var_id;
+
+END IF;
+
+
+
+IF var_amont_Cr >0 THEN
+
+UPDATE `entry_details`
+SET enty_values_DR=var_amont_Cr,
+entry_last_edit_user = User01,
+entry_last_edit_date = Edit_Date
+WHERE id = var_id;
+
+
+END IF;
+
+
+
+
+ END LOOP;
+CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Opening_Balance_any_CR_Account
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Opening_Balance_any_CR_Account`(IN date_up date,IN Account_Name_01 text)
+BEGIN
+
+declare total_DR double;
+declare total_CR double;
+declare send_balance_closing double;
+
+
+SELECT sum(enty_values_DR) into total_DR FROM entry_details where entry_effective_date < date_up and enty_values_DR > 0 and account_name = Account_Name_01 ;
+SELECT sum(enty_values_CR) into total_CR FROM entry_details where entry_effective_date < date_up and enty_values_CR > 0 and account_name = Account_Name_01;
+
+
+
+if(total_DR IS NULL) THEN
+
+     SET total_DR = 0;
+
+     END IF;
+
+if(total_CR IS NULL) THEN
+
+     SET total_CR = 0;
+
+     END IF;
+
+
+SET send_balance_closing =  total_CR - total_DR   ;
+SELECT send_balance_closing;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Opening_Balance_any_DR_Account
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Opening_Balance_any_DR_Account`(IN date_up date,IN Account_Name_01 text)
+BEGIN
+
+declare total_DR double;
+declare total_CR double;
+declare send_balance_closing double;
+
+
+SELECT sum(enty_values_DR) into total_DR FROM entry_details where entry_effective_date < date_up and enty_values_DR > 0 and account_name = Account_Name_01 ;
+SELECT sum(enty_values_CR) into total_CR FROM entry_details where entry_effective_date < date_up and enty_values_CR > 0 and account_name = Account_Name_01;
+
+
+
+if(total_DR IS NULL) THEN
+
+     SET total_DR = 0;
+
+     END IF;
+
+if(total_CR IS NULL) THEN
+
+     SET total_CR = 0;
+
+     END IF;
+
+
+SET send_balance_closing = total_DR - total_CR;
+SELECT send_balance_closing;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure POS_Customer_Delete
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `POS_Customer_Delete`(IN jv_No_ int)
+BEGIN
+    DECLARE var_id INT;
+    DECLARE done INT DEFAULT FALSE;
+
+    DECLARE cur CURSOR FOR
+        SELECT id FROM pos_sales_invoice_01 WHERE jv = jv_No_;
+
+    DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+    OPEN cur;
+    read_loop: LOOP
+        FETCH cur INTO var_id;
+        IF done THEN
+            LEAVE read_loop;
+        END IF;
+
+        UPDATE `pos_sales_invoice_01`
+        SET Revers = 1
+        WHERE id = var_id;
+
+    END LOOP;
+    CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Pudate_Reversale
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Pudate_Reversale`(IN jv_No int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE var_amont DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT chash_book_recod_id,cash_book_recode_cr FROM cash_book_recode where jv_numbers_jv_id = jv_No;
+
+  DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id, var_amont;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `cash_book_recode`
+SET cash_book_recode_dr = var_amont
+WHERE chash_book_recod_id = var_id;
+
+
+
+ END LOOP;
+CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Revers_Recept_Simple
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Revers_Recept_Simple`(
+    IN jv_No BIGINT,
+    IN User INT,
+    IN Action_Date DATE
+)
+BEGIN
+    DECLARE v_already_reversed BOOLEAN DEFAULT FALSE;
+
+    -- Check if any record already has DR = CR
+    SELECT
+        CASE
+            WHEN COUNT(*) > 0 THEN TRUE
+            ELSE FALSE
+        END INTO v_already_reversed
+    FROM cash_book_recode
+    WHERE jv_numbers_jv_id = jv_No
+        AND cash_book_recode_dr = cash_book_recode_cr
+        AND cash_book_recode_dr > 0;
+
+    -- If already reversed, stop procedure and update invoice outstanding
+    IF v_already_reversed THEN
+        -- Start transaction
+        START TRANSACTION;
+
+        -- Update invoice outstanding: reduce payment by DR amount
+        UPDATE invoice_oustanding io
+        INNER JOIN cash_book_recode cbr
+            ON io.Id = cbr.cash_book_suplier_oustanding_id
+        SET io.invoice_oustanding_Patment =
+            GREATEST(0, io.invoice_oustanding_Patment - cbr.cash_book_recode_dr)
+        WHERE cbr.jv_numbers_jv_id = jv_No
+            AND cbr.cash_book_recode_dr = cbr.cash_book_recode_cr
+            AND cbr.cash_book_recode_dr > 0;
+
+        -- Update reversal information in cash book
+        UPDATE cash_book_recode
+        SET
+            User_Revers = User,
+            Revers_Date = Action_Date
+        WHERE jv_numbers_jv_id = jv_No
+            AND cash_book_recode_dr = cash_book_recode_cr
+            AND cash_book_recode_dr > 0;
+
+        COMMIT;
+
+        -- Signal that reversal already done
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Reversal already completed for this JV number. Only invoice outstanding updated.';
+
+    ELSE
+        -- Start transaction for normal reversal
+        START TRANSACTION;
+
+        -- Update invoice outstanding payments first (reduce by DR amount)
+        UPDATE invoice_oustanding io
+        INNER JOIN cash_book_recode cbr
+            ON io.Id = cbr.cash_book_suplier_oustanding_id
+        SET io.invoice_oustanding_Patment =
+            GREATEST(0, io.invoice_oustanding_Patment - cbr.cash_book_recode_dr)
+        WHERE cbr.jv_numbers_jv_id = jv_No
+            AND cbr.cash_book_recode_dr > 0
+            AND cbr.cash_book_recode_dr != cbr.cash_book_recode_cr;
+
+        -- Update cash book records (reverse by setting CR = DR)
+        UPDATE cash_book_recode
+        SET
+            cash_book_recode_cr = cash_book_recode_dr,
+            User_Revers = User,
+            Revers_Date = Action_Date
+        WHERE jv_numbers_jv_id = jv_No
+            AND cash_book_recode_dr > 0
+            AND cash_book_recode_dr != cash_book_recode_cr;
+
+        -- Commit the transaction
+        COMMIT;
+    END IF;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Sup_Delete_Invoice
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Sup_Delete_Invoice`(IN jv_No int)
+BEGIN
+
+DECLARE var_id INT;
+DECLARE Amount_1 DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+
+SELECT s_i_id,suppliers_invoice_total_payment FROM suppliers_invoice_data where suppliers_invoice_JV = jv_No;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+read_loop: LOOP
+    FETCH cur INTO var_id,Amount_1;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+IF Amount_1 = 0 THEN
+
+UPDATE `suppliers_invoice_data`
+SET suppliers_oustanding_delete = 1
+WHERE s_i_id = var_id;
+
+ELSE
+            -- Raise an error if the amount is not zero
+            SIGNAL SQLSTATE '45000' ;
+
+
+END IF;
+
+
+ END LOOP;
+ CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Suplier_Oustanding_Revers
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Suplier_Oustanding_Revers`(IN jv_No int)
+BEGIN
+
+
+DECLARE var_id INT;
+DECLARE var_amont_Cr DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT cash_book_recode_suplier_oustanding_id,
+cash_book_recode_cr
+FROM cash_book_recode
+where jv_numbers_jv_id = jv_No;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id,var_amont_Cr;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `suppliers_invoice_data`
+SET suppliers_invoice_total_payment = suppliers_invoice_total_payment - var_amont_Cr
+WHERE s_i_id = var_id;
+
+
+
+ END LOOP;
+ CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure Suplier_Oustanding_Revers_Bank
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `Suplier_Oustanding_Revers_Bank`(IN jv_No int)
+BEGIN
+
+
+DECLARE var_id INT;
+DECLARE var_amont_Cr DOUBLE;
+DECLARE done INT DEFAULT FALSE;
+
+DECLARE cur CURSOR FOR
+SELECT bank_book__suplier_oustanding_id,
+bank_book__recode_cr
+FROM bank_book_recod
+where jv_numbers_jv_id = jv_No;
+
+DECLARE CONTINUE HANDLER FOR NOT FOUND SET done = TRUE;
+
+OPEN cur;
+
+read_loop: LOOP
+    FETCH cur INTO var_id,var_amont_Cr;
+    IF done THEN
+      LEAVE read_loop;
+    END IF;
+
+UPDATE `suppliers_invoice_data`
+SET suppliers_invoice_total_payment = suppliers_invoice_total_payment - var_amont_Cr
+WHERE s_i_id = var_id;
+
+
+
+ END LOOP;
+ CLOSE cur;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure assets_ac
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `assets_ac`(in from_date date)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date
+AND `new_account_table`.`account_assets` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure assets_ac_account_name
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `assets_ac_account_name`(in from_date date , in accout_name text)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+AND `new_account_table`.`account_assets` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure bank_book_balance
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `bank_book_balance`( IN to_date date ,IN account_name text )
+BEGIN
+
+declare dr double;
+declare cr double;
+declare balance double;
+
+SELECT sum(enty_values_DR) into dr FROM entry_details where  `entry_details`.`account_name` = account_name  and `entry_details`.`entry_effective_date` <= to_date;
+SELECT sum(enty_values_CR) into cr FROM entry_details where  `entry_details`.`account_name` = account_name and `entry_details`.`entry_effective_date` <= to_date ;
+
+if(dr is null)then
+ set  dr = 0;
+ end if;
+
+if(cr is null)then
+set cr = 0;
+
+end if;
+
+set balance = dr-cr;
+select balance;
+
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure bank_opening_balance
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `bank_opening_balance`(in account_name text)
+BEGIN
+
+declare dr double;
+declare cr double;
+declare balance double;
+
+SELECT sum(enty_values_DR) into dr FROM entry_details where `entry_details`.`entry_Rec` = 1 and `entry_details`.`account_name` = account_name ;
+SELECT sum(enty_values_CR) into cr FROM entry_details where `entry_details`.`entry_Rec` = 1 and `entry_details`.`account_name` = account_name ;
+
+if(dr is null)then
+ set  dr = 0;
+ end if;
+
+if(cr is null)then
+set cr = 0;
+
+end if;
+
+set balance = dr-cr;
+select balance;
+
+
+select balance;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure closing_inventory
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `closing_inventory`(IN date_up date)
+BEGIN
+
+declare total_in double;
+declare total_out double;
+declare send_balance_closing double;
+
+SELECT sum(inventory_recod_total_value) into total_in FROM inventory_recod where inventory_recod_action_date <= date_up and inventory_recod_moument_in > 0 ;
+SELECT sum(inventory_recod_total_value) into total_out FROM inventory_recod where inventory_recod_action_date <= date_up and inventory_recod_movment_out > 0 ;
+
+
+
+if(total_in IS NULL) THEN
+
+     SET total_in = 0;
+
+     END IF;
+
+if(total_out IS NULL) THEN
+
+     SET total_out = 0;
+
+     END IF;
+
+
+SET send_balance_closing = total_in - total_out;
+SELECT send_balance_closing;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure cost_goods
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `cost_goods`(IN from_date DATE,IN to_date DATE)
+BEGIN
+
+SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description_exc",
+`new_account_table`.`account_hold_possion_PL` as "No_exc",
+`entry_details`.`account_name` as "Accont_exc",
+
+( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_exc"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`
+BETWEEN from_date AND to_date
+AND `new_account_table`.`account_expenses` = 1
+AND `entry_details`.`account_name` = 'Cost Of Goods Sold'
+GROUP BY `entry_details`.`account_name` ;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure customer_settele
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `customer_settele`(in curent_value double,in settelment_value double,in idd int)
+BEGIN
+
+declare new_cuent_value double ;
+declare curent_paymemt double;
+declare total_payment double;
+
+SELECT Invoice_Oustanding into new_cuent_value FROM invoice_oustanding where Id = idd;
+
+IF new_cuent_value = curent_value OR curent_paymemt = 0 THEN
+
+SELECT invoice_oustanding_Patment into curent_paymemt FROM invoice_oustanding where `Id` = idd;
+set total_payment = curent_paymemt + settelment_value;
+UPDATE `invoice_oustanding` SET `invoice_oustanding_Patment` = total_payment WHERE `Id` = idd;
+
+ELSE
+
+SELECT abcd FROM suppliers_invoice_data;
+
+END IF;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure equety_ac
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `equety_ac`(in from_date date)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_exe",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_exe",
+`entry_details`.`account_name` as "Accont_exe",
+
+(  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_exe"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date
+AND `new_account_table`.`account_equity` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure equety_ac_name
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `equety_ac_name`(in from_date date, in accout_name text)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_exe",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_exe",
+`entry_details`.`account_name` as "Accont_exe",
+
+(  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_exe"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+AND `new_account_table`.`account_equity` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure expenses
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `expenses`(IN from_date DATE,IN to_date DATE)
+BEGIN
+
+SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description_ex",
+`new_account_table`.`account_hold_possion_PL` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
+FROM book_keeping.entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`
+BETWEEN from_date AND to_date
+AND `new_account_table`.`account_expenses` = 1
+AND `entry_details`.`account_name` != 'Cost Of Goods Sold'
+GROUP BY `entry_details`.`account_name` ;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure expenses_name
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `expenses_name`(IN from_date DATE,IN to_date DATE , in accout_name text)
+BEGIN
+
+SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description_ex",
+`new_account_table`.`account_hold_possion_PL` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`
+BETWEEN from_date AND to_date
+AND `new_account_table`.`account_expenses` = 1
+AND `new_account_table`.`account_name` = accout_name
+GROUP BY `entry_details`.`account_name` ;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure income
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `income`(IN from_date DATE,IN to_date DATE)
+BEGIN
+
+SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description",
+`new_account_table`.`account_hold_possion_PL` as "No",
+`entry_details`.`account_name` as "Accont",
+
+(if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00)) as "Amount"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`
+BETWEEN from_date AND to_date
+AND `new_account_table`.`account_income` = 1
+GROUP BY `entry_details`.`account_name` ;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure income_name
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `income_name`(IN from_date DATE,IN to_date DATE , in accout_name text)
+BEGIN
+
+SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description",
+`new_account_table`.`account_hold_possion_PL` as "No",
+`entry_details`.`account_name` as "Accont",
+
+(if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00)) as "Amount"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`
+BETWEEN from_date AND to_date &&  `new_account_table`.`account_name` = accout_name
+AND `new_account_table`.`account_income` = 1
+GROUP BY `entry_details`.`account_name` ;
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure inventory_Opening_Balance
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `inventory_Opening_Balance`(from_Date date,item_name text,house text)
+BEGIN
+
+declare total_in double;
+declare total_out double;
+declare send_balance_Opening double;
+
+SELECT sum(inventory_recod_moument_in) into total_in FROM inventory_recod where inventory_recod_action_date < from_Date and inventoy_name = item_name and inventory_recod_location = house ;
+SELECT sum(inventory_recod_movment_out) into total_out FROM inventory_recod where inventory_recod_action_date < from_Date and inventoy_name = item_name and inventory_recod_location = house ;
+
+
+if(total_in IS NULL) THEN
+
+     SET total_in = 0;
+
+     END IF;
+
+if(total_out IS NULL) THEN
+
+     SET total_out = 0;
+
+     END IF;
+
+
+SET send_balance_Opening =  total_in - total_out   ;
+SELECT send_balance_Opening;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure inventory_balance_01
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `inventory_balance_01`()
+BEGIN
+
+SELECT inventoy_code,inventory_recod_mesrmet,
+       inventoy_name,
+       SUM(inventory_recod_total_value),
+       SUM(inventory_recod_moument_in - inventory_recod_movment_out)
+FROM inventory_recod
+GROUP BY inventoy_code, inventoy_name,inventory_recod_mesrmet;
+
+
+
+
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure inventory_balance_02
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `inventory_balance_02`()
+BEGIN
+SELECT
+    i.id,
+    i.inventoy_name,
+    i.inventoy_code,
+    i.inventoy_suplier_code,
+    i.min_qty,
+    i.inventoy_items_messurment_unit,
+    COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) AS current_balance,
+    CASE
+        WHEN COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) <= i.min_qty
+        THEN 'BELOW MINIMUM'
+        ELSE 'OK'
+    END AS status,
+    i.Main_Catogry,
+    i.Sub_Catogory
+FROM
+    inventoy_items i
+LEFT JOIN
+    inventory_recod r ON i.inventoy_code = r.inventoy_code
+WHERE
+    (r.IV_Deleted = 0 OR r.IV_Deleted IS NULL)
+GROUP BY
+    i.id,
+    i.inventoy_name,
+    i.inventoy_code,
+    i.inventoy_suplier_code,
+    i.min_qty,
+    i.inventoy_items_messurment_unit,
+    i.Main_Catogry,
+    i.Sub_Catogory
+HAVING
+    current_balance <= i.min_qty
+ORDER BY
+    status DESC,
+    current_balance ASC;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure inventory_balance_03
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `inventory_balance_03`()
+BEGIN
+SELECT
+    ROW_NUMBER() OVER (ORDER BY i.id) as No,
+    i.inventoy_name,
+    i.inventoy_code,
+    COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) AS Curent_Qty
+FROM
+    inventoy_items i
+LEFT JOIN
+    inventory_recod r ON i.inventoy_code = r.inventoy_code
+WHERE
+    (r.IV_Deleted = 0 OR r.IV_Deleted IS NULL)
+GROUP BY
+    i.id,
+    i.inventoy_name,
+    i.inventoy_code
+HAVING
+    Curent_Qty < 0
+ORDER BY
+    Curent_Qty ASC;
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure libility_ac
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `libility_ac`(in from_date date)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+(  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_ex"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date
+AND `new_account_table`.`account_liabilities` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure libility_ac_name
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `libility_ac_name`(in from_date date , in accout_name text)
+SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
+`new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
+`entry_details`.`account_name` as "Accont_ex",
+
+(  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_ex"
+FROM entry_details
+RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
+WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+AND `new_account_table`.`account_liabilities` = 1
+GROUP BY `entry_details`.`account_name`$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure opening_inventory
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `opening_inventory`(IN date_up date )
+BEGIN
+
+declare total_in double;
+declare total_out double;
+declare send_balance_opening double;
+
+
+
+SELECT sum(inventory_recod_total_value) into total_in FROM inventory_recod where inventory_recod_action_date < date_up and inventory_recod_moument_in > 0 ;
+SELECT sum(inventory_recod_total_value) into total_out FROM inventory_recod where inventory_recod_action_date < date_up and inventory_recod_movment_out > 0 ;
+
+if(total_in IS NULL) THEN
+
+     SET total_in = 0;
+
+     END IF;
+
+if(total_out IS NULL) THEN
+
+     SET total_out = 0;
+
+     END IF;
+
+SET send_balance_opening = total_in - total_out;
+SELECT send_balance_opening;
+
+END$$
+
+DELIMITER ;
+
+-- -----------------------------------------------------
+-- procedure vender_settele
+-- -----------------------------------------------------
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE DEFINER=`root`@`localhost` PROCEDURE `vender_settele`(in curent_value double,in settelment_value double,in id int)
+BEGIN
+
+declare new_cuent_value double ;
+declare curent_paymemt double;
+declare total_payment double;
+
+SELECT suppliers_invoice_oustanding into new_cuent_value FROM suppliers_invoice_data where s_i_id = id;
+
+IF new_cuent_value = curent_value OR curent_paymemt = 0 THEN
+
+SELECT suppliers_invoice_total_payment into curent_paymemt FROM suppliers_invoice_data where s_i_id = id;
+set total_payment = curent_paymemt + settelment_value;
+UPDATE `suppliers_invoice_data` SET `suppliers_invoice_total_payment` = total_payment WHERE `s_i_id` = id;
+
+ELSE
+
+SELECT abcd FROM suppliers_invoice_data;
+
+END IF;
+
+
+END$$
+
+DELIMITER ;
+USE `Book_keeping`;
+
+DELIMITER $$
+USE `Book_keeping`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `book_keeping`.`new_account_table_BEFORE_INSERT`
+BEFORE INSERT ON `book_keeping`.`new_account_table`
+FOR EACH ROW
+BEGIN
+
+IF NEW.account_income = 1 THEN
+      SET NEW.account_basment = 'CR';
+END IF;
+
+IF NEW.account_expenses = 1 THEN
+      SET NEW.account_basment = 'DR';
+END IF;
+
+IF NEW.account_assets = 1 THEN
+      SET NEW.account_basment = 'DR';
+END IF;
+
+IF NEW.account_liabilities = 1 THEN
+      SET NEW.account_basment = 'CR';
+END IF;
+
+IF NEW.account_equity = 1 THEN
+      SET NEW.account_basment = 'CR';
+END IF;
+
+
+
+END$$
+
+USE `Book_keeping`$$
+CREATE
+DEFINER=`root`@`localhost`
+TRIGGER `book_keeping`.`new_account_table_BEFORE_UPDATE`
+BEFORE UPDATE ON `book_keeping`.`new_account_table`
+FOR EACH ROW
+BEGIN
+
+    IF NEW.account_income = 1 THEN
+          SET NEW.account_basment = 'CR';
+    END IF;
+
+    IF NEW.account_expenses = 1 THEN
+          SET NEW.account_basment = 'DR';
+    END IF;
+
+    IF NEW.account_assets = 1 THEN
+          SET NEW.account_basment = 'DR';
+    END IF;
+
+    IF NEW.account_liabilities = 1 THEN
+          SET NEW.account_basment = 'CR';
+    END IF;
+
+    IF NEW.account_equity = 1 THEN
+          SET NEW.account_basment = 'CR';
+    END IF;
+
+END$$
+
+
+DELIMITER ;
+
+SET SQL_MODE=@OLD_SQL_MODE;
+SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
+SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;
