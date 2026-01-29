@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">POS Payment Reversal</h5>
+            <small class="text-light opacity-75">Reverse direct payments and restore inventory/GL entries</small>
+        </div>
+        <div class="card-body">
+            <!-- Sales History DataGrid -->
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-light fw-bold text-primary">
+                    Sales History
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0" id="salesTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th style="width: 60px;">No</th>
+                                <th>JV No</th>
+                                <th class="text-end">Total Payment</th>
+                                <th style="width: 100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if jv_list %}
+                                {% for item in jv_list %}
+                                <tr onclick="selectJV('{{ item.jv }}', this)" style="cursor: pointer;">
+                                    <td>{{ item.No }}</td>
+                                    <td>{{ item.jv }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(item.Total_payment) }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); selectJV('{{ item.jv }}', this.closest('tr'))">Select</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="4" class="text-center py-3 text-muted">No transactions found for today.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Details Display -->
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-light fw-bold text-primary">
+                    Payment Details
+                </div>
+                <div class="card-body bg-light">
+                    <textarea id="detailsBox" class="form-control" rows="6" readonly
+                              style="font-family: monospace; font-weight: bold; background: linear-gradient(to bottom, #FFE6EFF9, white);"></textarea>
+                </div>
+            </div>
+
+            <!-- GL Entry Preview (Static as per C# example logic, or dynamic if needed) -->
+            <div class="card mb-4 border-secondary bg-light">
+                <div class="card-header fw-bold text-primary">
+                    GL and Inventory Impact
+                </div>
+                <div class="card-body">
+                    <ul class="list-group list-group-flush" id="glPreview">
+                        <li class="list-group-item bg-transparent">Select a transaction to view impact...</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded">
+                <div class="d-flex align-items-center">
+                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 16px; height: 16px;"></div>
+                    <span id="statusLabel" class="fw-bold text-primary">Ready to process reversal</span>
+                </div>
+                <div>
+                    <form id="reversalForm" method="POST" action="/pos_reversal/process" style="display: inline;">
+                        <input type="hidden" name="jv" id="selectedJV">
+                        <button type="submit" id="processBtn" class="btn btn-primary fw-bold px-4" disabled>Process Reversal</button>
+                    </form>
+                    <button class="btn btn-secondary fw-bold px-4 ms-2" onclick="window.history.back()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    function selectJV(jv, row) {
+        // Highlight row
+        document.querySelectorAll('#salesTable tbody tr').forEach(r => r.classList.remove('table-active'));
+        row.classList.add('table-active');
+
+        // Set hidden input
+        document.getElementById('selectedJV').value = jv;
+        document.getElementById('processBtn').disabled = false;
+
+        // Fetch Details
+        fetch(`/pos_reversal/get_details?jv=${jv}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.details) {
+                    typeWriter(data.details, "detailsBox");
+                    updateGLPreview(jv);
+                }
+            });
+    }
+
+    function typeWriter(text, elementId) {
+        const el = document.getElementById(elementId);
+        el.value = "";
+        let i = 0;
+        const speed = 10; // Typing speed
+
+        function type() {
+            if (i < text.length) {
+                el.value += text.charAt(i);
+                i++;
+                el.scrollTop = el.scrollHeight;
+                setTimeout(type, speed);
+            }
+        }
+        type();
+    }
+
+    function updateGLPreview(jv) {
+        const glList = document.getElementById('glPreview');
+        glList.innerHTML = `
+            <li class="list-group-item bg-transparent font-monospace small">DR Cash Account / Bank</li>
+            <li class="list-group-item bg-transparent font-monospace small">CR Sales Account</li>
+            <li class="list-group-item bg-transparent fw-bold text-danger mt-2">--- REVERSAL WILL CREATE ---</li>
+            <li class="list-group-item bg-transparent font-monospace small">CR Cash Account / Bank</li>
+            <li class="list-group-item bg-transparent font-monospace small">DR Sales Account</li>
+            <li class="list-group-item bg-transparent font-monospace small">Inventory items will be restored</li>
+        `;
+    }
+</script>
+{% endblock %}
+{% endblock %}

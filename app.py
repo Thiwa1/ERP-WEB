@@ -1267,11 +1267,97 @@ def direct_purchasing_submit():
         flash('No items to submit', 'warning')
         return redirect(url_for('direct_purchasing'))
 
-    # Simplified submission logic (not full transaction implementation for brevity)
-    # Would need to implement full JV logic here
-    session.pop('payment_items', None)
-    session.pop('payment_total', None)
-    flash('Payment submitted successfully (Mock)', 'success')
+    cash_account = request.form.get('cash_account')
+    if not cash_account:
+        flash('Please select a cash account', 'danger')
+        return redirect(url_for('direct_purchasing'))
+
+    items = session['payment_items']
+    total_amount = session.get('payment_total', 0)
+    current_user = get_current_user_id()
+    today_date = date.today()
+    narration = "Direct Purchase / Cash Payment"
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Generate Voucher Number for Cash Book
+        # Check max voucher for this account
+        cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
+        res = cursor.fetchone()
+        max_voucher = res[0] if res and res[0] else 0
+        new_voucher = max_voucher + 1
+
+        cursor.execute("INSERT INTO cash_voucher_no (cash_voucher_link, cash_voucher_number) VALUES (%s, %s)", (cash_account, new_voucher))
+
+        # 2. Create Journal Voucher (JV)
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM DIRECT CASH', narration))
+        jv_no = cursor.lastrowid
+
+        # 3. GL Entries
+        # Credit Cash Account (Total)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (cash_account, total_amount, today_date, today_date, narration, current_user, jv_no))
+
+        # Debit Expense/Asset Accounts (Per Item)
+        for item in items:
+            # Debit Entry
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (item['account'], item['total'], today_date, today_date, item['narration'], current_user, jv_no))
+
+            # 4. Cash Book Record
+            cursor.execute("""
+                INSERT INTO cash_book_recode (
+                    cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
+                    cash_book_recode_naration, jv_numbers_jv_id, cash_book_recod_voucher_no,
+                    User_Enter, Payment_Date
+                ) VALUES (0, %s, %s, %s, %s, %s, %s, %s)
+            """, (item['total'], cash_account, item['narration'], jv_no, new_voucher, current_user, today_date))
+
+            # 5. Inventory Record (if Item Name is present)
+            if item.get('item_name'):
+                # Get item code
+                cursor.execute("SELECT inventoy_code, inventoy_items_messurment_unit FROM inventoy_items WHERE inventoy_name = %s", (item['item_name'],))
+                inv_res = cursor.fetchone()
+
+                if inv_res:
+                    inv_code = inv_res[0]
+                    inv_unit = inv_res[1]
+
+                    cursor.execute("""
+                        INSERT INTO inventory_recod (
+                            inventoy_name, inventoy_code, inventory_recod_action_date,
+                            inventory_recod_moument_in, inventory_recod_movment_out,
+                            inventory_recod_mesrmet, inventory_recod_unit_price,
+                            inventory_recod_account, inventory_recod_user_id,
+                            inventory_recod_user_recod_date, JV_No
+                        ) VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
+                    """, (item['item_name'], inv_code, today_date, item['qty'], inv_unit, item['price'], item['account'], current_user, today_date, jv_no))
+
+        conn.commit()
+
+        session.pop('payment_items', None)
+        session.pop('payment_total', None)
+        flash(f'Payment submitted successfully. JV No: {jv_no}, Voucher: {new_voucher}', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error submitting payment: {str(e)}', 'danger')
+        print(f"Direct Payment Error: {e}")
+    finally:
+        cursor.close()
+        conn.close()
+
     return redirect(url_for('direct_purchasing'))
 
 # --- Inventory Price Editing ---
@@ -1830,6 +1916,476 @@ def supplier_aging():
                                'total_suppliers': total_suppliers,
                                'report_date': today
                            })
+
+# --- Sales Summary Report (Cashier Wise) ---
+@app.route('/sales_summary_cashier')
+@login_required
+def sales_summary_cashier():
+    selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
+    filter_type = request.args.get('filter', 'current')
+    download = request.args.get('download')
+
+    current_cashier_id = get_current_user_id()
+
+    # 1. Fetch Current User Name (Cashier)
+    # The C# code fetches from `pose_setting_table` or `Login_Table`.
+    # Based on session user_id (User_Code), let's get the name.
+    # Actually C# fetches from `pose_setting_table` where ID = POS_User_ID.
+    # We will assume session['username'] is the cashier name or fetch from login.
+    cashier_name = session.get('username', 'Unknown')
+
+    # 2. Build Query
+    query = """
+        SELECT
+            s.Invoice_No,
+            s.ItemCoude,
+            s.ItemName,
+            s.PaymentMethord,
+            s.QuntirySale,
+            s.SllingPrice,
+            s.ItemPriceComen,
+            s.ItemLoyalityPrice,
+            s.Total_Value,
+            s.AcctionDate,
+            s.Revers,
+            s.jv,
+            s.Sales_with_market_price_Active,
+            s.Sales_with_Special_price_Active,
+            s.Loyalty_Price_Active,
+            s.Loyalty_No,
+            s.RecodeUserId,
+            lt.User_Name as CashierName
+        FROM pos_sales_invoice_01 s
+        LEFT JOIN Login_Table lt ON s.RecodeUserId = lt.User_Code
+        WHERE DATE(s.AcctionDate) = %s
+        AND s.Revers = 0
+    """
+    params = [selected_date]
+
+    if filter_type == 'current':
+        query += " AND s.RecodeUserId = %s"
+        params.append(current_cashier_id)
+
+    query += " ORDER BY s.AcctionDate DESC, s.jv DESC"
+
+    rows = db.execute_query(query, tuple(params))
+
+    # 3. Process Data
+    sales_data = []
+    total_cash = 0
+    total_card = 0
+    total_sales = 0
+
+    for r in rows:
+        # Calculate Actual Unit Price Logic from C#
+        unit_price = r['SllingPrice']
+        loyalty_no = r['Loyalty_No']
+
+        if r['Loyalty_Price_Active'] == 1 and loyalty_no != "-1" and loyalty_no:
+            unit_price = r['ItemLoyalityPrice']
+        elif r['Sales_with_Special_price_Active'] == 1:
+            unit_price = r['ItemPriceComen']
+        elif r['Sales_with_market_price_Active'] == 1:
+            unit_price = r['SllingPrice']
+
+        r['UnitPrice'] = unit_price
+
+        # Payment Method Text
+        pm = r['PaymentMethord']
+        r['PaymentMethodText'] = "Cash" if pm == 1 else "Card" if pm == 2 else "Other"
+
+        # Aggregates
+        val = float(r['Total_Value'] or 0)
+        if pm == 1: total_cash += val
+        elif pm == 2: total_card += val
+        total_sales += val
+
+        sales_data.append(r)
+
+    transaction_count = len(set(r['jv'] for r in sales_data))
+    cashier_count = len(set(r['RecodeUserId'] for r in sales_data))
+
+    # 4. Export CSV
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Invoice No', 'Cashier ID', 'Cashier Name', 'Item Code', 'Item Name', 'Payment Method', 'Quantity', 'Unit Price', 'Total Value', 'Date', 'Time', 'Transaction No'])
+
+        for r in sales_data:
+            cw.writerow([
+                r['Invoice_No'],
+                r['RecodeUserId'],
+                r['CashierName'],
+                r['ItemCoude'],
+                r['ItemName'],
+                r['PaymentMethodText'],
+                r['QuntirySale'],
+                r['UnitPrice'],
+                r['Total_Value'],
+                r['AcctionDate'], # Formatted automatically or need strftime
+                r['jv']
+            ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Sales_Report_{selected_date}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return render_template('sales_summary_cashier.html',
+                           sales_data=sales_data,
+                           selected_date=selected_date,
+                           filter_type=filter_type,
+                           cashier_name=cashier_name,
+                           summary={
+                               'cash': total_cash,
+                               'card': total_card,
+                               'total': total_sales,
+                               'transactions': transaction_count,
+                               'cashiers': cashier_count,
+                               'record_count': len(sales_data)
+                           })
+
+# --- POS Reversal ---
+@app.route('/pos_reversal')
+@login_required
+def pos_reversal():
+    current_cashier_id = get_current_user_id()
+    current_date = date.today().strftime('%Y-%m-%d')
+
+    # 1. Fetch Sales History (Grouped by JV)
+    # The C# code fetches grouped by JV for current user and date
+    query = """
+        SELECT jv, SUM(Total_Value) as Total_payment
+        FROM pos_sales_invoice_01
+        WHERE RecodeUserId = %s AND AcctionDate = %s AND Revers = 0
+        GROUP BY jv
+        ORDER BY jv
+    """
+    rows = db.execute_query(query, (current_cashier_id, current_date))
+
+    jv_list = []
+    for i, r in enumerate(rows):
+        jv_list.append({
+            'No': i + 1,
+            'jv': r['jv'],
+            'Total_payment': float(r['Total_payment'] or 0)
+        })
+
+    return render_template('pos_reversal.html', jv_list=jv_list)
+
+@app.route('/pos_reversal/get_details')
+@login_required
+def pos_reversal_details():
+    jv = request.args.get('jv')
+    if not jv: return {'error': 'No JV provided'}, 400
+
+    # Fetch details for the text box (similar to C# logic)
+    query = """
+        SELECT
+            Invoice_No, ItemName, QuntirySale, Total_Value
+        FROM pos_sales_invoice_01
+        WHERE jv = %s
+    """
+    rows = db.execute_query(query, (jv,))
+
+    details_text = f"Journal Voucher No: {jv} Reversal Impact\n"
+    details_text += "-" * 40 + "\n"
+
+    for r in rows:
+        details_text += f"Inv: {r['Invoice_No']} | Item: {r['ItemName']} | Qty: {r['QuntirySale']} | Val: {r['Total_Value']}\n"
+
+    details_text += "-" * 40 + "\n"
+    details_text += "Do you want to reverse this entry?"
+
+    return {'details': details_text}
+
+@app.route('/pos_reversal/process', methods=['POST'])
+@login_required
+def pos_reversal_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No transaction selected', 'danger')
+        return redirect(url_for('pos_reversal'))
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Reverse JV Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+
+        # 2. Mark POS Customer as Reversed/Deleted
+        cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
+
+        # 3. Reverse Inventory Out (Bring items back)
+        cursor.execute("CALL Inventory_Items_Revers_OUT(%s)", (jv,))
+
+        conn.commit()
+        flash(f'Transaction {jv} reversed successfully.', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error reversing transaction: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('pos_reversal'))
+
+# --- Bank Payment Reversal ---
+@app.route('/bank_payment_reversal')
+@login_required
+def bank_payment_reversal():
+    # Fetch recent Bank Payments (limit to 50 for performance)
+    # Using `bank_book_recod` joined with `jv_numbers` to get JV
+    query = """
+        SELECT
+            b.id,
+            b.bank_book_recod_voucher_no as Voucher,
+            b.Bank_Payment_Date as Date,
+            b.bank_book__accont_name as Account,
+            b.bank_book__suplier_name as Supplier,
+            b.bank_book__recode_cr as Amount,
+            b.jv_numbers_jv_id as JV
+        FROM bank_book_recod b
+        WHERE b.bank_book__recode_cr > 0
+        AND b.User_Revers IS NULL
+        ORDER BY b.Bank_Payment_Date DESC, b.id DESC
+        LIMIT 50
+    """
+    rows = db.execute_query(query)
+    return render_template('bank_payment_reversal.html', rows=rows)
+
+@app.route('/bank_payment_reversal/get_details')
+@login_required
+def bank_payment_reversal_details():
+    jv = request.args.get('jv')
+    if not jv: return {'error': 'No JV provided'}, 400
+
+    # Fetch details text
+    query = """
+        SELECT
+            suppliers_invoice_number as IV_No,
+            suppliers_VAT_rate as VAT_Rate,
+            cash_book_recode_cr as Paid_Amount
+        FROM suppliers_invoice_data
+        LEFT JOIN cash_book_recode ON suppliers_invoice_data.s_i_id = cash_book_recode_suplier_oustanding_id
+        WHERE jv_numbers_jv_id = %s
+    """
+    inv_rows = db.execute_query(query, (jv,))
+
+    # Also check Bank Book Record for bank payments specifically (schema variation handling)
+    if not inv_rows:
+       query_bank = """
+           SELECT bank_book__naration, bank_book__recode_cr
+           FROM bank_book_recod
+           WHERE jv_numbers_jv_id = %s
+       """
+       bank_rows = db.execute_query(query_bank, (jv,))
+       text = f"Bank Payment Reversal (JV: {jv})\n" + "-"*30 + "\n"
+       for r in bank_rows:
+           text += f"Narration: {r['bank_book__naration']} | Amount: {r['bank_book__recode_cr']}\n"
+    else:
+        text = f"Journal Voucher {jv} Impact\n" + "-"*30 + "\n"
+        for r in inv_rows:
+            text += f"Inv: {r['IV_No']} | VAT: {r['VAT_Rate']}% | Paid: {r['Paid_Amount']}\n"
+
+    # Fetch GL Entries
+    gl_query = "SELECT account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv = %s"
+    gl_rows = db.execute_query(gl_query, (jv,))
+
+    text += "\nGL Entries:\n"
+    for gl in gl_rows:
+        text += f"{gl['account_name']}: DR {gl['enty_values_DR']} | CR {gl['enty_values_CR']}\n"
+
+    text += "\nDo you need to reverse this entry?"
+
+    return {'details': text}
+
+@app.route('/bank_payment_reversal/process', methods=['POST'])
+@login_required
+def bank_payment_reversal_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No transaction selected', 'danger')
+        return redirect(url_for('bank_payment_reversal'))
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Bank Transaction Reversal (Updates Bank Book Record)
+        cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
+
+        # 2. Reverse GL Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+
+        # 3. Reverse Supplier Outstanding (Bank Version)
+        cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
+
+        conn.commit()
+        flash(f'Bank Payment (JV: {jv}) reversed successfully.', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error reversing bank payment: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('bank_payment_reversal'))
+
+# --- Cash Payment Reversal (Supplier) ---
+@app.route('/cash_payment_reversal')
+@login_required
+def cash_payment_reversal():
+    # Fetch recent Cash Payments (from cash_book_recode)
+    # Filter where suplier_name is NOT NULL (Supplier Payments)
+    query = """
+        SELECT
+            c.chash_book_recod_id as id,
+            c.cash_book_recod_voucher_no as Voucher,
+            c.Payment_Date as Date,
+            c.cash_book_recode_accont_name as Account,
+            c.cash_book_recode_suplier_name as Supplier,
+            c.cash_book_recode_cr as Amount,
+            c.jv_numbers_jv_id as JV
+        FROM cash_book_recode c
+        WHERE c.cash_book_recode_cr > 0
+        AND c.User_Revers IS NULL
+        AND c.cash_book_recode_suplier_name IS NOT NULL
+        ORDER BY c.Payment_Date DESC, c.chash_book_recod_id DESC
+        LIMIT 50
+    """
+    rows = db.execute_query(query)
+    return render_template('cash_payment_reversal.html', rows=rows)
+
+@app.route('/cash_payment_reversal/process', methods=['POST'])
+@login_required
+def cash_payment_reversal_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No transaction selected', 'danger')
+        return redirect(url_for('cash_payment_reversal'))
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Update Reversal (Cash Book)
+        cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
+
+        # 2. Reverse GL Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+
+        # 3. Reverse Supplier Outstanding
+        cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
+
+        conn.commit()
+        flash(f'Cash Payment (JV: {jv}) reversed successfully.', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error reversing cash payment: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('cash_payment_reversal'))
+
+# --- Direct Payment Reversal (Inventory) ---
+@app.route('/direct_payment_reversal')
+@login_required
+def direct_payment_reversal():
+    # Fetch recent Direct Payments (Inventory related)
+    # These usually have inventory records attached or narration implies direct purchase
+    # We filter for those that have inventory records linked to this JV
+    query = """
+        SELECT DISTINCT
+            c.chash_book_recod_id as id,
+            c.cash_book_recod_voucher_no as Voucher,
+            c.Payment_Date as Date,
+            c.cash_book_recode_accont_name as Account,
+            c.cash_book_recode_naration as Narration,
+            c.cash_book_recode_cr as Amount,
+            c.jv_numbers_jv_id as JV
+        FROM cash_book_recode c
+        JOIN inventory_recod i ON c.jv_numbers_jv_id = i.JV_No
+        WHERE c.cash_book_recode_cr > 0
+        AND c.User_Revers IS NULL
+        ORDER BY c.Payment_Date DESC
+        LIMIT 50
+    """
+    rows = db.execute_query(query)
+    return render_template('direct_payment_reversal.html', rows=rows)
+
+@app.route('/direct_payment_reversal/process', methods=['POST'])
+@login_required
+def direct_payment_reversal_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No transaction selected', 'danger')
+        return redirect(url_for('direct_payment_reversal'))
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Update Reversal (Cash Book)
+        cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
+
+        # 2. Reverse GL Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+
+        # 3. Reverse Inventory In (Bring items out/mark deleted)
+        # Note: The C# code called `Inventory_Items_Revers_IN`.
+        # Logic in `Inventory_Items_Revers_IN` sets `inventory_recod_movment_out = var_In_Items`.
+        # This effectively reverses the IN movement by creating an OUT movement or modifying it.
+        cursor.execute("CALL Inventory_Items_Revers_IN(%s)", (jv,))
+
+        conn.commit()
+        flash(f'Direct Payment (JV: {jv}) reversed successfully.', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error reversing direct payment: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('direct_payment_reversal'))
+
+@app.route('/get_reversal_details')
+@login_required
+def get_reversal_details():
+    jv = request.args.get('jv')
+    if not jv: return {'error': 'No JV'}, 400
+
+    query = "SELECT account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv = %s"
+    rows = db.execute_query(query, (jv,))
+
+    text = f"Journal Voucher {jv} Details:\n" + "-"*30 + "\n"
+    for r in rows:
+        text += f"{r['account_name']}: DR {r['enty_values_DR']} | CR {r['enty_values_CR']}\n"
+
+    text += "\nInventory Items (if any):\n"
+    inv_rows = db.execute_query("SELECT inventoy_name, inventory_recod_moument_in FROM inventory_recod WHERE JV_No = %s", (jv,))
+    for r in inv_rows:
+        text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
+
+    return {'details': text}
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

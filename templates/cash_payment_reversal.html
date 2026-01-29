@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="card shadow-sm">
+        <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0">Cash Payment Reversal</h5>
+            <small class="text-dark opacity-75">Reverse posted cash payments to suppliers and restore GL entries</small>
+        </div>
+        <div class="card-body">
+            <!-- Payments DataGrid -->
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-light fw-bold text-dark">
+                    Recent Cash Payments
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0" id="paymentsTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>Voucher</th>
+                                <th>Date</th>
+                                <th>Account</th>
+                                <th>Supplier</th>
+                                <th class="text-end">Amount</th>
+                                <th style="width: 100px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if rows %}
+                                {% for row in rows %}
+                                <tr onclick="selectPayment('{{ row.JV }}', this)" style="cursor: pointer;">
+                                    <td>{{ row.Voucher }}</td>
+                                    <td>{{ row.Date }}</td>
+                                    <td>{{ row.Account }}</td>
+                                    <td>{{ row.Supplier }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Amount) }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-warning text-dark" onclick="event.stopPropagation(); selectPayment('{{ row.JV }}', this.closest('tr'))">Select</button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center py-3 text-muted">No reversible cash payments found.</td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Details Display -->
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-light fw-bold text-dark">
+                    Transaction Impact Details
+                </div>
+                <div class="card-body bg-light">
+                    <textarea id="detailsBox" class="form-control" rows="6" readonly
+                              style="font-family: monospace; font-weight: bold; background: linear-gradient(to bottom, #FFFFF0, white);"></textarea>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded">
+                <div class="d-flex align-items-center">
+                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 16px; height: 16px;"></div>
+                    <span id="statusLabel" class="fw-bold text-dark">Ready to process reversal</span>
+                </div>
+                <div>
+                    <form id="reversalForm" method="POST" action="/cash_payment_reversal/process" style="display: inline;">
+                        <input type="hidden" name="jv" id="selectedJV">
+                        <button type="submit" id="processBtn" class="btn btn-warning fw-bold px-4" disabled>Process Reversal</button>
+                    </form>
+                    <button class="btn btn-secondary fw-bold px-4 ms-2" onclick="window.history.back()">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% block scripts %}
+<script>
+    function selectPayment(jv, row) {
+        document.querySelectorAll('#paymentsTable tbody tr').forEach(r => r.classList.remove('table-active'));
+        row.classList.add('table-active');
+        document.getElementById('selectedJV').value = jv;
+        document.getElementById('processBtn').disabled = false;
+
+        fetch(`/get_reversal_details?jv=${jv}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.details) {
+                    typeWriter(data.details, "detailsBox");
+                }
+            });
+    }
+
+    function typeWriter(text, elementId) {
+        const el = document.getElementById(elementId);
+        el.value = "";
+        let i = 0;
+        const speed = 10;
+        function type() {
+            if (i < text.length) {
+                el.value += text.charAt(i);
+                i++;
+                el.scrollTop = el.scrollHeight;
+                setTimeout(type, speed);
+            }
+        }
+        type();
+    }
+</script>
+{% endblock %}
+{% endblock %}
