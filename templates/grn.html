@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row mb-4">
+        <div class="col-12 bg-primary text-white p-3 rounded">
+            <h4 class="mb-0 text-center fw-bold">GOODS RECEIVED NOTE MANAGEMENT</h4>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('grn') }}" id="grnForm">
+        <div class="row">
+            <!-- Left Panel: Item List -->
+            <div class="col-md-7">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Items Added</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-bordered table-striped mb-0" id="itemsTable">
+                            <thead class="bg-primary text-white">
+                                <tr>
+                                    <th>Item Name</th>
+                                    <th>Code</th>
+                                    <th>Unit</th>
+                                    <th>Qty</th>
+                                    <th>Cost</th>
+                                    <th>Total</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rows will be added here via JS -->
+                            </tbody>
+                        </table>
+                        <input type="hidden" name="items_json" id="itemsJson">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Controls -->
+            <div class="col-md-5">
+                <!-- Supplier Section -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Supplier Selection</h6>
+                    </div>
+                    <div class="card-body">
+                        <label class="form-label fw-bold text-primary">Supplier List</label>
+                        <select class="form-select" name="supplier" required>
+                            <option value="">Select Supplier</option>
+                            {% for sup in suppliers %}
+                            <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Item Entry Section -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Item Entry</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-5">
+                                <label class="form-label fw-bold text-primary">Item Name</label>
+                                <select class="form-select" id="itemSelect">
+                                    <option value="">Select Item</option>
+                                    {% for item in items %}
+                                    <option value="{{ item.inventoy_name }}" data-code="{{ item.inventoy_code }}" data-unit="{{ item.inventoy_items_messurment_unit }}">{{ item.inventoy_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold text-primary">Qty</label>
+                                <input type="number" class="form-control" id="itemQty" step="0.01">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold text-primary">Cost</label>
+                                <input type="number" class="form-control" id="itemCost" step="0.01">
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold text-primary">Total</label>
+                                <input type="number" class="form-control" id="itemTotal" readonly>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="addItem()">Add New Row</button>
+                    </div>
+                </div>
+
+                <!-- Job & Location Section -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Job & Location</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">Job No</label>
+                                <select class="form-select" name="job_no">
+                                    <option value="">Select Job</option>
+                                    {% for job in jobs %}
+                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">Location</label>
+                                <select class="form-select" name="location" required>
+                                    <option value="">Select Location</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Invoice Details Section -->
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Invoice Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">Invoice No</label>
+                                <input type="text" class="form-control" name="invoice_no" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">Date</label>
+                                <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
+                            </div>
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">Due Date</label>
+                                <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-primary">J/V Narration</label>
+                                <input type="text" class="form-control" name="narration" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Totals Section -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Totals & VAT</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-primary mb-0">Total Value</label>
+                            </div>
+                            <div class="col-md-8">
+                                <input type="number" class="form-control" id="totalValue" name="total_value" readonly>
+                            </div>
+                        </div>
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="vatCheck" name="vat_liable" onchange="calculateTotals()">
+                                    <label class="form-check-label fw-bold text-primary" for="vatCheck">VAT Liable</label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="input-group">
+                                    <input type="number" class="form-control" id="vatRate" name="vat_rate" value="0" onchange="calculateTotals()">
+                                    <span class="input-group-text">%</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row mb-2 align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-primary mb-0">VAT Amount</label>
+                            </div>
+                            <div class="col-md-8">
+                                <input type="number" class="form-control" id="vatAmount" name="vat_amount" readonly>
+                            </div>
+                        </div>
+                        <div class="row align-items-center">
+                            <div class="col-md-4">
+                                <label class="form-label fw-bold text-primary mb-0">Total Amount</label>
+                            </div>
+                            <div class="col-md-8">
+                                <input type="number" class="form-control" id="grandTotal" name="grand_total" readonly>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="d-grid gap-2 mt-4 d-md-flex justify-content-md-end">
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">Proceed</button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    let items = [];
+
+    // Calculate Item Total dynamically
+    const qtyInput = document.getElementById('itemQty');
+    const costInput = document.getElementById('itemCost');
+    const totalInput = document.getElementById('itemTotal');
+
+    function calcItemTotal() {
+        const qty = parseFloat(qtyInput.value) || 0;
+        const cost = parseFloat(costInput.value) || 0;
+        totalInput.value = (qty * cost).toFixed(2);
+    }
+
+    qtyInput.addEventListener('input', calcItemTotal);
+    costInput.addEventListener('input', calcItemTotal);
+
+    function addItem() {
+        const select = document.getElementById('itemSelect');
+        const option = select.options[select.selectedIndex];
+
+        if (!option.value || !qtyInput.value || !costInput.value) {
+            alert("Please fill all item fields");
+            return;
+        }
+
+        const item = {
+            name: option.value,
+            code: option.getAttribute('data-code'),
+            unit: option.getAttribute('data-unit'),
+            qty: parseFloat(qtyInput.value),
+            cost: parseFloat(costInput.value),
+            total: parseFloat(totalInput.value)
+        };
+
+        items.push(item);
+        renderTable();
+        calculateTotals();
+
+        // Reset inputs
+        select.value = "";
+        qtyInput.value = "";
+        costInput.value = "";
+        totalInput.value = "";
+    }
+
+    function removeItem(index) {
+        items.splice(index, 1);
+        renderTable();
+        calculateTotals();
+    }
+
+    function renderTable() {
+        const tbody = document.querySelector('#itemsTable tbody');
+        tbody.innerHTML = '';
+        items.forEach((item, index) => {
+            const row = `
+                <tr>
+                    <td>${item.name}</td>
+                    <td>${item.code}</td>
+                    <td>${item.unit}</td>
+                    <td>${item.qty}</td>
+                    <td>${item.cost.toFixed(2)}</td>
+                    <td>${item.total.toFixed(2)}</td>
+                    <td><button type="button" class="btn btn-danger btn-sm py-0" onclick="removeItem(${index})">Delete</button></td>
+                </tr>
+            `;
+            tbody.innerHTML += row;
+        });
+        document.getElementById('itemsJson').value = JSON.stringify(items);
+    }
+
+    function calculateTotals() {
+        const totalValue = items.reduce((sum, item) => sum + item.total, 0);
+        document.getElementById('totalValue').value = totalValue.toFixed(2);
+
+        const isVat = document.getElementById('vatCheck').checked;
+        const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+
+        let vatAmount = 0;
+        if (isVat) {
+            vatAmount = (totalValue * vatRate) / 100;
+        }
+
+        document.getElementById('vatAmount').value = vatAmount.toFixed(2);
+        document.getElementById('grandTotal').value = (totalValue + vatAmount).toFixed(2);
+    }
+</script>
+{% endblock %}

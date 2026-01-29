@@ -231,6 +231,133 @@ def toggle_sub_category():
     db.execute_query("UPDATE inventory_carogory SET dis_continue_sub = %s WHERE id = %s", (new_status, cat_id), commit=True)
     return redirect(url_for('inventory_category'))
 
+# --- GRN (Goods Received Note) Management ---
+@app.route('/grn', methods=['GET', 'POST'])
+@login_required
+def grn():
+    if request.method == 'POST':
+        try:
+            # 1. Extract Data
+            supplier_name = request.form.get('supplier')
+            items_json = request.form.get('items_json')
+            invoice_no = request.form.get('invoice_no')
+            invoice_date = request.form.get('invoice_date')
+            due_date = request.form.get('due_date')
+            narration = request.form.get('narration')
+            job_no = request.form.get('job_no')
+            location = request.form.get('location')
+
+            total_value = float(request.form.get('total_value', 0))
+            vat_rate = float(request.form.get('vat_rate', 0))
+            vat_amount = float(request.form.get('vat_amount', 0))
+            grand_total = float(request.form.get('grand_total', 0))
+
+            items = json.loads(items_json) if items_json else []
+
+            if not items:
+                flash('No items in GRN', 'warning')
+                return redirect(url_for('grn'))
+
+            # 2. Get Supplier Details
+            sup_res = db.execute_query("SELECT supplier_code, sup_id FROM suppliers WHERE supplier_name = %s", (supplier_name,))
+            if not sup_res:
+                flash('Invalid Supplier', 'danger')
+                return redirect(url_for('grn'))
+            supplier_code = sup_res[0]['supplier_code']
+            supplier_id = sup_res[0]['sup_id']
+
+            # 3. Create Transaction
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
+
+            try:
+                current_user = get_current_user_id()
+
+                # A. Generate JV Number
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
+                jv_no = cursor.lastrowid
+
+                # B. Insert Invoice Record
+                query_inv = """
+                    INSERT INTO suppliers_invoice_data (
+                        suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                        suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
+                        suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                """
+                cursor.execute(query_inv, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, jv_no, vat_rate))
+
+                # C. Journal Entries
+                # C1. Credit Account Payable (Grand Total)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+
+                # C2. Debit Inventory (Total Value)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+
+                # C3. Debit VAT Control (if applicable)
+                if vat_amount > 0:
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                            entry_naration, entry_create_user, entry_jv, entry_job_number
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+
+                # D. Inventory Records
+                for item in items:
+                    query_ir = """
+                        INSERT INTO inventory_recod (
+                            inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                            inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                            inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
+                            inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
+                        ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query_ir, (
+                        item['name'], item['code'], item['unit'], item['cost'], item['qty'],
+                        invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
+                    ))
+
+                conn.commit()
+                flash(f'GRN created successfully. JV No: {jv_no}', 'success')
+                return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name, date=invoice_date, invoice_no=invoice_no, location=location, items=items, total_value=total_value, vat_amount=vat_amount, grand_total=grand_total)
+
+            except Exception as e:
+                conn.rollback()
+                flash(f'Transaction failed: {str(e)}', 'danger')
+                return redirect(url_for('grn'))
+            finally:
+                cursor.close()
+                conn.close()
+
+        except Exception as e:
+            flash(f'Error processing GRN: {str(e)}', 'danger')
+            return redirect(url_for('grn'))
+
+    # GET Request: Load Form Data
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers")
+    items = db.execute_query("SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit")
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
+
+    return render_template('grn.html',
+                           suppliers=suppliers,
+                           items=items,
+                           jobs=jobs,
+                           locations=locations,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
 # --- Inventory Locations ---
 @app.route('/inventory_locations', methods=['GET', 'POST'])
 @login_required
