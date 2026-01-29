@@ -665,29 +665,52 @@ def control_panel():
     if res and res[0]['yes'] == 1:
         warranty_enabled = True
 
-    # 3. Fetch Unassigned Accounts (Income or Expense but no P&L Category)
-    unassigned = db.execute_query("""
+    # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
+    unassigned_pl = db.execute_query("""
         SELECT id, account_name
         FROM new_account_table
         WHERE (account_income = 1 OR account_expenses = 1)
         AND (account_name_of_catogory_PL IS NULL OR account_name_of_catogory_PL = '')
     """)
 
-    # 4. Fetch P&L Categories for Dropdown
+    # 4. Fetch Unassigned Balance Sheet Accounts
+    unassigned_bs = db.execute_query("""
+        SELECT id, account_name
+        FROM new_account_table
+        WHERE (account_assets = 1 OR account_liabilities = 1 OR account_equity = 1)
+        AND (account_name_of_catogory_Balace_sheet IS NULL OR account_name_of_catogory_Balace_sheet = '')
+    """)
+
+    # 5. Fetch Categories for Dropdown
     pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
 
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
-                           unassigned_accounts=unassigned,
-                           pl_categories=pl_cats)
+                           unassigned_pl=unassigned_pl,
+                           unassigned_bs=unassigned_bs,
+                           pl_categories=pl_cats,
+                           bs_categories=bs_cats)
 
 @app.route('/control_panel/update', methods=['POST'])
 @login_required
 def control_panel_update():
-    # Loop through form data to find category assignments
+    update_type = request.form.get('update_type')
     updates = []
+
+    # Identify fields based on update type
+    if update_type == 'pl':
+        prefix = 'category_'
+        sql = "UPDATE new_account_table SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s WHERE id = %s"
+    elif update_type == 'bs':
+        prefix = 'bscategory_'
+        sql = "UPDATE new_account_table SET account_name_of_catogory_Balace_sheet = %s, account_hold_possion_Balace_Sheet = %s WHERE id = %s"
+    else:
+        flash('Invalid update type', 'danger')
+        return redirect(url_for('control_panel'))
+
     for key, value in request.form.items():
-        if key.startswith('category_') and value:
+        if key.startswith(prefix) and value:
             acc_id = key.split('_')[1]
             cat_name, hold_pos = value.split(',')
             updates.append((cat_name, hold_pos, acc_id))
@@ -699,11 +722,7 @@ def control_panel_update():
             conn.start_transaction()
 
             for name, pos, aid in updates:
-                cursor.execute("""
-                    UPDATE new_account_table
-                    SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s
-                    WHERE id = %s
-                """, (name, pos, aid))
+                cursor.execute(sql, (name, pos, aid))
 
             conn.commit()
             cursor.close()
