@@ -1,0 +1,166 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h2><i class="fas fa-history text-primary me-2"></i>Supplier Aging Report</h2>
+        </div>
+        <div class="col-auto">
+            <span class="text-muted">Report Date: {{ summary.report_date }}</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body bg-light">
+            <form method="GET" action="/supplier_aging" class="row align-items-center g-3">
+                <div class="col-auto">
+                    <label class="col-form-label fw-bold">Select Supplier:</label>
+                </div>
+                <div class="col-auto">
+                    <select name="supplier_id" class="form-select" style="width: 300px;" onchange="this.form.submit()">
+                        <option value="">-- All Suppliers --</option>
+                        {% for sup in suppliers %}
+                        <option value="{{ sup.sup_id }}" {% if selected_supplier == sup.sup_id %}selected{% endif %}>
+                            {{ sup.supplier_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-auto">
+                    <a href="/supplier_aging" class="btn btn-primary">Show All</a>
+                </div>
+                {% if rows %}
+                <div class="col-auto ms-auto">
+                    <button type="submit" name="download" value="csv" class="btn btn-success">
+                        <i class="fas fa-file-csv me-2"></i>Export to CSV
+                    </button>
+                    <button type="button" onclick="window.print()" class="btn btn-danger">
+                        <i class="fas fa-print me-2"></i>Print
+                    </button>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Summary Widgets (Sidebar) -->
+        <div class="col-md-2">
+            <div class="card mb-3 text-center border-start border-5 border-success shadow-sm" style="background-color: #E8F5E8;">
+                <div class="card-body p-2">
+                    <small class="text-success fw-bold">CURRENT</small>
+                    <h5 class="mb-0 text-success">{{ "{:,.2f}".format(buckets['Current']) }}</h5>
+                </div>
+            </div>
+            <div class="card mb-3 text-center border-start border-5 border-warning shadow-sm" style="background-color: #FFF4E6; border-color: #F39C12 !important;">
+                <div class="card-body p-2">
+                    <small style="color: #F39C12;" class="fw-bold">1-30 DAYS</small>
+                    <h5 class="mb-0" style="color: #F39C12;">{{ "{:,.2f}".format(buckets['1-30 Days']) }}</h5>
+                </div>
+            </div>
+            <div class="card mb-3 text-center border-start border-5 shadow-sm" style="background-color: #FFECE6; border-color: #E67E22 !important;">
+                <div class="card-body p-2">
+                    <small style="color: #E67E22;" class="fw-bold">31-60 DAYS</small>
+                    <h5 class="mb-0" style="color: #E67E22;">{{ "{:,.2f}".format(buckets['31-60 Days']) }}</h5>
+                </div>
+            </div>
+            <div class="card mb-3 text-center border-start border-5 border-danger shadow-sm" style="background-color: #FFE6E6;">
+                <div class="card-body p-2">
+                    <small class="text-danger fw-bold">61-90 DAYS</small>
+                    <h5 class="mb-0 text-danger">{{ "{:,.2f}".format(buckets['61-90 Days']) }}</h5>
+                </div>
+            </div>
+            <div class="card mb-3 text-center border-start border-5 shadow-sm" style="background-color: #FFD1D1; border-color: #C0392B !important;">
+                <div class="card-body p-2">
+                    <small style="color: #C0392B;" class="fw-bold">OVER 90 DAYS</small>
+                    <h5 class="mb-0" style="color: #C0392B;">{{ "{:,.2f}".format(buckets['Over 90 Days']) }}</h5>
+                </div>
+            </div>
+
+            <div class="card bg-dark text-white mt-4 shadow-sm">
+                <div class="card-body p-3">
+                    <h6 class="card-title text-muted mb-2" style="font-size: 0.8rem;">TOTAL OUTSTANDING</h6>
+                    <h4 class="mb-0">{{ "{:,.2f}".format(summary.total_outstanding) }}</h4>
+                    <hr class="border-secondary my-2">
+                    <small class="d-block">Suppliers: {{ summary.total_suppliers }}</small>
+                    <small class="d-block">Invoices: {{ summary.total_invoices }}</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Data Table -->
+        <div class="col-md-10">
+            <div class="card shadow-sm">
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped mb-0 align-middle">
+                            <thead class="bg-light sticky-top">
+                                <tr>
+                                    <th>Supplier Name</th>
+                                    <th>Invoice No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Due Date</th>
+                                    <th class="text-end">Amount</th>
+                                    <th class="text-end">Paid</th>
+                                    <th class="text-end">Outstanding</th>
+                                    <th class="text-center">Age</th>
+                                    <th class="text-center">Bucket</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if rows %}
+                                    {% for row in rows %}
+                                    <tr class="
+                                        {% if row.AgingBucket == 'Current' %}table-success
+                                        {% elif row.AgingBucket == '1-30 Days' %}table-warning
+                                        {% elif row.AgingBucket == 'Over 90 Days' %}table-danger
+                                        {% endif %}
+                                    " style="--bs-table-bg-type: rgba(var(--bs-table-bg-rgb), 0.1);">
+                                        <td>{{ row.SupplierName }}</td>
+                                        <td class="fw-bold">{{ row.InvoiceNumber }}</td>
+                                        <td>{{ row.InvoiceDate }}</td>
+                                        <td>{{ row.FinalDate }}</td>
+                                        <td class="text-end text-muted">{{ "{:,.2f}".format(row.InvoiceTotal) }}</td>
+                                        <td class="text-end text-muted">{{ "{:,.2f}".format(row.PaidAmount) }}</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Outstanding) }}</td>
+                                        <td class="text-center">
+                                            {% if row.AgeDays > 0 %}
+                                                <span class="badge bg-secondary">{{ row.AgeDays }} Days</span>
+                                            {% else %}
+                                                <span class="badge bg-success">Current</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="text-center">
+                                            {% if row.AgingBucket == 'Current' %}
+                                                <span class="badge bg-success">Current</span>
+                                            {% elif row.AgingBucket == '1-30 Days' %}
+                                                <span class="badge bg-warning text-dark">1-30 Days</span>
+                                            {% elif row.AgingBucket == '31-60 Days' %}
+                                                <span class="badge" style="background-color: #E67E22;">31-60 Days</span>
+                                            {% elif row.AgingBucket == '61-90 Days' %}
+                                                <span class="badge bg-danger">61-90 Days</span>
+                                            {% else %}
+                                                <span class="badge" style="background-color: #C0392B;">Over 90 Days</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="9" class="text-center py-5 text-muted">
+                                            <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                                            <p class="mb-0">No outstanding invoices found.</p>
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

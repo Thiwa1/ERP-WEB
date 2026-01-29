@@ -1,7 +1,10 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, make_response
 from database import Database
 from datetime import datetime, date
 from functools import wraps
+import csv
+import io
+import json
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -1648,6 +1651,185 @@ def process_reconciliation():
         flash('No transactions selected to clear.', 'info')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
+
+# --- Trial Balance ---
+@app.route('/trial_balance')
+@login_required
+def trial_balance():
+    as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
+    download = request.args.get('download')
+
+    query = """
+        SELECT
+            a.account_name AS AccountName,
+            a.account_basment AS Basement,
+            SUM(COALESCE(e.enty_values_DR, 0)) AS Debit,
+            SUM(COALESCE(e.enty_values_CR, 0)) AS Credit
+        FROM new_account_table a
+        LEFT JOIN entry_details e ON a.account_name = e.account_name
+            AND e.entry_effective_date <= %s
+            AND e.entry_deleted = 0
+        GROUP BY a.account_name, a.account_basment
+        HAVING Debit != 0 OR Credit != 0
+        ORDER BY a.account_name ASC
+    """
+
+    rows = db.execute_query(query, (as_at_date,))
+
+    # Calculate Totals
+    total_dr = sum(float(r['Debit']) for r in rows)
+    total_cr = sum(float(r['Credit']) for r in rows)
+    diff = abs(total_dr - total_cr)
+    status = "Balanced" if diff < 0.01 else f"Out of Balance: {diff:,.2f}"
+    is_balanced = diff < 0.01
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Account Name', 'Type', 'Debit', 'Credit'])
+
+        for r in rows:
+            cw.writerow([
+                r['AccountName'],
+                r['Basement'],
+                f"{float(r['Debit']):.2f}",
+                f"{float(r['Credit']):.2f}"
+            ])
+
+        cw.writerow([])
+        cw.writerow(['', 'TOTAL', f"{total_dr:.2f}", f"{total_cr:.2f}"])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Trial_Balance_{as_at_date}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return render_template('trial_balance.html',
+                           as_at_date=as_at_date,
+                           rows=rows,
+                           total_dr=total_dr,
+                           total_cr=total_cr,
+                           status=status,
+                           is_balanced=is_balanced)
+
+# --- Supplier Aging Report ---
+@app.route('/supplier_aging')
+@login_required
+def supplier_aging():
+    selected_supplier = request.args.get('supplier_id')
+    download = request.args.get('download')
+
+    # Load Suppliers for Dropdown
+    suppliers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name")
+
+    # Aging Query
+    query = """
+        SELECT
+            s.sup_id as SupplierId,
+            s.supplier_name as SupplierName,
+            sid.suppliers_invoice_number as InvoiceNumber,
+            sid.suppliers_invoice_date as InvoiceDate,
+            sid.suppliers_invoice_final_date as FinalDate,
+            sid.suppliers_invoice_total_oustanding as InvoiceTotal,
+            COALESCE(sid.suppliers_invoice_total_payment, 0) as PaidAmount,
+            (sid.suppliers_invoice_total_oustanding - COALESCE(sid.suppliers_invoice_total_payment, 0)) as Outstanding
+        FROM suppliers_invoice_data sid
+        INNER JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
+        WHERE s.Is_Suplier = 1
+        AND sid.suppliers_oustanding_delete = 0
+        AND (sid.suppliers_invoice_total_oustanding - COALESCE(sid.suppliers_invoice_total_payment, 0)) > 0
+    """
+
+    params = []
+    if selected_supplier:
+        query += " AND s.sup_id = %s"
+        params.append(selected_supplier)
+
+    query += " ORDER BY s.supplier_name, sid.suppliers_invoice_final_date"
+
+    rows = db.execute_query(query, tuple(params))
+
+    # Process Aging
+    aging_data = []
+    today = date.today()
+
+    buckets = {
+        'Current': 0.0,
+        '1-30 Days': 0.0,
+        '31-60 Days': 0.0,
+        '61-90 Days': 0.0,
+        'Over 90 Days': 0.0
+    }
+
+    for r in rows:
+        due_date = r['FinalDate']
+        # Calculate days overdue (Today - Due Date)
+        # Note: If due_date is None, treat as Current or handle error. Assuming valid date.
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
+
+        age_days = (today - due_date).days
+
+        bucket = "Current"
+        if age_days > 90: bucket = "Over 90 Days"
+        elif age_days > 60: bucket = "61-90 Days"
+        elif age_days > 30: bucket = "31-60 Days"
+        elif age_days > 0: bucket = "1-30 Days"
+        else: bucket = "Current"
+
+        # In C# code:
+        # if (ageDays <= 0) return "Current";
+        # if (ageDays <= 30) return "1-30 Days";
+        # ...
+        # This means positive ageDays are overdue.
+
+        r['AgeDays'] = age_days
+        r['AgingBucket'] = bucket
+        r['Outstanding'] = float(r['Outstanding'])
+
+        buckets[bucket] += r['Outstanding']
+        aging_data.append(r)
+
+    total_outstanding = sum(r['Outstanding'] for r in aging_data)
+    total_invoices = len(aging_data)
+    total_suppliers = len(set(r['SupplierId'] for r in aging_data))
+
+    # Export to CSV
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Supplier ID', 'Supplier Name', 'Invoice No', 'Invoice Date', 'Due Date', 'Invoice Amount', 'Paid Amount', 'Outstanding', 'Age (Days)', 'Aging Bucket'])
+
+        for r in aging_data:
+            cw.writerow([
+                r['SupplierId'],
+                r['SupplierName'],
+                r['InvoiceNumber'],
+                r['InvoiceDate'],
+                r['FinalDate'],
+                f"{float(r['InvoiceTotal']):.2f}",
+                f"{float(r['PaidAmount']):.2f}",
+                f"{r['Outstanding']:.2f}",
+                r['AgeDays'],
+                r['AgingBucket']
+            ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Supplier_Aging_Report_{today}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return render_template('supplier_aging.html',
+                           suppliers=suppliers,
+                           selected_supplier=int(selected_supplier) if selected_supplier else None,
+                           rows=aging_data,
+                           buckets=buckets,
+                           summary={
+                               'total_outstanding': total_outstanding,
+                               'total_invoices': total_invoices,
+                               'total_suppliers': total_suppliers,
+                               'report_date': today
+                           })
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
