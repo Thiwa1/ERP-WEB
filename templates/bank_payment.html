@@ -1,0 +1,187 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 bg-primary text-white p-3 rounded">
+            <h4 class="mb-0 text-center fw-bold">ARRANGE BANK PAYMENT FOR THE SUPPLIERS</h4>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body bg-light">
+            <form id="paymentForm" method="POST" action="{{ url_for('bank_payment_submit') }}">
+                <div class="row">
+                    <!-- Left: Supplier Selection -->
+                    <div class="col-md-8">
+                        <div class="d-flex align-items-center mb-2">
+                            <label class="form-label fw-bold text-primary mb-0 me-3">Select Supplier</label>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#supplierDetails">Toggle Details</button>
+                        </div>
+                        <select class="form-select mb-3" name="supplier" id="supplierSelect" onchange="loadSupplierData()">
+                            <option value="">Select Supplier</option>
+                            {% for sup in suppliers %}
+                            <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
+                            {% endfor %}
+                        </select>
+
+                        <!-- Supplier Details Panel -->
+                        <div class="collapse" id="supplierDetails">
+                            <div class="card card-body bg-white mb-3 small">
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <p class="mb-1"><strong>Code:</strong> <span id="supCode"></span></p>
+                                        <p class="mb-1"><strong>Address:</strong> <span id="supAddress"></span></p>
+                                        <p class="mb-1"><strong>Mobile:</strong> <span id="supMobile"></span></p>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <p class="mb-1"><strong>Email:</strong> <span id="supEmail"></span></p>
+                                        <p class="mb-1"><strong>VAT No:</strong> <span id="supVat"></span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: Payment Details -->
+                    <div class="col-md-4">
+                        <div class="mb-2">
+                            <label class="form-label fw-bold text-primary">Payment Date</label>
+                            <input type="date" class="form-control" name="payment_date" value="{{ today_date }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold text-primary">Select Bank Account</label>
+                            <select class="form-select" name="bank_account" required>
+                                <option value="">Select Bank Account</option>
+                                {% for acc in bank_accounts %}
+                                <option value="{{ acc.bank_bookcol_account_number }}">{{ acc.bank_bookcol_account_number }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold text-primary">Cheque No</label>
+                            <input type="text" class="form-control" name="cheque_no">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Outstanding Invoices Grid -->
+                <h6 class="fw-bold text-primary mt-3">Outstanding Invoices</h6>
+                <div class="table-responsive mb-4" style="max-height: 300px;">
+                    <table class="table table-bordered table-striped table-hover mb-0">
+                        <thead class="bg-primary text-white sticky-top">
+                            <tr>
+                                <th>ID</th>
+                                <th>Invoice No</th>
+                                <th>Date</th>
+                                <th>Due Date</th>
+                                <th>Total</th>
+                                <th>Paid</th>
+                                <th>Balance</th>
+                                <th style="width: 150px;">Payment Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="outstandingBody">
+                            <!-- Populated via JS -->
+                            <tr><td colspan="8" class="text-center text-muted">Select a supplier to view invoices</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- Footer Controls -->
+                <div class="row align-items-end">
+                    <div class="col-md-8">
+                        <label class="form-label fw-bold text-primary">Narration</label>
+                        <input type="text" class="form-control mb-3" name="narration" required>
+                    </div>
+                    <div class="col-md-4 text-end pb-3">
+                        <button type="submit" class="btn btn-success fw-bold px-4">Submit Payment</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Payment History Grid -->
+    <div class="card shadow-sm">
+        <div class="card-header bg-light">
+            <h6 class="mb-0 fw-bold text-primary">Payment History</h6>
+        </div>
+        <div class="card-body p-0 table-responsive" style="max-height: 300px;">
+            <table class="table table-bordered table-sm mb-0">
+                <thead class="bg-secondary text-white sticky-top">
+                    <tr>
+                        <th>Voucher</th>
+                        <th>Date</th>
+                        <th>Account</th>
+                        <th>Paid Amount</th>
+                        <th>Narration</th>
+                    </tr>
+                </thead>
+                <tbody id="historyBody">
+                    <!-- Populated via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function loadSupplierData() {
+    const supplier = document.getElementById('supplierSelect').value;
+    if (!supplier) return;
+
+    fetch(`/get_supplier_data?name=${encodeURIComponent(supplier)}`)
+        .then(response => response.json())
+        .then(data => {
+            // Update Details
+            document.getElementById('supCode').textContent = data.details.code || '-';
+            document.getElementById('supAddress').textContent = data.details.address || '-';
+            document.getElementById('supMobile').textContent = data.details.mobile || '-';
+            document.getElementById('supEmail').textContent = data.details.email || '-';
+            document.getElementById('supVat').textContent = data.details.vat || '-';
+
+            // Update Outstanding Grid
+            const tbody = document.getElementById('outstandingBody');
+            tbody.innerHTML = '';
+            if (data.invoices.length > 0) {
+                data.invoices.forEach(inv => {
+                    const row = `
+                        <tr>
+                            <td>${inv.id}<input type="hidden" name="inv_id[]" value="${inv.id}"></td>
+                            <td>${inv.invoice_no}</td>
+                            <td>${inv.date}</td>
+                            <td>${inv.due_date}</td>
+                            <td>${inv.total.toFixed(2)}</td>
+                            <td>${inv.paid.toFixed(2)}</td>
+                            <td>${inv.balance.toFixed(2)}<input type="hidden" name="balance_${inv.id}" value="${inv.balance}"></td>
+                            <td><input type="number" class="form-control form-control-sm" name="payment_${inv.id}" step="0.01" min="0" max="${inv.balance}"></td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += row;
+                });
+            } else {
+                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No outstanding invoices</td></tr>';
+            }
+
+            // Update History Grid
+            const hbody = document.getElementById('historyBody');
+            hbody.innerHTML = '';
+            data.history.forEach(hist => {
+                const row = `
+                    <tr>
+                        <td>${hist.voucher || '-'}</td>
+                        <td>${hist.date}</td>
+                        <td>${hist.account}</td>
+                        <td>${hist.amount.toFixed(2)}</td>
+                        <td>${hist.narration}</td>
+                    </tr>
+                `;
+                hbody.innerHTML += row;
+            });
+        });
+}
+</script>
+{% endblock %}

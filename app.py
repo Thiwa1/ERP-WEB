@@ -816,6 +816,193 @@ def company_profile():
 
     return render_template('company_profile.html', company=company)
 
+# --- Bank Payment Module ---
+@app.route('/bank_payment', methods=['GET'])
+@login_required
+def bank_payment():
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
+    bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
+    return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts, today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/get_supplier_data')
+@login_required
+def get_supplier_data():
+    sup_name = request.args.get('name')
+    if not sup_name:
+        return {'error': 'No supplier name'}, 400
+
+    # 1. Supplier Details
+    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
+    details = {}
+    if sup_data:
+        s = sup_data[0]
+        details = {
+            'code': s['supplier_code'],
+            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
+            'mobile': s['suppliers_teli_1'],
+            'email': s['suppliers_e_mail'],
+            'vat': s['suppliers_vat_regidter_no']
+        }
+        sup_id = s['sup_id']
+    else:
+        return {'error': 'Supplier not found'}, 404
+
+    # 2. Outstanding Invoices
+    invoices = db.execute_query("""
+        SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
+               suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
+        FROM suppliers_invoice_data
+        WHERE suppliers_invoice_buinding_supplier = %s AND suppliers_invoice_oustanding > 0 AND suppliers_oustanding_delete = 0
+    """, (sup_id,))
+
+    inv_list = []
+    for inv in invoices:
+        inv_list.append({
+            'id': inv['s_i_id'],
+            'invoice_no': inv['suppliers_invoice_number'],
+            'date': str(inv['suppliers_invoice_date']),
+            'due_date': str(inv['suppliers_invoice_final_date']),
+            'total': float(inv['suppliers_invoice_total_oustanding']),
+            'paid': float(inv['suppliers_invoice_total_payment']),
+            'balance': float(inv['suppliers_invoice_oustanding'])
+        })
+
+    # 3. Payment History
+    history = db.execute_query("""
+        SELECT bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__recode_cr, bank_book__naration
+        FROM bank_book_recod
+        WHERE bank_book__suplier_name = %s
+        ORDER BY id DESC
+    """, (sup_name,))
+
+    hist_list = []
+    for h in history:
+        hist_list.append({
+            'voucher': h['bank_book_recod_voucher_no'],
+            'date': str(h['Bank_Payment_Date']),
+            'account': h['bank_book__accont_name'],
+            'amount': float(h['bank_book__recode_cr'] or 0),
+            'narration': h['bank_book__naration']
+        })
+
+    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+
+@app.route('/bank_payment_submit', methods=['POST'])
+@login_required
+def bank_payment_submit():
+    supplier_name = request.form.get('supplier')
+    bank_account = request.form.get('bank_account')
+    payment_date = request.form.get('payment_date')
+    narration = request.form.get('narration')
+    cheque_no = request.form.get('cheque_no')
+
+    if not supplier_name or not bank_account:
+        flash('Missing supplier or bank account', 'danger')
+        return redirect(url_for('bank_payment'))
+
+    # Collect payments
+    payments = []
+    total_payment = 0
+    inv_ids = request.form.getlist('inv_id[]')
+
+    for inv_id in inv_ids:
+        amount_str = request.form.get(f'payment_{inv_id}')
+        if amount_str and float(amount_str) > 0:
+            amount = float(amount_str)
+            payments.append({'id': inv_id, 'amount': amount})
+            total_payment += amount
+
+    if not payments:
+        flash('No payment amounts entered', 'warning')
+        return redirect(url_for('bank_payment'))
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        current_user = get_current_user_id()
+
+        # 1. Update Invoices (Vender Settle Logic)
+        for p in payments:
+            # Check balance again to be safe
+            cursor.execute("SELECT suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
+            res = cursor.fetchone() # returns tuple (outstanding, total_payment)
+            if not res: continue
+
+            # Note: The C# code fetches outstanding from DB. My execute_query returns dictionary,
+            # but raw cursor returns tuple. Let's assume tuple for raw cursor.
+            # Actually, let's use the helper to keep it consistent if possible, but we are inside transaction.
+            # Raw cursor fetchone returns tuple.
+
+            current_outstanding = float(res[0])
+            current_paid = float(res[1])
+
+            if p['amount'] > current_outstanding:
+                raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+
+            new_total_paid = current_paid + p['amount']
+            cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
+
+        # 2. Generate Voucher Number
+        cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
+        res = cursor.fetchone()
+        max_voucher = res[0] if res and res[0] else 0
+        new_voucher = max_voucher + 1
+
+        cursor.execute("INSERT INTO bank_book_voucher_no (bank_book_voucher_link, bank_book_voucher_no, bank_book_chq_no) VALUES (%s, %s, %s)",
+                       (bank_account, new_voucher, cheque_no))
+
+        # 3. Create Journal Voucher (JV)
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM PAYMENT', narration))
+        jv_no = cursor.lastrowid
+
+        # Get Sub Account Code for Supplier
+        cursor.execute("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (supplier_name,))
+        res = cursor.fetchone()
+        sub_ac_code = res[0] if res else 0
+
+        # Debit AP
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+
+        # Credit Bank
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (bank_account, total_payment, payment_date, date.today(), narration, current_user, jv_no))
+
+        # 4. Record Bank Transactions
+        sup_id_res = db.execute_query("SELECT sup_id FROM suppliers WHERE supplier_name = %s", (supplier_name,))
+        sup_id = sup_id_res[0]['sup_id'] if sup_id_res else 0
+
+        for p in payments:
+            cursor.execute("""
+                INSERT INTO bank_book_recod (
+                    bank_book__accont_name, bank_book__recode_cr, bank_book__naration,
+                    bank_book__suplier_oustanding_id, bank_book__suplier_name, jv_numbers_jv_id,
+                    bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (bank_account, p['amount'], narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date))
+
+        conn.commit()
+        flash(f'Payment processed successfully. Voucher No: {new_voucher}', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Transaction failed: {str(e)}', 'danger')
+        print(e)
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('bank_payment'))
+
 # --- Customer Loyalty ---
 @app.route('/customer_loyalty', methods=['GET', 'POST'])
 @login_required
