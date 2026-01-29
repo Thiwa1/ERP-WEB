@@ -1,24 +1,152 @@
-<div class="sidebar col-md-2">
-    <h3 class="text-center py-3">ERP System</h3>
-    <hr>
-    <a href="/">Dashboard</a>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suwin Accounting</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f0f5ff; }
+        .sidebar { background-color: #2B5B80; min-height: 100vh; color: white; }
+        .sidebar a { color: rgba(255,255,255,0.8); text-decoration: none; display: block; padding: 10px 20px; font-size: 14px; }
+        .sidebar a:hover { background-color: #3577AD; color: white; }
+        .sidebar h6 { color: #A0C5EB; font-size: 11px; font-weight: bold; margin-top: 20px; margin-bottom: 10px; padding-left: 20px; }
+        .content { padding: 20px; }
+        .header { background-color: #3577AD; color: white; padding: 15px; text-align: center; }
+        .btn-add-new { background-color: #3A6EA5; color: white; border: none; width: 100%; padding: 12px; font-weight: bold; margin-top: 20px; }
+        .btn-add-new:hover { background-color: #2B5B80; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-2 sidebar p-0">
+                <div class="header">
+                    <h5 class="mb-0">SUWIN ACCOUNTING</h5>
+                    <small>Professional Accounting System</small>
+                </div>
+                <div class="py-2">
+                    <h6 class="text-uppercase">Core Accounting</h6>
+                    <a href="/placeholder?title=Cash Payment Supers"><i class="fas fa-money-bill me-2"></i>Cash Payment Supers</a>
+                    <a href="/direct_purchasing"><i class="fas fa-hand-holding-usd me-2"></i>Cash Direct Supers</a>
+                    <a href="/placeholder?title=Bank Payment Supers"><i class="fas fa-university me-2"></i>Bank Payment Supers</a>
+                    <a href="/placeholder?title=Journal Entry"><i class="fas fa-book me-2"></i>Journal Entry (J/V)</a>
 
-    <h6 class="px-3 mt-3 text-uppercase text-secondary">Setup</h6>
-    <a href="/add_customer">Add Customer/Supplier</a>
-    <a href="/inventory_category">Inventory Categories</a>
-    <a href="/inventory_locations">Inventory Locations</a>
-    <a href="/cash_flow_categories">Cash Flow Categories</a>
-    <a href="/chart_of_accounts">Chart of Accounts</a>
-    <a href="/control_panel">Control Panel</a>
+                    <h6 class="text-uppercase">Inventory & Services</h6>
+                    <a href="/placeholder?title=GRN"><i class="fas fa-boxes me-2"></i>GRN</a>
+                    <a href="/placeholder?title=Service Entry"><i class="fas fa-tools me-2"></i>Service Entry</a>
+                    <a href="/inventory_reports?report_type=card"><i class="fas fa-clipboard-list me-2"></i>Inventory Card</a>
+                    <a href="/placeholder?title=Inventory Transfer"><i class="fas fa-exchange-alt me-2"></i>Inventory Transfer</a>
 
-    <h6 class="px-3 mt-3 text-uppercase text-secondary">Operations</h6>
-    <a href="/customer_loyalty">Customer Loyalty</a>
-    <a href="/direct_purchasing">Direct Purchasing</a>
-    <a href="/inventory_price_editing">Price Adjustment</a>
-    <a href="/bank_reconciliation">Bank Reconciliation</a>
+                    <h6 class="text-uppercase">Reports & Analysis</h6>
+                    <a href="/placeholder?title=Load Report"><i class="fas fa-file-alt me-2"></i>Load Report</a>
+                    <a href="/balance_sheet"><i class="fas fa-balance-scale me-2"></i>Balance Sheet</a>
+                    <a href="/cash_flow"><i class="fas fa-chart-line me-2"></i>Profit & Loss</a>
+                    <a href="/placeholder?title=Customer Aging"><i class="fas fa-clock me-2"></i>Customer Aging</a>
+                    <a href="/placeholder?title=Supplier Aging"><i class="fas fa-history me-2"></i>Supplier Aging</a>
+                    <a href="/placeholder?title=Job Profit"><i class="fas fa-project-diagram me-2"></i>Find Job Profit</a>
 
-    <h6 class="px-3 mt-3 text-uppercase text-secondary">Reports</h6>
-    <a href="/balance_sheet">Balance Sheet</a>
-    <a href="/cash_flow">Cash Flow Statement</a>
-    <a href="/inventory_reports">Inventory Reports</a>
-</div>
+                    <h6 class="text-uppercase">Additional Features</h6>
+                    <a href="/placeholder?title=POS System"><i class="fas fa-cash-register me-2"></i>POS System</a>
+                    <a href="/bank_reconciliation"><i class="fas fa-check-double me-2"></i>Bank Reconciliation</a>
+                    <a href="/placeholder?title=Purchase Orders"><i class="fas fa-file-invoice me-2"></i>Purchase Orders</a>
+                    <a href="/chart_of_accounts"><i class="fas fa-book-open me-2"></i>Ledger Account</a>
+                    <a href="/inventory_category"><i class="fas fa-plus-square me-2"></i>Add Finished Goods</a>
+                    <a href="/placeholder?title=Create New Invoice"><i class="fas fa-file-invoice-dollar me-2"></i>Create New Invoice</a>
+                    <a href="/placeholder?title=Customer Payment"><i class="fas fa-receipt me-2"></i>Get Payment From Customer</a>
+
+                    <div class="px-3 pb-4">
+                        <button class="btn btn-add-new" data-bs-toggle="modal" data-bs-target="#quickActionsModal">
+                            + ADD NEW ITEM
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Main Content -->
+            <div class="col-md-10 content">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    {% for category, message in messages %}
+                      <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                  {% endif %}
+                {% endwith %}
+
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Modal (Plus Grid) -->
+    <div class="modal fade" id="quickActionsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">QUICK ACTIONS MENU</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="row">
+                        <!-- Company Setup -->
+                        <div class="col-md-4">
+                            <h6 class="text-primary fw-bold mb-3">COMPANY SETUP</h6>
+                            <div class="list-group list-group-flush mb-4">
+                                <a href="/placeholder?title=Setup Company Profile" class="list-group-item list-group-item-action">Setup Company Profile</a>
+                                <a href="/placeholder?title=Create Bank Account" class="list-group-item list-group-item-action">Create Bank Account</a>
+                                <a href="/placeholder?title=Create Cash Account" class="list-group-item list-group-item-action">Create Cash Account</a>
+                                <a href="/placeholder?title=Create New Jobs" class="list-group-item list-group-item-action">Create New Jobs</a>
+                                <a href="/placeholder?title=Add New Users" class="list-group-item list-group-item-action">Add New Users</a>
+                            </div>
+
+                            <h6 class="text-primary fw-bold mb-3">INVENTORY MANAGEMENT</h6>
+                            <div class="list-group list-group-flush">
+                                <a href="/inventory_locations" class="list-group-item list-group-item-action">Create Inventory House</a>
+                                <a href="/inventory_category" class="list-group-item list-group-item-action">Create Inventory Items</a>
+                            </div>
+                        </div>
+
+                        <!-- Accounting -->
+                        <div class="col-md-4">
+                            <h6 class="text-primary fw-bold mb-3">ACCOUNTING</h6>
+                            <div class="list-group list-group-flush mb-4">
+                                <a href="/balance_sheet" class="list-group-item list-group-item-action">Balance Sheet Category</a>
+                                <a href="/cash_flow_categories" class="list-group-item list-group-item-action">P&L Category</a>
+                                <a href="/chart_of_accounts" class="list-group-item list-group-item-action">Create New Account</a>
+                            </div>
+
+                            <h6 class="text-primary fw-bold mb-3">POINT OF SALE</h6>
+                            <div class="list-group list-group-flush">
+                                <a href="/placeholder?title=POS Settings" class="list-group-item list-group-item-action">POS Settings</a>
+                                <a href="/control_panel" class="list-group-item list-group-item-action">WARRANTY PERIOD SETUP</a>
+                            </div>
+                        </div>
+
+                        <!-- Suppliers & Customers -->
+                        <div class="col-md-4">
+                            <h6 class="text-primary fw-bold mb-3">SUPPLIERS & CUSTOMERS</h6>
+                            <div class="list-group list-group-flush mb-4">
+                                <a href="/add_customer" class="list-group-item list-group-item-action">Create New Supplier</a>
+                                <a href="/add_customer" class="list-group-item list-group-item-action">Create New Customer</a>
+                            </div>
+
+                            <h6 class="text-primary fw-bold mb-3">SYSTEM BACKUP</h6>
+                            <div class="list-group list-group-flush">
+                                <a href="/placeholder?title=System Backup" class="list-group-item list-group-item-action">SYSTEM BACKUP</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">CLOSE</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

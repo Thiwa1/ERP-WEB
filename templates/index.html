@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        Dashboard
-    </div>
-    <div class="card-body">
-        <h5 class="card-title">Welcome User</h5>
-        <p class="card-text">Use the sidebar to navigate to different modules.</p>
-        <a href="/add_customer" class="btn btn-primary">Add New Customer/Supplier</a>
+<div class="d-flex justify-content-center align-items-center" style="height: 80vh;">
+    <div class="text-center">
+        <div class="mb-4 text-primary">
+            <i class="fas fa-chart-pie fa-4x"></i>
+        </div>
+        <h2 class="fw-bold mb-3" style="color: #0B214C;">Welcome to Suwin Accounting</h2>
+        <p class="text-muted" style="max-width: 400px; margin: 0 auto;">
+            Select a module from the sidebar to begin managing your finances.
+        </p>
     </div>
 </div>
 {% endblock %}

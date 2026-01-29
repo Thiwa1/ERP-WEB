@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from database import Database
 from datetime import datetime, date
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'your_secret_key'
@@ -16,15 +17,68 @@ db_config = {
 
 db = Database(db_config)
 
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
 def get_current_user_id():
-    return 5000
+    return session.get('user_id', 0)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+
+        if not username or not password:
+            flash('Please enter both username and password.', 'danger')
+            return redirect(url_for('login'))
+
+        # Check credentials
+        # Note: In production, passwords should be hashed.
+        # The provided C# code compares plain text, so we replicate that.
+        query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
+        users = db.execute_query(query, (username,))
+
+        if users:
+            user = users[0]
+            if user['Password'] == password:
+                session['user_id'] = user['User_Code']
+                session['user_pk'] = user['id']
+                session['username'] = username
+                return redirect(url_for('index'))
+            else:
+                flash('Incorrect password.', 'danger')
+        else:
+            flash('User not found.', 'danger')
+
+        return redirect(url_for('login'))
+
+    return render_template('login.html')
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
 @app.route('/')
+@login_required
 def index():
     return render_template('index.html')
 
+@app.route('/placeholder')
+@login_required
+def placeholder():
+    title = request.args.get('title', 'Feature')
+    return render_template('placeholder.html', title=title)
+
 # --- Add Customer (Existing) ---
 @app.route('/add_customer', methods=['GET', 'POST'])
+@login_required
 def add_customer():
     if request.method == 'POST':
         try:
@@ -119,6 +173,7 @@ def add_customer():
     return render_template('add_customer.html', salutations=salutations)
 
 @app.route('/add_salutation', methods=['POST'])
+@login_required
 def add_salutation():
     new_salutation = request.form.get('new_salutation')
     if new_salutation:
@@ -134,12 +189,14 @@ def add_salutation():
 
 # --- Inventory Category Management ---
 @app.route('/inventory_category')
+@login_required
 def inventory_category():
     main_cats = db.execute_query("SELECT * FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != ''")
     sub_cats = db.execute_query("SELECT * FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != ''")
     return render_template('inventory_category.html', main_categories=main_cats, sub_categories=sub_cats)
 
 @app.route('/inventory_category/main', methods=['POST'])
+@login_required
 def add_main_category():
     name = request.form.get('main_category')
     if name:
@@ -148,6 +205,7 @@ def add_main_category():
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/sub', methods=['POST'])
+@login_required
 def add_sub_category():
     name = request.form.get('sub_category')
     if name:
@@ -156,6 +214,7 @@ def add_sub_category():
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/main/toggle', methods=['POST'])
+@login_required
 def toggle_main_category():
     cat_id = request.form.get('id')
     current = int(request.form.get('current_status'))
@@ -164,6 +223,7 @@ def toggle_main_category():
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/sub/toggle', methods=['POST'])
+@login_required
 def toggle_sub_category():
     cat_id = request.form.get('id')
     current = int(request.form.get('current_status'))
@@ -173,6 +233,7 @@ def toggle_sub_category():
 
 # --- Inventory Locations ---
 @app.route('/inventory_locations', methods=['GET', 'POST'])
+@login_required
 def inventory_locations():
     if request.method == 'POST':
         name = request.form.get('house_name')
@@ -187,6 +248,7 @@ def inventory_locations():
 
 # --- Cash Flow Categories ---
 @app.route('/cash_flow_categories', methods=['GET', 'POST'])
+@login_required
 def cash_flow_categories():
     if request.method == 'POST':
         name = request.form.get('category_name')
@@ -200,6 +262,7 @@ def cash_flow_categories():
     return render_template('cash_flow_categories.html', categories=cats)
 
 @app.route('/cash_flow_categories/delete', methods=['POST'])
+@login_required
 def delete_cash_flow_category():
     cat_id = request.form.get('id')
     db.execute_query("DELETE FROM cf_catogory WHERE id = %s", (cat_id,), commit=True)
@@ -208,6 +271,7 @@ def delete_cash_flow_category():
 
 # --- Chart of Accounts ---
 @app.route('/chart_of_accounts')
+@login_required
 def chart_of_accounts():
     accounts = db.execute_query("SELECT * FROM new_account_table WHERE account_active = 1")
     pl_count = len([a for a in accounts if a['account_name_of_catogory_PL']])
@@ -216,6 +280,7 @@ def chart_of_accounts():
 
 # --- Control Panel ---
 @app.route('/control_panel', methods=['GET', 'POST'])
+@login_required
 def control_panel():
     if request.method == 'POST':
         enabled = 1 if request.form.get('warranty_enabled') else 0
@@ -238,6 +303,7 @@ def control_panel():
 
 # --- Customer Loyalty ---
 @app.route('/customer_loyalty', methods=['GET', 'POST'])
+@login_required
 def customer_loyalty():
     if request.method == 'POST':
         name = request.form.get('customer_name')
@@ -282,6 +348,7 @@ def customer_loyalty():
 
 # --- Direct Purchasing ---
 @app.route('/direct_purchasing', methods=['GET'])
+@login_required
 def direct_purchasing():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
@@ -296,6 +363,7 @@ def direct_purchasing():
                            total_value=session.get('payment_total', 0))
 
 @app.route('/direct_purchasing/add_item', methods=['POST'])
+@login_required
 def direct_purchasing_add_item():
     item = {
         'account': request.form.get('cost_account'),
@@ -319,6 +387,7 @@ def direct_purchasing_add_item():
     return redirect(url_for('direct_purchasing'))
 
 @app.route('/direct_purchasing/submit', methods=['POST'])
+@login_required
 def direct_purchasing_submit():
     if 'payment_items' not in session or not session['payment_items']:
         flash('No items to submit', 'warning')
@@ -333,6 +402,7 @@ def direct_purchasing_submit():
 
 # --- Inventory Price Editing ---
 @app.route('/inventory_price_editing', methods=['GET'])
+@login_required
 def inventory_price_editing():
     search = request.args.get('search', '')
     query = """
@@ -343,13 +413,17 @@ def inventory_price_editing():
         FROM inventoy_items ii
         LEFT JOIN inventory_price_recod ipr ON ii.id = ipr.inventory_price_link
     """
+    params = None
     if search:
-        query += f" WHERE ii.inventoy_name LIKE '%{search}%' OR ii.inventoy_code LIKE '%{search}%'"
+        query += " WHERE ii.inventoy_name LIKE %s OR ii.inventoy_code LIKE %s"
+        search_pattern = f"%{search}%"
+        params = (search_pattern, search_pattern)
 
-    items = db.execute_query(query)
+    items = db.execute_query(query, params)
     return render_template('inventory_price_editing.html', items=items, search_query=search)
 
 @app.route('/inventory_price_editing/update', methods=['POST'])
+@login_required
 def update_inventory_prices():
     item_ids = request.form.getlist('item_ids[]')
     market_prices = request.form.getlist('market_prices[]')
@@ -381,6 +455,7 @@ def update_inventory_prices():
 
 # --- Balance Sheet ---
 @app.route('/balance_sheet')
+@login_required
 def balance_sheet():
     as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
 
@@ -490,6 +565,7 @@ def balance_sheet():
 
 # --- Cash Flow ---
 @app.route('/cash_flow')
+@login_required
 def cash_flow():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
@@ -567,6 +643,7 @@ def cash_flow():
 
 # --- Inventory Reports ---
 @app.route('/inventory_reports')
+@login_required
 def inventory_reports():
     report_type = request.args.get('report_type', 'balance')
     item_name = request.args.get('item_name')
@@ -621,6 +698,7 @@ def inventory_reports():
 
 # --- Bank Reconciliation ---
 @app.route('/bank_reconciliation', methods=['GET'])
+@login_required
 def bank_reconciliation():
     bank_account = request.args.get('bank_account')
     rec_date = request.args.get('rec_date', date.today().strftime('%Y-%m-%d'))
@@ -677,6 +755,7 @@ def bank_reconciliation():
                            statement_balance=statement_balance)
 
 @app.route('/bank_reconciliation/process', methods=['POST'])
+@login_required
 def process_reconciliation():
     bank_account = request.form.get('bank_account')
     rec_date = request.form.get('rec_date')
