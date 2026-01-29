@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row mb-4">
+        <div class="col-12 bg-primary text-white p-3 rounded">
+            <h4 class="mb-0 text-center fw-bold">MANAGE THE NEW ACCOUNT</h4>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('add_new_account') }}">
+        <!-- Account Type Selection -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div class="d-flex justify-content-center gap-4 flex-wrap">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_type" value="income" id="check_income">
+                        <label class="form-check-label fw-bold text-primary" for="check_income">Income Account</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_type" value="expense" id="check_expense">
+                        <label class="form-check-label fw-bold text-primary" for="check_expense">Expenses Account</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_type" value="liability" id="check_liability">
+                        <label class="form-check-label fw-bold text-primary" for="check_liability">Liability Account</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_type" value="equity" id="check_equity">
+                        <label class="form-check-label fw-bold text-primary" for="check_equity">Equity Account</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" name="account_type" value="asset" id="check_asset">
+                        <label class="form-check-label fw-bold text-primary" for="check_asset">Assets Account</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Column: Account Details -->
+            <div class="col-md-6 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Account Details</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Account Name</label>
+                            <input type="text" class="form-control" name="account_name" required>
+                        </div>
+
+                        <hr class="my-4">
+                        <h6 class="fw-bold text-secondary mb-3">Sub Account (Optional)</h6>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Sub Account Name</label>
+                            <input type="text" class="form-control" name="sub_account_name">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Main Account For Sub Account</label>
+                            <select class="form-select" name="main_account_select">
+                                <option value="">Select Main Account...</option>
+                                {% for acc in existing_accounts %}
+                                <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Category Selection -->
+            <div class="col-md-6 mb-4">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-light">
+                        <h6 class="mb-0 fw-bold text-primary">Category Selection</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Balance Sheet Category</label>
+                            <select class="form-select" name="bs_category">
+                                <option value="">Please select</option>
+                                {% for cat in bs_categories %}
+                                <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Income Category</label>
+                            <select class="form-select" name="income_category">
+                                <option value="">Please select</option>
+                                {% for cat in pl_categories %}
+                                <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-primary">Cash Flow Category</label>
+                            <select class="form-select" name="cf_category">
+                                <option value="">-- Select Cash Flow Category --</option>
+                                {% for cat in cf_categories %}
+                                <option value="{{ cat.catogory_name }}">{{ cat.catogory_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="card shadow-sm">
+            <div class="card-body d-flex justify-content-end gap-2">
+                <button type="submit" name="action" value="add_account" class="btn btn-primary fw-bold px-4">Add New Account</button>
+                <button type="submit" name="action" value="add_sub_account" class="btn btn-secondary fw-bold px-4">Sub Account</button>
+                <a href="/chart_of_accounts" class="btn btn-info fw-bold px-4 text-white">List Account</a>
+                <a href="/cash_flow_categories" class="btn btn-warning fw-bold px-4 text-white">Cash Flow Category</a>
+            </div>
+        </div>
+    </form>
+</div>
+{% endblock %}

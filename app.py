@@ -172,6 +172,101 @@ def add_customer():
         pass
     return render_template('add_customer.html', salutations=salutations)
 
+# --- Add Supplier (New) ---
+@app.route('/add_supplier', methods=['GET', 'POST'])
+@login_required
+def add_supplier():
+    if request.method == 'POST':
+        try:
+            supplier_name = request.form.get('supplier_name')
+            salutation = request.form.get('salutation')
+            supplier_code = request.form.get('supplier_code')
+            credit_limit = request.form.get('credit_limit', 0)
+            vat_no = request.form.get('vat_no')
+
+            address_no = request.form.get('address_no')
+            address_line_1 = request.form.get('address_line_1')
+            address_line_2 = request.form.get('address_line_2')
+            address_line_3 = request.form.get('address_line_3')
+            address_line_4 = request.form.get('address_line_4')
+
+            contact_1 = request.form.get('contact_1')
+            contact_2 = request.form.get('contact_2')
+            email = request.form.get('email')
+
+            if not supplier_name or not supplier_code:
+                flash('Supplier Name and Code are required.', 'danger')
+                return redirect(url_for('add_supplier'))
+
+            current_user = get_current_user_id()
+            current_date = datetime.now().date()
+
+            query_supplier = """
+                INSERT INTO suppliers (
+                    sup_id, supplier_name, supplier_code,
+                    supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
+                    suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
+                    supplier_create_date, suppliers_create_user,
+                    suppliers_last_edit_user, suppliers_last_edit_date,
+                    suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
+                    Is_Suplier, Is_Customer
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            params_supplier = (
+                0, supplier_name, supplier_code,
+                address_no, address_line_1, address_line_2, address_line_3,
+                float(credit_limit) if credit_limit else 0.0, contact_1, contact_2,
+                current_date, current_user,
+                current_user, current_date,
+                email, vat_no, salutation,
+                1, 0 # Is_Suplier=1, Is_Customer=0
+            )
+
+            query_sub_account = """
+                INSERT INTO sub_accont_for_new_account (
+                    id_sub, sub_sub_accaount_name, sub_new_account,
+                    creat_user, creat_date, active, sub_account_code
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            try:
+                conn.start_transaction()
+                cursor.execute(query_supplier, params_supplier)
+                cursor.execute(query_sub_account, (
+                    0, supplier_name, "Account Payable",
+                    current_user, current_date, 1, 0
+                ))
+                last_sub_id = cursor.lastrowid
+                new_sub_code = last_sub_id + 10001
+                cursor.execute(
+                    "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                    (new_sub_code, last_sub_id)
+                )
+                conn.commit()
+                flash('Supplier added successfully!', 'success')
+            except Exception as e:
+                conn.rollback()
+                flash(f'Error adding supplier: {str(e)}', 'danger')
+            finally:
+                cursor.close()
+                conn.close()
+
+            return redirect(url_for('add_supplier'))
+
+        except Exception as e:
+            flash(f'An unexpected error occurred: {str(e)}', 'danger')
+            return redirect(url_for('add_supplier'))
+
+    salutations = []
+    try:
+        salutations_data = db.execute_query("SELECT salutation FROM suplier_suporting_1")
+        salutations = [row['salutation'] for row in salutations_data]
+    except:
+        pass
+    return render_template('add_supplier.html', salutations=salutations)
+
 @app.route('/add_salutation', methods=['POST'])
 @login_required
 def add_salutation():
@@ -186,6 +281,21 @@ def add_salutation():
         except Exception as e:
             flash(f'Error adding salutation: {e}', 'danger')
     return redirect(url_for('add_customer'))
+
+@app.route('/add_salutation_ajax', methods=['POST'])
+@login_required
+def add_salutation_ajax():
+    new_salutation = request.form.get('new_salutation')
+    if new_salutation:
+        try:
+            db.execute_query(
+                "INSERT INTO suplier_suporting_1 (id, salutation) VALUES (%s, %s)",
+                (0, new_salutation), commit=True
+            )
+            return {"success": True}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+    return {"success": False}
 
 # --- Inventory Category Management ---
 @app.route('/inventory_category')
@@ -404,6 +514,133 @@ def chart_of_accounts():
     pl_count = len([a for a in accounts if a['account_name_of_catogory_PL']])
     bs_count = len([a for a in accounts if a['account_name_of_catogory_Balace_sheet']])
     return render_template('chart_of_accounts.html', accounts=accounts, total_accounts=len(accounts), pl_count=pl_count, bs_count=bs_count)
+
+# --- Add New Account ---
+@app.route('/add_new_account', methods=['GET', 'POST'])
+@login_required
+def add_new_account():
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'add_account':
+            account_name = request.form.get('account_name')
+            if not account_name:
+                flash('Please enter an account name', 'danger')
+                return redirect(url_for('add_new_account'))
+
+            # Process categories
+            bs_cat_val = request.form.get('bs_category')
+            pl_cat_val = request.form.get('income_category')
+            cf_cat = request.form.get('cf_category')
+
+            if (not bs_cat_val or bs_cat_val == "") and (not pl_cat_val or pl_cat_val == ""):
+                flash('Please select a category', 'danger')
+                return redirect(url_for('add_new_account'))
+
+            if not cf_cat:
+                flash('Please select a cash flow category', 'danger')
+                return redirect(url_for('add_new_account'))
+
+            bs_name = None
+            bs_pos = None
+            if bs_cat_val:
+                bs_name, bs_pos = bs_cat_val.split(',')
+
+            pl_name = None
+            pl_pos = None
+            if pl_cat_val:
+                pl_name, pl_pos = pl_cat_val.split(',')
+
+            # Account Types
+            is_income = 1 if 'income' in request.form.getlist('account_type') else 0
+            is_expense = 1 if 'expense' in request.form.getlist('account_type') else 0
+            is_liability = 1 if 'liability' in request.form.getlist('account_type') else 0
+            is_equity = 1 if 'equity' in request.form.getlist('account_type') else 0
+            is_asset = 1 if 'asset' in request.form.getlist('account_type') else 0
+
+            current_user = get_current_user_id()
+
+            query = """
+                INSERT INTO new_account_table (
+                    account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                    account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                    account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, '')
+            """
+            params = (
+                account_name, pl_pos, bs_pos, pl_name, bs_name,
+                is_income, is_expense, is_asset, is_liability, is_equity,
+                cf_cat, date.today(), current_user
+            )
+
+            try:
+                db.execute_query(query, params, commit=True)
+                flash('New account created successfully', 'success')
+            except Exception as e:
+                flash(f'Error creating account: {str(e)}', 'danger')
+
+        elif action == 'add_sub_account':
+            sub_name = request.form.get('sub_account_name')
+            main_account = request.form.get('main_account_select')
+
+            if not sub_name or not main_account:
+                flash('Sub account name and main account are required', 'danger')
+                return redirect(url_for('add_new_account'))
+
+            current_user = get_current_user_id()
+
+            query = """
+                INSERT INTO sub_accont_for_new_account (
+                    sub_sub_accaount_name, sub_new_account, creat_user, creat_date, active, sub_account_code
+                ) VALUES (%s, %s, %s, %s, 1, 0)
+            """
+            try:
+                db.execute_query(query, (sub_name, main_account, current_user, date.today()), commit=True)
+                flash('Sub account created successfully', 'success')
+            except Exception as e:
+                flash(f'Error creating sub account: {str(e)}', 'danger')
+
+        return redirect(url_for('add_new_account'))
+
+    # Load Data for Dropdowns
+    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
+    existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
+
+    return render_template('add_new_account.html',
+                           bs_categories=bs_cats,
+                           pl_categories=pl_cats,
+                           cf_categories=cf_cats,
+                           existing_accounts=existing_accounts)
+
+# --- Create Cash/Bank Account ---
+@app.route('/create_cash_account', methods=['GET', 'POST'])
+@login_required
+def create_cash_account():
+    if request.method == 'POST':
+        acc_no = request.form.get('account_number')
+        acc_name = request.form.get('account_name')
+
+        if not acc_no or not acc_name:
+            flash('Account number and name are required', 'danger')
+            return redirect(url_for('create_cash_account'))
+
+        current_user = get_current_user_id()
+
+        try:
+            db.execute_query("""
+                INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                VALUES (%s, %s, %s, %s)
+            """, (acc_no, acc_name, date.today(), current_user), commit=True)
+            flash('New bank account created', 'success')
+        except Exception as e:
+            flash(f'Error creating bank account: {str(e)}', 'danger')
+
+        return redirect(url_for('create_cash_account'))
+
+    return render_template('create_cash_account.html')
 
 # --- Control Panel ---
 @app.route('/control_panel', methods=['GET', 'POST'])
