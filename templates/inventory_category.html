@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Inventory Categories</h2>
+
+    <div class="row">
+        <!-- Main Categories -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">Main Categories</div>
+                <div class="card-body">
+                    <form method="POST" action="/inventory_category/main" class="mb-3 d-flex">
+                        <input type="text" name="main_category" class="form-control me-2" placeholder="New Main Category" required>
+                        <button type="submit" class="btn btn-success">Add</button>
+                    </form>
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat in main_categories %}
+                            <tr>
+                                <td>{{ cat.main_catogory }}</td>
+                                <td>
+                                    {% if cat.dis_continue_main == 1 %}
+                                    <span class="badge bg-danger">Discontinued</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST" action="/inventory_category/main/toggle" style="display:inline;">
+                                        <input type="hidden" name="id" value="{{ cat.id }}">
+                                        <input type="hidden" name="current_status" value="{{ cat.dis_continue_main }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">Toggle Status</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub Categories -->
+        <div class="col-md-6">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-secondary text-white">Sub Categories</div>
+                <div class="card-body">
+                    <form method="POST" action="/inventory_category/sub" class="mb-3 d-flex">
+                        <input type="text" name="sub_category" class="form-control me-2" placeholder="New Sub Category" required>
+                        <button type="submit" class="btn btn-success">Add</button>
+                    </form>
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Status</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat in sub_categories %}
+                            <tr>
+                                <td>{{ cat.sub_catogory }}</td>
+                                <td>
+                                    {% if cat.dis_continue_sub == 1 %}
+                                    <span class="badge bg-danger">Discontinued</span>
+                                    {% else %}
+                                    <span class="badge bg-success">Active</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <form method="POST" action="/inventory_category/sub/toggle" style="display:inline;">
+                                        <input type="hidden" name="id" value="{{ cat.id }}">
+                                        <input type="hidden" name="current_status" value="{{ cat.dis_continue_sub }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-warning">Toggle Status</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

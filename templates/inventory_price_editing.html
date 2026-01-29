@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Inventory Price Adjustment</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-warning text-dark">Filter Options</div>
+        <div class="card-body">
+            <form method="GET" action="/inventory_price_editing" class="row g-3">
+                <div class="col-md-4">
+                    <input type="text" name="search" class="form-control" placeholder="Search Item Name/Code" value="{{ search_query }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Filter</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header">Inventory Items</div>
+        <div class="card-body">
+            <form method="POST" action="/inventory_price_editing/update">
+                <table class="table table-bordered">
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>Code</th>
+                            <th>Cost Price</th>
+                            <th>Market Price</th>
+                            <th>SPM Price</th>
+                            <th>Loyalty Price</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in items %}
+                        <tr>
+                            <td>{{ item.inventoy_name }}</td>
+                            <td>{{ item.inventoy_code }}</td>
+                            <td>{{ item.inventory_price_purcharsing }}</td>
+                            <td>
+                                <input type="hidden" name="item_ids[]" value="{{ item.id }}">
+                                <input type="number" step="0.01" name="market_prices[]" value="{{ item.inventory_price_selling }}" class="form-control">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="spm_prices[]" value="{{ item.inventory_price_profit_marging_comen }}" class="form-control">
+                            </td>
+                            <td>
+                                <input type="number" step="0.01" name="loyalty_prices[]" value="{{ item.inventory_price_for_Loyality_customer }}" class="form-control">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-success px-5">Submit Changes</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

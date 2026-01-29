@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Cash Flow Statement</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-success text-white">Generate Report</div>
+        <div class="card-body">
+            <form method="GET" action="/cash_flow" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">From Date</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">To Date</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Generate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if report_data %}
+    <div class="card shadow-sm">
+        <div class="card-header text-center fw-bold">
+            CASH FLOW STATEMENT<br>
+            <small>For the period {{ from_date }} to {{ to_date }}</small>
+        </div>
+        <div class="card-body">
+            <h5 class="text-primary border-bottom pb-2">OPERATING ACTIVITIES</h5>
+            <table class="table table-sm table-hover">
+                <tr>
+                    <td>Net Profit Before Tax</td>
+                    <td class="text-end fw-bold">{{ "{:,.2f}".format(report_data.net_profit) }}</td>
+                </tr>
+                <tr><td colspan="2" class="fw-bold text-muted ps-3">Adjustments</td></tr>
+                {% for item in report_data.adjustments %}
+                <tr>
+                    <td class="ps-4">{{ item.description }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
+                </tr>
+                {% endfor %}
+                <tr><td colspan="2" class="fw-bold text-muted ps-3">Working Capital Changes</td></tr>
+                {% for item in report_data.working_capital %}
+                <tr>
+                    <td class="ps-4">{{ item.description }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="table-light fw-bold">
+                    <td>Net Cash from Operating Activities</td>
+                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.operating) }}</td>
+                </tr>
+            </table>
+
+            <h5 class="text-primary border-bottom pb-2 mt-4">INVESTING ACTIVITIES</h5>
+            <table class="table table-sm table-hover">
+                {% for item in report_data.investing %}
+                <tr>
+                    <td class="ps-3">{{ item.description }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="table-light fw-bold">
+                    <td>Net Cash used in Investing Activities</td>
+                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.investing) }}</td>
+                </tr>
+            </table>
+
+            <h5 class="text-primary border-bottom pb-2 mt-4">FINANCING ACTIVITIES</h5>
+            <table class="table table-sm table-hover">
+                {% for item in report_data.financing %}
+                <tr>
+                    <td class="ps-3">{{ item.description }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
+                </tr>
+                {% endfor %}
+                <tr class="table-light fw-bold">
+                    <td>Net Cash from Financing Activities</td>
+                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.financing) }}</td>
+                </tr>
+            </table>
+
+            <div class="alert alert-success mt-4 d-flex justify-content-between">
+                <strong>NET INCREASE/(DECREASE) IN CASH</strong>
+                <strong>{{ "{:,.2f}".format(report_data.totals.net_change) }}</strong>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

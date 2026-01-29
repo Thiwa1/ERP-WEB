@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">Inventory Reports</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">Filter Options</div>
+        <div class="card-body">
+            <form method="GET" action="/inventory_reports" class="row g-3">
+                <div class="col-md-3">
+                    <label class="form-label">Report Type</label>
+                    <div class="btn-group w-100" role="group">
+                        <input type="radio" class="btn-check" name="report_type" id="balance" value="balance" checked onchange="this.form.submit()">
+                        <label class="btn btn-outline-primary" for="balance">Balance</label>
+                        <input type="radio" class="btn-check" name="report_type" id="card" value="card" {% if report_type == 'card' %}checked{% endif %} onchange="this.form.submit()">
+                        <label class="btn btn-outline-primary" for="card">Card</label>
+                    </div>
+                </div>
+
+                {% if report_type == 'card' %}
+                <div class="col-md-3">
+                    <label class="form-label">Item</label>
+                    <select name="item_name" class="form-select">
+                        {% for item in items %}
+                        <option value="{{ item.inventoy_name }}" {% if item_name == item.inventoy_name %}selected{% endif %}>{{ item.inventoy_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">From</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label">To</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}">
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Load</button>
+                </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            {% if report_type == 'balance' %}
+                <h5 class="card-title">Inventory Balance Summary</h5>
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th>Item Name</th>
+                            <th>Code</th>
+                            <th>Unit</th>
+                            <th class="text-end">Total Qty</th>
+                            <th class="text-end">Total Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in report_data %}
+                        <tr>
+                            <td>{{ row.item_name }}</td>
+                            <td>{{ row.code }}</td>
+                            <td>{{ row.unit }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(row.qty) }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+
+            {% elif report_type == 'card' %}
+                <h5 class="card-title">Movement Card: {{ item_name }}</h5>
+                <table class="table table-bordered table-sm">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th class="text-end">In</th>
+                            <th class="text-end">Out</th>
+                            <th class="text-end">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="table-info">
+                            <td>{{ from_date }}</td>
+                            <td>Opening Balance</td>
+                            <td></td>
+                            <td></td>
+                            <td class="text-end fw-bold">{{ "{:,.2f}".format(opening_balance) }}</td>
+                        </tr>
+                        {% for row in report_data %}
+                        <tr>
+                            <td>{{ row.date }}</td>
+                            <td>{{ row.description }}</td>
+                            <td class="text-end text-success">{{ "{:,.2f}".format(row.in_qty) if row.in_qty > 0 else '-' }}</td>
+                            <td class="text-end text-danger">{{ "{:,.2f}".format(row.out_qty) if row.out_qty > 0 else '-' }}</td>
+                            <td class="text-end fw-bold">{{ "{:,.2f}".format(row.balance) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

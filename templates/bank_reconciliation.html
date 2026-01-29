@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">Bank Reconciliation</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-dark text-white">Reconciliation Setup</div>
+        <div class="card-body">
+            <form method="GET" action="/bank_reconciliation" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Bank Account</label>
+                    <select name="bank_account" class="form-select" onchange="this.form.submit()">
+                        <option value="">-- Select Account --</option>
+                        {% for acc in bank_accounts %}
+                        <option value="{{ acc.bank_bookcol_account_number }}" {% if selected_account == acc.bank_bookcol_account_number %}selected{% endif %}>
+                            {{ acc.bank_bookcol_account_number }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Reconciliation Date</label>
+                    <input type="date" name="rec_date" class="form-control" value="{{ rec_date }}" onchange="this.form.submit()">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Statement Balance</label>
+                    <input type="number" step="0.01" name="statement_balance" class="form-control" value="{{ statement_balance }}" form="processForm">
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_account %}
+    <form id="processForm" method="POST" action="/bank_reconciliation/process">
+        <input type="hidden" name="bank_account" value="{{ selected_account }}">
+        <input type="hidden" name="rec_date" value="{{ rec_date }}">
+        <input type="hidden" name="book_balance" value="{{ book_balance }}">
+        <input type="hidden" name="opening_balance" value="{{ opening_balance }}">
+
+        <div class="row">
+            <!-- Deposits -->
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-success text-white">Uncleared Deposits</div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Date</th>
+                                    <th>Desc</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in deposits %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" name="cleared_ids[]" value="{{ item.id }}" class="form-check-input">
+                                    </td>
+                                    <td>{{ item.entry_effective_date }}</td>
+                                    <td>{{ item.entry_naration }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(item.enty_values_DR) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payments -->
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-danger text-white">Uncleared Payments</div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Date</th>
+                                    <th>Desc</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in payments %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" name="cleared_ids[]" value="{{ item.id }}" class="form-check-input">
+                                    </td>
+                                    <td>{{ item.entry_effective_date }}</td>
+                                    <td>{{ item.entry_naration }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(item.enty_values_CR) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card shadow-sm border-primary">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <small class="text-muted">Opening Balance</small><br>
+                        <strong>{{ "{:,.2f}".format(opening_balance) }}</strong>
+                    </div>
+                    <div class="col-md-3">
+                        <small class="text-muted">Book Balance ({{ rec_date }})</small><br>
+                        <strong>{{ "{:,.2f}".format(book_balance) }}</strong>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="submit" class="btn btn-primary w-100 btn-lg">Process Reconciliation</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

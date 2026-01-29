@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="mb-4">Direct Purchasing</h2>
+
+    <div class="row">
+        <!-- Payment Items List -->
+        <div class="col-md-7">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-secondary text-white">Bill Payment Summary</div>
+                <div class="card-body">
+                    <table class="table table-bordered">
+                        <thead>
+                            <tr>
+                                <th>No</th>
+                                <th>Account</th>
+                                <th>Item</th>
+                                <th>Qty</th>
+                                <th>Price</th>
+                                <th>Total</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if session_payment_items %}
+                                {% for item in session_payment_items %}
+                                <tr>
+                                    <td>{{ loop.index }}</td>
+                                    <td>{{ item.account }}</td>
+                                    <td>{{ item.item_name }}</td>
+                                    <td>{{ item.qty }}</td>
+                                    <td>{{ item.price }}</td>
+                                    <td>{{ item.total }}</td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="6" class="text-center">No items added</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+
+                    <div class="d-flex justify-content-end align-items-center mt-3">
+                        <label class="fw-bold me-2">Total with VAT:</label>
+                        <input type="text" class="form-control w-25 text-end" value="{{ total_value }}" readonly>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Panel -->
+        <div class="col-md-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">Transaction Details</div>
+                <div class="card-body">
+                    <form method="POST" action="/direct_purchasing/add_item">
+                        <h6 class="text-primary">Account Details</h6>
+                        <div class="mb-2">
+                            <label>Date</label>
+                            <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
+                        </div>
+                        <div class="mb-2">
+                            <label>Cash Account</label>
+                            <select name="cash_account" class="form-select">
+                                {% for acc in cash_accounts %}
+                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <h6 class="text-primary mt-3">Item Details</h6>
+                        <div class="mb-2">
+                            <label>Cost Account</label>
+                            <select name="cost_account" class="form-select">
+                                {% for acc in cost_accounts %}
+                                <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="mb-2">
+                            <label>Inventory Item (Optional)</label>
+                            <select name="inventory_item" class="form-select">
+                                <option value="">-- No Item --</option>
+                                {% for item in inventory_items %}
+                                <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row mb-2">
+                            <div class="col">
+                                <label>Qty</label>
+                                <input type="number" name="qty" class="form-control" step="0.01">
+                            </div>
+                            <div class="col">
+                                <label>Unit Price</label>
+                                <input type="number" name="price" class="form-control" step="0.01">
+                            </div>
+                        </div>
+                        <div class="mb-2">
+                            <label>Narration</label>
+                            <input type="text" name="narration" class="form-control">
+                        </div>
+
+                        <button type="submit" class="btn btn-secondary w-100 mb-3">Add Item to Payment</button>
+                    </form>
+
+                    <form method="POST" action="/direct_purchasing/submit">
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="vat_check" id="vatCheck">
+                            <label class="form-check-label fw-bold" for="vatCheck">Include VAT</label>
+                        </div>
+                        <button type="submit" class="btn btn-success w-100">Submit Payment</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

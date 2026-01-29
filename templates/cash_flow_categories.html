@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Cash Flow Categories</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">Manage Categories</div>
+        <div class="card-body">
+            <form method="POST" action="/cash_flow_categories">
+                <div class="row">
+                    <div class="col-md-6">
+                        <input type="text" name="category_name" class="form-control" placeholder="Category Name" required>
+                    </div>
+                    <div class="col-md-4">
+                        <select name="hold_level" class="form-select">
+                            <option value="1">Level 1</option>
+                            <option value="2">Level 2</option>
+                            <option value="3">Level 3</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <button type="submit" class="btn btn-success w-100">Add</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header">Category List</div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Category Name</th>
+                        <th>Level</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cat in categories %}
+                    <tr>
+                        <td>{{ cat.id }}</td>
+                        <td>{{ cat.catogory_name }}</td>
+                        <td>{{ cat.hold_level }}</td>
+                        <td>
+                            <form method="POST" action="/cash_flow_categories/delete" style="display:inline;">
+                                <input type="hidden" name="id" value="{{ cat.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

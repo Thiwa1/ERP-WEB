@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Inventory Locations</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-primary text-white">Manage Inventory House</div>
+        <div class="card-body">
+            <form method="POST" action="/inventory_locations">
+                <div class="mb-3">
+                    <label for="house_name" class="form-label">House Name</label>
+                    <input type="text" class="form-control" id="house_name" name="house_name" required>
+                </div>
+                <div class="mb-3">
+                    <label for="description" class="form-label">Short Description</label>
+                    <input type="text" class="form-control" id="description" name="description" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Create New House</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header">Existing Locations</div>
+        <div class="card-body">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for loc in locations %}
+                    <tr>
+                        <td>{{ loc.id }}</td>
+                        <td>{{ loc.inventory_locations_name }}</td>
+                        <td>{{ loc.inventory_locations_descriptions }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
