@@ -642,10 +642,11 @@ def create_cash_account():
 
     return render_template('create_cash_account.html')
 
-# --- Control Panel ---
+# --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
 @login_required
 def control_panel():
+    # 1. Handle Warranty Settings
     if request.method == 'POST':
         enabled = 1 if request.form.get('warranty_enabled') else 0
         count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
@@ -658,12 +659,143 @@ def control_panel():
         flash('Settings updated', 'success')
         return redirect(url_for('control_panel'))
 
+    # 2. Fetch Warranty Status
     res = db.execute_query("SELECT yes FROM adding_new")
     warranty_enabled = False
     if res and res[0]['yes'] == 1:
         warranty_enabled = True
 
-    return render_template('control_panel.html', warranty_enabled=warranty_enabled)
+    # 3. Fetch Unassigned Accounts (Income or Expense but no P&L Category)
+    unassigned = db.execute_query("""
+        SELECT id, account_name
+        FROM new_account_table
+        WHERE (account_income = 1 OR account_expenses = 1)
+        AND (account_name_of_catogory_PL IS NULL OR account_name_of_catogory_PL = '')
+    """)
+
+    # 4. Fetch P&L Categories for Dropdown
+    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+
+    return render_template('control_panel.html',
+                           warranty_enabled=warranty_enabled,
+                           unassigned_accounts=unassigned,
+                           pl_categories=pl_cats)
+
+@app.route('/control_panel/update', methods=['POST'])
+@login_required
+def control_panel_update():
+    # Loop through form data to find category assignments
+    updates = []
+    for key, value in request.form.items():
+        if key.startswith('category_') and value:
+            acc_id = key.split('_')[1]
+            cat_name, hold_pos = value.split(',')
+            updates.append((cat_name, hold_pos, acc_id))
+
+    if updates:
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
+
+            for name, pos, aid in updates:
+                cursor.execute("""
+                    UPDATE new_account_table
+                    SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s
+                    WHERE id = %s
+                """, (name, pos, aid))
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+            flash(f'Updated {len(updates)} accounts.', 'success')
+        except Exception as e:
+            flash(f'Error updating accounts: {str(e)}', 'danger')
+    else:
+        flash('No changes selected.', 'info')
+
+    return redirect(url_for('control_panel'))
+
+# --- Company Profile ---
+@app.route('/company_profile', methods=['GET', 'POST'])
+@login_required
+def company_profile():
+    if request.method == 'POST':
+        import base64
+
+        name = request.form.get('company_name')
+        addr1 = request.form.get('address_no')
+        addr2 = request.form.get('city')
+        addr3 = request.form.get('province')
+        addr4 = request.form.get('country')
+        addr5 = request.form.get('postal_code')
+        land = request.form.get('land_no')
+        fax = request.form.get('fax_no')
+        vat = request.form.get('vat_no')
+        curr = request.form.get('currency')
+
+        # Handle Logo Upload
+        logo_data = None
+        if 'logo' in request.files:
+            file = request.files['logo']
+            if file.filename != '':
+                logo_data = base64.b64encode(file.read()).decode('utf-8')
+
+        # Check if record exists (ID is usually 0 or 1, assuming single row config)
+        exists = db.execute_query("SELECT id FROM company")
+
+        try:
+            if exists:
+                # Update
+                query = """
+                    UPDATE company SET
+                    company_name=%s, company_addras_1=%s, company_addras_2=%s,
+                    company_addras_3=%s, company_addras_4=%s, company_addras_5=%s,
+                    company_land_line=%s, company_fax_line=%s, company_vate_code=%s,
+                    company_curency=%s
+                """
+                params = [name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr]
+
+                if logo_data:
+                    query += ", company_log=%s"
+                    params.append(logo_data)
+
+                db.execute_query(query, tuple(params), commit=True)
+            else:
+                # Insert
+                query = """
+                    INSERT INTO company (
+                        id, company_name, company_addras_1, company_addras_2, company_addras_3,
+                        company_addras_4, company_addras_5, company_land_line, company_fax_line,
+                        company_vate_code, company_curency, company_log
+                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                db.execute_query(query, (name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, logo_data), commit=True)
+
+            flash('Company profile updated successfully', 'success')
+        except Exception as e:
+            flash(f'Error updating profile: {str(e)}', 'danger')
+
+        return redirect(url_for('company_profile'))
+
+    # Load Data
+    res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = res[0] if res else {}
+
+    # If logo exists as bytes, we might need to handle it for display (template expects base64 string)
+    # Note: MySQL connector returns bytes for blobs.
+    # If it was saved as base64 string (as above), it comes out as string or bytes depending on driver.
+    # The template expects a base64 string.
+    if company.get('company_log') and isinstance(company['company_log'], bytes):
+        try:
+            # If it's already base64 bytes
+            company['company_log'] = company['company_log'].decode('utf-8')
+        except:
+            # If it's raw image bytes, encode it
+            import base64
+            company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
+
+    return render_template('company_profile.html', company=company)
 
 # --- Customer Loyalty ---
 @app.route('/customer_loyalty', methods=['GET', 'POST'])
