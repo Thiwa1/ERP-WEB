@@ -824,6 +824,175 @@ def bank_payment():
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
     return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
+# --- Add New Job ---
+@app.route('/add_new_job', methods=['GET', 'POST'])
+@login_required
+def add_new_job():
+    if request.method == 'POST':
+        job_no = request.form.get('job_no')
+        description = request.form.get('job_description')
+
+        if not job_no or not description:
+            flash('Job No and Description are required', 'danger')
+            return redirect(url_for('add_new_job'))
+
+        current_user = get_current_user_id()
+
+        try:
+            db.execute_query("""
+                INSERT INTO jobs_unit (id, job_number, job_description, job_create_date, job_create_user, job_finsh, job_cancell)
+                VALUES (0, %s, %s, %s, %s, 0, 0)
+            """, (job_no, description, date.today(), current_user), commit=True)
+            flash('New job created successfully', 'success')
+        except Exception as e:
+            flash(f'Error creating job: {str(e)}', 'danger')
+
+        return redirect(url_for('add_new_job'))
+
+    return render_template('add_new_job.html')
+
+# --- Warranty Period Management ---
+@app.route('/warranty_period', methods=['GET'])
+@login_required
+def warranty_period():
+    item_name = request.args.get('item_name')
+
+    items = db.execute_query("SELECT inventoy_name FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
+
+    query = """
+        SELECT wp.id, wp.yeas_, wp.month, wp.date_, ii.inventoy_name as name
+        FROM inventory_vorenty_period wp
+        LEFT JOIN inventoy_items ii ON wp.name = ii.inventoy_name
+    """
+    params = None
+    if item_name:
+        query += " WHERE ii.inventoy_name = %s"
+        params = (item_name,)
+
+    query += " ORDER BY ii.inventoy_name"
+
+    warranty_items = db.execute_query(query, params)
+
+    return render_template('warranty_period.html', items=items, warranty_items=warranty_items, selected_item=item_name)
+
+@app.route('/warranty_save', methods=['POST'])
+@login_required
+def warranty_save():
+    ids = request.form.getlist('id[]')
+    names = request.form.getlist('name[]')
+    years = request.form.getlist('year[]')
+    months = request.form.getlist('month[]')
+    days = request.form.getlist('day[]')
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        for i in range(len(ids)):
+            wid = int(ids[i])
+            if wid == 0: # Insert
+                cursor.execute("""
+                    INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
+                    VALUES (%s, %s, %s, %s)
+                """, (years[i], months[i], days[i], names[i]))
+            else: # Update
+                cursor.execute("""
+                    UPDATE inventory_vorenty_period
+                    SET yeas_ = %s, month = %s, date_ = %s, name = %s
+                    WHERE id = %s
+                """, (years[i], months[i], days[i], names[i], wid))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        flash('Warranty data saved successfully', 'success')
+    except Exception as e:
+        flash(f'Error saving data: {str(e)}', 'danger')
+
+    return redirect(url_for('warranty_period'))
+
+# --- Inventory Trend Analysis ---
+@app.route('/inventory_trend_analysis', methods=['GET'])
+@login_required
+def inventory_trend_analysis():
+    item_name = request.args.get('item_name')
+    months_back = int(request.args.get('months', 6))
+
+    items = db.execute_query("SELECT DISTINCT inventoy_name FROM inventoy_items WHERE inventoy_name IS NOT NULL AND inventoy_name != '' ORDER BY inventoy_name")
+
+    trend_data = []
+    trend_direction = "Stable"
+    slope_val = 0
+    forecast = 0
+
+    if item_name:
+        # Fetch Data
+        raw_data = db.execute_query("""
+            SELECT
+                YEAR(inventory_recod_action_date) as Year,
+                MONTH(inventory_recod_action_date) as Month,
+                SUM(inventory_recod_movment_out) as MonthlySales
+            FROM inventory_recod
+            WHERE inventoy_name = %s
+            AND inventory_recod_action_date >= DATE_SUB(NOW(), INTERVAL %s MONTH)
+            AND inventory_recod_movment_out > 0
+            GROUP BY YEAR(inventory_recod_action_date), MONTH(inventory_recod_action_date)
+            ORDER BY Year, Month
+        """, (item_name, months_back))
+
+        if raw_data:
+            # Prepare Lists
+            sales = [float(r['MonthlySales']) for r in raw_data]
+            n = len(sales)
+
+            # Moving Average (3 months)
+            moving_avgs = []
+            for i in range(n):
+                if i < 2:
+                    val = sum(sales[:i+1]) / (i+1)
+                else:
+                    val = sum(sales[i-2:i+1]) / 3
+                moving_avgs.append(val)
+
+            # Trend Analysis (Linear Regression)
+            sumX = sum(range(n))
+            sumY = sum(sales)
+            sumXY = sum(i * sales[i] for i in range(n))
+            sumX2 = sum(i * i for i in range(n))
+
+            if n > 1 and (n * sumX2 - sumX * sumX) != 0:
+                slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+                intercept = (sumY - slope * sumX) / n
+            else:
+                slope = 0
+                intercept = sales[0] if n > 0 else 0
+
+            slope_val = round(slope, 2)
+            trend_direction = "Increasing" if slope > 0 else "Decreasing" if slope < 0 else "Stable"
+            forecast = round(intercept + slope * n, 1)
+
+            # Combine for Template
+            for i, r in enumerate(raw_data):
+                trend_val = intercept + slope * i
+                trend_data.append({
+                    'Period': f"{r['Year']}-{r['Month']:02d}",
+                    'Year': r['Year'],
+                    'Month': r['Month'],
+                    'SalesQuantity': r['MonthlySales'],
+                    'MovingAverage': round(moving_avgs[i], 2),
+                    'TrendValue': round(trend_val, 2)
+                })
+
+    return render_template('inventory_trend_analysis.html',
+                           items=items,
+                           trend_data=trend_data,
+                           selected_item=item_name,
+                           months=months_back,
+                           trend_direction=trend_direction,
+                           slope=slope_val,
+                           next_month_forecast=forecast)
+
 @app.route('/get_supplier_data')
 @login_required
 def get_supplier_data():

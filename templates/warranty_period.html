@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 bg-primary text-white p-3 rounded d-flex align-items-center">
+            <span class="fs-4 me-3">📋</span>
+            <h4 class="mb-0 fw-bold">Warranty Period Management</h4>
+        </div>
+    </div>
+
+    <!-- Search & Filter -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h6 class="fw-bold text-primary mb-3">Search & Filter</h6>
+            <form method="GET" action="{{ url_for('warranty_period') }}" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-bold text-secondary">Inventory Item</label>
+                    <select class="form-select" name="item_name" id="itemSearch">
+                        <option value="">Select Item...</option>
+                        {% for item in items %}
+                        <option value="{{ item.inventoy_name }}" {% if selected_item == item.inventoy_name %}selected{% endif %}>{{ item.inventoy_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-7">
+                    <button type="submit" class="btn btn-primary fw-bold me-2"><i class="fas fa-search me-1"></i> Search</button>
+                    <a href="{{ url_for('warranty_period') }}" class="btn btn-primary fw-bold me-2"><i class="fas fa-sync me-1"></i> Show All</a>
+                    <button type="button" class="btn btn-primary fw-bold" onclick="addNewRow()"><i class="fas fa-plus me-1"></i> Add New</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Warranty Table -->
+    <form method="POST" action="{{ url_for('warranty_save') }}" id="warrantyForm">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-light">
+                <h6 class="mb-0 fw-bold text-dark">Warranty Items</h6>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-bordered table-striped mb-0" id="warrantyTable">
+                    <thead class="bg-primary text-white">
+                        <tr>
+                            <th style="width: 50px;">#</th>
+                            <th>Item Name</th>
+                            <th style="width: 100px;">Years</th>
+                            <th style="width: 100px;">Months</th>
+                            <th style="width: 100px;">Days</th>
+                            <th style="width: 120px;">Total Days</th>
+                            <th style="width: 80px;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for w in warranty_items %}
+                        <tr>
+                            <td>{{ loop.index }}<input type="hidden" name="id[]" value="{{ w.id }}"></td>
+                            <td>
+                                <input type="text" class="form-control form-control-sm" name="name[]" value="{{ w.name }}" required list="itemList">
+                            </td>
+                            <td><input type="number" class="form-control form-control-sm" name="year[]" value="{{ w.yeas_ }}" min="0" oninput="calcDays(this)"></td>
+                            <td><input type="number" class="form-control form-control-sm" name="month[]" value="{{ w.month }}" min="0" oninput="calcDays(this)"></td>
+                            <td><input type="number" class="form-control form-control-sm" name="day[]" value="{{ w.date_ }}" min="0" oninput="calcDays(this)"></td>
+                            <td class="total-days fw-bold text-center">{{ (w.yeas_ * 365) + (w.month * 30) + w.date_ }}</td>
+                            <td>
+                                <!-- Delete not implemented in C# code, but good to have in UI structure -->
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <div class="p-3 bg-light border-top">
+                    <small class="text-muted fst-italic">{{ warranty_items|length }} items</small>
+                </div>
+            </div>
+        </div>
+
+        <!-- Validation Summary -->
+        <div id="validationPanel" class="alert alert-warning d-none" role="alert">
+            <h6 class="alert-heading fw-bold"><i class="fas fa-exclamation-triangle me-1"></i> Validation Issues</h6>
+            <div id="validationMessage"></div>
+        </div>
+
+        <!-- Footer Actions -->
+        <div class="card shadow-sm">
+            <div class="card-body d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-warning text-white fw-bold" onclick="validateData()"><i class="fas fa-check me-1"></i> Validate</button>
+                <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-save me-1"></i> Save</button>
+                <a href="/" class="btn btn-danger fw-bold"><i class="fas fa-times me-1"></i> Cancel</a>
+            </div>
+        </div>
+    </form>
+
+    <datalist id="itemList">
+        {% for item in items %}
+        <option value="{{ item.inventoy_name }}">
+        {% endfor %}
+    </datalist>
+</div>
+
+<script>
+    function calcDays(input) {
+        const row = input.closest('tr');
+        const year = parseInt(row.querySelector('[name="year[]"]').value) || 0;
+        const month = parseInt(row.querySelector('[name="month[]"]').value) || 0;
+        const day = parseInt(row.querySelector('[name="day[]"]').value) || 0;
+        const total = (year * 365) + (month * 30) + day;
+        row.querySelector('.total-days').textContent = total;
+    }
+
+    function addNewRow() {
+        const tbody = document.querySelector('#warrantyTable tbody');
+        const count = tbody.rows.length + 1;
+        const row = `
+            <tr>
+                <td>${count}<input type="hidden" name="id[]" value="0"></td>
+                <td><input type="text" class="form-control form-control-sm" name="name[]" required list="itemList"></td>
+                <td><input type="number" class="form-control form-control-sm" name="year[]" value="0" min="0" oninput="calcDays(this)"></td>
+                <td><input type="number" class="form-control form-control-sm" name="month[]" value="0" min="0" oninput="calcDays(this)"></td>
+                <td><input type="number" class="form-control form-control-sm" name="day[]" value="0" min="0" oninput="calcDays(this)"></td>
+                <td class="total-days fw-bold text-center">0</td>
+                <td><button type="button" class="btn btn-sm btn-danger py-0" onclick="this.closest('tr').remove()">x</button></td>
+            </tr>
+        `;
+        tbody.insertAdjacentHTML('beforeend', row);
+    }
+
+    function validateData() {
+        const rows = document.querySelectorAll('#warrantyTable tbody tr');
+        let errors = [];
+        rows.forEach((row, index) => {
+            const name = row.querySelector('[name="name[]"]').value;
+            if (!name) errors.push(`Row ${index + 1}: Item Name is required`);
+        });
+
+        const panel = document.getElementById('validationPanel');
+        const msg = document.getElementById('validationMessage');
+
+        if (errors.length > 0) {
+            panel.classList.remove('d-none');
+            panel.className = 'alert alert-warning';
+            msg.innerHTML = errors.join('<br>');
+        } else {
+            panel.classList.remove('d-none');
+            panel.className = 'alert alert-success';
+            msg.innerHTML = 'All data is valid! You can now save.';
+        }
+    }
+</script>
+{% endblock %}

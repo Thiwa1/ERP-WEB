@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 bg-primary text-white p-3 rounded">
+            <h4 class="mb-0 text-center fw-bold">INVENTORY TREND ANALYSIS & FORECASTING</h4>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <div class="card shadow-sm mb-4 bg-light">
+        <div class="card-body">
+            <form method="GET" action="{{ url_for('inventory_trend_analysis') }}" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold text-primary">Select Inventory Item:</label>
+                    <select class="form-select" name="item_name">
+                        <option value="">Select...</option>
+                        {% for item in items %}
+                        <option value="{{ item.inventoy_name }}" {% if selected_item == item.inventoy_name %}selected{% endif %}>{{ item.inventoy_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-primary">Analysis Period:</label>
+                    <select class="form-select" name="months">
+                        <option value="6" {% if months == 6 %}selected{% endif %}>6 Months</option>
+                        <option value="12" {% if months == 12 %}selected{% endif %}>12 Months</option>
+                        <option value="24" {% if months == 24 %}selected{% endif %}>24 Months</option>
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <button type="submit" class="btn btn-primary fw-bold px-4 me-2">Analyze Trends</button>
+                    <button type="button" class="btn btn-primary fw-bold px-4" onclick="alert('Forecast feature coming soon')">Generate Forecast</button>
+                </div>
+            </form>
+
+            {% if trend_data %}
+            <!-- Indicators -->
+            <div class="row mt-4 text-center">
+                <div class="col-md-4">
+                    <div class="p-2 rounded border border-success bg-success-subtle text-success fw-bold">
+                        Trend: {{ trend_direction }}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-2 rounded border border-primary bg-primary-subtle text-primary fw-bold">
+                        Slope: {{ slope }}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="p-2 rounded border border-warning bg-warning-subtle text-warning-emphasis fw-bold">
+                        Next Month Forecast: {{ next_month_forecast }}
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if trend_data %}
+    <!-- Data Grid -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body p-0">
+            <table class="table table-bordered table-striped mb-0">
+                <thead class="bg-secondary text-white">
+                    <tr>
+                        <th>Period</th>
+                        <th>Year</th>
+                        <th>Month</th>
+                        <th>Sales Quantity</th>
+                        <th>Moving Avg (3M)</th>
+                        <th>Trend Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in trend_data %}
+                    <tr>
+                        <td>{{ row.Period }}</td>
+                        <td>{{ row.Year }}</td>
+                        <td>{{ row.Month }}</td>
+                        <td>{{ row.SalesQuantity }}</td>
+                        <td>{{ row.MovingAverage }}</td>
+                        <td>{{ row.TrendValue }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <canvas id="trendChart" style="max-height: 400px;"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+        const ctx = document.getElementById('trendChart').getContext('2d');
+        const data = {{ trend_data | tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(row => row.Period),
+                datasets: [
+                    {
+                        label: 'Actual Sales',
+                        data: data.map(row => row.SalesQuantity),
+                        borderColor: 'steelblue',
+                        borderWidth: 3,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Trend Line',
+                        data: data.map(row => row.TrendValue),
+                        borderColor: 'forestgreen',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 0
+                    },
+                    {
+                        label: 'Moving Average',
+                        data: data.map(row => row.MovingAverage),
+                        borderColor: 'orangered',
+                        borderWidth: 2
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'right' }
+                },
+                scales: {
+                    y: { title: { display: true, text: 'Sales Quantity' } },
+                    x: { title: { display: true, text: 'Time Period' } }
+                }
+            }
+        });
+    </script>
+    {% else %}
+    <div class="card shadow-sm p-5 text-center text-muted">
+        Chart will appear here after analysis...
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
