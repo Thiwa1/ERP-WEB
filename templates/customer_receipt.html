@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-4 align-items-center">
+        <div class="col">
+            <h2><i class="fas fa-receipt text-primary me-2"></i>Customer Receipt</h2>
+        </div>
+        <div class="col-auto">
+            <span class="text-muted">Date: {{ today_date }}</span>
+        </div>
+    </div>
+
+    <form method="POST" action="/customer_receipt/submit" id="receiptForm">
+        <div class="row">
+            <!-- Left Column: Selection & Payment -->
+            <div class="col-md-4">
+                <!-- Customer Selection -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light fw-bold">Customer Selection</div>
+                    <div class="card-body">
+                        <label class="form-label">Select Customer</label>
+                        <select id="customerSelect" name="customer_id" class="form-select" onchange="loadOutstanding()" required>
+                            <option value="">-- Select --</option>
+                            {% for c in customers %}
+                            <option value="{{ c.id }}">{{ c.customer_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Payment Details -->
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-light fw-bold">Payment Details</div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Payment Date</label>
+                            <input type="date" name="payment_date" class="form-control" value="{{ today_date }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Account Type</label>
+                            <select id="accountType" name="account_type" class="form-select" onchange="toggleAccountType()" required>
+                                <option value="cash">Cash Account</option>
+                                <option value="bank">Bank Account</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3" id="cashAccountDiv">
+                            <label class="form-label">Cash Account</label>
+                            <select name="account_name" class="form-select" id="cashSelect">
+                                {% for acc in cash_accounts %}
+                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3 d-none" id="bankAccountDiv">
+                            <label class="form-label">Bank Account</label>
+                            <select name="account_name" class="form-select" id="bankSelect" disabled>
+                                {% for acc in bank_accounts %}
+                                <option value="{{ acc.bank_bookcol_account_number }}">{{ acc.bank_bookcol_account_number }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Narration</label>
+                            <textarea name="narration" class="form-control" rows="3"></textarea>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Totals -->
+                <div class="card bg-dark text-white mb-4">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between mb-2">
+                            <span>Total Outstanding:</span>
+                            <span id="totalOutstandingDisplay">0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <h4 class="mb-0">Total Receipt:</h4>
+                            <h4 class="mb-0 text-success" id="totalReceiptDisplay">0.00</h4>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-success w-100 fw-bold py-2 mb-4">
+                    <i class="fas fa-check-circle me-2"></i>Submit Receipt
+                </button>
+            </div>
+
+            <!-- Right Column: Invoices -->
+            <div class="col-md-8">
+                <div class="card shadow-sm h-100">
+                    <div class="card-header bg-light fw-bold d-flex justify-content-between align-items-center">
+                        <span>Outstanding Invoices</span>
+                        <small class="text-muted">Select invoices to pay</small>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0 align-middle">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Invoice No</th>
+                                        <th>Date</th>
+                                        <th>Due Date</th>
+                                        <th class="text-end">Amount</th>
+                                        <th class="text-end">Balance</th>
+                                        <th class="text-end" style="width: 150px;">Pay Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="invoiceTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center py-5 text-muted">Select a customer to view invoices.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    function toggleAccountType() {
+        const type = document.getElementById('accountType').value;
+        const cashDiv = document.getElementById('cashAccountDiv');
+        const bankDiv = document.getElementById('bankAccountDiv');
+        const cashSelect = document.getElementById('cashSelect');
+        const bankSelect = document.getElementById('bankSelect');
+
+        if (type === 'cash') {
+            cashDiv.classList.remove('d-none');
+            bankDiv.classList.add('d-none');
+            cashSelect.disabled = false;
+            bankSelect.disabled = true;
+        } else {
+            cashDiv.classList.add('d-none');
+            bankDiv.classList.remove('d-none');
+            cashSelect.disabled = true;
+            bankSelect.disabled = false;
+        }
+    }
+
+    function loadOutstanding() {
+        const customerId = document.getElementById('customerSelect').value;
+        const tbody = document.getElementById('invoiceTableBody');
+        const totalOutDisplay = document.getElementById('totalOutstandingDisplay');
+
+        if (!customerId) {
+            tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">Select a customer to view invoices.</td></tr>';
+            totalOutDisplay.textContent = '0.00';
+            updateTotal();
+            return;
+        }
+
+        fetch(`/customer_receipt/get_outstanding?customer_id=${customerId}`)
+            .then(res => res.json())
+            .then(data => {
+                tbody.innerHTML = '';
+                let totalOut = 0;
+
+                if (data.invoices.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-success"><i class="fas fa-check me-2"></i>No outstanding invoices.</td></tr>';
+                } else {
+                    data.invoices.forEach(inv => {
+                        totalOut += inv.balance;
+                        const row = `
+                            <tr>
+                                <td class="fw-bold">${inv.inv_no}</td>
+                                <td>${inv.date}</td>
+                                <td>${inv.due_date}</td>
+                                <td class="text-end">${inv.total.toFixed(2)}</td>
+                                <td class="text-end fw-bold text-danger">${inv.balance.toFixed(2)}</td>
+                                <td>
+                                    <input type="number" name="pay_${inv.id}" class="form-control text-end pay-input"
+                                           step="0.01" min="0" max="${inv.balance}" placeholder="0.00"
+                                           oninput="updateTotal()">
+                                </td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                }
+                totalOutDisplay.textContent = totalOut.toFixed(2);
+                updateTotal();
+            });
+    }
+
+    function updateTotal() {
+        const inputs = document.querySelectorAll('.pay-input');
+        let total = 0;
+        inputs.forEach(input => {
+            const val = parseFloat(input.value);
+            if (!isNaN(val)) total += val;
+        });
+        document.getElementById('totalReceiptDisplay').textContent = total.toFixed(2);
+    }
+</script>
+{% endblock %}

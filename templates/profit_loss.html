@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4 text-center">PROFIT & LOSS STATEMENT</h2>
+    <div class="text-center text-muted fst-italic mb-4">
+        For the period: {{ from_date }} to {{ to_date }}
+    </div>
+
+    <!-- Controls -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body bg-light">
+            <form method="GET" action="/profit_loss" class="row align-items-end g-3 justify-content-center">
+                <div class="col-auto">
+                    <label class="form-label fw-bold">From Date</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-bold">To Date</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary fw-bold px-4">Generate Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Report -->
+    <div class="card shadow-lg border-0">
+        <div class="card-body p-5">
+            <!-- Income Section -->
+            <h5 class="text-uppercase fw-bold border-bottom border-2 border-success pb-2 mb-3 text-success">Income</h5>
+
+            {% for category, accounts in income_data.items() %}
+                <h6 class="fw-bold text-secondary mt-3 ms-2">{{ category }}</h6>
+                <table class="table table-borderless table-sm ms-3 mb-0" style="width: 95%;">
+                    {% for acc in accounts %}
+                    <tr>
+                        <td>{{ acc.name }}</td>
+                        <td class="text-end" style="width: 150px;">{{ "{:,.2f}".format(acc.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% endfor %}
+
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span class="fw-bold">TOTAL INCOME</span>
+                <span class="fw-bold text-success">{{ "{:,.2f}".format(total_income) }}</span>
+            </div>
+
+            <!-- Expense Section -->
+            <h5 class="text-uppercase fw-bold border-bottom border-2 border-danger pb-2 mb-3 mt-5 text-danger">Expenses</h5>
+
+            {% for category, accounts in expense_data.items() %}
+                <h6 class="fw-bold text-secondary mt-3 ms-2">{{ category }}</h6>
+                <table class="table table-borderless table-sm ms-3 mb-0" style="width: 95%;">
+                    {% for acc in accounts %}
+                    <tr>
+                        <td>{{ acc.name }}</td>
+                        <td class="text-end" style="width: 150px;">{{ "{:,.2f}".format(acc.amount) }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            {% endfor %}
+
+            <div class="d-flex justify-content-between align-items-center mt-3 pt-2 border-top">
+                <span class="fw-bold">TOTAL EXPENSES</span>
+                <span class="fw-bold text-danger">{{ "{:,.2f}".format(total_expense) }}</span>
+            </div>
+
+            <!-- Net Profit -->
+            <div class="alert {% if net_profit >= 0 %}alert-success{% else %}alert-danger{% endif %} mt-5 mb-0 d-flex justify-content-between align-items-center shadow-sm">
+                <h4 class="mb-0 fw-bold">NET PROFIT / (LOSS)</h4>
+                <h4 class="mb-0 fw-bold">{{ "{:,.2f}".format(net_profit) }}</h4>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

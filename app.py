@@ -2099,6 +2099,105 @@ def pos_reversal_details():
 
     return {'details': details_text}
 
+@app.route('/pos_receipt/<int:jv_no>')
+@login_required
+def pos_receipt(jv_no):
+    # Fetch invoice items for this JV
+    query = """
+        SELECT
+            Invoice_No, ItemName, ItemMesurmet,
+            SllingPrice, ItemPriceComen, ItemLoyalityPrice,
+            Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
+            Loyalty_No, PaymentMethord, QuntirySale, Total_Value,
+            RecodeUserId, AcctionDate, CashAccountName
+        FROM pos_sales_invoice_01
+        WHERE jv = %s
+    """
+    rows = db.execute_query(query, (jv_no,))
+
+    if not rows:
+        return "Receipt not found", 404
+
+    items = []
+    total_sales = 0
+    total_savings = 0
+    original_total = 0
+
+    invoice_no = rows[0]['Invoice_No']
+    date_val = rows[0]['AcctionDate']
+    cashier = rows[0]['RecodeUserId']
+    loyalty_no = rows[0]['Loyalty_No']
+    payment_method = rows[0]['PaymentMethord']
+    is_loyalty = False
+
+    # Determine Customer Type logic from C#
+    # if(Loyality_No > 0) -> Loyality_costomer_Find = 1
+    # Check if loyalty number is valid (not 0, not -1, not empty)
+    if loyalty_no and str(loyalty_no) != "0" and str(loyalty_no) != "-1":
+        is_loyalty = True
+
+    for r in rows:
+        qty = float(r['QuntirySale'])
+        selling_price = float(r['SllingPrice'] or 0)
+        special_price = float(r['ItemPriceComen'] or 0)
+        loyalty_price = float(r['ItemLoyalityPrice'] or 0)
+
+        # Calculate Active Price
+        active_price = selling_price # Default
+
+        if is_loyalty and r['Loyalty_Price_Active'] == 1:
+            active_price = loyalty_price
+        elif r['Sales_with_Special_price_Active'] == 1:
+            active_price = special_price
+        elif r['Sales_with_market_price_Active'] == 1:
+            active_price = selling_price
+
+        # Savings Calculation
+        # If Special Active: Saving = Selling - Special
+        # If Loyalty Active: Saving = Selling - Loyalty
+        saving_per_unit = 0
+        if r['Sales_with_Special_price_Active'] == 1 and not is_loyalty:
+            saving_per_unit = selling_price - special_price
+        elif r['Loyalty_Price_Active'] == 1 and is_loyalty:
+            saving_per_unit = selling_price - loyalty_price
+
+        # Add to lists
+        line_total = active_price * qty
+        line_saving = saving_per_unit * qty
+        line_original = selling_price * qty
+
+        total_sales += line_total
+        total_savings += line_saving
+        original_total += line_original
+
+        items.append({
+            'name': r['ItemName'],
+            'qty': qty,
+            'unit': r['ItemMesurmet'],
+            'price': active_price,
+            'total': line_total,
+            'saving': line_saving
+        })
+
+    # Payment Method Text
+    pm_text = "CASH"
+    if payment_method == 2: pm_text = "CARD"
+
+    return render_template('pos_receipt.html',
+                           items=items,
+                           invoice_no=invoice_no,
+                           date=date_val,
+                           cashier=cashier,
+                           is_loyalty=is_loyalty,
+                           loyalty_no=loyalty_no,
+                           totals={
+                               'subtotal': total_sales,
+                               'savings': total_savings,
+                               'original': original_total,
+                               'final': total_sales
+                           },
+                           payment_method=pm_text)
+
 @app.route('/pos_reversal/process', methods=['POST'])
 @login_required
 def pos_reversal_process():
@@ -2386,6 +2485,466 @@ def get_reversal_details():
         text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
 
     return {'details': text}
+
+# --- Customer Receipt (Accounts Receivable) ---
+@app.route('/customer_receipt')
+@login_required
+def customer_receipt():
+    # Fetch customers with outstanding balances
+    # We look at `invoice_oustanding` table
+    query = """
+        SELECT DISTINCT c.id, c.customer_name
+        FROM customer c
+        JOIN invoice_oustanding io ON c.id = io.invoice_buinding_Customer
+        WHERE io.Invoice_Oustanding > 0
+    """
+    customers = db.execute_query(query)
+    cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
+    bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
+
+    return render_template('customer_receipt.html',
+                           customers=customers,
+                           cash_accounts=cash_accounts,
+                           bank_accounts=bank_accounts,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/customer_receipt/get_outstanding')
+@login_required
+def get_customer_outstanding():
+    customer_id = request.args.get('customer_id')
+    if not customer_id: return {'error': 'No customer ID'}, 400
+
+    query = """
+        SELECT
+            Id, invoice_number, invoice_date, invoice_final_date,
+            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding
+        FROM invoice_oustanding
+        WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
+        ORDER BY invoice_date
+    """
+    rows = db.execute_query(query, (customer_id,))
+
+    # Format for JSON
+    data = []
+    for r in rows:
+        data.append({
+            'id': r['Id'],
+            'inv_no': r['invoice_number'],
+            'date': str(r['invoice_date']),
+            'due_date': str(r['invoice_final_date']),
+            'total': float(r['invoice_total_oustanding']),
+            'paid': float(r['invoice_oustanding_Patment']),
+            'balance': float(r['Invoice_Oustanding'])
+        })
+
+    return {'invoices': data}
+
+@app.route('/customer_receipt/submit', methods=['POST'])
+@login_required
+def submit_customer_receipt():
+    customer_id = request.form.get('customer_id')
+    account_type = request.form.get('account_type') # 'cash' or 'bank'
+    account_name = request.form.get('account_name')
+    payment_date = request.form.get('payment_date')
+    narration = request.form.get('narration')
+
+    if not customer_id or not account_name:
+        flash('Missing required fields', 'danger')
+        return redirect(url_for('customer_receipt'))
+
+    # Get payments
+    payments = []
+    total_receipt = 0
+
+    # Iterate form keys to find 'pay_{id}'
+    for key in request.form:
+        if key.startswith('pay_') and request.form[key]:
+            inv_id = key.split('_')[1]
+            try:
+                amount = float(request.form[key])
+                if amount > 0:
+                    payments.append({'id': inv_id, 'amount': amount})
+                    total_receipt += amount
+            except:
+                pass
+
+    if total_receipt <= 0:
+        flash('No payment amount entered', 'warning')
+        return redirect(url_for('customer_receipt'))
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Update Invoice Outstanding (Settle)
+        for p in payments:
+            # Get current payment to update
+            cursor.execute("SELECT invoice_oustanding_Patment FROM invoice_oustanding WHERE Id = %s", (p['id'],))
+            res = cursor.fetchone()
+            if res:
+                current_paid = float(res[0])
+                new_paid = current_paid + p['amount']
+                cursor.execute("UPDATE invoice_oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", (new_paid, p['id']))
+
+        # 2. Generate Receipt No
+        if account_type == 'cash':
+            cursor.execute("SELECT MAX(reciept_no) FROM cash_recipt WHERE likn = %s", (account_name,))
+            res = cursor.fetchone()
+            receipt_no = (res[0] if res and res[0] else 0) + 1
+            cursor.execute("INSERT INTO cash_recipt (likn, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
+        else:
+            # Bank Receipt logic
+            cursor.execute("SELECT MAX(reciept_no) FROM bank_ecipt WHERE link = %s", (account_name,))
+            res = cursor.fetchone()
+            receipt_no = (res[0] if res and res[0] else 0) + 1
+            cursor.execute("INSERT INTO bank_ecipt (link, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
+
+        # 3. Create JV
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM RECEIPT', narration))
+        jv_no = cursor.lastrowid
+
+        # 4. GL Entries
+        # Debit Cash/Bank
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (account_name, total_receipt, payment_date, date.today(), narration, current_user, jv_no))
+
+        # Credit Accounts Receivable
+        # Need sub account code for customer if possible, usually stored in `sub_accont_for_new_account`
+        # But simple version: just credit AR control account
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('Account Receivable', total_receipt, payment_date, date.today(), narration, current_user, jv_no))
+
+        # 5. Record Transaction (Cash/Bank Book)
+        # Using `cash_book_recode` for cash receipts or `bank_book_recod` ??
+        # The schema has `cash_book_recode` with `cash_book_recode_dr` (receipt)
+
+        # Get customer name
+        cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
+        cust_name = cursor.fetchone()[0]
+
+        if account_type == 'cash':
+            # Create a record per invoice payment or summary?
+            # `Recipt.xaml.cs` does foreach item in Accont_collections
+            for p in payments:
+                 cursor.execute("""
+                    INSERT INTO cash_book_recode (
+                        cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
+                        cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
+                        cash_book_recode_suplier_name, jv_numbers_jv_id,
+                        cash_book_recod_voucher_no, User_Enter, Payment_Date
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+        else:
+            # Bank Recode
+            for p in payments:
+                cursor.execute("""
+                    INSERT INTO bank_book_recod (
+                        bank_book_book_recode_dr, bank_book__recode_cr, bank_book__accont_name,
+                        bank_book__naration, bank_book__suplier_oustanding_id,
+                        bank_book__suplier_name, jv_numbers_jv_id,
+                        bank_book_recod_voucher_no, Bank_User_Id, Bank_Payment_Date
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+
+        conn.commit()
+        flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error processing receipt: {str(e)}', 'danger')
+        print(e)
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('customer_receipt'))
+
+# --- Profit & Loss Report ---
+@app.route('/profit_loss')
+@login_required
+def profit_loss():
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+
+    # Using `new_account_table` structure where P&L Category is stored in `account_name_of_catogory_PL`
+    # Fetch all Income and Expense accounts with their balances in the period
+    query = """
+        SELECT
+            na.account_name,
+            na.account_name_of_catogory_PL as category,
+            na.account_income,
+            na.account_expenses,
+            COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
+            COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
+        FROM new_account_table na
+        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0
+        WHERE (na.account_income = 1 OR na.account_expenses = 1)
+        GROUP BY na.account_name, na.account_name_of_catogory_PL, na.account_income, na.account_expenses
+        ORDER BY na.account_hold_possion_PL, na.account_name
+    """
+    rows = db.execute_query(query, (from_date, to_date))
+
+    # Process Data
+    income_data = {}
+    expense_data = {}
+    total_income = 0
+    total_expense = 0
+
+    for r in rows:
+        balance = 0
+        # Calculate balance based on type (Income = CR - DR, Expense = DR - CR)
+        if r['account_income'] == 1:
+            balance = float(r['total_cr']) - float(r['total_dr'])
+            if balance != 0:
+                cat = r['category'] or "Other Income"
+                if cat not in income_data: income_data[cat] = []
+                income_data[cat].append({'name': r['account_name'], 'amount': balance})
+                total_income += balance
+        elif r['account_expenses'] == 1:
+            balance = float(r['total_dr']) - float(r['total_cr'])
+            if balance != 0:
+                cat = r['category'] or "Operating Expenses"
+                if cat not in expense_data: expense_data[cat] = []
+                expense_data[cat].append({'name': r['account_name'], 'amount': balance})
+                total_expense += balance
+
+    net_profit = total_income - total_expense
+
+    return render_template('profit_loss.html',
+                           from_date=from_date,
+                           to_date=to_date,
+                           income_data=income_data,
+                           expense_data=expense_data,
+                           total_income=total_income,
+                           total_expense=total_expense,
+                           net_profit=net_profit)
+
+# --- POS Settings ---
+@app.route('/pos_settings', methods=['GET', 'POST'])
+@login_required
+def pos_settings():
+    if request.method == 'POST':
+        # General Settings
+        location = request.form.get('location')
+        card_ac = request.form.get('card_ac')
+        cash_ac = request.form.get('cash_ac')
+
+        # Pricing Settings
+        market_price = 1 if request.form.get('market_price') else 0
+        special_price = 1 if request.form.get('special_price') else 0
+        loyalty_price = 1 if request.form.get('loyalty_price') else 0
+        vat_enable = 1 if request.form.get('vat_enable') else 0
+
+        # Messages
+        footer = request.form.get('footer_msg')
+        top = request.form.get('top_msg')
+
+        # Image Handling (Optional - simplified)
+        # Assuming we just keep existing if not provided or handle separately
+        # For simplicity, we update text fields first.
+
+        # Update Query
+        # Assuming single row or specific ID. C# uses `id` variable.
+        # We'll update the first row or specific user's row if multiple.
+        # Ideally, fetch ID first.
+
+        try:
+            # Check if settings exist, else insert (though setup usually assumes existing)
+            # We'll assume ID=1 for global settings or user specific.
+            # C# logic seemed to fetch based on Username then update by ID.
+            # Let's update all for now or specific user.
+
+            username = session.get('username')
+            db.execute_query("""
+                UPDATE pose_setting_table SET
+                    Select_Inventry_Location=%s, Card_Control_AC=%s, Cash_Account=%s,
+                    Sales_with_market_price=%s, Sales_with_Special_price=%s, Loyalty_Price=%s, VAT_Enable=%s,
+                    Footer_Message=%s, Top_Message=%s
+                WHERE User_Name=%s
+            """, (location, card_ac, cash_ac, market_price, special_price, loyalty_price, vat_enable, footer, top, username), commit=True)
+
+            flash('POS Settings updated successfully.', 'success')
+        except Exception as e:
+            flash(f'Error updating settings: {str(e)}', 'danger')
+
+        return redirect(url_for('pos_settings'))
+
+    # GET
+    username = session.get('username')
+    settings = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+    current_settings = settings[0] if settings else {}
+
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
+    accounts = db.execute_query("SELECT account_name FROM new_account_table") # For Card/Cash selection
+
+    return render_template('pos_settings.html',
+                           settings=current_settings,
+                           locations=locations,
+                           accounts=accounts)
+
+# --- Point of Sale (POS) ---
+@app.route('/pos', methods=['GET', 'POST'])
+@login_required
+def pos():
+    if request.method == 'GET':
+        # Fetch data for POS UI
+        username = session.get('username')
+
+        # Settings
+        settings_res = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        settings = settings_res[0] if settings_res else {}
+
+        # Items
+        items = db.execute_query("SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items WHERE active = 1")
+
+        # Customers
+        customers = db.execute_query("SELECT customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL")
+
+        return render_template('pos.html', items=items, customers=customers, settings=settings)
+
+@app.route('/pos/get_item_details')
+@login_required
+def get_pos_item_details():
+    code = request.args.get('code')
+
+    # Get Item Details + Price
+    # Joined with price record
+    query = """
+        SELECT
+            i.id, i.inventoy_name, i.inventoy_code, i.inventoy_items_messurment_unit,
+            p.inventory_price_selling, p.inventory_price_profit_marging_comen,
+            p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
+        FROM inventoy_items i
+        LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        WHERE i.inventoy_code = %s
+    """
+    rows = db.execute_query(query, (code,))
+
+    if rows:
+        r = rows[0]
+        return {
+            'id': r['id'],
+            'name': r['inventoy_name'],
+            'unit': r['inventoy_items_messurment_unit'],
+            'price_market': float(r['inventory_price_selling'] or 0),
+            'price_special': float(r['inventory_price_profit_marging_comen'] or 0),
+            'price_loyalty': float(r['inventory_price_for_Loyality_customer'] or 0),
+            'cost': float(r['inventory_price_purcharsing'] or 0)
+        }
+    return {'error': 'Item not found'}, 404
+
+@app.route('/pos/submit_sale', methods=['POST'])
+@login_required
+def submit_pos_sale():
+    data = request.json
+    cart = data.get('cart', [])
+    payment = data.get('payment', {})
+    customer = data.get('customer', {})
+    settings = data.get('settings', {})
+
+    if not cart: return {'error': 'Cart is empty'}, 400
+
+    current_user = get_current_user_id()
+    today_date = date.today()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Generate Invoice No
+        cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
+        last_id = cursor.lastrowid
+        invoice_no = f"{today_date.year}POS-{last_id}"
+        cursor.execute("UPDATE pos_invoice_no SET IV_No = %s WHERE Id = %s", (invoice_no, last_id))
+
+        # 2. Create JV
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM POS', f"POS Sale {invoice_no}"))
+        jv_no = cursor.lastrowid
+
+        total_sale_value = 0
+        total_cost_value = 0
+
+        # 3. Process Cart Items
+        for item in cart:
+            total_sale_value += item['total']
+            total_cost_value += (item['cost'] * item['qty'])
+
+            # Insert into pos_sales_invoice_01
+            cursor.execute("""
+                INSERT INTO pos_sales_invoice_01 (
+                    ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
+                    Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
+                    RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
+                    CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+            """, (
+                item['code'], item['name'], item['unit'],
+                item['price_market'], item['price_special'], item['price_loyalty'],
+                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+                current_user, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            ))
+
+            # Inventory Movement OUT
+            cursor.execute("""
+                INSERT INTO inventory_recod (
+                    inventoy_name, inventoy_code, inventory_recod_action_date,
+                    inventory_recod_moument_in, inventory_recod_movment_out,
+                    inventory_recod_mesrmet, inventory_recod_unit_price,
+                    inventory_recod_account, inventory_recod_user_id, JV_No,
+                    inventory_recod_location
+                ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+            """, (
+                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+                current_user, jv_no, settings.get('location')
+            ))
+
+        # 4. GL Entries
+        # Debit Cash/Bank
+        ac_name = settings.get('cash_ac') if payment.get('method') == 1 else settings.get('bank_ac')
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+
+        # Credit Sales Account
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('Sales', total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+
+        # Cost of Goods Sold (DR COGS, CR Inventory) - Simplified, usually periodic or perpetual
+        # Assuming perpetual as per C# logic in reversals which touches Inventory Reversal
+
+        conn.commit()
+        return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
+
+    except Exception as e:
+        conn.rollback()
+        print(e)
+        return {'error': str(e)}, 500
+    finally:
+        cursor.close()
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
