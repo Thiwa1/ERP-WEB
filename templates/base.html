@@ -10,17 +10,20 @@
     <style>
         :root {
             --sidebar-width: 260px;
-            --primary-color: #1e293b; /* Dark Slate Blue - Professional */
-            --secondary-color: #334155;
-            --accent-color: #3b82f6; /* Modern Blue */
+            --primary-color: #0f172a; /* Deep Navy - More Professional */
+            --secondary-color: #1e293b;
+            --accent-color: #2563eb; /* Stronger Blue */
             --text-light: #f8fafc;
-            --bg-light: #f1f5f9;
-            --text-muted: #94a3b8; /* Professional muted text */
+            --bg-light: #f8fafc; /* Clean White/Gray, less blue tint */
+            --text-muted: #94a3b8;
+            --header-bg: #ffffff;
+            --card-border: #e2e8f0;
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: var(--bg-light);
+            background-color: #f1f5f9; /* Slate 100 - Professional Neutral */
+            color: #334155; /* Dark Slate text for high contrast */
             overflow-x: hidden;
         }
 
@@ -244,6 +247,7 @@
                 <!-- Inventory -->
                 <div class="menu-category">Inventory</div>
                 <a href="/grn" class="nav-link"><i class="fas fa-boxes"></i> GRN</a>
+                <a href="/purchase_orders" class="nav-link"><i class="fas fa-file-invoice"></i> PO Generator</a>
                 <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
 
                 <!-- Reports -->

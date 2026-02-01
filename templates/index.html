@@ -36,7 +36,7 @@
     .tile {
         background: #fff;
         border: 1px solid #e2e8f0;
-        border-radius: 10px;
+        border-radius: 8px; /* Slightly sharper corners */
         padding: 15px;
         text-align: center;
         transition: all 0.2s ease-in-out;
@@ -48,30 +48,31 @@
         min-height: 100px;
         position: relative;
         overflow: hidden;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Subtle shadow by default */
     }
 
     .tile:hover {
-        background: #f8fafc;
-        transform: translateY(-3px);
-        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
-        border-color: #cbd5e1;
+        background: #ffffff;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
+        border-color: #94a3b8;
     }
 
     .tile i {
         font-size: 1.5rem;
         margin-bottom: 10px;
-        color: #475569; /* Darker Slate Gray */
+        color: #334155; /* Dark Slate - High Contrast */
         transition: color 0.2s;
     }
 
     .tile:hover i {
-        color: #2563eb; /* Primary Blue on Hover */
+        color: #0f172a; /* Even darker on hover */
     }
 
     .tile span {
         font-size: 0.8rem;
         font-weight: 600;
-        color: #334155;
+        color: #1e293b; /* Very dark blue-gray */
         line-height: 1.25;
     }
 
@@ -83,12 +84,15 @@
 
     /* Highlight Tile Style */
     .tile.tile-highlight {
-        background: linear-gradient(135deg, #3b82f6, #2563eb);
-        border: none;
+        background: #0f172a; /* Professional Dark Navy */
+        border: 1px solid #0f172a;
     }
     .tile.tile-highlight i,
     .tile.tile-highlight span {
-        color: white;
+        color: #f8fafc;
+    }
+    .tile.tile-highlight:hover {
+        background: #1e293b;
     }
 
     /* Dashboard specific layout tweaks */
