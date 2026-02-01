@@ -2698,7 +2698,7 @@ def profit_loss():
             AND ed.entry_effective_date BETWEEN %s AND %s
             AND ed.entry_deleted = 0
         WHERE (na.account_income = 1 OR na.account_expenses = 1)
-        GROUP BY na.account_name, na.account_name_of_catogory_PL, na.account_income, na.account_expenses
+        GROUP BY na.account_name, na.account_name_of_catogory_PL, na.account_income, na.account_expenses, na.account_hold_possion_PL
         ORDER BY na.account_hold_possion_PL, na.account_name
     """
     rows = db.execute_query(query, (from_date, to_date))
