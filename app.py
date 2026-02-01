@@ -35,6 +35,38 @@ def login_required(f):
 def get_current_user_id():
     return session.get('user_id', 0)
 
+def check_permission(perm_name):
+    """Checks if current user has specific permission."""
+    user_pk = session.get('user_pk')
+    if not user_pk: return False
+
+    try:
+        # Check if column exists first to avoid errors during migration or if checking invalid perm
+        # But simpler to just try-except.
+        # Note: We assume schema is migrated.
+        query = f"SELECT {perm_name} FROM User_Rights WHERE Link_To_Loging_Tabke = %s"
+        res = db.execute_query(query, (user_pk,))
+        if res and res[0].get(perm_name) == 1:
+            return True
+    except Exception as e:
+        print(f"Permission check error: {e}")
+        return False
+    return False
+
+def has_permission(perm):
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+
+            if not check_permission(perm):
+                flash(f'Access Denied: Required permission {perm}', 'danger')
+                return redirect(url_for('index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -309,6 +341,7 @@ def add_salutation_ajax():
 # --- Inventory Category Management ---
 @app.route('/inventory_category')
 @login_required
+@has_permission('Access_Inventory')
 def inventory_category():
     main_cats = db.execute_query("SELECT * FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != ''")
     sub_cats = db.execute_query("SELECT * FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != ''")
@@ -353,6 +386,7 @@ def toggle_sub_category():
 # --- GRN (Goods Received Note) Management ---
 @app.route('/grn', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Inventory')
 def grn():
     if request.method == 'POST':
         try:
@@ -480,6 +514,7 @@ def grn():
 # --- Inventory Locations ---
 @app.route('/inventory_locations', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Inventory')
 def inventory_locations():
     if request.method == 'POST':
         name = request.form.get('house_name')
@@ -495,6 +530,7 @@ def inventory_locations():
 # --- Cash Flow Categories ---
 @app.route('/cash_flow_categories', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Accounting')
 def cash_flow_categories():
     if request.method == 'POST':
         name = request.form.get('category_name')
@@ -518,6 +554,7 @@ def delete_cash_flow_category():
 # --- Chart of Accounts ---
 @app.route('/chart_of_accounts')
 @login_required
+@has_permission('Access_Accounting')
 def chart_of_accounts():
     accounts = db.execute_query("SELECT * FROM new_account_table WHERE account_active = 1")
     pl_count = len([a for a in accounts if a['account_name_of_catogory_PL']])
@@ -527,6 +564,7 @@ def chart_of_accounts():
 # --- Add New Account ---
 @app.route('/add_new_account', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Accounting')
 def add_new_account():
     if request.method == 'POST':
         action = request.form.get('action')
@@ -627,6 +665,7 @@ def add_new_account():
 # --- Create Cash/Bank Account ---
 @app.route('/create_cash_account', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Accounting')
 def create_cash_account():
     if request.method == 'POST':
         acc_no = request.form.get('account_number')
@@ -654,6 +693,7 @@ def create_cash_account():
 # --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_Accounting')
 def control_panel():
     # 1. Handle Warranty Settings
     if request.method == 'POST':
@@ -747,6 +787,7 @@ def control_panel_update():
 # --- Company Profile ---
 @app.route('/company_profile', methods=['GET', 'POST'])
 @login_required
+@has_permission('Add_New_User')
 def company_profile():
     if request.method == 'POST':
         import base64
@@ -828,6 +869,7 @@ def company_profile():
 # --- Bank Payment Module ---
 @app.route('/bank_payment', methods=['GET'])
 @login_required
+@has_permission('Access_Accounting')
 def bank_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
@@ -836,6 +878,7 @@ def bank_payment():
 # --- Cash Payment Module ---
 @app.route('/cash_payment', methods=['GET'])
 @login_required
+@has_permission('Access_Accounting')
 def cash_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
@@ -1053,6 +1096,7 @@ def print_cash_voucher(jv_no):
 # --- Purchase Orders ---
 @app.route('/purchase_orders', methods=['GET'])
 @login_required
+@has_permission('Access_Inventory')
 def purchase_orders():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1")
     items = db.execute_query("""
@@ -1192,6 +1236,7 @@ def list_purchase_orders():
 
 @app.route('/purchase_orders/approve', methods=['POST'])
 @login_required
+@has_permission('OP_Approved')
 def approve_purchase_order():
     po_id = request.form.get('id')
     current_user = get_current_user_id()
@@ -1243,12 +1288,14 @@ def print_purchase_order(po_id):
 # --- Admin Panel & User Management ---
 @app.route('/admin/users', methods=['GET'])
 @login_required
+@has_permission('Add_New_User')
 def admin_users():
     users = db.execute_query("SELECT * FROM Login_Table")
     return render_template('admin_panel.html', users=users)
 
 @app.route('/admin/users/add', methods=['POST'])
 @login_required
+@has_permission('Add_New_User')
 def add_new_user():
     username = request.form.get('username')
     password = request.form.get('password')
@@ -1301,8 +1348,45 @@ def add_new_user():
 
     return redirect(url_for('admin_users'))
 
+@app.route('/admin/users/details/<int:user_id>', methods=['GET'])
+@login_required
+@has_permission('Add_New_User')
+def get_user_details(user_id):
+    users = db.execute_query("SELECT id, User_Name, Password, Mobile_No, Email, User_Active FROM Login_Table WHERE id = %s", (user_id,))
+    if users:
+        return json.dumps(users[0])
+    return json.dumps({'error': 'User not found'})
+
+@app.route('/admin/users/update_details', methods=['POST'])
+@login_required
+@has_permission('Add_New_User')
+def update_user_details():
+    user_id = request.form.get('user_id')
+    username = request.form.get('username')
+    password = request.form.get('password')
+    mobile = request.form.get('mobile')
+    email = request.form.get('email')
+    active = 1 if request.form.get('active') else 0
+
+    if not user_id or not username:
+        flash('Username is required', 'danger')
+        return redirect(url_for('admin_users'))
+
+    try:
+        db.execute_query("""
+            UPDATE Login_Table
+            SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
+            WHERE id = %s
+        """, (username, password, mobile, email, active, user_id), commit=True)
+        flash('User details updated successfully', 'success')
+    except Exception as e:
+        flash(f'Error updating user: {str(e)}', 'danger')
+
+    return redirect(url_for('admin_users'))
+
 @app.route('/admin/users/rights/<int:user_id>', methods=['GET'])
 @login_required
+@has_permission('Add_New_User')
 def get_user_rights(user_id):
     rights = db.execute_query("SELECT * FROM User_Rights WHERE Link_To_Loging_Tabke = %s", (user_id,))
     if rights:
@@ -1311,6 +1395,7 @@ def get_user_rights(user_id):
 
 @app.route('/admin/users/rights/update', methods=['POST'])
 @login_required
+@has_permission('Add_New_User')
 def update_user_rights():
     user_id = request.form.get('user_id')
     if not user_id: return {'error': 'No User ID'}, 400
@@ -1381,6 +1466,7 @@ def add_new_job():
 # --- Warranty Period Management ---
 @app.route('/warranty_period', methods=['GET'])
 @login_required
+@has_permission('Access_Inventory')
 def warranty_period():
     item_name = request.args.get('item_name')
 
@@ -1442,6 +1528,7 @@ def warranty_save():
 # --- Inventory Trend Analysis ---
 @app.route('/inventory_trend_analysis', methods=['GET'])
 @login_required
+@has_permission('Access_Inventory')
 def inventory_trend_analysis():
     item_name = request.args.get('item_name')
     months_back = int(request.args.get('months', 6))
@@ -1754,6 +1841,7 @@ def customer_loyalty():
 # --- Direct Purchasing ---
 @app.route('/direct_purchasing', methods=['GET'])
 @login_required
+@has_permission('Access_Accounting')
 def direct_purchasing():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
@@ -1907,6 +1995,7 @@ def direct_purchasing_submit():
 # --- Inventory Price Editing ---
 @app.route('/inventory_price_editing', methods=['GET'])
 @login_required
+@has_permission('Access_Inventory')
 def inventory_price_editing():
     search = request.args.get('search', '')
     query = """
@@ -1960,6 +2049,7 @@ def update_inventory_prices():
 # --- Balance Sheet ---
 @app.route('/balance_sheet')
 @login_required
+@has_permission('Access_Reports')
 def balance_sheet():
     as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
 
@@ -2070,6 +2160,7 @@ def balance_sheet():
 # --- Cash Flow ---
 @app.route('/cash_flow')
 @login_required
+@has_permission('Access_Reports')
 def cash_flow():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
@@ -2148,6 +2239,7 @@ def cash_flow():
 # --- Inventory Reports ---
 @app.route('/inventory_reports')
 @login_required
+@has_permission('Access_Reports')
 def inventory_reports():
     report_type = request.args.get('report_type', 'balance')
     item_name = request.args.get('item_name')
@@ -2285,6 +2377,7 @@ def process_reconciliation():
 # --- Trial Balance ---
 @app.route('/trial_balance')
 @login_required
+@has_permission('Access_Reports')
 def trial_balance():
     as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
     download = request.args.get('download')
@@ -2345,6 +2438,7 @@ def trial_balance():
 # --- Supplier Aging Report ---
 @app.route('/supplier_aging')
 @login_required
+@has_permission('Access_Reports')
 def supplier_aging():
     selected_supplier = request.args.get('supplier_id')
     download = request.args.get('download')
@@ -2464,6 +2558,7 @@ def supplier_aging():
 # --- Sales Summary Report (Cashier Wise) ---
 @app.route('/sales_summary_cashier')
 @login_required
+@has_permission('Access_Reports')
 def sales_summary_cashier():
     selected_date = request.args.get('date', date.today().strftime('%Y-%m-%d'))
     filter_type = request.args.get('filter', 'current')
@@ -2592,6 +2687,7 @@ def sales_summary_cashier():
 # --- POS Reversal ---
 @app.route('/pos_reversal')
 @login_required
+@has_permission('Access_Reversals')
 def pos_reversal():
     current_cashier_id = get_current_user_id()
     current_date = date.today().strftime('%Y-%m-%d')
@@ -2781,6 +2877,7 @@ def pos_reversal_process():
 # --- Bank Payment Reversal ---
 @app.route('/bank_payment_reversal')
 @login_required
+@has_permission('Access_Reversals')
 def bank_payment_reversal():
     # Fetch recent Bank Payments (limit to 50 for performance)
     # Using `bank_book_recod` joined with `jv_numbers` to get JV
@@ -2887,6 +2984,7 @@ def bank_payment_reversal_process():
 # --- Cash Payment Reversal (Supplier) ---
 @app.route('/cash_payment_reversal')
 @login_required
+@has_permission('Access_Reversals')
 def cash_payment_reversal():
     # Fetch recent Cash Payments (from cash_book_recode)
     # Filter where suplier_name is NOT NULL (Supplier Payments)
@@ -2948,6 +3046,7 @@ def cash_payment_reversal_process():
 # --- Direct Payment Reversal (Inventory) ---
 @app.route('/direct_payment_reversal')
 @login_required
+@has_permission('Access_Reversals')
 def direct_payment_reversal():
     # Fetch recent Direct Payments (Inventory related)
     # These usually have inventory records attached or narration implies direct purchase
@@ -3033,6 +3132,7 @@ def get_reversal_details():
 # --- Customer Receipt (Accounts Receivable) ---
 @app.route('/customer_receipt')
 @login_required
+@has_permission('Access_Accounting')
 def customer_receipt():
     # Fetch customers with outstanding balances
     # We look at `invoice_oustanding` table
@@ -3217,6 +3317,7 @@ def submit_customer_receipt():
 # --- Profit & Loss Report ---
 @app.route('/profit_loss')
 @login_required
+@has_permission('Access_Reports')
 def profit_loss():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
@@ -3279,6 +3380,7 @@ def profit_loss():
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_POS')
 def pos_settings():
     if request.method == 'POST':
         # General Settings
@@ -3342,6 +3444,7 @@ def pos_settings():
 # --- Point of Sale (POS) ---
 @app.route('/pos', methods=['GET', 'POST'])
 @login_required
+@has_permission('Access_POS')
 def pos():
     if request.method == 'GET':
         # Fetch data for POS UI

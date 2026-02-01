@@ -85,11 +85,19 @@
                 </div>
             </div>
 
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" style="display:none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.8); z-index: 2000; align-items: center; justify-content: center; flex-direction: column;">
+                <div class="spinner-border text-primary" role="status" style="width: 3rem; height: 3rem;"></div>
+                <div class="mt-2 fw-bold text-primary" id="loadingText">Processing...</div>
+            </div>
+
             <!-- RIGHT COLUMN (Bottom): Access Control -->
             <div class="card shadow-sm border-0" id="rightsPanel" style="display:none;">
                 <div class="card-header bg-white border-bottom-0 fw-bold d-flex justify-content-between align-items-center" style="color: var(--primary-color);">
                     <span><i class="fas fa-key me-2"></i> Access Rights for: <span id="selectedUserName" class="text-primary"></span></span>
-                    <button class="btn btn-sm btn-success" onclick="saveRights()">Save Changes</button>
+                    <button class="btn btn-sm btn-success" onclick="saveRights()">
+                        <i class="fas fa-save me-1"></i> Save Changes
+                    </button>
                 </div>
                 <div class="card-body">
                     <form id="rightsForm">
@@ -171,20 +179,63 @@
             });
     }
 
+    function showLoading(text) {
+        document.getElementById('loadingText').innerText = text;
+        document.getElementById('loadingOverlay').style.display = 'flex';
+    }
+
+    function hideLoading() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+    }
+
     function saveRights() {
         const form = document.getElementById('rightsForm');
         const formData = new FormData(form);
+
+        showLoading('Updating Permissions...');
 
         fetch('/admin/users/rights/update', {
             method: 'POST',
             body: formData
         }).then(r => r.json()).then(res => {
+            hideLoading();
             if(res.success) {
                 alert('Permissions updated successfully');
             } else {
                 alert('Error updating permissions');
             }
+        }).catch(err => {
+            hideLoading();
+            alert('System Error');
         });
+    }
+
+    function editUser(userId) {
+        // Prevent row click event
+        event.stopPropagation();
+
+        showLoading('Fetching User Details...');
+
+        fetch(`/admin/users/details/${userId}`)
+            .then(r => r.json())
+            .then(user => {
+                hideLoading();
+                if(user.error) {
+                    alert(user.error);
+                    return;
+                }
+
+                // Populate Modal
+                document.getElementById('editUserId').value = user.id;
+                document.getElementById('editUsername').value = user.User_Name;
+                document.getElementById('editPassword').value = user.Password; // Plain text per legacy
+                document.getElementById('editMobile').value = user.Mobile_No;
+                document.getElementById('editEmail').value = user.Email;
+                document.getElementById('editActive').checked = user.User_Active == 1;
+
+                const modal = new bootstrap.Modal(document.getElementById('editUserModal'));
+                modal.show();
+            });
     }
 
     // Highlight selected row
@@ -195,4 +246,44 @@
         });
     });
 </script>
+
+<!-- Edit User Modal -->
+<div class="modal fade" id="editUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">Edit User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editUserForm" action="/admin/users/update_details" method="POST">
+                    <input type="hidden" name="user_id" id="editUserId">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" name="username" id="editUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="text" class="form-control" name="password" id="editPassword" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Mobile</label>
+                        <input type="text" class="form-control" name="mobile" id="editMobile">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" name="email" id="editEmail">
+                    </div>
+                    <div class="mb-3 form-check">
+                        <input type="checkbox" class="form-check-input" name="active" id="editActive">
+                        <label class="form-check-label" for="editActive">User Active</label>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Update User</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
