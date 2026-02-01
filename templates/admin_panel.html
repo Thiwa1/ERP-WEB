@@ -95,7 +95,7 @@
                     <form id="rightsForm">
                         <input type="hidden" name="user_id" id="rightsUserId">
                         <div class="row g-3">
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6 class="text-muted text-uppercase small fw-bold">Admin & Core</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Add_New_User" id="perm_admin">
@@ -107,7 +107,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6 class="text-muted text-uppercase small fw-bold">Inventory & POS</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Inventory" id="perm_inventory">
@@ -119,7 +119,7 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-4">
+                            <div class="col-md-3">
                                 <h6 class="text-muted text-uppercase small fw-bold">Finance & Reports</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Accounting" id="perm_accounting">
@@ -128,6 +128,14 @@
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Reports" id="perm_reports">
                                     <label class="form-check-label" for="perm_reports">View Reports</label>
+                                </div>
+                            </div>
+
+                            <div class="col-md-3">
+                                <h6 class="text-muted text-uppercase small fw-bold">Reversals</h6>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="Access_Reversals" id="perm_reversals">
+                                    <label class="form-check-label" for="perm_reversals">Reversals & Adjust</label>
                                 </div>
                             </div>
                         </div>
@@ -158,6 +166,7 @@
                     if(data.Access_POS) document.getElementById('perm_pos').checked = true;
                     if(data.Access_Accounting) document.getElementById('perm_accounting').checked = true;
                     if(data.Access_Reports) document.getElementById('perm_reports').checked = true;
+                    if(data.Access_Reversals) document.getElementById('perm_reversals').checked = true;
                 }
             });
     }
@@ -166,8 +175,6 @@
         const form = document.getElementById('rightsForm');
         const formData = new FormData(form);
 
-        // Convert checkboxes to boolean/int manually if needed, or handle in backend
-        // Fetch API sends FormData properly
         fetch('/admin/users/rights/update', {
             method: 'POST',
             body: formData

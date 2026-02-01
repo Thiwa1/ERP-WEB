@@ -1289,7 +1289,8 @@ def update_user_rights():
         'Access_Inventory': 1 if request.form.get('Access_Inventory') else 0,
         'Access_POS': 1 if request.form.get('Access_POS') else 0,
         'Access_Accounting': 1 if request.form.get('Access_Accounting') else 0,
-        'Access_Reports': 1 if request.form.get('Access_Reports') else 0
+        'Access_Reports': 1 if request.form.get('Access_Reports') else 0,
+        'Access_Reversals': 1 if request.form.get('Access_Reversals') else 0
     }
 
     try:
@@ -1299,13 +1300,15 @@ def update_user_rights():
             UPDATE User_Rights SET
             Add_New_User=%s, OP_Approved=%s,
             Access_Inventory=%s, Access_POS=%s,
-            Access_Accounting=%s, Access_Reports=%s
+            Access_Accounting=%s, Access_Reports=%s,
+            Access_Reversals=%s
             WHERE Link_To_Loging_Tabke=%s
         """
         db.execute_query(query, (
             perms['Add_New_User'], perms['OP_Approved'],
             perms['Access_Inventory'], perms['Access_POS'],
             perms['Access_Accounting'], perms['Access_Reports'],
+            perms['Access_Reversals'],
             user_id
         ), commit=True)
         return {'success': True}
@@ -3472,7 +3475,7 @@ def run_schema_migrations():
         columns = [row[0] for row in cursor.fetchall()]
 
         new_columns = [
-            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports'
+            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports', 'Access_Reversals'
         ]
 
         for col in new_columns:
