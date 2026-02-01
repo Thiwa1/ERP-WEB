@@ -3531,6 +3531,48 @@ def run_schema_migrations():
     except Exception as e:
         print(f"Schema Migration Error: {e}")
 
+def ensure_default_accounts():
+    """Ensures essential General Ledger accounts exist."""
+    try:
+        defaults = [
+            # Name, BS Position, BS Category, P&L Position, P&L Category, Type
+            ('Account Payable', 4, 'Current liabilities', None, None, 'liabilities'),
+            ('Account Receivable', 3, 'Current assets', None, None, 'assets'),
+            ('Cost Of Goods Sold', None, None, 2, 'Cost Of Sales', 'expenses'),
+            ('Sales', None, None, 1, 'Revenue', 'income'),
+            ('Inventory', 3, 'Current assets', None, None, 'assets'),
+            ('VAT Control', 4, 'Current liabilities', None, None, 'liabilities'),
+            ('Cash In Hand', 3, 'Current assets', None, None, 'assets')
+        ]
+
+        current_user = 0 # System
+
+        for acc in defaults:
+            name, bs_pos, bs_cat, pl_pos, pl_cat, acc_type = acc
+            res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
+
+            if not res:
+                print(f"Creating default account: {name}")
+                # Determine basement
+                basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
+
+                query = """
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
+                        account_hold_possion_PL, account_name_of_catogory_PL,
+                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                        accont_create_date, account_create_user, account_active, account_basment
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
+                """
+                db.execute_query(query, (
+                    name, bs_pos, bs_cat, pl_pos, pl_cat,
+                    1 if acc_type=='income' else 0, 1 if acc_type=='expenses' else 0,
+                    1 if acc_type=='assets' else 0, 1 if acc_type=='liabilities' else 0, 0,
+                    date.today(), current_user, basement
+                ), commit=True)
+    except Exception as e:
+        print(f"Error ensuring default accounts: {e}")
+
 def create_default_user():
     """Creates a default admin user if the Login_Table is empty."""
     try:
@@ -3551,6 +3593,16 @@ def create_default_user():
             # Using 'admin' / '123'
             db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
             print("Default user created: admin / 123")
+
+            # Create Default Rights for Admin
+            last_id_res = db.execute_query("SELECT id FROM Login_Table WHERE User_Name = 'admin'")
+            if last_id_res:
+                uid = last_id_res[0]['id']
+                db.execute_query("""
+                    INSERT INTO User_Rights (Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory, Access_POS, Access_Accounting, Access_Reports, Access_Reversals)
+                    VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+                """, (uid,), commit=True)
+
         else:
             print("Users exist in database. Skipping default user creation.")
     except Exception as e:
@@ -3559,4 +3611,5 @@ def create_default_user():
 if __name__ == '__main__':
     run_schema_migrations()
     create_default_user()
+    ensure_default_accounts()
     app.run(debug=True, port=5000)

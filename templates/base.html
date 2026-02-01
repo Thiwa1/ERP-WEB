@@ -313,16 +313,16 @@
     <div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content border-0 shadow-lg" style="border-radius: 12px; overflow: hidden;">
-                <div class="modal-header bg-primary text-white">
+                <div class="modal-header text-white" style="background-color: var(--secondary-color);">
                     <h5 class="modal-title fw-bold fs-6"><i class="fas fa-bolt me-2"></i> QUICK ACTIONS</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body bg-light p-4">
+                <div class="modal-body p-4" style="background-color: var(--bg-light);">
                     <div class="row g-4">
                         <!-- Column 1 -->
                         <div class="col-md-4">
                             <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold text-primary border-bottom-0 pt-3">
+                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
                                     <i class="fas fa-building me-2"></i> COMPANY & USERS
                                 </div>
                                 <div class="list-group list-group-flush rounded-bottom">
@@ -330,6 +330,7 @@
                                     <a href="/create_bank_account" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Bank Account</a>
                                     <a href="/create_cash_account" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Cash Account</a>
                                     <a href="/add_new_job" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create New Jobs</a>
+                                    <a href="/admin/users" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Manage Users</a>
                                 </div>
                             </div>
                         </div>
