@@ -51,7 +51,9 @@ def login():
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
 
-        if users:
+        if users is None:
+            flash('Database connection failed. Please check your database configuration.', 'danger')
+        elif users:
             user = users[0]
             if user['Password'] == password:
                 session['user_id'] = user['User_Code']
@@ -2950,5 +2952,31 @@ def submit_pos_sale():
         cursor.close()
         conn.close()
 
+def create_default_user():
+    """Creates a default admin user if the Login_Table is empty."""
+    try:
+        # Check connection first
+        conn = db.get_connection()
+        if not conn:
+            print("WARNING: Database connection failed. Cannot create default user.")
+            return
+
+        # Check for existing users
+        result = db.execute_query("SELECT COUNT(*) as count FROM Login_Table")
+        if result and result[0]['count'] == 0:
+            print("No users found. Creating default admin user...")
+            query = """
+                INSERT INTO Login_Table (User_Name, Password, User_Code, User_Active, Mobile_No, Email)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            # Using 'admin' / '123'
+            db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
+            print("Default user created: admin / 123")
+        else:
+            print("Users exist in database. Skipping default user creation.")
+    except Exception as e:
+        print(f"Error creating default user: {e}")
+
 if __name__ == '__main__':
+    create_default_user()
     app.run(debug=True, port=5000)
