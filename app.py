@@ -5,9 +5,13 @@ from functools import wraps
 import csv
 import io
 import json
+import os
 
 app = Flask(__name__)
-app.secret_key = 'your_secret_key'
+# Set a secret key for session management.
+# In production, this should be set via environment variable.
+app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
+app.config['SECRET_KEY'] = app.secret_key
 
 # Database Configuration
 db_config = {
