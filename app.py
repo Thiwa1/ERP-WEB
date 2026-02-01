@@ -1245,11 +1245,24 @@ def direct_purchasing():
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
 def direct_purchasing_add_item():
+    qty_str = request.form.get('qty')
+    price_str = request.form.get('price')
+
+    try:
+        qty = float(qty_str) if qty_str and qty_str.strip() else 0.0
+    except ValueError:
+        qty = 0.0
+
+    try:
+        price = float(price_str) if price_str and price_str.strip() else 0.0
+    except ValueError:
+        price = 0.0
+
     item = {
         'account': request.form.get('cost_account'),
         'item_name': request.form.get('inventory_item'),
-        'qty': float(request.form.get('qty', 0)),
-        'price': float(request.form.get('price', 0)),
+        'qty': qty,
+        'price': price,
         'narration': request.form.get('narration')
     }
     item['total'] = item['qty'] * item['price']
@@ -2938,8 +2951,23 @@ def submit_pos_sale():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, ('Sales', total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
 
-        # Cost of Goods Sold (DR COGS, CR Inventory) - Simplified, usually periodic or perpetual
-        # Assuming perpetual as per C# logic in reversals which touches Inventory Reversal
+        # Cost of Goods Sold (DR COGS, CR Inventory)
+        if total_cost_value > 0:
+            # Debit Cost Of Goods Sold
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
+
+            # Credit Inventory
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
 
         conn.commit()
         return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
