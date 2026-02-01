@@ -1,72 +1,87 @@
-# Book Keeping ERP System Database Schema
+# Suwin Accounting ERP System
 
-This repository contains the database schema for a Book Keeping ERP system. The schema is designed for MySQL.
+A comprehensive web-based ERP system converted from C# WPF to Python Flask. This system manages General Ledger, Accounts Payable/Receivable, Inventory, POS, and Banking.
 
-## Overview
+## Prerequisites
 
-The database `Book_keeping` handles various aspects of an ERP system including:
-- General Ledger (Accounts, Entries)
-- Accounts Payable (Suppliers, Invoices)
-- Accounts Receivable (Customers, Invoices)
-- Cash and Bank Management (Cash Book, Bank Book, Reconciliation)
-- Inventory Management (Items, Categories, Locations, Movements)
-- Point of Sale (POS)
-- User Management and Rights
+1.  **Python 3.8+**: Ensure Python is installed on your system.
+2.  **MySQL Server**: You need a running MySQL instance (e.g., MySQL Community Server or XAMPP).
 
-## Key Tables
+## Installation Steps
 
-### General Ledger & Setup
-- **`company`**: Stores company details.
-- **`new_account_table`**: The Chart of Accounts. It categorizes accounts into Income, Expenses, Assets, Liabilities, and Equity.
-- **`balance_sheet_category`**: Categories for Balance Sheet accounts.
-- **`p&l_category`**: Categories for Profit & Loss accounts.
-- **`entry_details`**: Stores individual accounting entries (debits/credits).
-- **`jv_numbers`**: Manages Journal Voucher numbers and metadata.
+### 1. Clone the Repository
+Extract the project files to a directory on your computer.
 
-### Cash & Bank
-- **`cash_book`**: Defines cash book accounts.
-- **`cash_book_recode`**: Records transactions in the cash book.
-- **`bank_book`**: Defines bank accounts.
-- **`bank_book_recod`**: Records transactions in the bank book.
-- **`bank_reconciliation_recodes`** & **`BankReconciliiationDitails`**: For bank reconciliation processes.
+### 2. Set Up Virtual Environment (Recommended)
+It is good practice to run Python applications in an isolated environment.
 
-### Inventory
-- **`inventoy_items`**: Master table for inventory items.
-- **`inventory_carogory`**: Categories for inventory items.
-- **`inventory_locations`**: Locations/Warehouses for inventory.
-- **`inventory_recod`**: Transaction table for inventory movements (In/Out).
-- **`inventory_price_recod`**: Pricing history for items.
+**Windows:**
+```bash
+python -m venv venv
+.\venv\Scripts\activate
+```
 
-### Suppliers (AP) & Customers (AR)
-- **`suppliers`**: Supplier master data.
-- **`suppliers_invoice_data`**: Supplier invoices and outstanding balances.
-- **`customer`**: Customer master data.
-- **`customer_invoice_data`**: Customer invoices and outstanding balances.
-- **`Invoice_Oustanding`**: Tracks outstanding invoices.
+**Linux/Mac:**
+```bash
+python3 -m venv venv
+source venv/bin/activate
+```
 
-### Sales & POS
-- **`POS_Sales_Invoice_01`**: Sales transactions from Point of Sale.
-- **`Pose_Setting_Table`**: Settings for the POS system.
+### 3. Install Dependencies
+Install the required Python packages using `pip`.
 
-### User Management
-- **`Login_Table`**: User credentials.
-- **`User_Rights`**: Permissions for users.
+```bash
+pip install -r requirements.txt
+```
 
-## Stored Procedures
+### 4. Database Setup
+1.  Open your MySQL client (Workbench, phpMyAdmin, or Command Line).
+2.  Create a new database named `Book_keeping` (or simply import the script which creates it).
+3.  Import the provided schema file `database_schema.sql`.
 
-The schema includes numerous stored procedures for business logic, such as:
-- **`Bank_Transaction Revesale`**: Reversing bank transactions.
-- **`Inventory_Delete`**: Handling inventory deletions.
-- **`bank_book_balance`**: Calculating bank book balances.
-- **`closing_inventory`**: Calculating closing inventory value.
-- **`cost_goods`**: Calculating Cost of Goods Sold (COGS).
-- **`income`**, **`expenses`**: Reporting procedures.
+**Command Line Example:**
+```bash
+mysql -u root -p < database_schema.sql
+```
 
-## Triggers
+### 5. Configuration
+Open `app.py` and update the `db_config` dictionary at the top of the file to match your MySQL credentials.
 
-- **`new_account_table_BEFORE_INSERT` / `UPDATE`**: Automatically sets the account basement (DR/CR) based on the account type (Income, Expense, Asset, Liability, Equity).
+```python
+db_config = {
+    'user': 'root',      # Your MySQL Username
+    'password': '',      # Your MySQL Password
+    'host': 'localhost',
+    'database': 'Book_keeping',
+    'raise_on_warnings': True
+}
+```
 
-## File Structure
+*Note: For production, consider using environment variables for sensitive data.*
 
-- `database_schema.sql`: The full MySQL Forward Engineering script.
-- `README.md`: This documentation.
+### 6. Run the Application
+Start the Flask development server.
+
+```bash
+python app.py
+```
+
+You should see output indicating the server is running, typically at `http://127.0.0.1:5000`.
+
+## First Time Login
+
+*   **URL**: Open `http://127.0.0.1:5000` in your web browser.
+*   **Default Credentials**:
+    *   **Username**: `admin`
+    *   **Password**: `123`
+
+*The system automatically creates this admin user and essential General Ledger accounts on the first run if the database is empty.*
+
+## Features Overview
+
+*   **Dashboard**: Tile-based access to all modules.
+*   **POS**: Point of Sale system with barcode support and receipt printing.
+*   **Inventory**: GRN entry, Stock Cards, and Trend Analysis.
+*   **Accounting**: Cash/Bank Payments, Receipts, Journal Vouchers.
+*   **Reports**: Balance Sheet, Profit & Loss, Trial Balance, Aging Reports.
+*   **Admin**: User management and access control.
