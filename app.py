@@ -833,6 +833,196 @@ def bank_payment():
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
     return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
+# --- Purchase Orders ---
+@app.route('/purchase_orders', methods=['GET'])
+@login_required
+def purchase_orders():
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1")
+    items = db.execute_query("""
+        SELECT i.inventoy_name, i.inventoy_items_messurment_unit, p.inventory_price_purcharsing
+        FROM inventoy_items i
+        LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+    """)
+    return render_template('purchase_orders.html', suppliers=suppliers, items=items)
+
+@app.route('/purchase_orders/save', methods=['POST'])
+@login_required
+def save_purchase_order():
+    try:
+        supplier = request.form.get('supplier')
+        po_number = request.form.get('po_number')
+        delivery_date = request.form.get('delivery_date')
+        location = request.form.get('location')
+        comments = request.form.get('comments')
+        vat_rate = float(request.form.get('vat_rate', 0))
+        items_json = request.form.get('items_json')
+        items = json.loads(items_json) if items_json else []
+
+        if not items:
+            flash('No items in Purchase Order', 'danger')
+            return redirect(url_for('purchase_orders'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # Get Supplier ID
+            cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s", (supplier,))
+            res = cursor.fetchone()
+            sup_id = res[0] if res else 0
+
+            # Insert Header
+            # Use auto-increment ID, but if PO number is manually provided, store it in OP_NO_Other
+            # If no manual PO number, generate one? C# logic seems to allow manual.
+            if not po_number:
+                # Simple generation if empty
+                po_number = f"PO-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            query_header = """
+                INSERT INTO OP_NO_Table (
+                    OP_NO_Other, Creator_Id, Create_Date, Sup_ID, Sup_Name,
+                    Special_Instractions, Expecting_Date, Deliver_Location, VAT_Rate,
+                    Save_Post, Delete_PO, Aprove_By, Edit_By
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0)
+            """
+            cursor.execute(query_header, (
+                po_number, current_user, date.today(), sup_id, supplier,
+                comments, delivery_date, location, vat_rate
+            ))
+            po_id = cursor.lastrowid
+
+            # Insert Details
+            query_detail = """
+                INSERT INTO PO_Recode_Details (
+                    Link_OP_NO_Table, Item, Discription, QTY, Unit_price, Mesurment
+                ) VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            for item in items:
+                cursor.execute(query_detail, (
+                    po_id, item['item'], item['description'],
+                    item['qty'], item['price'], item['unit']
+                ))
+
+            conn.commit()
+            flash(f'Purchase Order {po_number} created successfully.', 'success')
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error saving PO: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('purchase_orders'))
+
+@app.route('/purchase_orders/get/<int:po_id>')
+@login_required
+def get_purchase_order_details(po_id):
+    header_res = db.execute_query("SELECT Sup_Name as supplier FROM OP_NO_Table WHERE id = %s", (po_id,))
+    if not header_res:
+        return {'error': 'Not Found'}, 404
+
+    items = db.execute_query("""
+        SELECT Item as item, QTY as qty, Unit_price as price, Mesurment as unit
+        FROM PO_Recode_Details WHERE Link_OP_NO_Table = %s
+    """, (po_id,))
+
+    return json.dumps({
+        'header': header_res[0],
+        'items': [{
+            'item': i['item'],
+            'qty': float(i['qty'] or 0),
+            'price': float(i['price'] or 0),
+            'unit': i['unit']
+        } for i in items]
+    })
+
+@app.route('/purchase_orders/list')
+@login_required
+def list_purchase_orders():
+    query = """
+        SELECT
+            h.id, h.OP_NO_Other as po_number, h.Create_Date as date,
+            h.Sup_Name as supplier, h.Save_Post as approved,
+            (SELECT SUM(d.QTY * d.Unit_price) FROM PO_Recode_Details d WHERE d.Link_OP_NO_Table = h.id) as subtotal,
+            h.VAT_Rate
+        FROM OP_NO_Table h
+        WHERE h.Delete_PO = 0
+        ORDER BY h.id DESC
+    """
+    rows = db.execute_query(query)
+
+    data = []
+    for r in rows:
+        subtotal = float(r['subtotal'] or 0)
+        vat = float(r['VAT_Rate'] or 0)
+        total = subtotal + (subtotal * vat / 100)
+
+        data.append({
+            'id': r['id'],
+            'po_number': r['po_number'],
+            'date': str(r['date']),
+            'supplier': r['supplier'],
+            'approved': r['approved'] == 1,
+            'total': total
+        })
+    return json.dumps(data)
+
+@app.route('/purchase_orders/approve', methods=['POST'])
+@login_required
+def approve_purchase_order():
+    po_id = request.form.get('id')
+    current_user = get_current_user_id()
+
+    if po_id:
+        db.execute_query("""
+            UPDATE OP_NO_Table
+            SET Save_Post = 1, Aprove_By = %s, Aproed_Date = %s
+            WHERE id = %s
+        """, (current_user, date.today(), po_id), commit=True)
+        return {'success': True}
+    return {'error': 'No ID provided'}, 400
+
+@app.route('/purchase_orders/print/<int:po_id>')
+@login_required
+def print_purchase_order(po_id):
+    # Fetch Header
+    header_res = db.execute_query("SELECT * FROM OP_NO_Table WHERE id = %s", (po_id,))
+    if not header_res:
+        return "PO Not Found", 404
+    header = header_res[0]
+
+    # Fetch Items
+    items = db.execute_query("SELECT * FROM PO_Recode_Details WHERE Link_OP_NO_Table = %s", (po_id,))
+
+    # Fetch Company Info
+    company_res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = company_res[0] if company_res else {}
+
+    # Fetch Supplier Address
+    supplier_res = db.execute_query("SELECT * FROM suppliers WHERE sup_id = %s", (header['Sup_ID'],))
+    supplier = supplier_res[0] if supplier_res else {}
+
+    # Calculate Totals
+    subtotal = sum(float(i['QTY'] or 0) * float(i['Unit_price'] or 0) for i in items)
+    vat_rate = float(header['VAT_Rate'] or 0)
+    vat_amount = subtotal * vat_rate / 100
+    grand_total = subtotal + vat_amount
+
+    return render_template('po_print.html',
+                           po=header,
+                           items=items,
+                           company=company,
+                           supplier=supplier,
+                           subtotal=subtotal,
+                           vat_amount=vat_amount,
+                           grand_total=grand_total)
+
 # --- Add New Job ---
 @app.route('/add_new_job', methods=['GET', 'POST'])
 @login_required

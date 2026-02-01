@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+
+{% block title %}Purchase Order Print{% endblock %}
+
+{% block content %}
+<style>
+    @media print {
+        @page { size: A4; margin: 10mm; }
+        body * { visibility: hidden; }
+        #printArea, #printArea * { visibility: visible; }
+        #printArea { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; }
+    }
+    .po-header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
+    .company-logo { max-height: 80px; }
+    .table-bordered th, .table-bordered td { border: 1px solid #000 !important; }
+</style>
+
+<div class="card mb-3 no-print">
+    <div class="card-body">
+        <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i> Print Purchase Order</button>
+        <a href="/purchase_orders" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i> Back</a>
+    </div>
+</div>
+
+<div class="card" id="printArea">
+    <div class="card-body p-5">
+        <!-- Header -->
+        <div class="row mb-4">
+            <div class="col-6">
+                {% if company.company_log %}
+                <img src="data:image/png;base64,{{ company.company_log }}" class="company-logo mb-2">
+                {% endif %}
+                <h4 class="fw-bold">{{ company.company_name or 'My Company' }}</h4>
+                <p class="mb-0 small">
+                    {{ company.company_addras_1 }}<br>
+                    {{ company.company_addras_2 }}<br>
+                    {{ company.company_addras_3 }}<br>
+                    {{ company.company_land_line }}
+                </p>
+            </div>
+            <div class="col-6 text-end">
+                <h2 class="fw-bold text-uppercase" style="color: #2c3e50;">Purchase Order</h2>
+                <h5 class="mb-1">PO #: {{ po.OP_NO_Other }}</h5>
+                <p>Date: {{ po.Create_Date }}</p>
+                <p>Delivery Date: {{ po.Expecting_Date }}</p>
+            </div>
+        </div>
+
+        <!-- Supplier Info -->
+        <div class="row mb-4">
+            <div class="col-6">
+                <div class="border p-3 rounded">
+                    <h6 class="fw-bold text-uppercase mb-2">Vendor</h6>
+                    <p class="mb-0">
+                        <strong>{{ supplier.supplier_name }}</strong><br>
+                        {{ supplier.supplier_address_1 }}<br>
+                        {{ supplier.supplier_address_2 }}<br>
+                        {{ supplier.suppliers_teli_1 }}
+                    </p>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="border p-3 rounded">
+                    <h6 class="fw-bold text-uppercase mb-2">Ship To</h6>
+                    <p class="mb-0">
+                        <strong>{{ company.company_name }}</strong><br>
+                        {{ po.Deliver_Location or 'Main Warehouse' }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items Table -->
+        <table class="table table-bordered table-striped">
+            <thead class="table-dark">
+                <tr>
+                    <th>#</th>
+                    <th>Item & Description</th>
+                    <th class="text-center">Unit</th>
+                    <th class="text-center">Qty</th>
+                    <th class="text-end">Unit Price</th>
+                    <th class="text-end">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                {% set line_total = (item.QTY|float) * (item.Unit_price|float) %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>
+                        <strong>{{ item.Item }}</strong><br>
+                        <small class="text-muted">{{ item.Discription }}</small>
+                    </td>
+                    <td class="text-center">{{ item.Mesurment }}</td>
+                    <td class="text-center">{{ item.QTY }}</td>
+                    <td class="text-end">{{ "%.2f"|format(item.Unit_price|float) }}</td>
+                    <td class="text-end">{{ "%.2f"|format(line_total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr>
+                    <td colspan="5" class="text-end fw-bold">Subtotal</td>
+                    <td class="text-end fw-bold">{{ "%.2f"|format(subtotal) }}</td>
+                </tr>
+                <tr>
+                    <td colspan="5" class="text-end">VAT Amount ({{ po.VAT_Rate }}%)</td>
+                    <td class="text-end">{{ "%.2f"|format(vat_amount) }}</td>
+                </tr>
+                <tr class="table-light">
+                    <td colspan="5" class="text-end fw-bold fs-5">Grand Total</td>
+                    <td class="text-end fw-bold fs-5">{{ "%.2f"|format(grand_total) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+
+        <!-- Comments -->
+        {% if po.Special_Instractions %}
+        <div class="mt-4">
+            <h6 class="fw-bold">Special Instructions:</h6>
+            <p class="text-muted border p-2 rounded">{{ po.Special_Instractions }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="mt-5 pt-5 row">
+            <div class="col-4 text-center">
+                <div class="border-top border-dark pt-2">Authorized By</div>
+            </div>
+            <div class="col-4 offset-4 text-center">
+                <div class="border-top border-dark pt-2">Date</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

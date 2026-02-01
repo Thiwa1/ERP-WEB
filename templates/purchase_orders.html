@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+
+{% block title %}Purchase Order Management{% endblock %}
+
+{% block content %}
+<ul class="nav nav-tabs mb-4" id="poTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="create-tab" data-bs-toggle="tab" data-bs-target="#create" type="button" role="tab">Create Purchase Order</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab">Manage Purchase Orders</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="poTabsContent">
+
+    <!-- CREATE TAB -->
+    <div class="tab-pane fade show active" id="create" role="tabpanel">
+        <form id="createPoForm" action="/purchase_orders/save" method="POST">
+            <div class="row">
+                <!-- Left: Items Grid -->
+                <div class="col-md-8">
+                    <div class="card mb-3">
+                        <div class="card-header bg-light fw-bold">PO Items</div>
+                        <div class="card-body p-0">
+                            <table class="table table-bordered mb-0" id="poItemsTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Item Name</th>
+                                        <th>Description</th>
+                                        <th width="100">Qty</th>
+                                        <th width="120">Unit Price</th>
+                                        <th width="100">Unit</th>
+                                        <th width="60">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Rows added via JS -->
+                                </tbody>
+                            </table>
+                            <div class="p-2 text-end">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="addPoRow()">
+                                    <i class="fas fa-plus"></i> Add Row
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Header Details -->
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header bg-light fw-bold">Order Details</div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label class="form-label">Supplier</label>
+                                <select class="form-select" name="supplier" required>
+                                    <option value="">Select Supplier</option>
+                                    {% for s in suppliers %}
+                                    <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Custom PO Number</label>
+                                <input type="text" class="form-control" name="po_number">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Delivery Date</label>
+                                <input type="date" class="form-control" name="delivery_date" required>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Delivery Location</label>
+                                <textarea class="form-control" name="location" rows="2"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Special Comments</label>
+                                <textarea class="form-control" name="comments" rows="2"></textarea>
+                            </div>
+
+                            <hr>
+
+                            <div class="mb-2 row">
+                                <label class="col-6 col-form-label">Total Value</label>
+                                <div class="col-6">
+                                    <input type="text" class="form-control text-end" id="totalValue" readonly value="0.00">
+                                </div>
+                            </div>
+                            <div class="mb-2 row">
+                                <label class="col-6 col-form-label">VAT Rate (%)</label>
+                                <div class="col-6">
+                                    <input type="number" class="form-control text-end" id="vatRate" name="vat_rate" value="0" oninput="calculateTotals()">
+                                </div>
+                            </div>
+                            <div class="mb-3 row">
+                                <label class="col-6 col-form-label fw-bold">Grand Total</label>
+                                <div class="col-6">
+                                    <input type="text" class="form-control text-end fw-bold" id="grandTotal" readonly value="0.00">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-save me-2"></i> Save Purchase Order
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Hidden Input for Items JSON -->
+            <input type="hidden" name="items_json" id="itemsJson">
+        </form>
+    </div>
+
+    <!-- MANAGE TAB -->
+    <div class="tab-pane fade" id="manage" role="tabpanel">
+        <div class="card">
+            <div class="card-header bg-light">
+                <div class="row align-items-center">
+                    <div class="col-md-4">
+                        <h6 class="mb-0 fw-bold">Purchase Orders List</h6>
+                    </div>
+                    <div class="col-md-4">
+                        <select class="form-select form-select-sm" id="manageSupplierFilter" onchange="filterPos()">
+                            <option value="">All Suppliers</option>
+                            {% for s in suppliers %}
+                            <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <input type="text" class="form-control form-control-sm" id="poSearch" placeholder="Search PO Number..." onkeyup="filterPos()">
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <table class="table table-hover table-striped mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>PO #</th>
+                            <th>Date</th>
+                            <th>Supplier</th>
+                            <th>Status</th>
+                            <th>Total</th>
+                            <th class="text-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="poListTable">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<!-- Data for JS -->
+<datalist id="inventoryItems">
+    {% for item in items %}
+    <option value="{{ item.inventoy_name }}" data-price="{{ item.inventory_price_purcharsing or 0 }}" data-unit="{{ item.inventoy_items_messurment_unit }}">
+    {% endfor %}
+</datalist>
+
+<script>
+function addPoRow() {
+    const tbody = document.querySelector("#poItemsTable tbody");
+    const row = document.createElement("tr");
+    row.innerHTML = `
+        <td><input type="text" class="form-control form-control-sm item-search" list="inventoryItems" onchange="itemSelected(this)" required></td>
+        <td><input type="text" class="form-control form-control-sm item-desc"></td>
+        <td><input type="number" class="form-control form-control-sm item-qty" value="1" min="0.1" step="0.1" oninput="calculateTotals()" required></td>
+        <td><input type="number" class="form-control form-control-sm item-price" value="0" min="0" step="0.01" oninput="calculateTotals()" required></td>
+        <td><input type="text" class="form-control form-control-sm item-unit" readonly></td>
+        <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="this.closest('tr').remove(); calculateTotals()"><i class="fas fa-trash"></i></button></td>
+    `;
+    tbody.appendChild(row);
+}
+
+function itemSelected(input) {
+    const val = input.value;
+    const option = document.querySelector(`#inventoryItems option[value="${val}"]`);
+    const row = input.closest("tr");
+
+    if (option) {
+        row.querySelector(".item-price").value = option.dataset.price;
+        row.querySelector(".item-unit").value = option.dataset.unit;
+        calculateTotals();
+    }
+}
+
+function calculateTotals() {
+    let total = 0;
+    document.querySelectorAll("#poItemsTable tbody tr").forEach(row => {
+        const qty = parseFloat(row.querySelector(".item-qty").value) || 0;
+        const price = parseFloat(row.querySelector(".item-price").value) || 0;
+        total += qty * price;
+    });
+
+    const vatRate = parseFloat(document.getElementById("vatRate").value) || 0;
+    const grandTotal = total + (total * vatRate / 100);
+
+    document.getElementById("totalValue").value = total.toFixed(2);
+    document.getElementById("grandTotal").value = grandTotal.toFixed(2);
+}
+
+document.getElementById("createPoForm").onsubmit = function(e) {
+    const items = [];
+    document.querySelectorAll("#poItemsTable tbody tr").forEach(row => {
+        items.push({
+            item: row.querySelector(".item-search").value,
+            description: row.querySelector(".item-desc").value,
+            qty: row.querySelector(".item-qty").value,
+            price: row.querySelector(".item-price").value,
+            unit: row.querySelector(".item-unit").value
+        });
+    });
+
+    if (items.length === 0) {
+        alert("Please add at least one item.");
+        e.preventDefault();
+        return;
+    }
+
+    document.getElementById("itemsJson").value = JSON.stringify(items);
+};
+
+// Manage Tab Logic
+document.getElementById("manage-tab").addEventListener("click", loadPos);
+
+function loadPos() {
+    fetch('/purchase_orders/list')
+        .then(response => response.json())
+        .then(data => {
+            const tbody = document.getElementById("poListTable");
+            tbody.innerHTML = "";
+            data.forEach(po => {
+                const statusBadge = po.approved
+                    ? '<span class="badge bg-success">Approved</span>'
+                    : '<span class="badge bg-warning text-dark">Pending</span>';
+
+                const approveBtn = po.approved
+                    ? ''
+                    : `<button class="btn btn-sm btn-success me-1" onclick="approvePo(${po.id})"><i class="fas fa-check"></i></button>`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${po.po_number}</td>
+                        <td>${po.date}</td>
+                        <td>${po.supplier}</td>
+                        <td>${statusBadge}</td>
+                        <td>${parseFloat(po.total).toFixed(2)}</td>
+                        <td class="text-end">
+                            ${approveBtn}
+                            <a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i></a>
+                        </td>
+                    </tr>
+                `;
+            });
+        });
+}
+
+function approvePo(id) {
+    if(confirm("Approve this Purchase Order?")) {
+        fetch('/purchase_orders/approve', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}`
+        }).then(() => loadPos());
+    }
+}
+
+// Initial Row
+addPoRow();
+</script>
+{% endblock %}
