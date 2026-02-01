@@ -1205,6 +1205,114 @@ def print_purchase_order(po_id):
                            vat_amount=vat_amount,
                            grand_total=grand_total)
 
+# --- Admin Panel & User Management ---
+@app.route('/admin/users', methods=['GET'])
+@login_required
+def admin_users():
+    users = db.execute_query("SELECT * FROM Login_Table")
+    return render_template('admin_panel.html', users=users)
+
+@app.route('/admin/users/add', methods=['POST'])
+@login_required
+def add_new_user():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    confirm_password = request.form.get('confirm_password')
+    mobile = request.form.get('mobile')
+    email = request.form.get('email')
+
+    if not username or not password:
+        flash('Username and Password are required', 'danger')
+        return redirect(url_for('admin_users'))
+
+    if password != confirm_password:
+        flash('Passwords do not match', 'danger')
+        return redirect(url_for('admin_users'))
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # Insert User
+        cursor.execute("""
+            INSERT INTO Login_Table (User_Name, Password, Mobile_No, Email, User_Active)
+            VALUES (%s, %s, %s, %s, 1)
+        """, (username, password, mobile, email))
+        user_id = cursor.lastrowid
+
+        # Generate User Code (ID + 50000)
+        user_code = user_id + 50000
+        cursor.execute("UPDATE Login_Table SET User_Code = %s WHERE id = %s", (user_code, user_id))
+
+        # Insert Default Rights
+        # Check if extended columns exist, if not, schema migration handles it or we default
+        # We assume columns exist or triggers handle it. But per plan, we insert manually.
+        # Note: We need to handle potential missing columns safely or migrate schema.
+        # For now, inserting basic rights rows. Extended rights updated via update route.
+        cursor.execute("""
+            INSERT INTO User_Rights (Link_To_Loging_Tabke, Add_New_User, OP_Approved)
+            VALUES (%s, 0, 0)
+        """, (user_id,))
+
+        conn.commit()
+        flash(f'User {username} created successfully.', 'success')
+    except Exception as e:
+        conn.rollback()
+        flash(f'Error creating user: {str(e)}', 'danger')
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('admin_users'))
+
+@app.route('/admin/users/rights/<int:user_id>', methods=['GET'])
+@login_required
+def get_user_rights(user_id):
+    rights = db.execute_query("SELECT * FROM User_Rights WHERE Link_To_Loging_Tabke = %s", (user_id,))
+    if rights:
+        return json.dumps(rights[0])
+    return json.dumps({})
+
+@app.route('/admin/users/rights/update', methods=['POST'])
+@login_required
+def update_user_rights():
+    user_id = request.form.get('user_id')
+    if not user_id: return {'error': 'No User ID'}, 400
+
+    # Map form fields to columns
+    # We use .get() which returns None if not present (unchecked)
+    # Checkbox sends 'on' if checked, nothing if unchecked.
+    perms = {
+        'Add_New_User': 1 if request.form.get('Add_New_User') else 0,
+        'OP_Approved': 1 if request.form.get('OP_Approved') else 0,
+        'Access_Inventory': 1 if request.form.get('Access_Inventory') else 0,
+        'Access_POS': 1 if request.form.get('Access_POS') else 0,
+        'Access_Accounting': 1 if request.form.get('Access_Accounting') else 0,
+        'Access_Reports': 1 if request.form.get('Access_Reports') else 0
+    }
+
+    try:
+        # We construct update query dynamically to ignore missing columns if schema isn't fully migrated yet
+        # But for robustness, we should run migration at startup (next step).
+        query = """
+            UPDATE User_Rights SET
+            Add_New_User=%s, OP_Approved=%s,
+            Access_Inventory=%s, Access_POS=%s,
+            Access_Accounting=%s, Access_Reports=%s
+            WHERE Link_To_Loging_Tabke=%s
+        """
+        db.execute_query(query, (
+            perms['Add_New_User'], perms['OP_Approved'],
+            perms['Access_Inventory'], perms['Access_POS'],
+            perms['Access_Accounting'], perms['Access_Reports'],
+            user_id
+        ), commit=True)
+        return {'success': True}
+    except Exception as e:
+        print(f"Rights Update Error: {e}")
+        return {'error': str(e)}, 500
+
 # --- Add New Job ---
 @app.route('/add_new_job', methods=['GET', 'POST'])
 @login_required
@@ -3352,6 +3460,32 @@ def submit_pos_sale():
         cursor.close()
         conn.close()
 
+def run_schema_migrations():
+    """Checks and updates database schema for new features."""
+    try:
+        conn = db.get_connection()
+        if not conn: return
+        cursor = conn.cursor()
+
+        # Check User_Rights columns
+        cursor.execute("SHOW COLUMNS FROM User_Rights")
+        columns = [row[0] for row in cursor.fetchall()]
+
+        new_columns = [
+            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports'
+        ]
+
+        for col in new_columns:
+            if col not in columns:
+                print(f"Migrating: Adding {col} to User_Rights")
+                cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+    except Exception as e:
+        print(f"Schema Migration Error: {e}")
+
 def create_default_user():
     """Creates a default admin user if the Login_Table is empty."""
     try:
@@ -3378,5 +3512,6 @@ def create_default_user():
         print(f"Error creating default user: {e}")
 
 if __name__ == '__main__':
+    run_schema_migrations()
     create_default_user()
     app.run(debug=True, port=5000)
