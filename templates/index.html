@@ -9,70 +9,103 @@
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 25px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.02);
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+        border: 1px solid #e2e8f0;
     }
 
     .module-header {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         font-weight: 700;
-        color: #7f8c8d;
+        color: #64748b; /* Professional Slate Gray */
         text-transform: uppercase;
         margin-bottom: 15px;
-        border-bottom: 2px solid #f0f2f5;
+        border-bottom: 2px solid #f1f5f9;
         padding-bottom: 10px;
-        letter-spacing: 1px;
+        letter-spacing: 0.5px;
+        display: flex;
+        align-items: center;
     }
 
     .tile-link {
         text-decoration: none;
         color: inherit;
         display: block;
+        height: 100%;
     }
 
     .tile {
         background: #fff;
-        border: 1px solid #eef2f7;
+        border: 1px solid #e2e8f0;
         border-radius: 10px;
         padding: 15px;
         text-align: center;
-        transition: all 0.3s ease;
+        transition: all 0.2s ease-in-out;
         height: 100%;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        min-height: 110px;
+        min-height: 100px;
+        position: relative;
+        overflow: hidden;
     }
 
     .tile:hover {
-        background: #f8f9fa;
-        transform: translateY(-5px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.08);
-        border-color: #3498db;
+        background: #f8fafc;
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0,0,0,0.05);
+        border-color: #cbd5e1;
     }
 
     .tile i {
-        font-size: 1.8rem;
+        font-size: 1.5rem;
         margin-bottom: 10px;
-        color: #34495e;
-        transition: color 0.3s;
+        color: #475569; /* Darker Slate Gray */
+        transition: color 0.2s;
     }
 
     .tile:hover i {
-        color: #3498db;
+        color: #2563eb; /* Primary Blue on Hover */
     }
 
     .tile span {
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         font-weight: 600;
-        color: #2c3e50;
-        line-height: 1.3;
+        color: #334155;
+        line-height: 1.25;
     }
 
     /* Dense grid to avoid scrolling */
     .row-dense {
-        --bs-gutter-x: 10px;
-        --bs-gutter-y: 10px;
+        --bs-gutter-x: 12px;
+        --bs-gutter-y: 12px;
+    }
+
+    /* Highlight Tile Style */
+    .tile.tile-highlight {
+        background: linear-gradient(135deg, #3b82f6, #2563eb);
+        border: none;
+    }
+    .tile.tile-highlight i,
+    .tile.tile-highlight span {
+        color: white;
+    }
+
+    /* Dashboard specific layout tweaks */
+    @media (max-width: 576px) {
+        .module-section {
+            padding: 15px;
+        }
+        .tile {
+            min-height: 90px;
+            padding: 10px;
+        }
+        .tile i {
+            font-size: 1.25rem;
+        }
+        .tile span {
+            font-size: 0.75rem;
+        }
     }
 </style>
 
@@ -83,8 +116,8 @@
         <!-- Core Accounting -->
         <div class="col-xl-6">
             <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-coins me-2"></i> Core Accounting</div>
-                <div class="row row-dense row-cols-3 row-cols-md-4">
+                <div class="module-header"><i class="fas fa-coins me-2 text-warning"></i> Core Accounting</div>
+                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
                     <div class="col">
                         <a href="/placeholder?title=Cash Payment Supers" class="tile-link">
                             <div class="tile">
@@ -124,8 +157,8 @@
         <!-- Reversals & Adjustments -->
         <div class="col-xl-6">
             <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-history me-2"></i> Reversals & Adjustments</div>
-                <div class="row row-dense row-cols-3 row-cols-md-4">
+                <div class="module-header"><i class="fas fa-history me-2 text-danger"></i> Reversals & Adjustments</div>
+                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
                     <div class="col">
                         <a href="/pos_reversal" class="tile-link">
                             <div class="tile">
@@ -168,8 +201,8 @@
         <!-- Inventory & Services -->
         <div class="col-xl-6">
             <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-boxes me-2"></i> Inventory & Services</div>
-                <div class="row row-dense row-cols-3 row-cols-md-4">
+                <div class="module-header"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Services</div>
+                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
                     <div class="col">
                         <a href="/grn" class="tile-link">
                             <div class="tile">
@@ -206,16 +239,16 @@
             </div>
         </div>
 
-        <!-- Additional Features (Subset) -->
+        <!-- Key Features (Subset) -->
         <div class="col-xl-6">
             <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-star me-2"></i> Key Features</div>
-                <div class="row row-dense row-cols-3 row-cols-md-4">
+                <div class="module-header"><i class="fas fa-star me-2 text-primary"></i> Key Features</div>
+                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
                     <div class="col">
                         <a href="/pos" class="tile-link">
-                            <div class="tile bg-primary text-white border-0 shadow-sm" style="background: linear-gradient(135deg, #3498db, #2980b9) !important;">
-                                <i class="fas fa-cash-register text-white"></i>
-                                <span class="text-white">POS<br>System</span>
+                            <div class="tile tile-highlight">
+                                <i class="fas fa-cash-register"></i>
+                                <span>POS<br>System</span>
                             </div>
                         </a>
                     </div>
@@ -252,7 +285,7 @@
     <div class="row">
         <div class="col-12">
             <div class="module-section">
-                <div class="module-header"><i class="fas fa-chart-bar me-2"></i> Reports & Analysis</div>
+                <div class="module-header"><i class="fas fa-chart-bar me-2 text-info"></i> Reports & Analysis</div>
                 <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
                     <div class="col">
                         <a href="/placeholder?title=Load Report" class="tile-link">
