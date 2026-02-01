@@ -833,6 +833,188 @@ def bank_payment():
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
     return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
+# --- Cash Payment Module ---
+@app.route('/cash_payment', methods=['GET'])
+@login_required
+def cash_payment():
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
+    cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
+    return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/cash_payment/get_data')
+@login_required
+def get_cash_supplier_data():
+    sup_name = request.args.get('name')
+    if not sup_name:
+        return {'error': 'No supplier name'}, 400
+
+    # 1. Supplier Details
+    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
+    details = {}
+    if sup_data:
+        s = sup_data[0]
+        details = {
+            'code': s['supplier_code'],
+            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
+            'mobile': s['suppliers_teli_1'],
+            'email': s['suppliers_e_mail'],
+            'vat': s['suppliers_vat_regidter_no']
+        }
+        sup_id = s['sup_id']
+    else:
+        return {'error': 'Supplier not found'}, 404
+
+    # 2. Outstanding Invoices
+    invoices = db.execute_query("""
+        SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
+               suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
+        FROM suppliers_invoice_data
+        WHERE suppliers_invoice_buinding_supplier = %s AND suppliers_invoice_oustanding > 0 AND suppliers_oustanding_delete = 0
+    """, (sup_id,))
+
+    inv_list = []
+    for inv in invoices:
+        inv_list.append({
+            'id': inv['s_i_id'],
+            'invoice_no': inv['suppliers_invoice_number'],
+            'date': str(inv['suppliers_invoice_date']),
+            'due_date': str(inv['suppliers_invoice_final_date']),
+            'total': float(inv['suppliers_invoice_total_oustanding']),
+            'paid': float(inv['suppliers_invoice_total_payment']),
+            'balance': float(inv['suppliers_invoice_oustanding'])
+        })
+
+    # 3. Cash Payment History
+    history = db.execute_query("""
+        SELECT cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_cr, User_Enter
+        FROM cash_book_recode
+        WHERE cash_book_recode_suplier_name = %s
+        ORDER BY chash_book_recod_id DESC
+    """, (sup_name,))
+
+    hist_list = []
+    for h in history:
+        hist_list.append({
+            'voucher': h['cash_book_recod_voucher_no'],
+            'date': str(h['Payment_Date']),
+            'account': h['cash_book_recode_accont_name'],
+            'amount': float(h['cash_book_recode_cr'] or 0),
+            'user_id': h['User_Enter']
+        })
+
+    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+
+@app.route('/cash_payment/submit', methods=['POST'])
+@login_required
+def cash_payment_submit():
+    supplier_name = request.form.get('supplier')
+    cash_account = request.form.get('cash_account')
+    payment_date = request.form.get('payment_date')
+    narration = request.form.get('narration')
+
+    if not supplier_name or not cash_account:
+        flash('Missing supplier or cash account', 'danger')
+        return redirect(url_for('cash_payment'))
+
+    # Collect payments
+    payments = []
+    total_payment = 0
+
+    # Iterate form to find payment items
+    for key in request.form:
+        if key.startswith('payment_'):
+            inv_id = key.split('_')[1]
+            try:
+                amount = float(request.form[key])
+                if amount > 0:
+                    payments.append({'id': inv_id, 'amount': amount})
+                    total_payment += amount
+            except:
+                continue
+
+    if not payments:
+        flash('No payment amounts entered', 'warning')
+        return redirect(url_for('cash_payment'))
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        current_user = get_current_user_id()
+
+        # 1. Generate Voucher Number
+        cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
+        res = cursor.fetchone()
+        max_voucher = res[0] if res and res[0] else 0
+        new_voucher = max_voucher + 1
+
+        cursor.execute("INSERT INTO cash_voucher_no (id, cash_voucher_link, cash_voucher_number) VALUES (0, %s, %s)",
+                       (cash_account, new_voucher))
+
+        # 2. Create Journal Voucher (JV)
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FORM PAYMENT', narration))
+        jv_no = cursor.lastrowid
+
+        # Get Sub Account Code
+        cursor.execute("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (supplier_name,))
+        res = cursor.fetchone()
+        sub_ac_code = res[0] if res else 0
+
+        # 3. Create GL Entries
+        # Debit AP
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+
+        # Credit Cash
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (cash_account, total_payment, payment_date, date.today(), narration, current_user, jv_no))
+
+        # 4. Process Individual Payments
+        for p in payments:
+            # Update Invoice Outstanding (Logic of vender_settele)
+            cursor.execute("SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
+            res = cursor.fetchone()
+            current_paid = float(res[0] or 0)
+            new_total_paid = current_paid + p['amount']
+
+            cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
+
+            # Insert Cash Book Record
+            cursor.execute("""
+                INSERT INTO cash_book_recode (
+                    cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
+                    cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
+                    cash_book_recode_suplier_name, jv_numbers_jv_id,
+                    cash_book_po_no, cash_book_suplier_oustanding_id,
+                    cash_book_recod_voucher_no, User_Enter, Payment_Date
+                ) VALUES (0, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+            """, (
+                p['amount'], cash_account, narration,
+                p['id'], supplier_name, jv_no,
+                p['id'], new_voucher, current_user, payment_date
+            ))
+
+        conn.commit()
+        flash(f'Cash Payment processed successfully. Voucher No: {new_voucher}', 'success')
+
+    except Exception as e:
+        conn.rollback()
+        flash(f'Transaction failed: {str(e)}', 'danger')
+        print(e)
+    finally:
+        cursor.close()
+        conn.close()
+
+    return redirect(url_for('cash_payment'))
+
 # --- Purchase Orders ---
 @app.route('/purchase_orders', methods=['GET'])
 @login_required

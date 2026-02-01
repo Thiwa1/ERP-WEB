@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+
+{% block title %}Cash Payment{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Header -->
+    <div class="row mb-3">
+        <div class="col-12">
+            <div class="card shadow-sm border-0" style="background-color: var(--secondary-color);">
+                <div class="card-body py-2 text-center text-white">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-money-bill-wave me-2"></i> ARRANGE CASH PAYMENT FOR SUPPLIERS</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <!-- LEFT COLUMN -->
+        <div class="col-lg-7">
+            <!-- Supplier Selection -->
+            <div class="card shadow-sm mb-3 border-0">
+                <div class="card-body">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">Select Supplier</label>
+                    <select class="form-select" id="supplierSelect" onchange="loadSupplierData()">
+                        <option value="">Select Supplier</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <!-- Outstanding Invoices -->
+            <div class="card shadow-sm mb-3 border-0">
+                <div class="card-header bg-white border-bottom-0 fw-bold" style="color: var(--primary-color);">
+                    <i class="fas fa-file-invoice me-2"></i> Outstanding Invoices
+                </div>
+                <div class="card-body p-0 table-responsive" style="max-height: 300px;">
+                    <table class="table table-hover mb-0" id="outstandingTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>IV No</th>
+                                <th>Date</th>
+                                <th>Outstanding</th>
+                                <th>Paid</th>
+                                <th>Balance</th>
+                                <th style="width: 150px;">New Payment</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Payment History -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white border-bottom-0 fw-bold" style="color: var(--primary-color);">
+                    <i class="fas fa-history me-2"></i> Payment History
+                </div>
+                <div class="card-body p-0 table-responsive" style="max-height: 250px;">
+                    <table class="table table-sm table-striped mb-0" id="historyTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Voucher</th>
+                                <th>Date</th>
+                                <th>Amount</th>
+                                <th>Account</th>
+                                <th>User</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT COLUMN -->
+        <div class="col-lg-5">
+            <!-- Payment Inputs -->
+            <div class="card shadow-sm mb-3 border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    Payment Inputs
+                </div>
+                <div class="card-body">
+                    <form id="paymentForm" method="POST" action="/cash_payment/submit">
+                        <input type="hidden" name="supplier" id="formSupplier">
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Select Date</label>
+                            <input type="date" class="form-control" name="payment_date" value="{{ today_date }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Select Cash Account</label>
+                            <select class="form-select" name="cash_account" required>
+                                <option value="">Select Account</option>
+                                {% for acc in cash_accounts %}
+                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold">Narration</label>
+                            <textarea class="form-control" name="narration" rows="2" required></textarea>
+                        </div>
+
+                        <!-- Dynamic Inputs for Payments -->
+                        <div id="paymentInputsContainer"></div>
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success fw-bold py-2">
+                                <i class="fas fa-check-circle me-2"></i> SUBMIT PAYMENT
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Supplier Info -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-light fw-bold" style="color: var(--primary-color);">
+                    Supplier Information
+                </div>
+                <div class="card-body" id="supplierInfo">
+                    <p class="text-muted text-center my-4">Select a supplier to view details.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function loadSupplierData() {
+        const supplierName = document.getElementById('supplierSelect').value;
+        document.getElementById('formSupplier').value = supplierName;
+
+        if (!supplierName) {
+            document.querySelector('#outstandingTable tbody').innerHTML = '';
+            document.querySelector('#historyTable tbody').innerHTML = '';
+            document.getElementById('supplierInfo').innerHTML = '<p class="text-muted text-center my-4">Select a supplier to view details.</p>';
+            return;
+        }
+
+        fetch(`/cash_payment/get_data?name=${encodeURIComponent(supplierName)}`)
+            .then(response => response.json())
+            .then(data => {
+                // 1. Update Supplier Info
+                const info = data.details;
+                document.getElementById('supplierInfo').innerHTML = `
+                    <div class="mb-2"><strong>Code:</strong> ${info.code || '-'}</div>
+                    <div class="mb-2"><strong>Address:</strong><br>${info.address || '-'}</div>
+                    <div class="mb-2"><strong>Mobile:</strong> ${info.mobile || '-'}</div>
+                    <div class="mb-2"><strong>Email:</strong> ${info.email || '-'}</div>
+                    <div class="mb-0"><strong>VAT No:</strong> ${info.vat || '-'}</div>
+                `;
+
+                // 2. Update Outstanding Invoices
+                const invBody = document.querySelector('#outstandingTable tbody');
+                invBody.innerHTML = '';
+                const paymentContainer = document.getElementById('paymentInputsContainer');
+                paymentContainer.innerHTML = ''; // Clear previous hidden inputs
+
+                data.invoices.forEach(inv => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${inv.invoice_no}</td>
+                        <td>${inv.date}</td>
+                        <td>${inv.total.toFixed(2)}</td>
+                        <td>${inv.paid.toFixed(2)}</td>
+                        <td class="fw-bold">${inv.balance.toFixed(2)}</td>
+                        <td>
+                            <input type="number" class="form-control form-control-sm text-end payment-input"
+                                   data-id="${inv.id}"
+                                   data-balance="${inv.balance}"
+                                   step="0.01" min="0" max="${inv.balance}"
+                                   placeholder="0.00"
+                                   oninput="updateFormInputs()">
+                        </td>
+                    `;
+                    invBody.appendChild(row);
+                });
+
+                // 3. Update Payment History
+                const histBody = document.querySelector('#historyTable tbody');
+                histBody.innerHTML = '';
+                data.history.forEach(h => {
+                    histBody.innerHTML += `
+                        <tr>
+                            <td>${h.voucher}</td>
+                            <td>${h.date}</td>
+                            <td>${h.amount.toFixed(2)}</td>
+                            <td>${h.account}</td>
+                            <td>${h.user_id || '-'}</td>
+                        </tr>
+                    `;
+                });
+            });
+    }
+
+    function updateFormInputs() {
+        const container = document.getElementById('paymentInputsContainer');
+        container.innerHTML = '';
+
+        document.querySelectorAll('.payment-input').forEach(input => {
+            const val = parseFloat(input.value);
+            if (val > 0) {
+                const id = input.getAttribute('data-id');
+                // Check balance constraint
+                const balance = parseFloat(input.getAttribute('data-balance'));
+                if (val > balance) {
+                    input.classList.add('is-invalid');
+                } else {
+                    input.classList.remove('is-invalid');
+
+                    // Create hidden input for form submission
+                    const hidden = document.createElement('input');
+                    hidden.type = 'hidden';
+                    hidden.name = `payment_${id}`;
+                    hidden.value = val;
+                    container.appendChild(hidden);
+                }
+            }
+        });
+    }
+
+    document.getElementById('paymentForm').onsubmit = function(e) {
+        if (!document.getElementById('formSupplier').value) {
+            alert('Please select a supplier');
+            e.preventDefault();
+            return false;
+        }
+
+        const inputs = document.getElementById('paymentInputsContainer').children;
+        if (inputs.length === 0) {
+            alert('Please enter at least one payment amount');
+            e.preventDefault();
+            return false;
+        }
+
+        // Final validation check
+        const invalid = document.querySelector('.payment-input.is-invalid');
+        if (invalid) {
+            alert('Please correct invalid payment amounts (cannot exceed balance)');
+            e.preventDefault();
+            return false;
+        }
+    };
+</script>
+{% endblock %}
