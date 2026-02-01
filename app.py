@@ -886,7 +886,7 @@ def get_cash_supplier_data():
 
     # 3. Cash Payment History
     history = db.execute_query("""
-        SELECT cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_cr, User_Enter
+        SELECT cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_cr, User_Enter, jv_numbers_jv_id
         FROM cash_book_recode
         WHERE cash_book_recode_suplier_name = %s
         ORDER BY chash_book_recod_id DESC
@@ -899,7 +899,8 @@ def get_cash_supplier_data():
             'date': str(h['Payment_Date']),
             'account': h['cash_book_recode_accont_name'],
             'amount': float(h['cash_book_recode_cr'] or 0),
-            'user_id': h['User_Enter']
+            'user_id': h['User_Enter'],
+            'jv_no': h['jv_numbers_jv_id']
         })
 
     return {'details': details, 'invoices': inv_list, 'history': hist_list}
@@ -1014,6 +1015,40 @@ def cash_payment_submit():
         conn.close()
 
     return redirect(url_for('cash_payment'))
+
+@app.route('/cash_payment/print/<int:jv_no>')
+@login_required
+def print_cash_voucher(jv_no):
+    # Fetch Voucher Details
+    voucher_res = db.execute_query("""
+        SELECT
+            c.cash_book_recod_voucher_no as voucher_no,
+            c.Payment_Date as date,
+            c.cash_book_recode_suplier_name as paid_to,
+            c.cash_book_recode_accont_name as paid_from,
+            c.cash_book_recode_naration as narration,
+            SUM(c.cash_book_recode_cr) as amount,
+            c.User_Enter as user_id
+        FROM cash_book_recode c
+        WHERE c.jv_numbers_jv_id = %s
+        GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
+                 c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
+    """, (jv_no,))
+
+    if not voucher_res:
+        return "Voucher Not Found", 404
+    voucher = voucher_res[0]
+
+    # Fetch Company Info
+    company_res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = company_res[0] if company_res else {}
+
+    # Fetch Amount in Words (Simplified)
+    # In a real app, use a num2words library
+
+    return render_template('payment_voucher_print.html',
+                           voucher=voucher,
+                           company=company)
 
 # --- Purchase Orders ---
 @app.route('/purchase_orders', methods=['GET'])

@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Payment Voucher Print{% endblock %}
+
+{% block content %}
+<style>
+    @media print {
+        @page { size: A4; margin: 10mm; }
+        body * { visibility: hidden; }
+        #printArea, #printArea * { visibility: visible; }
+        #printArea { position: absolute; left: 0; top: 0; width: 100%; }
+        .no-print { display: none !important; }
+    }
+    .voucher-border { border: 2px solid #000; padding: 20px; }
+    .company-logo { max-height: 80px; }
+    .signature-line { border-top: 1px solid #000; margin-top: 50px; padding-top: 5px; width: 80%; margin-left: auto; margin-right: auto; }
+</style>
+
+<div class="card mb-3 no-print">
+    <div class="card-body">
+        <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i> Print Voucher</button>
+        <button class="btn btn-secondary" onclick="window.close()"><i class="fas fa-times me-2"></i> Close</button>
+    </div>
+</div>
+
+<div class="card border-0" id="printArea">
+    <div class="card-body">
+        <div class="voucher-border">
+            <!-- Header -->
+            <div class="row mb-4">
+                <div class="col-8">
+                    {% if company.company_log %}
+                    <img src="data:image/png;base64,{{ company.company_log }}" class="company-logo mb-2">
+                    {% endif %}
+                    <h4 class="fw-bold text-uppercase">{{ company.company_name }}</h4>
+                    <p class="mb-0 small">
+                        {{ company.company_addras_1 }}<br>
+                        {{ company.company_addras_2 }}
+                    </p>
+                </div>
+                <div class="col-4 text-end">
+                    <h3 class="fw-bold text-uppercase border-bottom border-dark pb-2">Payment Voucher</h3>
+                    <div class="mt-2">
+                        <strong>Voucher No:</strong> {{ voucher.voucher_no }}<br>
+                        <strong>Date:</strong> {{ voucher.date }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payment Details -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <table class="table table-bordered border-dark">
+                        <tr>
+                            <td class="bg-light fw-bold" width="20%">Paid To</td>
+                            <td>{{ voucher.paid_to }}</td>
+                        </tr>
+                        <tr>
+                            <td class="bg-light fw-bold">Paid From</td>
+                            <td>{{ voucher.paid_from }}</td>
+                        </tr>
+                        <tr>
+                            <td class="bg-light fw-bold">Amount</td>
+                            <td class="fs-5 fw-bold">{{ "%.2f"|format(voucher.amount) }}</td>
+                        </tr>
+                        <tr>
+                            <td class="bg-light fw-bold">Narration</td>
+                            <td>{{ voucher.narration }}</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+
+            <!-- GL Distribution (Simplified) -->
+            <div class="mb-5">
+                <h6 class="fw-bold border-bottom border-dark pb-1">Transaction Details</h6>
+                <table class="table table-sm table-borderless">
+                    <thead>
+                        <tr class="border-bottom">
+                            <th>Account Description</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Account Payable ({{ voucher.paid_to }})</td>
+                            <td class="text-end">{{ "%.2f"|format(voucher.amount) }}</td>
+                            <td class="text-end">-</td>
+                        </tr>
+                        <tr>
+                            <td>{{ voucher.paid_from }}</td>
+                            <td class="text-end">-</td>
+                            <td class="text-end">{{ "%.2f"|format(voucher.amount) }}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Signatures -->
+            <div class="row mt-5 text-center">
+                <div class="col-4">
+                    <div class="signature-line">Prepared By ({{ voucher.user_id }})</div>
+                </div>
+                <div class="col-4">
+                    <div class="signature-line">Checked By</div>
+                </div>
+                <div class="col-4">
+                    <div class="signature-line">Authorized By</div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-12 text-center text-muted small">
+                    Printed on {{ now }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

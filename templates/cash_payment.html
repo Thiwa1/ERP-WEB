@@ -69,6 +69,7 @@
                                 <th>Amount</th>
                                 <th>Account</th>
                                 <th>User</th>
+                                <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -197,6 +198,11 @@
                             <td>${h.amount.toFixed(2)}</td>
                             <td>${h.account}</td>
                             <td>${h.user_id || '-'}</td>
+                            <td>
+                                <a href="/cash_payment/print/${h.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-print"></i>
+                                </a>
+                            </td>
                         </tr>
                     `;
                 });
