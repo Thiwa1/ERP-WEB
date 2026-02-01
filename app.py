@@ -1520,6 +1520,13 @@ def inventory_trend_analysis():
                            slope=slope_val,
                            next_month_forecast=forecast)
 
+@app.route('/api/get_customers')
+@login_required
+def api_get_customers():
+    query = "SELECT id, customer_name as name FROM customer ORDER BY customer_name"
+    rows = db.execute_query(query)
+    return json.dumps(rows)
+
 @app.route('/get_supplier_data')
 @login_required
 def get_supplier_data():

@@ -277,6 +277,14 @@
             </div>
 
             <div class="d-flex align-items-center gap-3">
+                <!-- Global Customer Selector -->
+                <div class="d-none d-md-block" style="min-width: 250px;">
+                    <select class="form-select form-select-sm border-0 bg-light fw-bold" id="globalCustomerSelect" onchange="updateGlobalCustomer()">
+                        <option value="">-- Select Active Customer --</option>
+                        <!-- Populated via AJAX -->
+                    </select>
+                </div>
+
                 <div class="text-end d-none d-sm-block">
                     <small class="d-block text-muted" style="font-size: 0.75rem;">Welcome back,</small>
                     <span class="fw-bold text-dark" style="font-size: 0.9rem;">{{ session.get('username', 'User') }}</span>
@@ -385,7 +393,38 @@
                     toggleSidebar();
                 });
             }
+
+            // Load Customers for Global Dropdown
+            fetch('/api/get_customers')
+                .then(response => response.json())
+                .then(data => {
+                    const select = document.getElementById('globalCustomerSelect');
+                    data.forEach(cust => {
+                        const option = document.createElement('option');
+                        option.value = cust.id;
+                        option.text = cust.name;
+                        select.add(option);
+                    });
+
+                    // Restore selection
+                    const saved = localStorage.getItem('selectedCustomerId');
+                    if (saved) select.value = saved;
+                });
         });
+
+        function updateGlobalCustomer() {
+            const select = document.getElementById('globalCustomerSelect');
+            const custId = select.value;
+            const custName = select.options[select.selectedIndex].text;
+
+            localStorage.setItem('selectedCustomerId', custId);
+            localStorage.setItem('selectedCustomerName', custName);
+
+            // Dispatch event for pages to listen to
+            window.dispatchEvent(new CustomEvent('customerChanged', {
+                detail: { id: custId, name: custName }
+            }));
+        }
     </script>
     {% block scripts %}{% endblock %}
 </body>
