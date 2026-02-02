@@ -169,7 +169,10 @@
                                 <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">Total Value</label>
                             </div>
                             <div class="col-md-8">
-                                <input type="number" class="form-control text-end" id="totalValue" name="total_value" readonly>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ company_currency }}</span>
+                                    <input type="number" class="form-control text-end" id="totalValue" name="total_value" readonly>
+                                </div>
                             </div>
                         </div>
                         <div class="row mb-2 align-items-center">
@@ -191,7 +194,10 @@
                                 <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">VAT Amount</label>
                             </div>
                             <div class="col-md-8">
-                                <input type="number" class="form-control text-end" id="vatAmount" name="vat_amount" readonly>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ company_currency }}</span>
+                                    <input type="number" class="form-control text-end" id="vatAmount" name="vat_amount" readonly>
+                                </div>
                             </div>
                         </div>
                         <div class="row align-items-center">
@@ -199,7 +205,10 @@
                                 <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">Total Amount</label>
                             </div>
                             <div class="col-md-8">
-                                <input type="number" class="form-control text-end fw-bold" id="grandTotal" name="grand_total" readonly style="font-size: 1.1rem;">
+                                <div class="input-group">
+                                    <span class="input-group-text fw-bold">{{ company_currency }}</span>
+                                    <input type="number" class="form-control text-end fw-bold" id="grandTotal" name="grand_total" readonly style="font-size: 1.1rem;">
+                                </div>
                             </div>
                         </div>
                     </div>

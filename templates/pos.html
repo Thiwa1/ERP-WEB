@@ -104,12 +104,18 @@
                 <div class="card-footer bg-white border-top p-3">
                     <div class="d-flex justify-content-between mb-2">
                         <span class="fs-5">Subtotal:</span>
-                        <span class="fs-5 fw-bold" id="subtotalDisplay">0.00</span>
+                        <div>
+                            <span class="fs-5 fw-bold">{{ company_currency }}</span>
+                            <span class="fs-5 fw-bold" id="subtotalDisplay">0.00</span>
+                        </div>
                     </div>
 
                     <div class="d-flex justify-content-between mb-3 p-2 text-white rounded" style="background-color: var(--primary-color);">
                         <span class="fs-3 fw-bold">TOTAL:</span>
-                        <span class="fs-3 fw-bold" id="totalDisplay">0.00</span>
+                        <div>
+                            <span class="fs-3 fw-bold">{{ company_currency }}</span>
+                            <span class="fs-3 fw-bold" id="totalDisplay">0.00</span>
+                        </div>
                     </div>
 
                     <!-- Checkout Controls -->

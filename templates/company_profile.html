@@ -74,7 +74,10 @@
                         <div class="mb-3 row">
                             <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Currency Symbol</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control" name="currency" value="{{ company.company_curency }}" style="width: 140px;">
+                                <div class="input-group" style="width: 140px;">
+                                    <input type="text" class="form-control fw-bold text-center" name="currency" value="{{ company.company_curency }}" maxlength="4" required>
+                                </div>
+                                <div class="form-text text-muted small">System-wide currency symbol (e.g., LKR, $, €)</div>
                             </div>
                         </div>
                     </div>
