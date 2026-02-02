@@ -662,18 +662,18 @@ def add_new_account():
                            cf_categories=cf_cats,
                            existing_accounts=existing_accounts)
 
-# --- Create Cash/Bank Account ---
-@app.route('/create_cash_account', methods=['GET', 'POST'])
+# --- Create Bank Account ---
+@app.route('/create_bank_account', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Accounting')
-def create_cash_account():
+def create_bank_account():
     if request.method == 'POST':
         acc_no = request.form.get('account_number')
-        acc_name = request.form.get('account_name')
+        bank_name = request.form.get('bank_name')
 
-        if not acc_no or not acc_name:
-            flash('Account number and name are required', 'danger')
-            return redirect(url_for('create_cash_account'))
+        if not acc_no or not bank_name:
+            flash('Account number and Bank Name are required', 'danger')
+            return redirect(url_for('create_bank_account'))
 
         current_user = get_current_user_id()
 
@@ -681,10 +681,38 @@ def create_cash_account():
             db.execute_query("""
                 INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                 VALUES (%s, %s, %s, %s)
-            """, (acc_no, acc_name, date.today(), current_user), commit=True)
+            """, (acc_no, bank_name, date.today(), current_user), commit=True)
             flash('New bank account created', 'success')
         except Exception as e:
             flash(f'Error creating bank account: {str(e)}', 'danger')
+
+        return redirect(url_for('create_bank_account'))
+
+    return render_template('create_bank_account.html')
+
+# --- Create Cash Account ---
+@app.route('/create_cash_account', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def create_cash_account():
+    if request.method == 'POST':
+        acc_name = request.form.get('account_name')
+
+        if not acc_name:
+            flash('Account name is required', 'danger')
+            return redirect(url_for('create_cash_account'))
+
+        current_user = get_current_user_id()
+
+        try:
+            # cash_book schema: cash_id, cash_book_account_name, cash_creat_date, cash_created_user, Select_As
+            db.execute_query("""
+                INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                VALUES (%s, %s, %s, 0)
+            """, (acc_name, date.today(), current_user), commit=True)
+            flash('New cash account created', 'success')
+        except Exception as e:
+            flash(f'Error creating cash account: {str(e)}', 'danger')
 
         return redirect(url_for('create_cash_account'))
 
