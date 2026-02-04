@@ -853,6 +853,163 @@ def delete_balance_sheet_category():
     return redirect(url_for('balance_sheet_category'))
 
 # --- Create Bank Account ---
+@app.route('/pl_category', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def pl_category():
+    if request.method == 'POST':
+        category_id = int(request.form.get('category_id', 0))
+        name = request.form.get('category_name')
+        level = request.form.get('holding_level')
+
+        current_user = get_current_user_id()
+        current_date = date.today()
+
+        if not name or not level:
+            flash('Name and Level are required', 'danger')
+            return redirect(url_for('pl_category'))
+
+        try:
+            if category_id == 0:
+                # Insert
+                query = """
+                    INSERT INTO `p&l_category`
+                    (id, name_of_category, holding_position, create_date_time, create_user_code)
+                    VALUES (0, %s, %s, %s, %s)
+                """
+                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                flash('P&L Category created successfully', 'success')
+            else:
+                # Update
+                query = """
+                    UPDATE `p&l_category`
+                    SET name_of_category = %s, holding_position = %s,
+                        create_date_time = %s, create_user_code = %s
+                    WHERE id = %s
+                """
+                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                flash('P&L Category updated successfully', 'success')
+
+        except Exception as e:
+            flash(f'Error saving category: {str(e)}', 'danger')
+
+        return redirect(url_for('pl_category'))
+
+    # GET
+    categories = db.execute_query("SELECT * FROM `p&l_category` ORDER BY holding_position")
+    return render_template('pl_category.html', categories=categories)
+
+@app.route('/pl_category/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def delete_pl_category():
+    selected_ids = request.form.getlist('selected_ids')
+    if selected_ids:
+        try:
+            placeholders = ', '.join(['%s'] * len(selected_ids))
+            query = f"DELETE FROM `p&l_category` WHERE id IN ({placeholders})"
+            db.execute_query(query, tuple(selected_ids), commit=True)
+            flash(f'{len(selected_ids)} categories deleted', 'success')
+        except Exception as e:
+            flash(f'Error deleting categories: {str(e)}', 'danger')
+    else:
+        flash('No items selected', 'info')
+
+    return redirect(url_for('pl_category'))
+
+@app.route('/pl_category_correction', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def pl_category_correction():
+    if request.method == 'POST':
+        account_ids = request.form.getlist('account_id[]')
+        selections = request.form.getlist('category_selection[]')
+
+        updates = []
+        for i in range(len(account_ids)):
+            if i < len(selections) and selections[i]:
+                cat_name, hold_pos = selections[i].split(',')
+                updates.append((cat_name, hold_pos, account_ids[i]))
+
+        if updates:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                conn.start_transaction()
+
+                query = "UPDATE new_account_table SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s WHERE id = %s"
+                for u in updates:
+                    cursor.execute(query, u)
+
+                conn.commit()
+                flash(f'Updated {len(updates)} accounts successfully', 'success')
+            except Exception as e:
+                flash(f'Error updating accounts: {str(e)}', 'danger')
+
+        return redirect(url_for('pl_category_correction'))
+
+    # GET: Fetch unassigned P&L accounts (Logic from wpf_catigiry_corections)
+    # The C# code fetches accounts where (Income=1 OR Expense=1) AND Category IS NULL
+    query_acc = """
+        SELECT id, account_name, account_name_of_catogory_PL
+        FROM new_account_table
+        WHERE (account_income = 1 OR account_expenses = 1)
+        AND (account_name_of_catogory_PL IS NULL OR account_name_of_catogory_PL = '')
+    """
+    accounts = db.execute_query(query_acc)
+
+    # Fetch Categories
+    query_cat = "SELECT name_of_category, holding_position FROM `p&l_category` ORDER BY holding_position"
+    categories = db.execute_query(query_cat)
+
+    return render_template('pl_category_correction.html', accounts=accounts, categories=categories)
+
+@app.route('/bs_category_correction', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bs_category_correction():
+    if request.method == 'POST':
+        account_ids = request.form.getlist('account_id[]')
+        selections = request.form.getlist('category_selection[]')
+
+        updates = []
+        for i in range(len(account_ids)):
+            if i < len(selections) and selections[i]:
+                cat_name, hold_pos = selections[i].split(',')
+                updates.append((cat_name, hold_pos, account_ids[i]))
+
+        if updates:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                conn.start_transaction()
+
+                query = "UPDATE new_account_table SET account_name_of_catogory_Balace_sheet = %s, account_hold_possion_Balace_Sheet = %s WHERE id = %s"
+                for u in updates:
+                    cursor.execute(query, u)
+
+                conn.commit()
+                flash(f'Updated {len(updates)} accounts successfully', 'success')
+            except Exception as e:
+                flash(f'Error updating accounts: {str(e)}', 'danger')
+
+        return redirect(url_for('bs_category_correction'))
+
+    # GET: Fetch unassigned BS accounts (Logic from wpf_bs_catogory_corections)
+    query_acc = """
+        SELECT id, account_name, account_name_of_catogory_Balace_sheet
+        FROM new_account_table
+        WHERE (account_assets = 1 OR account_liabilities = 1 OR account_equity = 1)
+        AND (account_name_of_catogory_Balace_sheet IS NULL OR account_name_of_catogory_Balace_sheet = '')
+    """
+    accounts = db.execute_query(query_acc)
+
+    # Fetch Categories
+    query_cat = "SELECT name_of_category, holding_position FROM balance_sheet_category ORDER BY holding_position"
+    categories = db.execute_query(query_cat)
+
+    return render_template('bs_category_correction.html', accounts=accounts, categories=categories)
+
 @app.route('/create_bank_account', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Accounting')
