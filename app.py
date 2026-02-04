@@ -417,6 +417,97 @@ def toggle_sub_category():
     db.execute_query("UPDATE inventory_carogory SET dis_continue_sub = %s WHERE id = %s", (new_status, cat_id), commit=True)
     return redirect(url_for('inventory_category'))
 
+# --- Add Inventory Item ---
+@app.route('/add_inventory_item', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Inventory')
+def add_inventory_item():
+    if request.method == 'POST':
+        try:
+            import base64
+
+            # 1. Extract Data
+            name = request.form.get('item_name')
+            code = request.form.get('item_code')
+            supplier_code = request.form.get('supplier_code')
+            batch_code = request.form.get('batch_code')
+            unit = request.form.get('measurement_unit')
+            main_cat = request.form.get('main_category')
+            sub_cat = request.form.get('sub_category')
+            min_qty = float(request.form.get('min_qty', 0))
+            selling_price = float(request.form.get('selling_price', 0))
+            cost_price = float(request.form.get('cost_price', 0))
+
+            # 2. Handle Image
+            img_data = None
+            if 'item_image' in request.files:
+                file = request.files['item_image']
+                if file.filename != '':
+                    # C# code saves as JpegBitmapEncoder buffer (bytes)
+                    # We store as LONGBLOB or MEDIUMBLOB.
+                    # MySQL Connector handles bytes object directly for BLOBs.
+                    img_data = file.read()
+
+            if not name or not code or not unit:
+                flash('Name, Code, and Unit are required.', 'danger')
+                return redirect(url_for('add_inventory_item'))
+
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
+
+            try:
+                current_user = get_current_user_id()
+                today_date = date.today()
+
+                # 3. Insert Item
+                query_item = """
+                    INSERT INTO inventoy_items (
+                        id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
+                        inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
+                        inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
+                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                """
+                cursor.execute(query_item, (
+                    name, code, supplier_code, batch_code, img_data,
+                    current_user, today_date, unit, main_cat, sub_cat, min_qty
+                ))
+                item_id = cursor.lastrowid
+
+                # 4. Insert Price
+                # C# uses "SELECT LAST_INSERT_ID()" but we have item_id
+                # However, schema for `inventory_price_recod` has `inventory_price_link` which is FK to item id?
+                # Wait, C# code says: `cmd1.Parameters.AddWithValue("@inventory_price_link", last_insert_jv_no);`
+                # Yes, `inventory_price_link` links to `inventoy_items.id`.
+
+                query_price = """
+                    INSERT INTO inventory_price_recod (
+                        id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
+                    ) VALUES (0, %s, %s, %s, %s)
+                """
+                cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
+
+                conn.commit()
+                flash('Inventory Item created successfully!', 'success')
+
+            except Exception as e:
+                conn.rollback()
+                flash(f'Database Error: {str(e)}', 'danger')
+            finally:
+                cursor.close()
+                conn.close()
+
+        except Exception as e:
+            flash(f'System Error: {str(e)}', 'danger')
+
+        return redirect(url_for('add_inventory_item'))
+
+    # GET Request
+    main_cats = db.execute_query("SELECT main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != '' AND dis_continue_main = 0")
+    sub_cats = db.execute_query("SELECT sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != '' AND dis_continue_sub = 0")
+
+    return render_template('add_inventory_item.html', main_categories=main_cats, sub_categories=sub_cats)
+
 # --- GRN (Goods Received Note) Management ---
 @app.route('/grn', methods=['GET', 'POST'])
 @login_required

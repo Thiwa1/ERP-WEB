@@ -3,39 +3,46 @@
 {% block title %}User Management & Access Control{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-users-cog me-2"></i> USER MANAGEMENT & ACCESS CONTROL</h4>
+        </div>
+    </div>
+
     <div class="row">
         <!-- LEFT COLUMN: Create User -->
         <div class="col-md-4">
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white border-bottom-0 fw-bold" style="color: var(--primary-color);">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                     <i class="fas fa-user-plus me-2"></i> Create New User
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-white">
                     <form id="createUserForm" action="/admin/users/add" method="POST">
                         <div class="mb-3">
-                            <label class="form-label">Username</label>
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Username</label>
                             <input type="text" class="form-control" name="username" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Password</label>
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Password</label>
                             <input type="password" class="form-control" name="password" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Confirm Password</label>
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Confirm Password</label>
                             <input type="password" class="form-control" name="confirm_password" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Mobile No</label>
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Mobile No</label>
                             <input type="text" class="form-control" name="mobile" value="0000000000">
                         </div>
                         <div class="mb-4">
-                            <label class="form-label">Email</label>
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Email</label>
                             <input type="email" class="form-control" name="email" value="user@example.com">
                         </div>
                         <div class="d-grid">
-                            <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">
-                                Create User
+                            <button type="submit" class="btn btn-primary fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
+                                <i class="fas fa-save me-2"></i> Create User
                             </button>
                         </div>
                     </form>
@@ -46,7 +53,7 @@
         <!-- MIDDLE COLUMN: User List -->
         <div class="col-md-8">
             <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white border-bottom-0 fw-bold" style="color: var(--primary-color);">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                     <i class="fas fa-users me-2"></i> Existing Users
                 </div>
                 <div class="card-body p-0 table-responsive" style="max-height: 400px;">
@@ -76,7 +83,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="editUser({{ user.id }})"><i class="fas fa-edit"></i></button>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="editUser({{ user.id }})"><i class="fas fa-edit"></i></button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -93,18 +100,18 @@
 
             <!-- RIGHT COLUMN (Bottom): Access Control -->
             <div class="card shadow-sm border-0" id="rightsPanel" style="display:none;">
-                <div class="card-header bg-white border-bottom-0 fw-bold d-flex justify-content-between align-items-center" style="color: var(--primary-color);">
-                    <span><i class="fas fa-key me-2"></i> Access Rights for: <span id="selectedUserName" class="text-primary"></span></span>
-                    <button class="btn btn-sm btn-success" onclick="saveRights()">
+                <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <span><i class="fas fa-key me-2"></i> Access Rights for: <span id="selectedUserName" class="text-warning"></span></span>
+                    <button class="btn btn-sm btn-light fw-bold text-dark" onclick="saveRights()">
                         <i class="fas fa-save me-1"></i> Save Changes
                     </button>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-white">
                     <form id="rightsForm">
                         <input type="hidden" name="user_id" id="rightsUserId">
                         <div class="row g-3">
                             <div class="col-md-3">
-                                <h6 class="text-muted text-uppercase small fw-bold">Admin & Core</h6>
+                                <h6 class="text-uppercase small fw-bold" style="color: var(--primary-color);">Admin & Core</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Add_New_User" id="perm_admin">
                                     <label class="form-check-label" for="perm_admin">User Management</label>
@@ -116,7 +123,7 @@
                             </div>
 
                             <div class="col-md-3">
-                                <h6 class="text-muted text-uppercase small fw-bold">Inventory & POS</h6>
+                                <h6 class="text-uppercase small fw-bold" style="color: var(--primary-color);">Inventory & POS</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Inventory" id="perm_inventory">
                                     <label class="form-check-label" for="perm_inventory">Inventory (GRN/Loc)</label>
@@ -128,7 +135,7 @@
                             </div>
 
                             <div class="col-md-3">
-                                <h6 class="text-muted text-uppercase small fw-bold">Finance & Reports</h6>
+                                <h6 class="text-uppercase small fw-bold" style="color: var(--primary-color);">Finance & Reports</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Accounting" id="perm_accounting">
                                     <label class="form-check-label" for="perm_accounting">Accounting (Pay/Rec)</label>
@@ -140,7 +147,7 @@
                             </div>
 
                             <div class="col-md-3">
-                                <h6 class="text-muted text-uppercase small fw-bold">Reversals</h6>
+                                <h6 class="text-uppercase small fw-bold" style="color: var(--primary-color);">Reversals</h6>
                                 <div class="form-check form-switch">
                                     <input class="form-check-input" type="checkbox" name="Access_Reversals" id="perm_reversals">
                                     <label class="form-check-label" for="perm_reversals">Reversals & Adjust</label>
@@ -250,36 +257,36 @@
 <!-- Edit User Modal -->
 <div class="modal fade" id="editUserModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title">Edit User</h5>
+        <div class="modal-content border-0">
+            <div class="modal-header text-white" style="background-color: var(--secondary-color);">
+                <h5 class="modal-title fw-bold"><i class="fas fa-user-edit me-2"></i> Edit User</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body bg-white">
                 <form id="editUserForm" action="/admin/users/update_details" method="POST">
                     <input type="hidden" name="user_id" id="editUserId">
                     <div class="mb-3">
-                        <label class="form-label">Username</label>
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Username</label>
                         <input type="text" class="form-control" name="username" id="editUsername" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Password</label>
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Password</label>
                         <input type="text" class="form-control" name="password" id="editPassword" required>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Mobile</label>
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Mobile</label>
                         <input type="text" class="form-control" name="mobile" id="editMobile">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Email</label>
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Email</label>
                         <input type="email" class="form-control" name="email" id="editEmail">
                     </div>
                     <div class="mb-3 form-check">
                         <input type="checkbox" class="form-check-input" name="active" id="editActive">
-                        <label class="form-check-label" for="editActive">User Active</label>
+                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="editActive">User Active</label>
                     </div>
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary">Update User</button>
+                        <button type="submit" class="btn btn-primary fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">Update User</button>
                     </div>
                 </form>
             </div>

@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-boxes me-2"></i> MANAGE THE INVENTORY ITEMS</h4>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('add_inventory_item') }}" enctype="multipart/form-data">
+        <div class="row">
+            <!-- Left Column: Form Fields -->
+            <div class="col-md-9">
+                <!-- Group 1: Basic Information -->
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header bg-light fw-bold text-primary border-bottom-0">
+                        <i class="fas fa-info-circle me-1"></i> BASIC INFORMATION
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <label class="col-sm-3 col-form-label fw-bold" style="color: var(--primary-color);">Item Name</label>
+                            <div class="col-sm-9">
+                                <input type="text" class="form-control" name="item_name" required>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <label class="col-sm-3 col-form-label fw-bold" style="color: var(--primary-color);">Measurement Unit</label>
+                            <div class="col-sm-9">
+                                <input type="text" class="form-control" name="measurement_unit" required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Group 2: Item Codes -->
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header bg-light fw-bold text-primary border-bottom-0">
+                        <i class="fas fa-barcode me-1"></i> ITEM CODES
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Item Code</label>
+                                <input type="text" class="form-control" name="item_code" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Batch Code</label>
+                                <input type="text" class="form-control" name="batch_code">
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier Code</label>
+                                <input type="text" class="form-control" name="supplier_code">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Group 3: Pricing Information -->
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header bg-light fw-bold text-primary border-bottom-0">
+                        <i class="fas fa-tags me-1"></i> PRICING INFORMATION
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Selling Price</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ company_currency }}</span>
+                                    <input type="number" step="0.01" class="form-control" name="selling_price" required>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Cost Price</label>
+                                <div class="input-group">
+                                    <span class="input-group-text">{{ company_currency }}</span>
+                                    <input type="number" step="0.01" class="form-control" name="cost_price" required>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Group 4: Categories & Inventory -->
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header bg-light fw-bold text-primary border-bottom-0">
+                        <i class="fas fa-sitemap me-1"></i> CATEGORIES & INVENTORY
+                    </div>
+                    <div class="card-body">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Main Category</label>
+                                <select class="form-select" name="main_category">
+                                    <option value="">Select...</option>
+                                    {% for cat in main_categories %}
+                                    <option value="{{ cat.main_catogory }}">{{ cat.main_catogory }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Sub Category</label>
+                                <select class="form-select" name="sub_category">
+                                    <option value="">Select...</option>
+                                    {% for cat in sub_categories %}
+                                    <option value="{{ cat.sub_catogory }}">{{ cat.sub_catogory }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Minimum Quantity</label>
+                                <input type="number" step="0.01" class="form-control" name="min_qty" value="0">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Image & Actions -->
+            <div class="col-md-3">
+                <!-- Image Section -->
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header fw-bold text-white text-center" style="background-color: var(--secondary-color);">
+                        ITEM IMAGE
+                    </div>
+                    <div class="card-body text-center bg-white">
+                        <div class="border rounded p-2 mb-3 bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
+                            <img id="previewImage" src="#" alt="Preview" class="img-fluid" style="max-height: 100%; display: none;">
+                            <span id="previewPlaceholder" class="text-muted">No Image Selected</span>
+                        </div>
+                        <input class="form-control mb-2" type="file" name="item_image" accept="image/jpeg, image/png" onchange="previewFile()">
+                        <small class="text-muted">Recommended: JPEG/PNG</small>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary fw-bold py-2 shadow-sm" style="background-color: var(--accent-color); border: none;">
+                        <i class="fas fa-save me-2"></i> Create Item
+                    </button>
+                    <a href="{{ url_for('add_inventory_item') }}" class="btn btn-secondary fw-bold py-2 shadow-sm">
+                        <i class="fas fa-eraser me-2"></i> Clear Form
+                    </a>
+                    <a href="{{ url_for('inventory_price_editing') }}" class="btn btn-info fw-bold py-2 shadow-sm text-white">
+                        <i class="fas fa-tags me-2"></i> Price Editing
+                    </a>
+                    <a href="{{ url_for('inventory_category') }}" class="btn btn-warning fw-bold py-2 shadow-sm text-white">
+                        <i class="fas fa-folder-open me-2"></i> Categories
+                    </a>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    function previewFile() {
+        const preview = document.getElementById('previewImage');
+        const placeholder = document.getElementById('previewPlaceholder');
+        const file = document.querySelector('input[type=file]').files[0];
+        const reader = new FileReader();
+
+        reader.addEventListener("load", function () {
+            preview.src = reader.result;
+            preview.style.display = 'block';
+            placeholder.style.display = 'none';
+        }, false);
+
+        if (file) {
+            reader.readAsDataURL(file);
+        }
+    }
+</script>
+{% endblock %}
