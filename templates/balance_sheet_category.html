@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-balance-scale me-2"></i> MANAGE BALANCE SHEET CATEGORY</h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Left Column: Data Grid -->
+        <div class="col-md-8 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-list me-2"></i> Existing Categories
+                </div>
+                <div class="card-body p-0 table-responsive">
+                    <form id="deleteForm" method="POST" action="{{ url_for('delete_balance_sheet_category') }}">
+                        <table class="table table-bordered table-striped table-hover mb-0">
+                            <thead class="text-white" style="background-color: var(--secondary-color);">
+                                <tr>
+                                    <th style="width: 40px;" class="text-center">
+                                        <input type="checkbox" id="selectAll" onclick="toggleSelectAll()">
+                                    </th>
+                                    <th>ID</th>
+                                    <th>Category Name</th>
+                                    <th>Holding Level</th>
+                                    <th>Create Date</th>
+                                    <th>User Code</th>
+                                    <th style="width: 80px;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cat in categories %}
+                                <tr>
+                                    <td class="text-center">
+                                        <input type="checkbox" name="selected_ids" value="{{ cat.id }}">
+                                    </td>
+                                    <td>{{ cat.id }}</td>
+                                    <td>{{ cat.name_of_category }}</td>
+                                    <td>{{ cat.holding_position }}</td>
+                                    <td>{{ cat.create_date_time }}</td>
+                                    <td>{{ cat.create_user_code }}</td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-info text-white"
+                                                onclick="editCategory('{{ cat.id }}', '{{ cat.name_of_category }}', '{{ cat.holding_position }}')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted fst-italic">No categories found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </form>
+                </div>
+                <div class="card-footer bg-white d-flex justify-content-between">
+                    <button type="submit" form="deleteForm" class="btn btn-danger fw-bold" onclick="return confirm('Are you sure you want to delete selected items?')">
+                        <i class="fas fa-trash me-1"></i> Delete Selected
+                    </button>
+                    <span class="text-muted fw-bold align-self-center">{{ categories|length }} Records</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Form -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-edit me-2"></i> Add / Edit Category
+                </div>
+                <div class="card-body bg-white">
+                    <form method="POST" action="{{ url_for('balance_sheet_category') }}">
+                        <input type="hidden" name="category_id" id="categoryId" value="0">
+
+                        <div class="mb-3">
+                            <label for="categoryName" class="form-label fw-bold" style="color: var(--primary-color);">Category Name</label>
+                            <input type="text" class="form-control" id="categoryName" name="category_name" required placeholder="Enter category name">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="holdingLevel" class="form-label fw-bold" style="color: var(--primary-color);">Holding Level</label>
+                            <input type="number" class="form-control" id="holdingLevel" name="holding_level" required placeholder="Enter holding level">
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">
+                                <i class="fas fa-save me-1"></i> Save Category
+                            </button>
+                            <button type="button" class="btn btn-secondary fw-bold" onclick="resetForm()">
+                                <i class="fas fa-undo me-1"></i> Reset
+                            </button>
+                        </div>
+                    </form>
+
+                    <hr class="my-4">
+
+                    <div class="d-grid gap-2">
+                         <button type="button" class="btn btn-outline-info fw-bold">
+                            <i class="fas fa-search me-1"></i> Find Assigning Account
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function editCategory(id, name, level) {
+        document.getElementById('categoryId').value = id;
+        document.getElementById('categoryName').value = name;
+        document.getElementById('holdingLevel').value = level;
+    }
+
+    function resetForm() {
+        document.getElementById('categoryId').value = '0';
+        document.getElementById('categoryName').value = '';
+        document.getElementById('holdingLevel').value = '';
+    }
+
+    function toggleSelectAll() {
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('input[name="selected_ids"]');
+        checkboxes.forEach(cb => cb.checked = selectAll.checked);
+    }
+</script>
+{% endblock %}

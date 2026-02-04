@@ -787,6 +787,71 @@ def add_new_account():
                            cf_categories=cf_cats,
                            existing_accounts=existing_accounts)
 
+# --- Balance Sheet Category Management ---
+@app.route('/balance_sheet_category', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def balance_sheet_category():
+    if request.method == 'POST':
+        category_id = int(request.form.get('category_id', 0))
+        name = request.form.get('category_name')
+        level = request.form.get('holding_level')
+
+        current_user = get_current_user_id()
+        current_date = date.today()
+
+        if not name or not level:
+            flash('Name and Level are required', 'danger')
+            return redirect(url_for('balance_sheet_category'))
+
+        try:
+            if category_id == 0:
+                # Insert
+                query = """
+                    INSERT INTO balance_sheet_category
+                    (id, name_of_category, holding_position, create_date_time, create_user_code)
+                    VALUES (0, %s, %s, %s, %s)
+                """
+                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                flash('Category created successfully', 'success')
+            else:
+                # Update
+                query = """
+                    UPDATE balance_sheet_category
+                    SET name_of_category = %s, holding_position = %s,
+                        create_date_time = %s, create_user_code = %s
+                    WHERE id = %s
+                """
+                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                flash('Category updated successfully', 'success')
+
+        except Exception as e:
+            flash(f'Error saving category: {str(e)}', 'danger')
+
+        return redirect(url_for('balance_sheet_category'))
+
+    # GET
+    categories = db.execute_query("SELECT * FROM balance_sheet_category ORDER BY holding_position")
+    return render_template('balance_sheet_category.html', categories=categories)
+
+@app.route('/balance_sheet_category/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def delete_balance_sheet_category():
+    selected_ids = request.form.getlist('selected_ids')
+    if selected_ids:
+        try:
+            placeholders = ', '.join(['%s'] * len(selected_ids))
+            query = f"DELETE FROM balance_sheet_category WHERE id IN ({placeholders})"
+            db.execute_query(query, tuple(selected_ids), commit=True)
+            flash(f'{len(selected_ids)} categories deleted', 'success')
+        except Exception as e:
+            flash(f'Error deleting categories: {str(e)}', 'danger')
+    else:
+        flash('No items selected', 'info')
+
+    return redirect(url_for('balance_sheet_category'))
+
 # --- Create Bank Account ---
 @app.route('/create_bank_account', methods=['GET', 'POST'])
 @login_required
