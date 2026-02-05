@@ -4102,6 +4102,171 @@ def ensure_default_accounts():
     except Exception as e:
         print(f"Error ensuring default accounts: {e}")
 
+# --- Journal Entry Management ---
+@app.route('/journal_entry', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def journal_entry():
+    accounts = db.execute_query("SELECT account_name, account_income, account_expenses FROM new_account_table WHERE account_active = 1")
+    sub_accounts = db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit")
+
+    # Auto-generate next system JV no if possible (simplified max + 1)
+    jv_res = db.execute_query("SELECT MAX(jv_id) as max_id FROM jv_numbers")
+    next_sys_jv = (jv_res[0]['max_id'] if jv_res and jv_res[0]['max_id'] else 0) + 1
+
+    return render_template('journal_entry.html',
+                           accounts=accounts,
+                           sub_accounts=sub_accounts,
+                           jobs=jobs,
+                           next_sys_jv=next_sys_jv,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/journal_entry/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def save_journal_entry():
+    try:
+        user_code = request.form.get('jv_user_code')
+        entry_date = request.form.get('entry_date')
+        main_narration = request.form.get('main_narration')
+        entries_json = request.form.get('entries_json')
+
+        entries = json.loads(entries_json) if entries_json else []
+
+        if not entries:
+            flash('No entries provided', 'danger')
+            return redirect(url_for('journal_entry'))
+
+        if not user_code or not main_narration:
+            flash('JV Number and Main Narration are required', 'danger')
+            return redirect(url_for('journal_entry'))
+
+        # Verify balance again
+        total_dr = sum(float(e['dr']) for e in entries)
+        total_cr = sum(float(e['cr']) for e in entries)
+
+        if abs(total_dr - total_cr) > 0.01:
+            flash(f'Entries not balanced. Diff: {total_dr - total_cr}', 'danger')
+            return redirect(url_for('journal_entry'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Create JV Header
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", (user_code, main_narration))
+            jv_no = cursor.lastrowid
+
+            # 2. Insert Entries
+            for e in entries:
+                # Handle sub account
+                sub_code = 0
+                if e.get('sub_account'):
+                    # Format "Code - Name" -> split
+                    parts = e['sub_account'].split(' - ')
+                    if parts: sub_code = parts[0]
+
+                # Handle Job No
+                job_no = e.get('job_no') if e.get('job_no') else None
+
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration,
+                        entry_create_user, entry_jv, entry_sub_account_code, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    e['account'], e['dr'], e['cr'],
+                    entry_date, datetime.now().date(), e['narration'],
+                    current_user, jv_no, sub_code, job_no
+                ))
+
+            conn.commit()
+            flash(f'Journal Entry created successfully. System JV: {jv_no}', 'success')
+
+        except Exception as ex:
+            conn.rollback()
+            flash(f'Database Error: {str(ex)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('journal_entry'))
+
+@app.route('/journal_entry/history')
+@login_required
+def journal_entry_history():
+    from_date = request.args.get('from')
+    to_date = request.args.get('to')
+
+    if not from_date or not to_date:
+        return {'error': 'Dates required'}, 400
+
+    query = """
+        SELECT
+            ed.entry_jv, ed.entry_effective_date, ed.account_name,
+            ed.entry_naration, ed.enty_values_DR, ed.enty_values_CR
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_deleted = 0
+        ORDER BY ed.entry_jv DESC, ed.id ASC
+    """
+    rows = db.execute_query(query, (from_date, to_date))
+
+    data = []
+    for r in rows:
+        data.append({
+            'jv_no': r['entry_jv'],
+            'date': str(r['entry_effective_date']),
+            'account': r['account_name'],
+            'narration': r['entry_naration'],
+            'dr': float(r['enty_values_DR'] or 0),
+            'cr': float(r['enty_values_CR'] or 0)
+        })
+
+    return json.dumps(data)
+
+@app.route('/journal_entry/reverse', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting') # or Access_Reversals
+def reverse_journal_entry():
+    jv_no = request.form.get('jv_no')
+    if not jv_no: return {'error': 'JV No required'}, 400
+
+    current_user = get_current_user_id()
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Check if already reversed or linked to bank rec (simplified check)
+        # C# logic checks entry_deleted = 1
+        cursor.execute("SELECT entry_deleted FROM entry_details WHERE entry_jv = %s LIMIT 1", (jv_no,))
+        res = cursor.fetchone()
+        if res and res[0] == 1:
+            return {'error': 'Already reversed or deleted'}, 400
+
+        # Call Stored Procedure
+        # Note: schema.sql defined `JV_Entry_Revers` with params (jv_No, User01, Edit_Date)
+        # User01 is TEXT, Edit_Date is DATE
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, str(current_user), datetime.now().date()))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return {'success': True}
+
+    except Exception as e:
+        return {'error': str(e)}, 500
+
 def create_default_user():
     """Creates a default admin user if the Login_Table is empty."""
     try:

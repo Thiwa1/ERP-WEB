@@ -1,0 +1,338 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-book me-2"></i> JOURNAL ENTRY MANAGEMENT</h4>
+        </div>
+    </div>
+
+    <!-- Main Entry Form -->
+    <form id="journalForm" method="POST" action="{{ url_for('save_journal_entry') }}">
+
+        <!-- Top Section: Journal Info -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                <i class="fas fa-info-circle me-2"></i> Journal Information
+            </div>
+            <div class="card-body bg-white">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">JV Number (Manual)</label>
+                        <input type="text" class="form-control" name="jv_user_code" placeholder="Enter JV Code" required>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Date</label>
+                        <input type="date" class="form-control" name="entry_date" value="{{ today_date }}" required>
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-bold" style="color: var(--primary-color);">Main Narration</label>
+                        <input type="text" class="form-control" name="main_narration" placeholder="Enter description for this journal entry" required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Middle Section: Entry Grid -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                <span><i class="fas fa-list-ol me-2"></i> Journal Entries</span>
+                <button type="button" class="btn btn-sm btn-light fw-bold text-primary" onclick="addRow()">
+                    <i class="fas fa-plus me-1"></i> Add Row
+                </button>
+            </div>
+            <div class="card-body p-0 table-responsive">
+                <table class="table table-bordered table-striped mb-0" id="journalTable">
+                    <thead class="text-white" style="background-color: var(--primary-color);">
+                        <tr>
+                            <th style="width: 25%">Account</th>
+                            <th style="width: 20%">Sub Account</th>
+                            <th style="width: 10%">Job No</th>
+                            <th style="width: 10%">Debit</th>
+                            <th style="width: 10%">Credit</th>
+                            <th style="width: 20%">Narration</th>
+                            <th style="width: 5%">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Rows added via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Bottom Section: Totals & Actions -->
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-body bg-white">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <div class="alert alert-info mb-0 py-2 d-flex align-items-center" id="statusMessage" style="display:none;">
+                            <i class="fas fa-info-circle me-2"></i> <span id="statusText">Ready</span>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="row g-2 text-end">
+                            <div class="col-4">
+                                <label class="fw-bold d-block text-secondary">Total Debit</label>
+                                <span class="fs-5 fw-bold text-dark" id="totalDr">0.00</span>
+                            </div>
+                            <div class="col-4">
+                                <label class="fw-bold d-block text-secondary">Total Credit</label>
+                                <span class="fs-5 fw-bold text-dark" id="totalCr">0.00</span>
+                            </div>
+                            <div class="col-4">
+                                <label class="fw-bold d-block text-secondary">Difference</label>
+                                <span class="fs-5 fw-bold" id="totalDiff" style="color: green;">0.00</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="d-flex justify-content-end gap-2">
+                    <button type="button" class="btn btn-info text-white fw-bold" onclick="toggleHistory()">
+                        <i class="fas fa-history me-1"></i> History
+                    </button>
+                    <button type="submit" class="btn btn-primary fw-bold px-4" style="background-color: var(--accent-color); border: none;">
+                        <i class="fas fa-save me-1"></i> Create Journal
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <input type="hidden" name="entries_json" id="entriesJson">
+    </form>
+
+    <!-- History Section (Initially Hidden) -->
+    <div id="historySection" class="card shadow-sm border-0" style="display: none;">
+        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <i class="fas fa-history me-2"></i> Journal Entry History
+        </div>
+        <div class="card-body bg-white">
+            <div class="row g-3 mb-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">From Date</label>
+                    <input type="date" class="form-control" id="histFromDate" value="{{ today_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">To Date</label>
+                    <input type="date" class="form-control" id="histToDate" value="{{ today_date }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary fw-bold w-100" onclick="loadHistory()">
+                        Load
+                    </button>
+                </div>
+            </div>
+
+            <div class="table-responsive">
+                <table class="table table-sm table-hover table-bordered" id="historyTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>JV No</th>
+                            <th>Date</th>
+                            <th>Account</th>
+                            <th>Narration</th>
+                            <th>Debit</th>
+                            <th>Credit</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Hidden Datalists for Dropdowns -->
+<datalist id="accountList">
+    {% for acc in accounts %}
+    <option value="{{ acc.account_name }}" data-type="{% if acc.account_income or acc.account_expenses %}P&L{% else %}BS{% endif %}">
+    {% endfor %}
+</datalist>
+
+<datalist id="subAccountList">
+    {% for sub in sub_accounts %}
+    <option value="{{ sub.sub_account_code }} - {{ sub.sub_sub_accaount_name }}">
+    {% endfor %}
+</datalist>
+
+<datalist id="jobList">
+    {% for job in jobs %}
+    <option value="{{ job.job_number }}">
+    {% endfor %}
+</datalist>
+
+<script>
+    let rowCount = 0;
+
+    function addRow() {
+        rowCount++;
+        const tbody = document.querySelector('#journalTable tbody');
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>
+                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="validateRow(this)">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" name="sub_account_${rowCount}" list="subAccountList" placeholder="Select Sub Account">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" name="job_${rowCount}" list="jobList" placeholder="Job No">
+            </td>
+            <td>
+                <input type="number" class="form-control form-control-sm text-end dr-input" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()">
+            </td>
+            <td>
+                <input type="number" class="form-control form-control-sm text-end cr-input" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()">
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration">
+            </td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(row);
+    }
+
+    function removeRow(btn) {
+        btn.closest('tr').remove();
+        calculateTotals();
+    }
+
+    function calculateTotals() {
+        let totalDr = 0;
+        let totalCr = 0;
+
+        document.querySelectorAll('.dr-input').forEach(inp => totalDr += parseFloat(inp.value) || 0);
+        document.querySelectorAll('.cr-input').forEach(inp => totalCr += parseFloat(inp.value) || 0);
+
+        document.getElementById('totalDr').innerText = totalDr.toFixed(2);
+        document.getElementById('totalCr').innerText = totalCr.toFixed(2);
+
+        const diff = totalDr - totalCr;
+        const diffEl = document.getElementById('totalDiff');
+        diffEl.innerText = diff.toFixed(2);
+
+        if (Math.abs(diff) > 0.001) {
+            diffEl.style.color = 'red';
+            showStatus('Total Debit and Credit must be equal.', 'danger');
+        } else {
+            diffEl.style.color = 'green';
+            showStatus('Balanced.', 'success');
+        }
+    }
+
+    function showStatus(msg, type) {
+        const div = document.getElementById('statusMessage');
+        const text = document.getElementById('statusText');
+        div.style.display = 'flex';
+        div.className = `alert alert-${type} mb-0 py-2 d-flex align-items-center`;
+        text.innerText = msg;
+    }
+
+    function validateRow(input) {
+        // Optional: Check if account exists in datalist
+        // For now, we rely on backend validation
+    }
+
+    document.getElementById('journalForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        // Final Validation
+        const dr = parseFloat(document.getElementById('totalDr').innerText);
+        const cr = parseFloat(document.getElementById('totalCr').innerText);
+
+        if (Math.abs(dr - cr) > 0.001) {
+            alert("Journal Entry is not balanced!");
+            return;
+        }
+
+        if (dr === 0 && cr === 0) {
+            alert("Entry cannot be empty.");
+            return;
+        }
+
+        // Gather Data
+        const rows = [];
+        document.querySelectorAll('#journalTable tbody tr').forEach(tr => {
+            const acc = tr.querySelector('input[name^="account_"]').value;
+            if (acc) {
+                rows.push({
+                    account: acc,
+                    sub_account: tr.querySelector('input[name^="sub_account_"]').value,
+                    job_no: tr.querySelector('input[name^="job_"]').value,
+                    dr: parseFloat(tr.querySelector('input[name^="dr_"]').value) || 0,
+                    cr: parseFloat(tr.querySelector('input[name^="cr_"]').value) || 0,
+                    narration: tr.querySelector('input[name^="narration_"]').value
+                });
+            }
+        });
+
+        document.getElementById('entriesJson').value = JSON.stringify(rows);
+        this.submit();
+    });
+
+    function toggleHistory() {
+        const sec = document.getElementById('historySection');
+        sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function loadHistory() {
+        const from = document.getElementById('histFromDate').value;
+        const to = document.getElementById('histToDate').value;
+
+        fetch(`/journal_entry/history?from=${from}&to=${to}`)
+            .then(r => r.json())
+            .then(data => {
+                const tbody = document.querySelector('#historyTable tbody');
+                tbody.innerHTML = '';
+                data.forEach(row => {
+                    const tr = `
+                        <tr>
+                            <td>${row.jv_no}</td>
+                            <td>${row.date}</td>
+                            <td>${row.account}</td>
+                            <td>${row.narration}</td>
+                            <td class="text-end">${row.dr.toFixed(2)}</td>
+                            <td class="text-end">${row.cr.toFixed(2)}</td>
+                            <td>
+                                <button class="btn btn-sm btn-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
+                            </td>
+                        </tr>
+                    `;
+                    tbody.innerHTML += tr;
+                });
+            });
+    }
+
+    function reverseJV(jvNo) {
+        if(confirm(`Are you sure you want to reverse JV ${jvNo}?`)) {
+            fetch('/journal_entry/reverse', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: `jv_no=${jvNo}`
+            })
+            .then(r => r.json())
+            .then(res => {
+                if(res.success) {
+                    alert('Reversed successfully');
+                    loadHistory();
+                } else {
+                    alert('Error: ' + res.error);
+                }
+            });
+        }
+    }
+
+    // Initialize with one row
+    window.onload = function() {
+        addRow();
+    };
+</script>
+{% endblock %}
