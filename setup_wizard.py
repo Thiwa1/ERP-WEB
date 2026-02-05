@@ -102,15 +102,29 @@ def main():
         # 1. Categories
         print("Seeding Categories...")
         bs_cats = [
-            ('Non-Current Assets', 1), ('Current Assets', 2), ('Equity', 3),
-            ('Non-Current Liabilities', 4), ('Current Liabilities', 5)
+            ('ASSETS', 1),
+            ('Non-current assets', 2),
+            ('Current assets', 3),
+            ('EQUITY AND LIABILITIES', 4),
+            ('Capital and reserves', 5),
+            ('Current liabilities', 6)
         ]
         for name, pos in bs_cats:
             cursor.execute("INSERT IGNORE INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
 
         pl_cats = [
-            ('Revenue', 1), ('Cost Of Sales', 2), ('Operating Expenses', 3),
-            ('Other Income', 4), ('Financial Costs', 5)
+            ('Revenue', 1),
+            ('Cost of sales', 2),
+            ('Gross profit', 3), # Note: Usually calculated, but requested as category
+            ('Other operating income', 3),
+            ('Distribution costs', 4),
+            ('Administrative expenses', 5),
+            ('Other operating expenses', 6),
+            ('Finance cost', 7),
+            ('Income from associates', 8),
+            ('Income tax expenses', 9),
+            ('Minority interest', 10),
+            ('Extraordinary items', 11)
         ]
         for name, pos in pl_cats:
             cursor.execute("INSERT IGNORE INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
@@ -131,31 +145,23 @@ def main():
         print("Seeding Chart of Accounts...")
         accounts = [
             # Name, BS_Cat, PL_Cat, CF_Cat, Inc, Exp, Ast, Lia, Equ, Basement
-            ('Cash In Hand', 'Current Assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
-            ('Petty Cash', 'Current Assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
-            ('Bank Account', 'Current Assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
-            ('Accounts Receivable', 'Current Assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
-            ('Inventory', 'Current Assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
-            ('Property Plant Equipment', 'Non-Current Assets', None, 'Investing Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('Account Receivable', 'Current assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('Account Payable', 'Current liabilities', None, 'Operating Activities', 0, 0, 0, 1, 0, 'CR'),
+            ('Inventoy', 'Current assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('VAT Control', 'Current liabilities', None, 'Operating Activities', 0, 0, 0, 1, 0, 'CR'),
+            ('Income', None, 'Revenue', 'Operating Activities', 1, 0, 0, 0, 0, 'CR'),
+            ('Cost Of Goods Sold', None, 'Cost of sales', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
 
-            ('Accounts Payable', 'Current Liabilities', None, 'Operating Activities', 0, 0, 0, 1, 0, 'CR'),
-            ('VAT Payable', 'Current Liabilities', None, 'Operating Activities', 0, 0, 0, 1, 0, 'CR'),
-            ('Bank Loan', 'Non-Current Liabilities', None, 'Financing Activities', 0, 0, 0, 1, 0, 'CR'),
-
-            ('Share Capital', 'Equity', None, 'Financing Activities', 0, 0, 0, 0, 1, 'CR'),
-            ('Retained Earnings', 'Equity', None, 'Operating Activities', 0, 0, 0, 0, 1, 'CR'),
-
-            ('Sales', None, 'Revenue', 'Operating Activities', 1, 0, 0, 0, 0, 'CR'),
-            ('Discount Received', None, 'Other Income', 'Operating Activities', 1, 0, 0, 0, 0, 'CR'),
-
-            ('Cost Of Goods Sold', None, 'Cost Of Sales', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Rent Expense', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Salaries & Wages', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Electricity', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Telephone & Internet', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Water', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Printing & Stationery', None, 'Operating Expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
-            ('Bank Charges', None, 'Financial Costs', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
+            # Additional Standard Accounts
+            ('Cash In Hand', 'Current assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('Bank Account', 'Current assets', None, 'Operating Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('Property Plant Equipment', 'Non-current assets', None, 'Investing Activities', 0, 0, 1, 0, 0, 'DR'),
+            ('Share Capital', 'Capital and reserves', None, 'Financing Activities', 0, 0, 0, 0, 1, 'CR'),
+            ('Retained Earnings', 'Capital and reserves', None, 'Operating Activities', 0, 0, 0, 0, 1, 'CR'),
+            ('Salaries & Wages', None, 'Administrative expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
+            ('Rent Expense', None, 'Administrative expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
+            ('Electricity', None, 'Administrative expenses', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
+            ('Bank Charges', None, 'Finance cost', 'Operating Activities', 0, 1, 0, 0, 0, 'DR'),
         ]
 
         for acc in accounts:
@@ -188,7 +194,41 @@ def main():
                 cf, date.today(), base
             ))
 
-        # 4. Default Admin User
+        # 4. Special Sub-Account (POS SALE)
+        print("Seeding Sub-Accounts...")
+        cursor.execute("SELECT COUNT(*) FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = 'POS SALE'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO sub_accont_for_new_account
+                (sub_sub_accaount_name, sub_new_account, creat_date, active, sub_account_code)
+                VALUES ('POS SALE', 'Income', %s, 1, 0)
+            """, (date.today(),))
+
+        # 5. Default Common Customer
+        print("Seeding Default Customer...")
+        cursor.execute("SELECT COUNT(*) FROM customer WHERE costomer_name = 'Common customer'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO customer (
+                    customer_name, customer_code,
+                    customer_Billing_Address, costomer_Delivery_Address,
+                    e_mail, coustomer_credit_limit, Mobile_nimber,
+                    Compay_Or_Not, Create_Date
+                ) VALUES ('Common customer', 60001, 'non', 'non', 'non', 0, '0000000000', 0, %s)
+            """, (date.today(),))
+
+        # 6. Default Supplier (Direct Payment)
+        print("Seeding Default Supplier...")
+        cursor.execute("SELECT COUNT(*) FROM suppliers WHERE supplier_name = 'Direct Payment'")
+        if cursor.fetchone()[0] == 0:
+            cursor.execute("""
+                INSERT INTO suppliers (
+                    supplier_name, supplier_code,
+                    supplier_create_date, Is_Suplier
+                ) VALUES ('Direct Payment', '70001', %s, 1)
+            """, (date.today(),))
+
+        # 7. Default Admin User
         print("Creating Default Admin User...")
         cursor.execute("SELECT COUNT(*) FROM Login_Table")
         if cursor.fetchone()[0] == 0:
