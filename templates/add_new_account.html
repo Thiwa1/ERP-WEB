@@ -50,7 +50,8 @@
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Account Name</label>
-                            <input type="text" class="form-control" name="account_name" placeholder="Enter account name">
+                            <input type="text" class="form-control" name="account_name" id="accountNameInput" placeholder="Enter account name" spellcheck="true">
+                            <div id="aiSuggestion" class="form-text text-success fw-bold" style="display:none;"><i class="fas fa-robot"></i> AI Suggestion: <span id="suggestionText"></span></div>
                         </div>
 
                         <hr class="my-4">
@@ -146,6 +147,48 @@
                 });
             }
         });
+    });
+
+    // AI Prediction Logic
+    const nameInput = document.getElementById('accountNameInput');
+    const suggestionDiv = document.getElementById('aiSuggestion');
+    const suggestionText = document.getElementById('suggestionText');
+
+    nameInput.addEventListener('blur', function() {
+        const name = this.value.trim();
+        if (name.length < 3) return;
+
+        fetch(`/api/predict_account_type?name=${encodeURIComponent(name)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.confidence > 0.75 && data.mapped_type) {
+                    // Auto select checkbox
+                    const targetCheckbox = document.getElementById(`check_${data.mapped_type}`);
+                    if (targetCheckbox) {
+                        // Uncheck others first (mutual exclusivity)
+                        checkboxes.forEach(cb => cb.checked = false);
+
+                        targetCheckbox.checked = true;
+
+                        // Show Suggestion
+                        suggestionText.innerText = `Classified as ${data.original_type} (${(data.confidence * 100).toFixed(0)}% confidence)`;
+                        suggestionDiv.style.display = 'block';
+
+                        // Flash the box
+                        targetCheckbox.parentElement.classList.add('bg-warning', 'bg-opacity-25', 'rounded');
+                        setTimeout(() => {
+                            targetCheckbox.parentElement.classList.remove('bg-warning', 'bg-opacity-25', 'rounded');
+                        }, 2000);
+                    }
+                } else if (data.confidence > 0) {
+                     // Low confidence, just hint
+                     // User instruction said "connect internet if < 75%", we just ignore or could show hint
+                     suggestionDiv.style.display = 'none';
+                } else {
+                    suggestionDiv.style.display = 'none';
+                }
+            })
+            .catch(err => console.error('AI Prediction Error:', err));
     });
 </script>
 {% endblock %}

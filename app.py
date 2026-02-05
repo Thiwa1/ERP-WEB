@@ -6,6 +6,8 @@ import csv
 import io
 import json
 import os
+import difflib
+import knowledge_base
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -1981,6 +1983,55 @@ def inventory_trend_analysis():
                            trend_direction=trend_direction,
                            slope=slope_val,
                            next_month_forecast=forecast)
+
+@app.route('/api/predict_account_type')
+@login_required
+def predict_account_type():
+    account_name = request.args.get('name', '')
+    if not account_name:
+        return {'error': 'No name provided'}
+
+    # Get matches
+    matches = difflib.get_close_matches(account_name, knowledge_base.account_types.keys(), n=1, cutoff=0.6)
+
+    if matches:
+        match = matches[0]
+        # Calculate a simple similarity ratio
+        ratio = difflib.SequenceMatcher(None, account_name.lower(), match.lower()).ratio()
+
+        # User requested > 75% probability logic (here mapped to ratio > 0.75)
+        # Note: get_close_matches uses cutoff, but we check ratio manually for specific threshold if needed
+        # The prompt said "if probability less than 75% connect the internet".
+        # Since we don't have internet, we only return if confidence is high enough or return low confidence.
+
+        predicted_type = knowledge_base.account_types[match]
+
+        # Map knowledge base types to checkbox values
+        # Knowledge Base: "Assets Account", "Cost Account", "Equity Accont", "Income Account", "Liabilities Account"
+        # Checkbox values: "asset", "expense", "equity", "income", "liability"
+
+        type_map = {
+            "Assets Account": "asset",
+            "Fixed Asset": "asset",
+            "Intangible Assets": "asset",
+            "Cost Account": "expense",
+            "Equity Accont": "equity",
+            "Equity Account": "equity",
+            "Income Account": "income",
+            "Liabilities Account": "liability",
+            "Liabilities Accounts": "liability"
+        }
+
+        mapped_type = type_map.get(predicted_type, "")
+
+        return {
+            'match': match,
+            'original_type': predicted_type,
+            'mapped_type': mapped_type,
+            'confidence': ratio
+        }
+
+    return {'confidence': 0}
 
 @app.route('/api/get_customers')
 @login_required

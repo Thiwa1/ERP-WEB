@@ -4,19 +4,18 @@
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="row mb-4">
-        <div class="col-12 bg-primary text-white p-3 rounded d-flex align-items-center">
-            <span class="fs-4 me-3">📋</span>
-            <h4 class="mb-0 fw-bold">Warranty Period Management</h4>
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-calendar-check me-2"></i> WARRANTY PERIOD MANAGEMENT</h4>
         </div>
     </div>
 
     <!-- Search & Filter -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body">
-            <h6 class="fw-bold text-primary mb-3">Search & Filter</h6>
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body bg-white">
+            <h6 class="fw-bold mb-3" style="color: var(--primary-color);">Search & Filter</h6>
             <form method="GET" action="{{ url_for('warranty_period') }}" class="row g-3 align-items-end">
                 <div class="col-md-5">
-                    <label class="form-label fw-bold text-secondary">Inventory Item</label>
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">Inventory Item</label>
                     <select class="form-select" name="item_name" id="itemSearch">
                         <option value="">Select Item...</option>
                         {% for item in items %}
@@ -25,9 +24,9 @@
                     </select>
                 </div>
                 <div class="col-md-7">
-                    <button type="submit" class="btn btn-primary fw-bold me-2"><i class="fas fa-search me-1"></i> Search</button>
-                    <a href="{{ url_for('warranty_period') }}" class="btn btn-primary fw-bold me-2"><i class="fas fa-sync me-1"></i> Show All</a>
-                    <button type="button" class="btn btn-primary fw-bold" onclick="addNewRow()"><i class="fas fa-plus me-1"></i> Add New</button>
+                    <button type="submit" class="btn btn-primary fw-bold me-2" style="background-color: var(--accent-color); border: none;"><i class="fas fa-search me-1"></i> Search</button>
+                    <a href="{{ url_for('warranty_period') }}" class="btn btn-secondary fw-bold me-2"><i class="fas fa-sync me-1"></i> Show All</a>
+                    <button type="button" class="btn btn-success fw-bold" onclick="addNewRow()"><i class="fas fa-plus me-1"></i> Add New</button>
                 </div>
             </form>
         </div>
@@ -35,13 +34,13 @@
 
     <!-- Warranty Table -->
     <form method="POST" action="{{ url_for('warranty_save') }}" id="warrantyForm">
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-light">
-                <h6 class="mb-0 fw-bold text-dark">Warranty Items</h6>
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                <i class="fas fa-list me-2"></i> Warranty Items
             </div>
             <div class="card-body p-0">
                 <table class="table table-bordered table-striped mb-0" id="warrantyTable">
-                    <thead class="bg-primary text-white">
+                    <thead class="text-white" style="background-color: var(--primary-color);">
                         <tr>
                             <th style="width: 50px;">#</th>
                             <th>Item Name</th>
@@ -83,10 +82,10 @@
         </div>
 
         <!-- Footer Actions -->
-        <div class="card shadow-sm">
-            <div class="card-body d-flex justify-content-end gap-2">
+        <div class="card shadow-sm border-0">
+            <div class="card-body d-flex justify-content-end gap-2 bg-white">
                 <button type="button" class="btn btn-warning text-white fw-bold" onclick="validateData()"><i class="fas fa-check me-1"></i> Validate</button>
-                <button type="submit" class="btn btn-success fw-bold"><i class="fas fa-save me-1"></i> Save</button>
+                <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;"><i class="fas fa-save me-1"></i> Save Changes</button>
                 <a href="/" class="btn btn-danger fw-bold"><i class="fas fa-times me-1"></i> Cancel</a>
             </div>
         </div>

@@ -3,8 +3,8 @@
 {% block content %}
 <div class="container-fluid py-3">
     <div class="row mb-4">
-        <div class="col-12 bg-primary text-white p-3 rounded">
-            <h4 class="mb-0 text-center fw-bold">ADD NEW SUPPLIER</h4>
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-truck me-2"></i> ADD NEW SUPPLIER</h4>
         </div>
     </div>
 
@@ -12,22 +12,22 @@
         <div class="row">
             <!-- Setup Details -->
             <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0 fw-bold text-center">Setup Details</h6>
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                        <i class="fas fa-cog me-2"></i> Setup Details
                     </div>
-                    <div class="card-body">
+                    <div class="card-body bg-white">
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Supplier Name</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Supplier Name</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="supplier_name" required>
+                                <input type="text" class="form-control" name="supplier_name" required>
                             </div>
                         </div>
 
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Salutation</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Salutation</label>
                             <div class="col-sm-4">
-                                <select class="form-select bg-light" name="salutation">
+                                <select class="form-select" name="salutation">
                                     <option value="">Select...</option>
                                     {% for sal in salutations %}
                                     <option value="{{ sal }}">{{ sal }}</option>
@@ -43,23 +43,23 @@
                         </div>
 
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Supplier Code</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Supplier Code</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="supplier_code" required>
+                                <input type="text" class="form-control" name="supplier_code" required>
                             </div>
                         </div>
 
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">VAT No</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">VAT No</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="vat_no">
+                                <input type="text" class="form-control" name="vat_no">
                             </div>
                         </div>
 
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Credit Limit</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Credit Limit</label>
                             <div class="col-sm-8">
-                                <input type="number" class="form-control bg-light" name="credit_limit" step="0.01">
+                                <input type="number" class="form-control" name="credit_limit" step="0.01">
                             </div>
                         </div>
                     </div>
@@ -68,57 +68,57 @@
 
             <!-- Contact Details -->
             <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100">
-                    <div class="card-header bg-primary text-white">
-                        <h6 class="mb-0 fw-bold text-center">Contact Details</h6>
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                        <i class="fas fa-address-book me-2"></i> Contact Details
                     </div>
-                    <div class="card-body">
+                    <div class="card-body bg-white">
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Address No</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Address No</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="address_no">
+                                <input type="text" class="form-control" name="address_no">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Address Line 01</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Address Line 01</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="address_line_1">
+                                <input type="text" class="form-control" name="address_line_1">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Address Line 02</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Address Line 02</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="address_line_2">
+                                <input type="text" class="form-control" name="address_line_2">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Address Line 03</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Address Line 03</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="address_line_3">
+                                <input type="text" class="form-control" name="address_line_3">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Address Line 04</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Address Line 04</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="address_line_4">
+                                <input type="text" class="form-control" name="address_line_4">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Contact No 01</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Contact No 01</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="contact_1">
+                                <input type="text" class="form-control" name="contact_1">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">Contact No 02</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Contact No 02</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control bg-light" name="contact_2">
+                                <input type="text" class="form-control" name="contact_2">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold text-primary">E-Mail</label>
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">E-Mail</label>
                             <div class="col-sm-8">
-                                <input type="email" class="form-control bg-light" name="email">
+                                <input type="email" class="form-control" name="email">
                             </div>
                         </div>
                     </div>
@@ -127,9 +127,11 @@
         </div>
 
         <!-- Footer -->
-        <div class="card shadow-sm">
-            <div class="card-body d-flex justify-content-end align-items-center">
-                <button type="submit" class="btn btn-primary px-5 fw-bold">CREATE NEW SUPPLIER</button>
+        <div class="card shadow-sm border-0">
+            <div class="card-body d-flex justify-content-end align-items-center bg-white">
+                <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
+                    <i class="fas fa-save me-2"></i> CREATE NEW SUPPLIER
+                </button>
             </div>
         </div>
     </form>
