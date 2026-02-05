@@ -1400,13 +1400,14 @@ def cash_payment_submit():
 
         # 4. Process Individual Payments
         for p in payments:
-            # Update Invoice Outstanding (Logic of vender_settele)
-            cursor.execute("SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
+            # Update Invoice Outstanding using Stored Procedure (vender_settele)
+            # Parameters: curent_value (outstanding), settelment_value (new payment), id
+            cursor.execute("SELECT suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
             res = cursor.fetchone()
-            current_paid = float(res[0] or 0)
-            new_total_paid = current_paid + p['amount']
+            current_outstanding = float(res[0] or 0)
 
-            cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
+            # Call Stored Procedure
+            cursor.execute("CALL vender_settele(%s, %s, %s)", (current_outstanding, p['amount'], p['id']))
 
             # Insert Cash Book Record
             cursor.execute("""
@@ -1435,6 +1436,34 @@ def cash_payment_submit():
         conn.close()
 
     return redirect(url_for('cash_payment'))
+
+@app.route('/cash_payment/delete_invoice', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def delete_cash_payment_invoice():
+    jv_no = request.form.get('jv_no')
+    if not jv_no:
+        return {'error': 'No JV Number provided'}, 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Delete Supplier Invoice (Mark as deleted)
+        cursor.execute("CALL Sup_Delete_Invoice(%s)", (jv_no,))
+
+        # 2. Delete Inventory Records (Mark as deleted)
+        cursor.execute("CALL Inventory_Delete(%s)", (jv_no,))
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+
+        return {'success': True}
+
+    except Exception as e:
+        return {'error': str(e)}, 500
 
 @app.route('/cash_payment/print/<int:jv_no>')
 @login_required
@@ -3868,56 +3897,86 @@ def pos_settings():
                            accounts=accounts)
 
 # --- Point of Sale (POS) ---
-@app.route('/pos', methods=['GET', 'POST'])
+@app.route('/pos', methods=['GET'])
 @login_required
 @has_permission('Access_POS')
 def pos():
-    if request.method == 'GET':
-        # Fetch data for POS UI
-        username = session.get('username')
+    return render_template('pos.html')
 
-        # Settings
-        settings_res = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
-        settings = settings_res[0] if settings_res else {}
-
-        # Items
-        items = db.execute_query("SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items WHERE active = 1")
-
-        # Customers
-        customers = db.execute_query("SELECT customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL")
-
-        return render_template('pos.html', items=items, customers=customers, settings=settings)
-
-@app.route('/pos/get_item_details')
+@app.route('/api/pos/login', methods=['POST'])
 @login_required
-def get_pos_item_details():
-    code = request.args.get('code')
+def pos_api_login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
 
-    # Get Item Details + Price
-    # Joined with price record
+    # Verify against pose_setting_table or Login_Table
+    # C# code checks pose_setting_table for specific POS users
+    user = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s AND Password = %s", (username, password))
+
+    if user:
+        settings = user[0]
+        return {
+            'success': True,
+            'settings': {
+                'location': settings['Select_Inventry_Location'],
+                'card_ac': settings['Card_Control_AC'],
+                'cash_ac': settings['Cash_Account'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
+                'vat_enable': settings['VAT_Enable'],
+                'footer': settings['Footer_Message'],
+                'top': settings['Top_Message']
+            }
+        }
+    return {'success': False, 'error': 'Invalid POS Credentials'}
+
+@app.route('/api/pos/items', methods=['GET'])
+@login_required
+def pos_api_items():
+    # Fetch all active items with prices for caching
     query = """
         SELECT
-            i.id, i.inventoy_name, i.inventoy_code, i.inventoy_items_messurment_unit,
+            i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
             p.inventory_price_selling, p.inventory_price_profit_marging_comen,
             p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
         FROM inventoy_items i
         LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
-        WHERE i.inventoy_code = %s
+        WHERE i.active = 1
     """
-    rows = db.execute_query(query, (code,))
+    rows = db.execute_query(query)
 
-    if rows:
-        r = rows[0]
-        return {
+    items = []
+    for r in rows:
+        items.append({
             'id': r['id'],
             'name': r['inventoy_name'],
+            'code': r['inventoy_code'],
+            'batch_code': r['inventoy_bach_code'],
             'unit': r['inventoy_items_messurment_unit'],
             'price_market': float(r['inventory_price_selling'] or 0),
             'price_special': float(r['inventory_price_profit_marging_comen'] or 0),
             'price_loyalty': float(r['inventory_price_for_Loyality_customer'] or 0),
             'cost': float(r['inventory_price_purcharsing'] or 0)
-        }
-    return {'error': 'Item not found'}, 404
+        })
+    return json.dumps(items)
+
+@app.route('/api/pos/customers', methods=['GET'])
+@login_required
+def pos_api_customers():
+    # Fetch customers for caching
+    query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
+    rows = db.execute_query(query)
+
+    custs = []
+    for r in rows:
+        custs.append({
+            'id': r['id'],
+            'name': r['customer_name'],
+            'mobile': r['Mobile_nimber']
+        })
+    return json.dumps(custs)
 
 @app.route('/pos/submit_sale', methods=['POST'])
 @login_required

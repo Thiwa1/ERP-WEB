@@ -1,143 +1,155 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid" style="background-color: var(--bg-light); min-height: 90vh;">
-    <!-- POS Header -->
-    <div class="row mb-3 bg-white p-2 shadow-sm rounded align-items-center">
-        <div class="col-md-6">
-            <h4 class="mb-0 fw-bold" style="color: var(--primary-color);"><i class="fas fa-shopping-cart me-2"></i>POINT OF SALE</h4>
+<!-- POS Login Modal -->
+<div class="modal fade" id="posLoginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white" style="background-color: var(--primary-color);">
+                <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i> POS LOGIN</h5>
+            </div>
+            <div class="modal-body p-4">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Cashier Username</label>
+                    <input type="text" class="form-control" id="posUser" value="{{ session.get('username', '') }}" readonly>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Confirm Password</label>
+                    <input type="password" class="form-control" id="posPass" placeholder="Enter Password">
+                </div>
+                <div class="d-grid">
+                    <button type="button" class="btn btn-primary fw-bold" onclick="posLogin()">LOGIN TO POS</button>
+                </div>
+            </div>
         </div>
-        <div class="col-md-6 text-end">
-            <span class="badge bg-secondary me-2">Location: {{ settings.Select_Inventry_Location or 'Not Set' }}</span>
-            <span class="badge bg-dark">Cashier: {{ session.username }}</span>
+    </div>
+</div>
+
+<!-- Main POS Interface (Hidden initially) -->
+<div class="container-fluid py-3" id="posInterface" style="display:none;">
+
+    <!-- Top Bar -->
+    <div class="row mb-3 align-items-center bg-white p-2 rounded shadow-sm mx-0">
+        <div class="col-md-4">
+            <h4 class="mb-0 fw-bold" style="color: var(--primary-color);">POINT OF SALE</h4>
+        </div>
+        <div class="col-md-4 text-center">
+            <span class="badge bg-success fs-6" id="posStatus">ONLINE</span>
+            <span class="ms-2 fw-bold" id="clock"></span>
+        </div>
+        <div class="col-md-4 text-end">
+            <button class="btn btn-warning btn-sm fw-bold me-2" onclick="showPricing()">
+                <i class="fas fa-tags"></i> PRICES
+            </button>
+            <button class="btn btn-secondary btn-sm fw-bold me-2" onclick="location.reload()">
+                <i class="fas fa-sync"></i> RESET
+            </button>
+            <button class="btn btn-danger btn-sm fw-bold" onclick="location.href='/'">
+                <i class="fas fa-times"></i> EXIT
+            </button>
         </div>
     </div>
 
-    <div class="row">
-        <!-- Left: Item Selection & Keypad -->
-        <div class="col-md-7">
-            <!-- Item Search -->
-            <div class="card shadow-sm mb-3 border-0">
-                <div class="card-body">
-                    <div class="row g-2">
-                        <div class="col-md-8">
-                            <label class="form-label fw-bold">Select Item / Scan Barcode</label>
-                            <input type="text" id="itemSearch" class="form-control form-control-lg fw-bold text-primary"
-                                   list="itemsList" placeholder="Scan or Type Item..." onchange="selectItem()">
-                            <datalist id="itemsList">
-                                {% for item in items %}
-                                <option value="{{ item.inventoy_code }}">{{ item.inventoy_name }}</option>
-                                {% endfor %}
-                            </datalist>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Quantity</label>
-                            <input type="number" id="qtyInput" class="form-control form-control-lg fw-bold" value="1" min="1">
-                        </div>
-                    </div>
-                    <div class="row mt-2 align-items-end">
-                         <div class="col-md-8">
-                             <div class="p-2 bg-light rounded border">
-                                 <small class="text-muted d-block">Item Name</small>
-                                 <strong id="displayItemName" class="text-dark fs-5">-</strong>
-                             </div>
-                         </div>
-                         <div class="col-md-4">
-                             <button class="btn btn-primary w-100 btn-lg fw-bold" style="background-color: var(--accent-color); border:none;" onclick="addToCart()">
-                                 <i class="fas fa-plus me-2"></i>ADD
-                             </button>
-                         </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Keypad (Visual Only for Touch) -->
-            <div class="card shadow-sm border-0">
-                <div class="card-body">
-                    <div class="row g-2">
-                        {% for n in [1,2,3,4,5,6,7,8,9] %}
-                        <div class="col-4">
-                            <button class="btn btn-outline-secondary w-100 py-3 fw-bold fs-4" onclick="appendKey('{{n}}')">{{n}}</button>
-                        </div>
-                        {% endfor %}
-                        <div class="col-4">
-                            <button class="btn btn-outline-danger w-100 py-3 fw-bold" onclick="clearInput()">C</button>
-                        </div>
-                        <div class="col-4">
-                            <button class="btn btn-outline-secondary w-100 py-3 fw-bold fs-4" onclick="appendKey('0')">0</button>
-                        </div>
-                        <div class="col-4">
-                            <button class="btn btn-outline-success w-100 py-3 fw-bold" onclick="addToCart()">ENT</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Right: Cart & Checkout -->
-        <div class="col-md-5">
-            <div class="card shadow-sm h-100 d-flex flex-column border-0">
-                <div class="card-header text-white d-flex justify-content-between" style="background-color: var(--primary-color);">
-                    <span class="fw-bold">CURRENT SALE</span>
-                    <span id="cartCount" class="badge bg-danger">0 Items</span>
-                </div>
-
-                <!-- Cart Items -->
-                <div class="card-body p-0 flex-grow-1" style="overflow-y: auto; max-height: 400px;">
-                    <table class="table table-striped table-hover mb-0">
-                        <thead class="table-light sticky-top">
-                            <tr>
-                                <th>Item</th>
-                                <th class="text-center">Qty</th>
-                                <th class="text-end">Price</th>
-                                <th class="text-end">Total</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="cartBody">
-                            <!-- Items go here -->
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Footer Totals -->
-                <div class="card-footer bg-white border-top p-3">
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fs-5">Subtotal:</span>
-                        <div>
-                            <span class="fs-5 fw-bold">{{ company_currency }}</span>
-                            <span class="fs-5 fw-bold" id="subtotalDisplay">0.00</span>
-                        </div>
-                    </div>
-
-                    <div class="d-flex justify-content-between mb-3 p-2 text-white rounded" style="background-color: var(--primary-color);">
-                        <span class="fs-3 fw-bold">TOTAL:</span>
-                        <div>
-                            <span class="fs-3 fw-bold">{{ company_currency }}</span>
-                            <span class="fs-3 fw-bold" id="totalDisplay">0.00</span>
-                        </div>
-                    </div>
-
-                    <!-- Checkout Controls -->
-                    <div class="row g-2">
-                        <div class="col-12 mb-2">
-                            <label class="form-label fw-bold small text-muted">Customer (Global)</label>
-                            <div class="input-group">
-                                <span class="input-group-text bg-light border-end-0"><i class="fas fa-user"></i></span>
-                                <input type="text" class="form-control form-control-sm bg-light fw-bold" id="posCustomerDisplay" readonly placeholder="Walking Customer">
+    <div class="row h-100">
+        <!-- Left: Cart -->
+        <div class="col-md-8">
+            <div class="card h-100 shadow-sm border-0">
+                <div class="card-body p-0 d-flex flex-column">
+                    <!-- Item Input -->
+                    <div class="p-3 bg-light border-bottom">
+                        <div class="row g-2">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Scan Item / Code</label>
+                                <input type="text" class="form-control form-control-lg fw-bold" id="itemInput" placeholder="Scan or Type..." autocomplete="off">
+                                <div id="itemSuggestions" class="list-group position-absolute w-50" style="z-index: 1000; display:none;"></div>
                             </div>
-                            <input type="hidden" id="posCustomerName">
-                            <input type="hidden" id="posCustomerId">
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold">Qty</label>
+                                <input type="number" class="form-control form-control-lg fw-bold text-center" id="itemQty" value="1">
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label fw-bold">Price</label>
+                                <input type="number" class="form-control form-control-lg fw-bold text-end" id="itemPrice" readonly>
+                            </div>
+                            <div class="col-md-2 d-grid">
+                                <label class="form-label text-white">.</label>
+                                <button class="btn btn-primary fw-bold" onclick="addItemToCart()">ADD</button>
+                            </div>
                         </div>
-                        <div class="col-6">
-                            <button class="btn btn-success w-100 py-3 fw-bold" onclick="showPaymentModal('cash')">
-                                <i class="fas fa-money-bill me-2"></i>CASH
-                            </button>
+                        <div class="mt-2 text-muted small">
+                            <i class="fas fa-info-circle"></i> Item Name: <span id="itemNameDisplay" class="fw-bold text-dark">-</span>
                         </div>
-                        <div class="col-6">
-                            <button class="btn btn-warning w-100 py-3 fw-bold text-dark" onclick="showPaymentModal('card')">
-                                <i class="fas fa-credit-card me-2"></i>CARD
-                            </button>
+                    </div>
+
+                    <!-- Cart Table -->
+                    <div class="table-responsive flex-grow-1">
+                        <table class="table table-striped table-hover mb-0" id="cartTable">
+                            <thead class="table-dark sticky-top">
+                                <tr>
+                                    <th>Code</th>
+                                    <th>Item Name</th>
+                                    <th>Qty</th>
+                                    <th>Price</th>
+                                    <th>Total</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Totals & Payment -->
+        <div class="col-md-4">
+            <div class="card h-100 shadow-sm border-0" style="background-color: var(--primary-color);">
+                <div class="card-body text-white d-flex flex-column">
+                    <!-- Customer Info -->
+                    <div class="mb-3 p-2 bg-white bg-opacity-10 rounded">
+                        <label class="small text-uppercase text-light opacity-75 fw-bold">Customer (Loyalty)</label>
+                        <div class="input-group">
+                            <input type="text" class="form-control border-0 fw-bold" id="customerPhone" placeholder="Mobile Number" onblur="checkLoyalty()">
+                            <button class="btn btn-light" type="button"><i class="fas fa-search"></i></button>
+                        </div>
+                        <div id="customerName" class="mt-1 fw-bold text-warning small">-</div>
+                    </div>
+
+                    <!-- Totals Display -->
+                    <div class="flex-grow-1 d-flex flex-column justify-content-center text-center">
+                        <div class="mb-2 opacity-75">TOTAL AMOUNT</div>
+                        <div class="display-3 fw-bold" id="grandTotal">0.00</div>
+                        <div class="mt-2 text-warning fw-bold" id="savingsDisplay" style="display:none;">
+                            YOU SAVED: <span id="totalSavings">0.00</span>
+                        </div>
+                    </div>
+
+                    <!-- Numpad & Actions -->
+                    <div class="bg-white p-3 rounded text-dark">
+                        <!-- Quick Cash -->
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="fw-bold">Cash Paid</label>
+                                <input type="number" class="form-control form-control-lg fw-bold text-end" id="cashPaid" placeholder="0.00" oninput="calcChange()">
+                            </div>
+                            <div class="col-6">
+                                <label class="fw-bold">Change</label>
+                                <input type="text" class="form-control form-control-lg fw-bold text-end text-danger" id="changeDue" readonly value="0.00">
+                            </div>
+                        </div>
+
+                        <!-- Pay Buttons -->
+                        <div class="row g-2">
+                            <div class="col-6">
+                                <button class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="processPayment(1)">
+                                    <i class="fas fa-money-bill-wave d-block mb-1"></i> CASH
+                                </button>
+                            </div>
+                            <div class="col-6">
+                                <button class="btn btn-info text-white w-100 py-3 fw-bold fs-5" onclick="processPayment(2)">
+                                    <i class="fas fa-credit-card d-block mb-1"></i> CARD
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -146,243 +158,264 @@
     </div>
 </div>
 
-<!-- Payment Modal -->
-<div class="modal fade" id="paymentModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header bg-success text-white">
-                <h5 class="modal-title fw-bold">Complete Payment</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="text-center mb-4">
-                    <h6 class="text-muted">Total Amount Due</h6>
-                    <h1 class="fw-bold text-primary" id="modalTotal">0.00</h1>
-                </div>
-
-                <div class="mb-3" id="cashInputDiv">
-                    <label class="form-label fw-bold">Cash Received</label>
-                    <input type="number" id="cashReceived" class="form-control form-control-lg text-center fw-bold"
-                           oninput="calculateChange()">
-                </div>
-
-                <div class="text-center p-3 bg-light rounded border mt-3" id="changeDiv">
-                    <small class="text-muted">Change Due</small>
-                    <h3 class="fw-bold text-danger" id="changeDisplay">0.00</h3>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary px-4 fw-bold" onclick="processSale()">Confirm & Print</button>
-            </div>
-        </div>
-    </div>
-</div>
-
+<!-- Scripts -->
 <script>
+    // --- Global State ---
+    let posSettings = {};
+    let itemsCache = [];
+    let customersCache = [];
     let cart = [];
     let currentItem = null;
-    let paymentMethod = 1; // 1=Cash, 2=Card
+    let loyaltyCustomer = null;
 
-    // Settings passed from backend
-    const settings = {
-        market_active: {{ settings.Sales_with_market_price or 0 }},
-        special_active: {{ settings.Sales_with_Special_price or 0 }},
-        loyalty_active: {{ settings.Loyalty_Price or 0 }},
-        location: "{{ settings.Select_Inventry_Location }}",
-        cash_ac: "{{ settings.Cash_Account }}",
-        bank_ac: "{{ settings.Card_Control_AC }}"
-    };
+    // --- Startup ---
+    document.addEventListener('DOMContentLoaded', () => {
+        // Show Login Modal
+        new bootstrap.Modal(document.getElementById('posLoginModal')).show();
 
-    function selectItem() {
-        const code = document.getElementById('itemSearch').value;
-        if(!code) return;
+        // Start Clock
+        setInterval(() => {
+            document.getElementById('clock').innerText = new Date().toLocaleTimeString();
+        }, 1000);
+    });
 
-        fetch(`/pos/get_item_details?code=${code}`)
-            .then(res => res.json())
-            .then(data => {
-                if(data.error) {
-                    alert('Item not found');
-                    document.getElementById('displayItemName').innerText = "-";
-                    currentItem = null;
-                } else {
-                    currentItem = data;
-                    document.getElementById('displayItemName').innerText = data.name;
-                    document.getElementById('qtyInput').focus();
-                }
-            });
-    }
+    // --- 1. Login & Load Settings ---
+    function posLogin() {
+        const pass = document.getElementById('posPass').value;
+        const user = document.getElementById('posUser').value;
 
-    function appendKey(n) {
-        const input = document.getElementById('qtyInput'); // Or focused input
-        input.value = input.value + n;
-    }
+        if(!pass) return alert("Enter password");
 
-    function clearInput() {
-        document.getElementById('qtyInput').value = "";
-    }
-
-    function addToCart() {
-        if(!currentItem) return;
-
-        const qty = parseFloat(document.getElementById('qtyInput').value) || 1;
-        const customerName = document.getElementById('posCustomerName').value || "Walking Customer";
-        const customerId = document.getElementById('posCustomerId').value;
-
-        // Determine Price Logic
-        // Logic: If global customer is set, check loyalty.
-        // For now, if customerId exists, assume potential loyalty pricing if active.
-        let price = currentItem.price_market;
-        if(customerId && settings.loyalty_active == 1) {
-            price = currentItem.price_loyalty;
-        } else if (settings.special_active == 1) {
-            price = currentItem.price_special;
-        } else if (settings.market_active == 1) {
-            price = currentItem.price_market;
-        }
-
-        const total = price * qty;
-
-        cart.push({
-            ...currentItem,
-            qty: qty,
-            price: price,
-            total: total
-        });
-
-        updateCartUI();
-
-        // Reset
-        document.getElementById('itemSearch').value = "";
-        document.getElementById('itemSearch').focus();
-        document.getElementById('qtyInput').value = "1";
-        currentItem = null;
-        document.getElementById('displayItemName').innerText = "-";
-    }
-
-    function updateCartUI() {
-        const tbody = document.getElementById('cartBody');
-        tbody.innerHTML = "";
-        let grandTotal = 0;
-
-        cart.forEach((item, index) => {
-            grandTotal += item.total;
-            tbody.innerHTML += `
-                <tr>
-                    <td><small>${item.name}</small></td>
-                    <td class="text-center">${item.qty}</td>
-                    <td class="text-end">${item.price.toFixed(2)}</td>
-                    <td class="text-end fw-bold">${item.total.toFixed(2)}</td>
-                    <td><button class="btn btn-sm text-danger" onclick="removeFromCart(${index})">&times;</button></td>
-                </tr>
-            `;
-        });
-
-        document.getElementById('subtotalDisplay').innerText = grandTotal.toFixed(2);
-        document.getElementById('totalDisplay').innerText = grandTotal.toFixed(2);
-        document.getElementById('cartCount').innerText = cart.length + " Items";
-    }
-
-    function removeFromCart(index) {
-        cart.splice(index, 1);
-        updateCartUI();
-    }
-
-    function showPaymentModal(type) {
-        if(cart.length === 0) return alert("Cart is empty");
-
-        paymentMethod = type === 'cash' ? 1 : 2;
-        const total = document.getElementById('totalDisplay').innerText;
-
-        document.getElementById('modalTotal').innerText = total;
-        document.getElementById('cashInputDiv').style.display = type === 'cash' ? 'block' : 'none';
-        document.getElementById('changeDiv').style.display = type === 'cash' ? 'block' : 'none';
-
-        const modal = new bootstrap.Modal(document.getElementById('paymentModal'));
-        modal.show();
-
-        if(type === 'cash') {
-            setTimeout(() => document.getElementById('cashReceived').focus(), 500);
-        }
-    }
-
-    function calculateChange() {
-        const total = parseFloat(document.getElementById('modalTotal').innerText);
-        const received = parseFloat(document.getElementById('cashReceived').value) || 0;
-        const change = received - total;
-        document.getElementById('changeDisplay').innerText = change > 0 ? change.toFixed(2) : "0.00";
-    }
-
-    function processSale() {
-        const total = parseFloat(document.getElementById('modalTotal').innerText);
-        const received = parseFloat(document.getElementById('cashReceived').value) || 0;
-
-        if(paymentMethod === 1 && received < total) {
-            return alert("Insufficient cash received");
-        }
-
-        const customerName = document.getElementById('posCustomerName').value || "Walking Customer";
-        const customerId = document.getElementById('posCustomerId').value;
-
-        const saleData = {
-            cart: cart,
-            payment: { method: paymentMethod, received: received },
-            customer: {
-                name: customerName,
-                id: customerId,
-                loyalty_no: customerId // Using ID or mapping to loyalty no
-            },
-            settings: settings
-        };
-
-        fetch('/pos/submit_sale', {
+        fetch('/api/pos/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(saleData)
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({username: user, password: pass})
         })
-        .then(res => res.json())
+        .then(r => r.json())
         .then(data => {
             if(data.success) {
-                // Open Receipt in new tab
-                window.open(`/pos_receipt/${data.jv}`, '_blank');
-                resetPOS();
-                // Close modal manually if needed
-                const modalEl = document.getElementById('paymentModal');
-                const modal = bootstrap.Modal.getInstance(modalEl);
-                modal.hide();
+                posSettings = data.settings;
+                bootstrap.Modal.getInstance(document.getElementById('posLoginModal')).hide();
+                document.getElementById('posInterface').style.display = 'block';
+                loadCache(); // Load Items/Customers
+                document.getElementById('itemInput').focus();
             } else {
-                alert('Error: ' + data.error);
+                alert("Login Failed: " + data.error);
             }
         });
     }
 
-    function resetPOS() {
-        cart = [];
-        updateCartUI(); // This will clear the table
-        document.getElementById('cashReceived').value = "";
-        document.getElementById('changeDisplay').innerText = "0.00";
-        // Do not reset global customer
+    // --- 2. Client-Side Caching ---
+    function loadCache() {
+        // Load Items
+        fetch('/api/pos/items').then(r => r.json()).then(data => {
+            itemsCache = data;
+            console.log("Items Cached:", itemsCache.length);
+        });
+
+        // Load Customers
+        fetch('/api/pos/customers').then(r => r.json()).then(data => {
+            customersCache = data;
+            console.log("Customers Cached:", customersCache.length);
+        });
     }
 
-    // Sync with Global Customer Dropdown
-    function syncCustomer() {
-        const id = localStorage.getItem('selectedCustomerId');
-        const name = localStorage.getItem('selectedCustomerName');
+    // --- 3. Item Search & Selection ---
+    const itemInput = document.getElementById('itemInput');
+    const suggestions = document.getElementById('itemSuggestions');
 
-        if (id && name) {
-            document.getElementById('posCustomerDisplay').value = name;
-            document.getElementById('posCustomerName').value = name;
-            document.getElementById('posCustomerId').value = id;
+    itemInput.addEventListener('input', function() {
+        const val = this.value.toLowerCase();
+        if(val.length < 2) { suggestions.style.display='none'; return; }
+
+        const matches = itemsCache.filter(i =>
+            i.code.toLowerCase().includes(val) ||
+            i.name.toLowerCase().includes(val)
+        ).slice(0, 10);
+
+        suggestions.innerHTML = '';
+        if(matches.length > 0) {
+            suggestions.style.display = 'block';
+            matches.forEach(item => {
+                const a = document.createElement('a');
+                a.className = 'list-group-item list-group-item-action fw-bold';
+                a.innerHTML = `${item.name} <span class="badge bg-secondary float-end">${item.code}</span>`;
+                a.onclick = () => selectItem(item);
+                suggestions.appendChild(a);
+            });
         } else {
-            document.getElementById('posCustomerDisplay').value = "Walking Customer";
-            document.getElementById('posCustomerName').value = "";
-            document.getElementById('posCustomerId').value = "";
+            suggestions.style.display = 'none';
+        }
+    });
+
+    // Handle Barcode Scan (Enter key)
+    itemInput.addEventListener('keypress', function(e) {
+        if(e.key === 'Enter') {
+            const val = this.value.toLowerCase();
+            const item = itemsCache.find(i => i.code.toLowerCase() === val || i.batch_code === val);
+            if(item) {
+                selectItem(item);
+                addItemToCart(); // Auto add if scanned
+            }
+        }
+    });
+
+    function selectItem(item) {
+        currentItem = item;
+        document.getElementById('itemInput').value = item.code;
+        document.getElementById('itemNameDisplay').innerText = item.name;
+        suggestions.style.display = 'none';
+
+        // Pricing Logic (Matching C# logic)
+        let price = item.price_market; // Default
+
+        if(posSettings.loyalty_price === 1 && loyaltyCustomer) {
+            price = item.price_loyalty;
+        } else if (posSettings.special_price === 1) {
+            price = item.price_special;
+        } else if (posSettings.market_price === 1) {
+            price = item.price_market;
+        }
+
+        document.getElementById('itemPrice').value = price.toFixed(2);
+        document.getElementById('itemQty').focus();
+    }
+
+    // --- 4. Cart Management ---
+    function addItemToCart() {
+        if(!currentItem) return alert("Select item first");
+
+        const qty = parseFloat(document.getElementById('itemQty').value) || 1;
+        const price = parseFloat(document.getElementById('itemPrice').value) || 0;
+
+        cart.push({
+            ...currentItem,
+            qty: qty,
+            price: price, // The active price used
+            total: qty * price
+        });
+
+        renderCart();
+
+        // Reset Inputs
+        currentItem = null;
+        document.getElementById('itemInput').value = '';
+        document.getElementById('itemQty').value = 1;
+        document.getElementById('itemPrice').value = '';
+        document.getElementById('itemNameDisplay').innerText = '-';
+        document.getElementById('itemInput').focus();
+    }
+
+    function renderCart() {
+        const tbody = document.querySelector('#cartTable tbody');
+        tbody.innerHTML = '';
+        let total = 0;
+        let savings = 0;
+
+        cart.forEach((item, idx) => {
+            total += item.total;
+
+            // Calculate Savings (Market Price - Active Price)
+            const saving = (item.price_market - item.price) * item.qty;
+            if(saving > 0) savings += saving;
+
+            tbody.innerHTML += `
+                <tr>
+                    <td>${item.code}</td>
+                    <td>${item.name}</td>
+                    <td class="text-center">${item.qty}</td>
+                    <td class="text-end">${item.price.toFixed(2)}</td>
+                    <td class="text-end fw-bold">${item.total.toFixed(2)}</td>
+                    <td class="text-center"><button class="btn btn-sm btn-danger py-0" onclick="removeFromCart(${idx})">X</button></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('grandTotal').innerText = total.toFixed(2);
+
+        if(savings > 0) {
+            document.getElementById('savingsDisplay').style.display = 'block';
+            document.getElementById('totalSavings').innerText = savings.toFixed(2);
+        } else {
+            document.getElementById('savingsDisplay').style.display = 'none';
         }
     }
 
-    // Listen for global changes
-    window.addEventListener('customerChanged', syncCustomer);
-    // Initial sync
-    syncCustomer();
+    function removeFromCart(idx) {
+        cart.splice(idx, 1);
+        renderCart();
+    }
+
+    // --- 5. Customer Loyalty ---
+    function checkLoyalty() {
+        const mobile = document.getElementById('customerPhone').value;
+        if(mobile.length > 9) {
+            const cust = customersCache.find(c => c.mobile === mobile);
+            if(cust) {
+                loyaltyCustomer = cust;
+                document.getElementById('customerName').innerText = cust.name;
+                // Re-price cart if items already added? Ideally yes, but simplest is next item
+                alert(`Loyalty Customer Identified: ${cust.name}`);
+            } else {
+                loyaltyCustomer = null;
+                document.getElementById('customerName').innerText = "-";
+            }
+        }
+    }
+
+    // --- 6. Payment & Submission ---
+    function calcChange() {
+        const total = parseFloat(document.getElementById('grandTotal').innerText);
+        const paid = parseFloat(document.getElementById('cashPaid').value) || 0;
+        document.getElementById('changeDue').value = (paid - total).toFixed(2);
+    }
+
+    function processPayment(method) {
+        if(cart.length === 0) return alert("Cart is empty");
+
+        const total = parseFloat(document.getElementById('grandTotal').innerText);
+        const cashPaid = parseFloat(document.getElementById('cashPaid').value) || 0;
+
+        if(method === 1 && cashPaid < total) return alert("Insufficient Cash");
+
+        const payload = {
+            cart: cart,
+            payment: {
+                method: method, // 1=Cash, 2=Card
+                amount_paid: cashPaid,
+                change: cashPaid - total
+            },
+            customer: loyaltyCustomer ? {
+                loyalty_no: loyaltyCustomer.mobile,
+                name: loyaltyCustomer.name
+            } : {},
+            settings: posSettings
+        };
+
+        fetch('/pos/submit_sale', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(res => {
+            if(res.success) {
+                // Print Receipt Logic (Simplified alert/redirect)
+                if(confirm("Transaction Successful! Print Receipt?")) {
+                    window.open(`/pos_receipt/${res.jv}`, '_blank');
+                }
+                // Reset
+                cart = [];
+                loyaltyCustomer = null;
+                renderCart();
+                document.getElementById('cashPaid').value = '';
+                document.getElementById('changeDue').value = '0.00';
+                document.getElementById('customerPhone').value = '';
+                document.getElementById('customerName').innerText = '-';
+            } else {
+                alert("Transaction Failed: " + res.error);
+            }
+        });
+    }
 </script>
 {% endblock %}
