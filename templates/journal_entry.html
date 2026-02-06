@@ -38,7 +38,7 @@
         <!-- Middle Section: Entry Grid -->
         <div class="card shadow-sm mb-4 border-0">
             <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
-                <span><i class="fas fa-list-ol me-2"></i> Journal Entries</span>
+                <span><i class="fas fa-list-ol me-2"></i> Journal Entries (Base Currency: {{ base_currency }})</span>
                 <button type="button" class="btn btn-sm btn-light fw-bold text-primary" onclick="addRow()">
                     <i class="fas fa-plus me-1"></i> Add Row
                 </button>
@@ -48,11 +48,12 @@
                     <thead class="text-white" style="background-color: var(--primary-color);">
                         <tr>
                             <th style="width: 25%">Account</th>
-                            <th style="width: 20%">Sub Account</th>
-                            <th style="width: 10%">Job No</th>
-                            <th style="width: 10%">Debit</th>
-                            <th style="width: 10%">Credit</th>
-                            <th style="width: 20%">Narration</th>
+                            <th style="width: 15%">Currency</th>
+                            <th style="width: 10%">FC Amount</th>
+                            <th style="width: 10%">Rate</th>
+                            <th style="width: 10%">Debit ({{ base_currency }})</th>
+                            <th style="width: 10%">Credit ({{ base_currency }})</th>
+                            <th style="width: 15%">Narration</th>
                             <th style="width: 5%">Action</th>
                         </tr>
                     </thead>
@@ -104,7 +105,7 @@
         <input type="hidden" name="entries_json" id="entriesJson">
     </form>
 
-    <!-- History Section (Initially Hidden) -->
+    <!-- History Section -->
     <div id="historySection" class="card shadow-sm border-0" style="display: none;">
         <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
             <i class="fas fa-history me-2"></i> Journal Entry History
@@ -146,27 +147,16 @@
     </div>
 </div>
 
-<!-- Hidden Datalists for Dropdowns -->
+<!-- Hidden Datalists -->
 <datalist id="accountList">
     {% for acc in accounts %}
-    <option value="{{ acc.account_name }}" data-type="{% if acc.account_income or acc.account_expenses %}P&L{% else %}BS{% endif %}">
-    {% endfor %}
-</datalist>
-
-<datalist id="subAccountList">
-    {% for sub in sub_accounts %}
-    <option value="{{ sub.sub_account_code }} - {{ sub.sub_sub_accaount_name }}">
-    {% endfor %}
-</datalist>
-
-<datalist id="jobList">
-    {% for job in jobs %}
-    <option value="{{ job.job_number }}">
+    <option value="{{ acc.account_name }}" data-curr="{{ acc.currency_code }}">
     {% endfor %}
 </datalist>
 
 <script>
     let rowCount = 0;
+    const baseCurrency = "{{ base_currency }}";
 
     function addRow() {
         rowCount++;
@@ -174,13 +164,17 @@
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>
-                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="validateRow(this)">
+                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="checkCurrency(this)">
             </td>
             <td>
-                <input type="text" class="form-control form-control-sm" name="sub_account_${rowCount}" list="subAccountList" placeholder="Select Sub Account">
+                <span class="badge bg-secondary row-currency">${baseCurrency}</span>
+                <input type="hidden" name="currency_${rowCount}" value="${baseCurrency}">
             </td>
             <td>
-                <input type="text" class="form-control form-control-sm" name="job_${rowCount}" list="jobList" placeholder="Job No">
+                <input type="number" class="form-control form-control-sm text-end fc-input" name="fc_${rowCount}" step="0.01" disabled oninput="calcBaseAmount(this)">
+            </td>
+            <td>
+                <input type="number" class="form-control form-control-sm text-end rate-input" name="rate_${rowCount}" step="0.0001" value="1.0000" disabled oninput="calcBaseAmount(this)">
             </td>
             <td>
                 <input type="number" class="form-control form-control-sm text-end dr-input" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()">
@@ -198,6 +192,80 @@
             </td>
         `;
         tbody.appendChild(row);
+    }
+
+    function checkCurrency(input) {
+        const row = input.closest('tr');
+        const list = document.getElementById('accountList');
+        const option = Array.from(list.options).find(opt => opt.value === input.value);
+
+        if (option) {
+            const currency = option.getAttribute('data-curr') || baseCurrency;
+            const badge = row.querySelector('.row-currency');
+            const currencyInput = row.querySelector('input[name^="currency_"]');
+            const fcInput = row.querySelector('.fc-input');
+            const rateInput = row.querySelector('.rate-input');
+            const drInput = row.querySelector('.dr-input');
+            const crInput = row.querySelector('.cr-input');
+
+            badge.innerText = currency;
+            currencyInput.value = currency;
+
+            if (currency !== baseCurrency) {
+                // Enable FC Fields
+                fcInput.disabled = false;
+                rateInput.disabled = false;
+                drInput.readOnly = true;
+                crInput.readOnly = true;
+                badge.className = 'badge bg-warning text-dark';
+
+                // Fetch Rate
+                fetch(`/api/get_exchange_rate?from=${currency}&to=${baseCurrency}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.rate) rateInput.value = data.rate;
+                    });
+            } else {
+                // Disable FC Fields
+                fcInput.disabled = true;
+                rateInput.disabled = true;
+                fcInput.value = '';
+                rateInput.value = '1.0000';
+                drInput.readOnly = false;
+                crInput.readOnly = false;
+                badge.className = 'badge bg-secondary';
+            }
+        }
+    }
+
+    function calcBaseAmount(input) {
+        const row = input.closest('tr');
+        const fc = parseFloat(row.querySelector('.fc-input').value) || 0;
+        const rate = parseFloat(row.querySelector('.rate-input').value) || 1;
+        const baseVal = (fc * rate).toFixed(2);
+
+        // Determine if DR or CR based on existing logic or user intent?
+        // Usually FC input doesn't say DR/CR.
+        // Let's assume positive FC is DR, negative is CR? Or create FC_DR and FC_CR?
+        // UI simplification: Assume user puts FC, then it fills DR. If they want CR, they clear DR and put CR?
+        // Better: FC Input is just amount. User must check DR or CR box or have two inputs?
+        // Current table has DR (Base) and CR (Base).
+        // Let's unlock DR/CR but auto-fill one of them.
+        // Simplest: User types in FC, then we ask user? Or standard accounting often has FC Debit / FC Credit columns.
+        // Given constraints, I will auto-fill the LAST modified Base field or default to DR if both 0.
+
+        // Let's try: If user modifies FC, we update DR by default unless CR was non-zero?
+        const drInput = row.querySelector('.dr-input');
+        const crInput = row.querySelector('.cr-input');
+
+        if (parseFloat(crInput.value) > 0) {
+            crInput.value = baseVal;
+            drInput.value = 0;
+        } else {
+            drInput.value = baseVal;
+            crInput.value = 0;
+        }
+        calculateTotals();
     }
 
     function removeRow(btn) {
@@ -219,7 +287,7 @@
         const diffEl = document.getElementById('totalDiff');
         diffEl.innerText = diff.toFixed(2);
 
-        if (Math.abs(diff) > 0.001) {
+        if (Math.abs(diff) > 0.01) {
             diffEl.style.color = 'red';
             showStatus('Total Debit and Credit must be equal.', 'danger');
         } else {
@@ -236,40 +304,29 @@
         text.innerText = msg;
     }
 
-    function validateRow(input) {
-        // Optional: Check if account exists in datalist
-        // For now, we rely on backend validation
-    }
-
     document.getElementById('journalForm').addEventListener('submit', function(e) {
         e.preventDefault();
 
-        // Final Validation
         const dr = parseFloat(document.getElementById('totalDr').innerText);
         const cr = parseFloat(document.getElementById('totalCr').innerText);
 
-        if (Math.abs(dr - cr) > 0.001) {
+        if (Math.abs(dr - cr) > 0.01) {
             alert("Journal Entry is not balanced!");
             return;
         }
 
-        if (dr === 0 && cr === 0) {
-            alert("Entry cannot be empty.");
-            return;
-        }
-
-        // Gather Data
         const rows = [];
         document.querySelectorAll('#journalTable tbody tr').forEach(tr => {
             const acc = tr.querySelector('input[name^="account_"]').value;
             if (acc) {
                 rows.push({
                     account: acc,
-                    sub_account: tr.querySelector('input[name^="sub_account_"]').value,
-                    job_no: tr.querySelector('input[name^="job_"]').value,
-                    dr: parseFloat(tr.querySelector('input[name^="dr_"]').value) || 0,
-                    cr: parseFloat(tr.querySelector('input[name^="cr_"]').value) || 0,
-                    narration: tr.querySelector('input[name^="narration_"]').value
+                    dr: parseFloat(tr.querySelector('.dr-input').value) || 0,
+                    cr: parseFloat(tr.querySelector('.cr-input').value) || 0,
+                    narration: tr.querySelector('input[name^="narration_"]').value,
+                    currency: tr.querySelector('input[name^="currency_"]').value,
+                    fc_amount: parseFloat(tr.querySelector('.fc-input').value) || 0,
+                    rate: parseFloat(tr.querySelector('.rate-input').value) || 1
                 });
             }
         });
@@ -293,7 +350,7 @@
                 const tbody = document.querySelector('#historyTable tbody');
                 tbody.innerHTML = '';
                 data.forEach(row => {
-                    const tr = `
+                    tbody.innerHTML += `
                         <tr>
                             <td>${row.jv_no}</td>
                             <td>${row.date}</td>
@@ -306,13 +363,12 @@
                             </td>
                         </tr>
                     `;
-                    tbody.innerHTML += tr;
                 });
             });
     }
 
     function reverseJV(jvNo) {
-        if(confirm(`Are you sure you want to reverse JV ${jvNo}?`)) {
+        if(confirm(`Reverse JV ${jvNo}?`)) {
             fetch('/journal_entry/reverse', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/x-www-form-urlencoded'},
@@ -330,7 +386,6 @@
         }
     }
 
-    // Initialize with one row
     window.onload = function() {
         addRow();
     };

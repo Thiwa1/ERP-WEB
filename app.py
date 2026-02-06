@@ -8,6 +8,7 @@ import json
 import os
 import difflib
 import knowledge_base
+import random # For mocking exchange rate
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -698,6 +699,8 @@ def add_new_account():
 
         if action == 'add_account':
             account_name = request.form.get('account_name')
+            currency_code = request.form.get('currency_code', 'LKR') # Default LKR
+
             if not account_name:
                 flash('Please enter an account name', 'danger')
                 return redirect(url_for('add_new_account'))
@@ -739,13 +742,14 @@ def add_new_account():
                     account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
                     account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
                     account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, '')
+                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment,
+                    currency_code
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, '', %s)
             """
             params = (
                 account_name, pl_pos, bs_pos, pl_name, bs_name,
                 is_income, is_expense, is_asset, is_liability, is_equity,
-                cf_cat, date.today(), current_user
+                cf_cat, date.today(), current_user, currency_code
             )
 
             try:
@@ -782,12 +786,16 @@ def add_new_account():
     pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
     cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
     existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
+    currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
+    if not currencies: # Fallback if table empty
+        currencies = [{'currency_code': 'LKR', 'currency_name': 'Sri Lankan Rupee'}]
 
     return render_template('add_new_account.html',
                            bs_categories=bs_cats,
                            pl_categories=pl_cats,
                            cf_categories=cf_cats,
-                           existing_accounts=existing_accounts)
+                           existing_accounts=existing_accounts,
+                           currencies=currencies)
 
 # --- Balance Sheet Category Management ---
 @app.route('/balance_sheet_category', methods=['GET', 'POST'])
@@ -4226,12 +4234,96 @@ def ensure_default_accounts():
     except Exception as e:
         print(f"Error ensuring default accounts: {e}")
 
+# --- Currency Setup ---
+@app.route('/currency_setup', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def currency_setup():
+    if request.method == 'POST':
+        code = request.form.get('code', '').upper()
+        name = request.form.get('name')
+        is_base = 1 if request.form.get('is_base') else 0
+
+        if not code:
+            flash('Code required', 'danger')
+            return redirect(url_for('currency_setup'))
+
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
+
+            # If setting base, unset others
+            if is_base:
+                cursor.execute("UPDATE currency_table SET is_base_currency = 0")
+
+            cursor.execute("INSERT INTO currency_table (currency_code, currency_name, is_base_currency) VALUES (%s, %s, %s)",
+                           (code, name, is_base))
+
+            conn.commit()
+            cursor.close()
+            conn.close()
+            flash('Currency added', 'success')
+        except Exception as e:
+            flash(f'Error: {str(e)}', 'danger')
+
+        return redirect(url_for('currency_setup'))
+
+    currencies = db.execute_query("SELECT * FROM currency_table")
+    return render_template('currency_setup.html', currencies=currencies)
+
+@app.route('/currency_setup/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def delete_currency():
+    cid = request.form.get('id')
+    try:
+        db.execute_query("DELETE FROM currency_table WHERE id=%s", (cid,), commit=True)
+        flash('Currency deleted', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    return redirect(url_for('currency_setup'))
+
+# --- Exchange Rate API ---
+@app.route('/api/get_exchange_rate')
+@login_required
+def get_exchange_rate():
+    from_curr = request.args.get('from', '').upper()
+    to_curr = request.args.get('to', '').upper()
+
+    if not from_curr or not to_curr:
+        return {'error': 'Missing currencies'}, 400
+
+    if from_curr == to_curr:
+        return {'rate': 1.0}
+
+    # Mocking Logic (Since no internet)
+    # In real world: requests.get(f"https://api.exchangerate-api.com/v4/latest/{from_curr}")
+    # Here we mock USD -> LKR around 300, others 1
+
+    rate = 1.0
+    if from_curr == 'USD' and to_curr == 'LKR':
+        rate = 300.0 + random.uniform(-5, 5) # Fluctuation
+    elif from_curr == 'LKR' and to_curr == 'USD':
+        rate = 1 / 300.0
+    elif from_curr == 'EUR' and to_curr == 'LKR':
+        rate = 330.0
+
+    # Format to 4 decimal places
+    return {'rate': round(rate, 4)}
+
 # --- Journal Entry Management ---
 @app.route('/journal_entry', methods=['GET'])
 @login_required
 @has_permission('Access_Accounting')
 def journal_entry():
-    accounts = db.execute_query("SELECT account_name, account_income, account_expenses FROM new_account_table WHERE account_active = 1")
+    # Fetch accounts with currency info
+    accounts = db.execute_query("""
+        SELECT account_name, account_income, account_expenses, currency_code
+        FROM new_account_table
+        WHERE account_active = 1
+    """)
+
     sub_accounts = db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1")
     jobs = db.execute_query("SELECT job_number FROM jobs_unit")
 
@@ -4239,11 +4331,16 @@ def journal_entry():
     jv_res = db.execute_query("SELECT MAX(jv_id) as max_id FROM jv_numbers")
     next_sys_jv = (jv_res[0]['max_id'] if jv_res and jv_res[0]['max_id'] else 0) + 1
 
+    # Get Base Currency
+    base_curr_res = db.execute_query("SELECT currency_code FROM currency_table WHERE is_base_currency = 1 LIMIT 1")
+    base_currency = base_curr_res[0]['currency_code'] if base_curr_res else 'LKR'
+
     return render_template('journal_entry.html',
                            accounts=accounts,
                            sub_accounts=sub_accounts,
                            jobs=jobs,
                            next_sys_jv=next_sys_jv,
+                           base_currency=base_currency,
                            today_date=date.today().strftime('%Y-%m-%d'))
 
 @app.route('/journal_entry/save', methods=['POST'])
@@ -4266,7 +4363,7 @@ def save_journal_entry():
             flash('JV Number and Main Narration are required', 'danger')
             return redirect(url_for('journal_entry'))
 
-        # Verify balance again
+        # Verify balance again (Base Currency)
         total_dr = sum(float(e['dr']) for e in entries)
         total_cr = sum(float(e['cr']) for e in entries)
 
@@ -4297,16 +4394,23 @@ def save_journal_entry():
                 # Handle Job No
                 job_no = e.get('job_no') if e.get('job_no') else None
 
+                # Currency Info
+                curr_code = e.get('currency', 'LKR')
+                fc_amt = float(e.get('fc_amount', 0))
+                rate = float(e.get('rate', 1))
+
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR,
                         entry_effective_date, entry_create_date, entry_naration,
-                        entry_create_user, entry_jv, entry_sub_account_code, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        entry_create_user, entry_jv, entry_sub_account_code, entry_job_number,
+                        currency_code, fc_amount, exchange_rate
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     e['account'], e['dr'], e['cr'],
                     entry_date, datetime.now().date(), e['narration'],
-                    current_user, jv_no, sub_code, job_no
+                    current_user, jv_no, sub_code, job_no,
+                    curr_code, fc_amt, rate
                 ))
 
             conn.commit()

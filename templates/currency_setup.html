@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-money-bill-wave me-2"></i> CURRENCY SETUP</h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Add Currency -->
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-4 border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-plus-circle me-2"></i> Add Currency
+                </div>
+                <div class="card-body bg-white">
+                    <form method="POST" action="/currency_setup">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Currency Code</label>
+                            <input type="text" name="code" class="form-control" placeholder="e.g. USD" maxlength="3" required style="text-transform: uppercase;">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold" style="color: var(--primary-color);">Currency Name</label>
+                            <input type="text" name="name" class="form-control" placeholder="e.g. US Dollar" required>
+                        </div>
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" name="is_base" id="isBase">
+                            <label class="form-check-label" for="isBase">Set as Base Currency (Company Default)</label>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">
+                                <i class="fas fa-save me-2"></i> SAVE CURRENCY
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- List -->
+        <div class="col-md-8">
+            <div class="card shadow-sm border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-list me-2"></i> Existing Currencies
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-striped table-hover mb-0">
+                        <thead class="text-white" style="background-color: var(--primary-color);">
+                            <tr>
+                                <th>Code</th>
+                                <th>Name</th>
+                                <th>Type</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for curr in currencies %}
+                            <tr>
+                                <td class="fw-bold">{{ curr.currency_code }}</td>
+                                <td>{{ curr.currency_name }}</td>
+                                <td>
+                                    {% if curr.is_base_currency %}
+                                    <span class="badge bg-success">BASE</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">FOREIGN</span>
+                                    {% endif %}
+                                </td>
+                                <td class="text-center">
+                                    {% if not curr.is_base_currency %}
+                                    <form method="POST" action="/currency_setup/delete" style="display:inline;" onsubmit="return confirm('Delete this currency?');">
+                                        <input type="hidden" name="id" value="{{ curr.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="fas fa-trash"></i></button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

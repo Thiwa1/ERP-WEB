@@ -108,6 +108,18 @@ ENGINE = InnoDB;
 -- -----------------------------------------------------
 -- Table `Book_keeping`.`new_account_table`
 -- -----------------------------------------------------
+-- -----------------------------------------------------
+-- Table `Book_keeping`.`currency_table`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `Book_keeping`.`currency_table` (
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `currency_code` VARCHAR(3) NOT NULL,
+  `currency_name` VARCHAR(100) NULL,
+  `is_base_currency` TINYINT DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `currency_code_UNIQUE` (`currency_code` ASC) VISIBLE)
+ENGINE = InnoDB;
+
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `account_name` VARCHAR(60) NULL DEFAULT NULL,
@@ -127,6 +139,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   `account_cr` DOUBLE NULL DEFAULT NULL,
   `account_name_of_catogory_Balace_sheet` VARCHAR(100) NULL DEFAULT NULL,
   `cf_catogory` VARCHAR(100) NULL,
+  `currency_code` VARCHAR(3) NULL DEFAULT 'LKR',
   PRIMARY KEY (`id`),
   UNIQUE INDEX `account_name_UNIQUE` (`account_name` ASC) VISIBLE,
   INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
@@ -190,6 +203,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`entry_details` (
   `entry_From` INT NULL DEFAULT NULL,
   `entry_VAT` DOUBLE NULL DEFAULT 0,
   `entry_deleted` TINYINT NULL DEFAULT 0,
+  `currency_code` VARCHAR(3) NULL DEFAULT 'LKR',
+  `fc_amount` DOUBLE NULL DEFAULT 0,
+  `exchange_rate` DOUBLE NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   INDEX `index_entry_name` (`account_name` ASC) INVISIBLE,
   INDEX `index_sub_account` (`entry_sub_account_code` ASC) VISIBLE,
