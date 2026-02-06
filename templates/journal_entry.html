@@ -389,7 +389,8 @@
                             <td class="text-end">${row.dr.toFixed(2)}</td>
                             <td class="text-end">${row.cr.toFixed(2)}</td>
                             <td>
-                                <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-secondary py-0 me-1"><i class="fas fa-print"></i></a>
+                                <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
+                                <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
                                 <button class="btn btn-sm btn-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
                             </td>
                         </tr>

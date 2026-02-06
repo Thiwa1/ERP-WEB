@@ -58,15 +58,6 @@
                             <label>Date</label>
                             <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
                         </div>
-                        <div class="mb-2">
-                            <label>Cash Account</label>
-                            <select name="cash_account" class="form-select">
-                                {% for acc in cash_accounts %}
-                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
                         <h6 class="text-primary mt-3">Item Details</h6>
                         <div class="mb-2">
                             <label>Cost Account</label>
@@ -104,6 +95,15 @@
                     </form>
 
                     <form method="POST" action="/direct_purchasing/submit">
+                        <div class="mb-2">
+                            <label>Cash Account</label>
+                            <select name="cash_account" class="form-select" required>
+                                <option value="">Select Cash Account</option>
+                                {% for acc in cash_accounts %}
+                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="vat_check" id="vatCheck">
                             <label class="form-check-label fw-bold" for="vatCheck">Include VAT</label>

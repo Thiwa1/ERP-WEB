@@ -118,6 +118,7 @@
                         <th>Account</th>
                         <th>Paid Amount</th>
                         <th>Narration</th>
+                        <th>Action</th>
                     </tr>
                 </thead>
                 <tbody id="historyBody">
@@ -177,6 +178,11 @@ function loadSupplierData() {
                         <td>${hist.account}</td>
                         <td>${hist.amount.toFixed(2)}</td>
                         <td>${hist.narration}</td>
+                        <td>
+                            <a href="/voucher/print/bank/${hist.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0">
+                                <i class="fas fa-print"></i>
+                            </a>
+                        </td>
                     </tr>
                 `;
                 hbody.innerHTML += row;

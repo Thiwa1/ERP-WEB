@@ -1473,39 +1473,128 @@ def delete_cash_payment_invoice():
     except Exception as e:
         return {'error': str(e)}, 500
 
-@app.route('/cash_payment/print/<int:jv_no>')
+@app.route('/voucher/print/<string:voucher_type>/<int:jv_no>')
 @login_required
-def print_cash_voucher(jv_no):
-    # Fetch Voucher Details
-    voucher_res = db.execute_query("""
-        SELECT
-            c.cash_book_recod_voucher_no as voucher_no,
-            c.Payment_Date as date,
-            c.cash_book_recode_suplier_name as paid_to,
-            c.cash_book_recode_accont_name as paid_from,
-            c.cash_book_recode_naration as narration,
-            SUM(c.cash_book_recode_cr) as amount,
-            c.User_Enter as user_id
-        FROM cash_book_recode c
-        WHERE c.jv_numbers_jv_id = %s
-        GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
-                 c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-    """, (jv_no,))
+def print_voucher(voucher_type, jv_no):
+    voucher = None
+    title = "PAYMENT VOUCHER"
 
-    if not voucher_res:
+    if voucher_type == 'cash':
+        title = "CASH PAYMENT VOUCHER"
+        query = """
+            SELECT
+                c.cash_book_recod_voucher_no as voucher_no,
+                c.Payment_Date as date,
+                c.cash_book_recode_suplier_name as paid_to,
+                c.cash_book_recode_accont_name as paid_from,
+                c.cash_book_recode_naration as narration,
+                SUM(c.cash_book_recode_dr) as amount,
+                c.User_Enter as user_id
+            FROM cash_book_recode c
+            WHERE c.jv_numbers_jv_id = %s
+            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
+                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
+        """
+        res = db.execute_query(query, (jv_no,))
+        if res: voucher = res[0]
+
+    elif voucher_type == 'bank':
+        title = "BANK PAYMENT VOUCHER"
+        query = """
+            SELECT
+                b.bank_book_recod_voucher_no as voucher_no,
+                b.Bank_Payment_Date as date,
+                b.bank_book__suplier_name as paid_to,
+                b.bank_book__accont_name as paid_from,
+                b.bank_book__naration as narration,
+                SUM(b.bank_book_book_recode_dr) as amount,
+                b.Bank_User_Id as user_id,
+                b.bank_book_chque_no as cheque_no
+            FROM bank_book_recod b
+            WHERE b.jv_numbers_jv_id = %s
+            GROUP BY b.bank_book_recod_voucher_no, b.Bank_Payment_Date, b.bank_book__suplier_name,
+                     b.bank_book__accont_name, b.bank_book__naration, b.Bank_User_Id, b.bank_book_chque_no
+        """
+        res = db.execute_query(query, (jv_no,))
+        if res: voucher = res[0]
+
+    elif voucher_type == 'direct':
+        title = "DIRECT PAYMENT VOUCHER"
+        # Similar to cash but maybe different layout or filtering
+        query = """
+            SELECT
+                c.cash_book_recod_voucher_no as voucher_no,
+                c.Payment_Date as date,
+                'Direct Purchase' as paid_to,
+                c.cash_book_recode_accont_name as paid_from,
+                c.cash_book_recode_naration as narration,
+                SUM(c.cash_book_recode_dr) as amount,
+                c.User_Enter as user_id
+            FROM cash_book_recode c
+            WHERE c.jv_numbers_jv_id = %s
+            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date,
+                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
+        """
+        res = db.execute_query(query, (jv_no,))
+        if res: voucher = res[0]
+
+    if not voucher:
         return "Voucher Not Found", 404
-    voucher = voucher_res[0]
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
     company = company_res[0] if company_res else {}
 
-    # Fetch Amount in Words (Simplified)
-    # In a real app, use a num2words library
-
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
-                           company=company)
+                           company=company,
+                           title=title)
+
+@app.route('/service_entry/print/<int:jv_no>')
+@login_required
+def print_service_entry(jv_no):
+    # Fetch Header
+    header_query = """
+        SELECT j.jv_user_code, j.jv_naration, MIN(e.entry_effective_date) as entry_date,
+               (SELECT suppliers_invoice_number FROM suppliers_invoice_data WHERE suppliers_invoice_JV = j.jv_id LIMIT 1) as inv_no
+        FROM jv_numbers j
+        LEFT JOIN entry_details e ON j.jv_id = e.entry_jv
+        WHERE j.jv_id = %s
+        GROUP BY j.jv_id
+    """
+    header_res = db.execute_query(header_query, (jv_no,))
+    if not header_res:
+        return "Entry Not Found", 404
+    header = header_res[0]
+
+    # Fetch Details (Debit entries are the services/expenses)
+    details_query = """
+        SELECT account_name, entry_naration, enty_values_DR, entry_job_number
+        FROM entry_details
+        WHERE entry_jv = %s AND enty_values_DR > 0
+    """
+    details = db.execute_query(details_query, (jv_no,))
+
+    # Calculate Total
+    total = sum(d['enty_values_DR'] for d in details)
+
+    # Fetch Supplier (Credit entry)
+    sup_query = """
+        SELECT account_name, enty_values_CR
+        FROM entry_details
+        WHERE entry_jv = %s AND enty_values_CR > 0 AND account_name = 'Account Payable'
+    """
+    sup_res = db.execute_query(sup_query, (jv_no,))
+
+    company_res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = company_res[0] if company_res else {}
+
+    return render_template('service_entry_print.html',
+                           header=header,
+                           details=details,
+                           total=total,
+                           company=company,
+                           jv_id=jv_no)
 
 # --- Purchase Orders ---
 @app.route('/purchase_orders', methods=['GET'])
