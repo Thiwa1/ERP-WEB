@@ -3838,6 +3838,8 @@ def profit_loss():
 @has_permission('Access_POS')
 def pos_settings():
     if request.method == 'POST':
+        user_id = request.form.get('user_id')
+
         # General Settings
         location = request.form.get('location')
         card_ac = request.form.get('card_ac')
@@ -3853,48 +3855,111 @@ def pos_settings():
         footer = request.form.get('footer_msg')
         top = request.form.get('top_msg')
 
-        # Image Handling (Optional - simplified)
-        # Assuming we just keep existing if not provided or handle separately
-        # For simplicity, we update text fields first.
-
-        # Update Query
-        # Assuming single row or specific ID. C# uses `id` variable.
-        # We'll update the first row or specific user's row if multiple.
-        # Ideally, fetch ID first.
+        # Image Handling
+        import base64
+        img_data = None
+        if 'receipt_logo' in request.files:
+            file = request.files['receipt_logo']
+            if file.filename != '':
+                img_data = file.read() # Store as bytes in BLOB
 
         try:
-            # Check if settings exist, else insert (though setup usually assumes existing)
-            # We'll assume ID=1 for global settings or user specific.
-            # C# logic seemed to fetch based on Username then update by ID.
-            # Let's update all for now or specific user.
+            if not user_id:
+                flash('User ID missing', 'danger')
+                return redirect(url_for('pos_settings'))
 
-            username = session.get('username')
-            db.execute_query("""
+            # Update Query
+            query = """
                 UPDATE pose_setting_table SET
                     Select_Inventry_Location=%s, Card_Control_AC=%s, Cash_Account=%s,
                     Sales_with_market_price=%s, Sales_with_Special_price=%s, Loyalty_Price=%s, VAT_Enable=%s,
                     Footer_Message=%s, Top_Message=%s
-                WHERE User_Name=%s
-            """, (location, card_ac, cash_ac, market_price, special_price, loyalty_price, vat_enable, footer, top, username), commit=True)
+            """
+            params = [location, card_ac, cash_ac, market_price, special_price, loyalty_price, vat_enable, footer, top]
 
+            if img_data:
+                query += ", Image=%s"
+                params.append(img_data)
+
+            query += " WHERE Id=%s"
+            params.append(user_id)
+
+            db.execute_query(query, tuple(params), commit=True)
             flash('POS Settings updated successfully.', 'success')
+
         except Exception as e:
             flash(f'Error updating settings: {str(e)}', 'danger')
 
-        return redirect(url_for('pos_settings'))
+        return redirect(url_for('pos_settings', user_id=user_id))
 
     # GET
-    username = session.get('username')
-    settings = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
-    current_settings = settings[0] if settings else {}
+    # 1. Fetch all POS users for dropdown
+    pos_users = db.execute_query("SELECT Id, User_Name FROM pose_setting_table")
+
+    # 2. Determine Selected User
+    selected_user_id = request.args.get('user_id')
+    current_settings = {}
+
+    if pos_users:
+        if not selected_user_id:
+            # Default to first user found or try to match current session user
+            # Try matching session username first
+            session_username = session.get('username')
+            match = next((u for u in pos_users if u['User_Name'] == session_username), None)
+            if match:
+                selected_user_id = match['Id']
+            else:
+                selected_user_id = pos_users[0]['Id']
+
+        # Fetch settings for selected user
+        res = db.execute_query("SELECT * FROM pose_setting_table WHERE Id = %s", (selected_user_id,))
+        if res:
+            current_settings = res[0]
+            # Handle Image for Display (Convert bytes to base64)
+            if current_settings.get('Image'):
+                import base64
+                current_settings['ImageBase64'] = base64.b64encode(current_settings['Image']).decode('utf-8')
 
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
     accounts = db.execute_query("SELECT account_name FROM new_account_table") # For Card/Cash selection
 
     return render_template('pos_settings.html',
                            settings=current_settings,
+                           pos_users=pos_users,
+                           selected_user_id=int(selected_user_id) if selected_user_id else 0,
                            locations=locations,
                            accounts=accounts)
+
+@app.route('/add_pos_user', methods=['POST'])
+@login_required
+@has_permission('Access_POS')
+def add_pos_user():
+    username = request.form.get('username')
+    password = request.form.get('password')
+    mobile = request.form.get('mobile')
+
+    if not username or not password:
+        flash('Username and Password are required', 'danger')
+        return redirect(url_for('pos_settings'))
+
+    try:
+        # Check duplicate
+        exists = db.execute_query("SELECT Id FROM pose_setting_table WHERE User_Name = %s", (username,))
+        if exists:
+            flash('Username already exists', 'danger')
+            return redirect(url_for('pos_settings'))
+
+        db.execute_query("""
+            INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
+            VALUES (0, %s, %s, %s)
+        """, (username, password, mobile), commit=True)
+
+        flash(f'New Cashier {username} registered successfully', 'success')
+
+    except Exception as e:
+        flash(f'Error adding cashier: {str(e)}', 'danger')
+
+    return redirect(url_for('pos_settings'))
 
 # --- Point of Sale (POS) ---
 @app.route('/pos', methods=['GET'])

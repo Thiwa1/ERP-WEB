@@ -2,25 +2,52 @@
 
 {% block content %}
 <div class="container-fluid py-3">
+    <!-- Header -->
     <div class="row mb-4">
         <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-cogs me-2"></i> POS SETTINGS</h4>
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-cogs me-2"></i> POINT OF SALE – SETTINGS PANEL</h4>
         </div>
     </div>
 
-    <form method="POST" action="/pos_settings">
+    <!-- User Management Section -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <i class="fas fa-users-cog me-2"></i> User Management
+        </div>
+        <div class="card-body bg-white">
+            <div class="row align-items-end g-3">
+                <div class="col-md-6">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">Select Cashier / User</label>
+                    <div class="input-group">
+                        <select class="form-select" id="posUserSelect" onchange="changeUser()">
+                            {% for user in pos_users %}
+                            <option value="{{ user.Id }}" {% if selected_user_id == user.Id %}selected{% endif %}>{{ user.User_Name }}</option>
+                            {% endfor %}
+                        </select>
+                        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#newCashierModal">
+                            <i class="fas fa-user-plus me-1"></i> New User
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <form method="POST" action="/pos_settings" enctype="multipart/form-data">
+        <input type="hidden" name="user_id" value="{{ selected_user_id }}">
+
         <div class="row">
             <!-- General Settings -->
             <div class="col-md-6">
-                <div class="card shadow-sm mb-4 border-0">
+                <div class="card shadow-sm mb-4 border-0 h-100">
                     <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                        <i class="fas fa-sliders-h me-2"></i> General Configuration
+                        <i class="fas fa-sliders-h me-2"></i> General Settings
                     </div>
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Inventory Location</label>
                             <select name="location" class="form-select">
-                                <option value="">-- Select --</option>
+                                <option value="">-- Select Location --</option>
                                 {% for loc in locations %}
                                 <option value="{{ loc.inventory_locations_name }}" {% if settings.Select_Inventry_Location == loc.inventory_locations_name %}selected{% endif %}>
                                     {{ loc.inventory_locations_name }}
@@ -31,7 +58,7 @@
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Credit Card Control Account</label>
                             <select name="card_ac" class="form-select">
-                                <option value="">-- Select --</option>
+                                <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.account_name }}" {% if settings.Card_Control_AC == acc.account_name %}selected{% endif %}>
                                     {{ acc.account_name }}
@@ -42,7 +69,7 @@
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Cash Control Account</label>
                             <select name="cash_ac" class="form-select">
-                                <option value="">-- Select --</option>
+                                <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.account_name }}" {% if settings.Cash_Account == acc.account_name %}selected{% endif %}>
                                     {{ acc.account_name }}
@@ -54,11 +81,11 @@
                 </div>
             </div>
 
-            <!-- Pricing & VAT -->
+            <!-- Selling Price Settings -->
             <div class="col-md-6">
-                <div class="card shadow-sm mb-4 border-0">
+                <div class="card shadow-sm mb-4 border-0 h-100">
                     <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                        <i class="fas fa-tags me-2"></i> Pricing & VAT
+                        <i class="fas fa-tags me-2"></i> Selling Price & VAT
                     </div>
                     <div class="card-body bg-white">
                         <div class="form-check form-switch mb-3">
@@ -81,29 +108,136 @@
                 </div>
             </div>
 
-            <!-- Messages -->
-            <div class="col-md-12">
+            <!-- Messages & Image -->
+            <div class="col-12">
                 <div class="card shadow-sm mb-4 border-0">
                     <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                        <i class="fas fa-comment-alt me-2"></i> Receipt Messages
+                        <i class="fas fa-receipt me-2"></i> Receipt Configuration
                     </div>
                     <div class="card-body bg-white">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Top Message</label>
-                            <textarea name="top_msg" class="form-control" rows="2">{{ settings.Top_Message }}</textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Footer Message</label>
-                            <textarea name="footer_msg" class="form-control" rows="3">{{ settings.Footer_Message }}</textarea>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Top Message</label>
+                                    <textarea name="top_msg" class="form-control" rows="3">{{ settings.Top_Message }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Footer Message</label>
+                                    <textarea name="footer_msg" class="form-control" rows="3">{{ settings.Footer_Message }}</textarea>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold" style="color: var(--primary-color);">Receipt Header Image</label>
+                                <div class="border p-3 rounded bg-light mb-3 text-center">
+                                    {% if settings.ImageBase64 %}
+                                    <img src="data:image/jpeg;base64,{{ settings.ImageBase64 }}" alt="Receipt Logo" class="img-fluid" style="max-height: 120px;">
+                                    {% else %}
+                                    <div class="text-muted py-4"><i class="fas fa-image fa-3x mb-2"></i><br>No Image Selected</div>
+                                    {% endif %}
+                                </div>
+                                <input type="file" name="receipt_logo" class="form-control" accept="image/*">
+                                <div class="form-text text-muted">Recommended size: 300x120 pixels.</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
-            <i class="fas fa-save me-2"></i> SAVE SETTINGS
-        </button>
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+            <button type="submit" class="btn btn-primary btn-lg fw-bold px-5 shadow-sm" style="background-color: var(--accent-color); border: none;">
+                <i class="fas fa-save me-2"></i> SAVE ALL SETTINGS
+            </button>
+        </div>
     </form>
 </div>
+
+<!-- New Cashier Modal -->
+<div class="modal fade" id="newCashierModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white" style="background-color: var(--secondary-color);">
+                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Cashier Registration</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="/add_pos_user" method="POST" onsubmit="return validateCashierForm()">
+                <div class="modal-body p-4 bg-light">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Username</label>
+                        <input type="text" name="username" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Password</label>
+                        <input type="password" name="password" id="cashierPass" class="form-control" required>
+                        <div class="progress mt-2" style="height: 5px;">
+                            <div class="progress-bar bg-danger" id="passStrength" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <small class="text-muted" id="passText">Enter password</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Mobile Number</label>
+                        <input type="text" name="mobile" id="cashierMobile" class="form-control" value="+94" required>
+                        <div class="form-text">Format: +94XXXXXXXXX</div>
+                    </div>
+                </div>
+                <div class="modal-footer bg-white">
+                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">Register</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function changeUser() {
+        const userId = document.getElementById('posUserSelect').value;
+        if(userId) {
+            window.location.href = `/pos_settings?user_id=${userId}`;
+        }
+    }
+
+    // Password Strength
+    document.getElementById('cashierPass').addEventListener('input', function() {
+        const val = this.value;
+        let strength = 0;
+        if(val.length >= 6) strength++;
+        if(/[A-Z]/.test(val)) strength++;
+        if(/[0-9]/.test(val)) strength++;
+        if(/[^A-Za-z0-9]/.test(val)) strength++;
+
+        const bar = document.getElementById('passStrength');
+        const text = document.getElementById('passText');
+
+        const width = (strength / 4) * 100;
+        bar.style.width = width + '%';
+
+        if(strength < 2) { bar.className = 'progress-bar bg-danger'; text.innerText = 'Weak'; text.className = 'text-danger'; }
+        else if(strength < 4) { bar.className = 'progress-bar bg-warning'; text.innerText = 'Good'; text.className = 'text-warning'; }
+        else { bar.className = 'progress-bar bg-success'; text.innerText = 'Strong'; text.className = 'text-success'; }
+    });
+
+    // Mobile Formatting
+    document.getElementById('cashierMobile').addEventListener('input', function() {
+        let val = this.value.replace(/[^0-9+]/g, '');
+        if(!val.startsWith('+94')) val = '+94' + val.replace(/^\+94/, '');
+        if(val.length > 12) val = val.substring(0, 12);
+        this.value = val;
+    });
+
+    function validateCashierForm() {
+        const pass = document.getElementById('cashierPass').value;
+        if(pass.length < 6) {
+            alert('Password must be at least 6 characters');
+            return false;
+        }
+
+        const mobile = document.getElementById('cashierMobile').value;
+        if(!/^\+94[0-9]{9}$/.test(mobile)) {
+            alert('Invalid Mobile Number Format');
+            return false;
+        }
+        return true;
+    }
+</script>
 {% endblock %}
