@@ -2077,6 +2077,22 @@ def api_get_customers():
     rows = db.execute_query(query)
     return json.dumps(rows)
 
+@app.route('/api/get_sub_accounts')
+@login_required
+def api_get_sub_accounts():
+    account_name = request.args.get('account_name')
+    if not account_name:
+        return json.dumps([])
+
+    query = """
+        SELECT sub_account_code as code, sub_sub_accaount_name as name
+        FROM sub_accont_for_new_account
+        WHERE sub_new_account = %s AND active = 1
+        ORDER BY sub_sub_accaount_name
+    """
+    rows = db.execute_query(query, (account_name,))
+    return json.dumps(rows)
+
 @app.route('/get_supplier_data')
 @login_required
 def get_supplier_data():
@@ -4494,6 +4510,40 @@ def reverse_journal_entry():
 
     except Exception as e:
         return {'error': str(e)}, 500
+
+@app.route('/journal_entry/print/<int:jv_no>')
+@login_required
+def print_journal_voucher(jv_no):
+    # Fetch Header
+    # Note: jv_numbers has jv_id, jv_user_code, jv_naration
+    # Need date from entries or assume logic. entries have entry_effective_date.
+    header_query = """
+        SELECT j.jv_user_code, j.jv_naration, MIN(e.entry_effective_date) as entry_date,
+               SUM(e.enty_values_DR) as total_amount
+        FROM jv_numbers j
+        LEFT JOIN entry_details e ON j.jv_id = e.entry_jv
+        WHERE j.jv_id = %s
+        GROUP BY j.jv_id
+    """
+    header_res = db.execute_query(header_query, (jv_no,))
+    if not header_res:
+        return "JV Not Found", 404
+    header = header_res[0]
+
+    # Fetch Details
+    details_query = """
+        SELECT account_name, entry_naration, enty_values_DR, enty_values_CR, entry_sub_account_code
+        FROM entry_details
+        WHERE entry_jv = %s
+        ORDER BY id
+    """
+    details = db.execute_query(details_query, (jv_no,))
+
+    # Fetch Company Info
+    company_res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = company_res[0] if company_res else {}
+
+    return render_template('jv_print.html', header=header, details=details, company=company, jv_sys_id=jv_no)
 
 def create_default_user():
     """Creates a default admin user if the Login_Table is empty."""

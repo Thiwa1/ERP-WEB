@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journal Voucher - {{ header.jv_user_code }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; padding: 20px; }
+        .voucher-container {
+            background: white;
+            padding: 40px;
+            max-width: 900px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            box-shadow: 0 0 10px rgba(0,0,0,0.05);
+        }
+        .company-header { border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 20px; }
+        .voucher-title { text-transform: uppercase; letter-spacing: 2px; font-weight: bold; font-size: 1.5rem; text-align: center; margin: 20px 0; }
+        .table-custom th { background-color: #f1f1f1; text-transform: uppercase; font-size: 0.85rem; }
+        @media print {
+            body { background: white; padding: 0; }
+            .voucher-container { box-shadow: none; border: none; padding: 0; max-width: 100%; margin: 0; }
+            .btn-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="text-center mb-3">
+    <button onclick="window.print()" class="btn btn-primary btn-print">Print Voucher</button>
+</div>
+
+<div class="voucher-container">
+    <!-- Company Header -->
+    <div class="company-header d-flex justify-content-between align-items-center">
+        <div>
+            <h3 class="mb-0 fw-bold">{{ company.company_name or 'My Company' }}</h3>
+            <div class="text-muted small">
+                {{ company.company_addras_1 }}<br>
+                {{ company.company_addras_2 }}
+            </div>
+        </div>
+        <div class="text-end">
+            <h5 class="mb-0">JOURNAL VOUCHER</h5>
+            <small class="text-muted">System Ref: {{ jv_sys_id }}</small>
+        </div>
+    </div>
+
+    <!-- Voucher Details -->
+    <div class="row mb-4">
+        <div class="col-6">
+            <table class="table table-borderless table-sm">
+                <tr>
+                    <td class="fw-bold" style="width: 100px;">JV Number:</td>
+                    <td>{{ header.jv_user_code }}</td>
+                </tr>
+                <tr>
+                    <td class="fw-bold">Date:</td>
+                    <td>{{ header.entry_date }}</td>
+                </tr>
+            </table>
+        </div>
+        <div class="col-6">
+            <div class="p-2 bg-light rounded border">
+                <small class="fw-bold d-block text-muted">Narration:</small>
+                <span>{{ header.jv_naration }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Entries Table -->
+    <table class="table table-bordered table-custom">
+        <thead>
+            <tr>
+                <th style="width: 40%;">Account Description</th>
+                <th style="width: 15%;">Sub Account</th>
+                <th class="text-end" style="width: 15%;">Debit</th>
+                <th class="text-end" style="width: 15%;">Credit</th>
+                <th style="width: 15%;">Narration</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% set vars = {'total_dr': 0, 'total_cr': 0} %}
+            {% for row in details %}
+                {% if vars.update({'total_dr': vars.total_dr + (row.enty_values_DR or 0)}) %}{% endif %}
+                {% if vars.update({'total_cr': vars.total_cr + (row.enty_values_CR or 0)}) %}{% endif %}
+            <tr>
+                <td>{{ row.account_name }}</td>
+                <td>
+                    {% if row.entry_sub_account_code and row.entry_sub_account_code != 0 %}
+                        {{ row.entry_sub_account_code }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </td>
+                <td class="text-end">{{ "{:,.2f}".format(row.enty_values_DR or 0) }}</td>
+                <td class="text-end">{{ "{:,.2f}".format(row.enty_values_CR or 0) }}</td>
+                <td class="small text-muted">{{ row.entry_naration }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+        <tfoot>
+            <tr class="bg-light fw-bold">
+                <td colspan="2" class="text-end">TOTALS</td>
+                <td class="text-end">{{ "{:,.2f}".format(vars.total_dr) }}</td>
+                <td class="text-end">{{ "{:,.2f}".format(vars.total_cr) }}</td>
+                <td></td>
+            </tr>
+        </tfoot>
+    </table>
+
+    <!-- Signatures -->
+    <div class="row mt-5 pt-5">
+        <div class="col-4 text-center">
+            <div class="border-top border-dark pt-2">Prepared By</div>
+        </div>
+        <div class="col-4 text-center">
+            <div class="border-top border-dark pt-2">Checked By</div>
+        </div>
+        <div class="col-4 text-center">
+            <div class="border-top border-dark pt-2">Approved By</div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

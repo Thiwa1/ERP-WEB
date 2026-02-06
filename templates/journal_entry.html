@@ -47,8 +47,9 @@
                 <table class="table table-bordered table-striped mb-0" id="journalTable">
                     <thead class="text-white" style="background-color: var(--primary-color);">
                         <tr>
-                            <th style="width: 25%">Account</th>
-                            <th style="width: 15%">Currency</th>
+                            <th style="width: 20%">Account</th>
+                            <th style="width: 20%">Sub Account</th>
+                            <th style="width: 10%">Currency</th>
                             <th style="width: 10%">FC Amount</th>
                             <th style="width: 10%">Rate</th>
                             <th style="width: 10%">Debit ({{ base_currency }})</th>
@@ -164,7 +165,12 @@
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>
-                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="checkCurrency(this)">
+                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="checkAccount(this)">
+            </td>
+            <td>
+                <select class="form-select form-select-sm" name="sub_account_${rowCount}" disabled>
+                    <option value="">-</option>
+                </select>
             </td>
             <td>
                 <span class="badge bg-secondary row-currency">${baseCurrency}</span>
@@ -194,11 +200,34 @@
         tbody.appendChild(row);
     }
 
-    function checkCurrency(input) {
+    function checkAccount(input) {
         const row = input.closest('tr');
         const list = document.getElementById('accountList');
         const option = Array.from(list.options).find(opt => opt.value === input.value);
 
+        // 1. Handle Sub Accounts
+        const subSelect = row.querySelector(`select[name^="sub_account_"]`);
+        subSelect.innerHTML = '<option value="">-</option>';
+        subSelect.disabled = true;
+
+        if (input.value) {
+            fetch(`/api/get_sub_accounts?account_name=${encodeURIComponent(input.value)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.length > 0) {
+                    subSelect.disabled = false;
+                    data.forEach(item => {
+                        const opt = document.createElement('option');
+                        // Use code and name combined for standard storing logic
+                        opt.value = `${item.code} - ${item.name}`;
+                        opt.text = item.name;
+                        subSelect.add(opt);
+                    });
+                }
+            });
+        }
+
+        // 2. Handle Currency
         if (option) {
             const currency = option.getAttribute('data-curr') || baseCurrency;
             const badge = row.querySelector('.row-currency');
@@ -321,6 +350,7 @@
             if (acc) {
                 rows.push({
                     account: acc,
+                    sub_account: tr.querySelector('select[name^="sub_account_"]').value,
                     dr: parseFloat(tr.querySelector('.dr-input').value) || 0,
                     cr: parseFloat(tr.querySelector('.cr-input').value) || 0,
                     narration: tr.querySelector('input[name^="narration_"]').value,
@@ -359,6 +389,7 @@
                             <td class="text-end">${row.dr.toFixed(2)}</td>
                             <td class="text-end">${row.cr.toFixed(2)}</td>
                             <td>
+                                <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-secondary py-0 me-1"><i class="fas fa-print"></i></a>
                                 <button class="btn btn-sm btn-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
                             </td>
                         </tr>
