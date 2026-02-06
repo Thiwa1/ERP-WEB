@@ -4530,6 +4530,245 @@ def create_default_user():
     except Exception as e:
         print(f"Error creating default user: {e}")
 
+# --- Fixed Assets Module ---
+@app.route('/fixed_assets')
+@login_required
+@has_permission('Access_Accounting')
+def fixed_assets():
+    # Fetch accounts for dropdowns
+    accounts = db.execute_query("SELECT id, account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name")
+    return render_template('fixed_assets.html', accounts=accounts)
+
+@app.route('/fixed_assets/add', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def add_fixed_asset():
+    try:
+        class_name = request.form.get('asset_class')
+        desc = request.form.get('description')
+        brand = request.form.get('brand_name')
+        qty = int(request.form.get('quantity', 1))
+        serial = request.form.get('serial_no')
+        location = request.form.get('location')
+        cost = float(request.form.get('cost_value', 0))
+        p_date = request.form.get('purchasing_date')
+        life = int(request.form.get('depreciable_life_months', 0))
+
+        asset_acc = request.form.get('asset_account_id')
+        exp_acc = request.form.get('expense_account_id')
+        acc_dep_acc = request.form.get('accumulated_dep_account_id')
+
+        if not asset_acc or not exp_acc or not acc_dep_acc:
+             flash('Please select all GL accounts', 'warning')
+             return redirect(url_for('fixed_assets'))
+
+        query = """
+            INSERT INTO fixed_assets_register
+            (asset_class, description, brand_name, quantity, serial_no, location, cost_value, purchasing_date, depreciable_life_months, asset_account_id, expense_account_id, accumulated_dep_account_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        db.execute_query(query, (class_name, desc, brand, qty, serial, location, cost, p_date, life, asset_acc, exp_acc, acc_dep_acc), commit=True)
+        flash('Asset added successfully', 'success')
+    except Exception as e:
+        flash(f'Error adding asset: {str(e)}', 'danger')
+    return redirect(url_for('fixed_assets'))
+
+@app.route('/fixed_assets/calculate_depreciation', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def calculate_depreciation():
+    month_str = request.form.get('month') # "YYYY-MM"
+    if not month_str:
+        return {'error': 'Month required'}, 400
+
+    try:
+        year, month = map(int, month_str.split('-'))
+        # Last day of month
+        import calendar
+        last_day = calendar.monthrange(year, month)[1]
+        dep_date = date(year, month, last_day)
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+
+        try:
+            # 1. Fetch Active Assets
+            cursor.execute("SELECT * FROM fixed_assets_register WHERE status = 'Active'")
+            assets = cursor.fetchall()
+
+            processed_count = 0
+
+            # Create a shared JV for this month's depreciation run
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           (f"DEP-{month_str}", f"Depreciation Run for {month_str}"))
+            jv_id = cursor.lastrowid
+
+            total_dr = 0
+            total_cr = 0
+            entries = []
+
+            for asset in assets:
+                # Check if already depreciated for this month
+                cursor.execute("""
+                    SELECT id FROM asset_depreciation_history
+                    WHERE asset_id = %s AND YEAR(depreciation_date) = %s AND MONTH(depreciation_date) = %s
+                """, (asset['id'], year, month))
+                if cursor.fetchone():
+                    continue # Skip if already done
+
+                # Check purchase date
+                p_date = asset['purchasing_date']
+                if not p_date: continue
+                if isinstance(p_date, datetime): p_date = p_date.date()
+
+                # If purchased this month or after, maybe skip or pro-rata?
+                # Simple rule: Depreciate if purchased before end of month
+                if p_date > dep_date:
+                    continue
+
+                # Calculate Amount (Straight Line Monthly)
+                # Cost / Life Months
+                life = asset['depreciable_life_months']
+                if life <= 0: continue
+
+                monthly_amount = asset['cost_value'] / life
+
+                # Check if fully depreciated
+                cursor.execute("SELECT SUM(amount) as total FROM asset_depreciation_history WHERE asset_id = %s", (asset['id'],))
+                res = cursor.fetchone()
+                acc_dep = res['total'] if res and res['total'] else 0
+
+                remaining = asset['cost_value'] - acc_dep
+                if remaining <= 0:
+                    continue # Fully depreciated
+
+                # Cap amount at remaining
+                amount = min(monthly_amount, remaining)
+                if amount <= 0: continue
+
+                # Record History
+                cursor.execute("""
+                    INSERT INTO asset_depreciation_history (asset_id, depreciation_date, amount, jv_id)
+                    VALUES (%s, %s, %s, %s)
+                """, (asset['id'], dep_date, amount, jv_id))
+
+                # Prepare GL Entries
+                # Need account names for entry_details (it uses name, not ID, sadly)
+                # Fetch account names
+                cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (asset['expense_account_id'],))
+                exp_name = cursor.fetchone()['account_name']
+
+                cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (asset['accumulated_dep_account_id'],))
+                acc_dep_name = cursor.fetchone()['account_name']
+
+                entries.append({
+                    'dr_acc': exp_name,
+                    'cr_acc': acc_dep_name,
+                    'amount': amount,
+                    'narration': f"Depreciation {month_str} - {asset['asset_class']} - {asset['serial_no']}"
+                })
+
+                processed_count += 1
+
+            # Aggregate Entries by Account to reduce lines?
+            # Or insert per asset? Per asset is better for audit trail in narration
+
+            for e in entries:
+                # DR Expense
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+
+                # CR Acc Dep
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+
+            conn.commit()
+            return {'success': True, 'processed': processed_count, 'jv_id': jv_id}
+
+        except Exception as e:
+            conn.rollback()
+            print(f"Depreciation Error: {e}")
+            return {'error': str(e)}, 500
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        return {'error': str(e)}, 500
+
+@app.route('/fixed_assets/data')
+@login_required
+def fixed_assets_data():
+    # Fetch all assets
+    assets = db.execute_query("SELECT * FROM fixed_assets_register ORDER BY id")
+
+    # Fetch all depreciation history
+    history = db.execute_query("SELECT * FROM asset_depreciation_history ORDER BY depreciation_date")
+
+    # Process history into a dict: asset_id -> { 'YYYY-MM': amount, 'total': sum }
+    hist_map = {}
+    months = set()
+
+    for h in history:
+        aid = h['asset_id']
+        if aid not in hist_map: hist_map[aid] = {'total': 0, 'months': {}}
+
+        d_date = h['depreciation_date']
+        if isinstance(d_date, datetime): d_date = d_date.date()
+        month_key = d_date.strftime('%Y-%b') # e.g., 2023-Jan
+
+        hist_map[aid]['months'][month_key] = float(h['amount'])
+        hist_map[aid]['total'] += float(h['amount'])
+        months.add(month_key)
+
+    # Sort months chronologically
+    sorted_months = sorted(list(months), key=lambda x: datetime.strptime(x, '%Y-%b'))
+
+    # Prepare Result
+    result = {
+        'columns': ['Class', 'Description', 'Brand', 'Qty', 'Serial', 'Location', 'Cost', 'Purchase Date', 'Life (M)'] + sorted_months + ['Total Dep', 'Net Book Value'],
+        'data': []
+    }
+
+    for a in assets:
+        row = {
+            'id': a['id'],
+            'class': a['asset_class'],
+            'desc': a['description'],
+            'brand': a['brand_name'],
+            'qty': a['quantity'],
+            'serial': a['serial_no'],
+            'location': a['location'],
+            'cost': float(a['cost_value']),
+            'date': str(a['purchasing_date']),
+            'life': a['depreciable_life_months']
+        }
+
+        h_data = hist_map.get(a['id'], {'total': 0, 'months': {}})
+
+        # Add monthly columns
+        for m in sorted_months:
+            row[m] = h_data['months'].get(m, 0)
+
+        row['total_dep'] = h_data['total']
+        row['nbv'] = float(a['cost_value']) - h_data['total']
+
+        result['data'].append(row)
+
+    result['month_headers'] = sorted_months
+    return json.dumps(result)
+
 if __name__ == '__main__':
     run_schema_migrations()
     create_default_user()

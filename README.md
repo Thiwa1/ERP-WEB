@@ -38,10 +38,12 @@ pip install -r requirements.txt
 1.  Open your MySQL client (Workbench, phpMyAdmin, or Command Line).
 2.  Create a new database named `Book_keeping` (or simply import the script which creates it).
 3.  Import the provided schema file `database_schema.sql`.
+4.  Import the fixed assets schema file `fixed_assets.sql`.
 
 **Command Line Example:**
 ```bash
 mysql -u root -p < database_schema.sql
+mysql -u root -p < fixed_assets.sql
 ```
 
 ### 5. Configuration

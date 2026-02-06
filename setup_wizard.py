@@ -88,6 +88,14 @@ def main():
             print("Schema import failed. Please check your MySQL client configuration.")
             return
 
+        # Run Fixed Assets Schema if exists
+        if os.path.exists('fixed_assets.sql'):
+            print("Importing Fixed Assets Schema...")
+            cmd_fa = f"mysql -h {root_host} -u {root_user} -p'{root_password}' {app_db_name} < fixed_assets.sql"
+            if not root_password:
+                 cmd_fa = f"mysql -h {root_host} -u {root_user} {app_db_name} < fixed_assets.sql"
+            os.system(cmd_fa)
+
         # Reconnect to seed data
         conn = mysql.connector.connect(
             host=root_host,
