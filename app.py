@@ -4987,6 +4987,329 @@ def fixed_assets_data():
     result['month_headers'] = sorted_months
     return json.dumps(result)
 
+# --- Inventory Transfer ---
+@app.route('/inventory_transfer', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def inventory_transfer():
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit")
+    # Fetch active items with cost for reference (though cost isn't changed in transfer)
+    items = db.execute_query("""
+        SELECT i.inventoy_name, i.inventoy_code, i.inventoy_items_messurment_unit, p.inventory_price_purcharsing
+        FROM inventoy_items i
+        LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        WHERE i.active = 1
+    """)
+    return render_template('inventory_transfer.html', locations=locations, jobs=jobs, items=items, today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/inventory_transfer/submit', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def submit_inventory_transfer():
+    try:
+        transfer_date = request.form.get('transfer_date')
+        job_no = request.form.get('job_no')
+        from_loc = request.form.get('from_location')
+        to_loc = request.form.get('to_location')
+        narration = request.form.get('narration')
+
+        item_names = request.form.getlist('item_name[]')
+        item_codes = request.form.getlist('item_code[]')
+        item_units = request.form.getlist('item_unit[]')
+        item_costs = request.form.getlist('item_cost[]')
+        qtys = request.form.getlist('qty[]')
+
+        if not item_names:
+            flash('No items to transfer', 'danger')
+            return redirect(url_for('inventory_transfer'))
+
+        if from_loc == to_loc:
+            flash('Source and Destination locations must be different', 'danger')
+            return redirect(url_for('inventory_transfer'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Create JV for tracking (Transfer Note)
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           (str(current_user), f"Inventory Transfer: {narration}"))
+            jv_no = cursor.lastrowid
+
+            tf_note = f"TF-Note{jv_no}"
+
+            for i in range(len(item_names)):
+                qty = float(qtys[i])
+                cost = float(item_costs[i] or 0)
+
+                if qty <= 0: continue
+
+                # 2. Record OUT from Source
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_movment_out,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    item_names[i], item_codes[i], item_units[i], cost, qty,
+                    tf_note, current_user, datetime.now().date(), from_loc,
+                    transfer_date, narration, jv_no
+                ))
+
+                # 3. Record IN to Destination
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_moument_in,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    item_names[i], item_codes[i], item_units[i], cost, qty,
+                    tf_note, current_user, datetime.now().date(), to_loc,
+                    transfer_date, narration, jv_no
+                ))
+
+            conn.commit()
+            flash(f'Transfer successful. Tracking Ref: {tf_note}', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error processing transfer: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_transfer'))
+
+# --- Inventory Production ---
+@app.route('/inventory_production', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def inventory_production():
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit")
+
+    # Accounts for Cost/Expense selection (PL accounts)
+    expense_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
+
+    items = db.execute_query("""
+        SELECT i.inventoy_name, i.inventoy_code, i.inventoy_items_messurment_unit, p.inventory_price_purcharsing
+        FROM inventoy_items i
+        LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        WHERE i.active = 1
+    """)
+
+    return render_template('inventory_production.html',
+                           locations=locations, jobs=jobs, items=items,
+                           expense_accounts=expense_accounts,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/inventory_production/issue', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def submit_production_issue():
+    # Logic: Stock OUT, Dr Expense, Cr Inventory
+    try:
+        date_val = request.form.get('issue_date')
+        job_no = request.form.get('job_no')
+        source_loc = request.form.get('source_location')
+        dr_account = request.form.get('cost_account') # User selected Expense Account
+        narration = request.form.get('narration')
+
+        item_names = request.form.getlist('item_name[]')
+        item_codes = request.form.getlist('item_code[]')
+        item_units = request.form.getlist('item_unit[]')
+        item_costs = request.form.getlist('unit_cost[]') # or fetched from DB if readonly
+        qtys = request.form.getlist('qty[]')
+
+        if not item_names:
+            flash('No items to issue', 'danger')
+            return redirect(url_for('inventory_production'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Create JV
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           (str(current_user), f"Production Issue: {narration}"))
+            jv_no = cursor.lastrowid
+
+            total_value = 0
+
+            # 2. Process Items (Stock OUT)
+            for i in range(len(item_names)):
+                qty = float(qtys[i])
+                # Note: WPF code allows user to select price/cost or takes it from grid.
+                # Here we take from form (which defaults to DB cost but is editable or hidden)
+                cost = float(item_costs[i] or 0)
+
+                if qty <= 0: continue
+
+                line_val = qty * cost
+                total_value += line_val
+
+                # Stock OUT
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_movment_out,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    item_names[i], item_codes[i], item_units[i], cost, qty,
+                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), source_loc,
+                    date_val, narration, jv_no
+                ))
+
+            # 3. GL Entries
+            # Dr User Selected Account (Expense/WIP)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (dr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+
+            # Cr Inventory Control Account
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+
+            conn.commit()
+            flash(f'Production Issue recorded successfully. JV: {jv_no}', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error processing issue: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_production'))
+
+@app.route('/inventory_production/receive', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def submit_production_receive():
+    # Logic: Stock IN, Dr Inventory, Cr Expense/WIP
+    try:
+        date_val = request.form.get('receive_date')
+        job_no = request.form.get('job_no')
+        target_loc = request.form.get('target_location')
+        cr_account = request.form.get('credit_account') # User selected Cost Source
+        narration = request.form.get('narration')
+
+        item_names = request.form.getlist('item_name[]')
+        item_codes = request.form.getlist('item_code[]')
+        item_units = request.form.getlist('item_unit[]')
+        item_costs = request.form.getlist('unit_cost[]')
+        qtys = request.form.getlist('qty[]')
+
+        if not item_names:
+            flash('No items to receive', 'danger')
+            return redirect(url_for('inventory_production'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Create JV
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           (str(current_user), f"Production Receipt: {narration}"))
+            jv_no = cursor.lastrowid
+
+            total_value = 0
+
+            # 2. Process Items (Stock IN)
+            for i in range(len(item_names)):
+                qty = float(qtys[i])
+                cost = float(item_costs[i] or 0)
+
+                if qty <= 0: continue
+
+                line_val = qty * cost
+                total_value += line_val
+
+                # Stock IN
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_moument_in,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    item_names[i], item_codes[i], item_units[i], cost, qty,
+                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), target_loc,
+                    date_val, narration, jv_no
+                ))
+
+            # 3. GL Entries
+            # Dr Inventory Control Account
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+
+            # Cr User Selected Account (Expense/WIP)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (cr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+
+            # 4. Log to inventory_productions (from WPF Manufacturing_Inventory logic)
+            cursor.execute("""
+                INSERT INTO inventory_productions (ID, JV_No, Delete_Or_Note, Effective_Date)
+                VALUES (0, %s, 0, %s)
+            """, (jv_no, date_val))
+
+            conn.commit()
+            flash(f'Production Receipt recorded successfully. JV: {jv_no}', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error processing receipt: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_production'))
+
 # Ensure initialization runs once regardless of startup method
 app_initialized = False
 

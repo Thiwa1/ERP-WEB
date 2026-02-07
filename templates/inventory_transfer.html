@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Inventory Transfer{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-exchange-alt me-2 text-primary"></i> Inventory Transfer</h2>
+    </div>
+
+    <form action="{{ url_for('submit_inventory_transfer') }}" method="POST" id="transferForm">
+        <!-- Header Section -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 font-weight-bold text-primary">Transfer Details</h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-control" name="transfer_date" value="{{ today_date }}" required>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">Job Number (Optional)</label>
+                        <select class="form-select select2" name="job_no">
+                            <option value="">-- Select Job --</option>
+                            {% for job in jobs %}
+                            <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">From Location (Source)</label>
+                        <select class="form-select select2" name="from_location" id="fromLocation" required>
+                            <option value="">-- Select Source --</option>
+                            {% for loc in locations %}
+                            <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <label class="form-label">To Location (Destination)</label>
+                        <select class="form-select select2" name="to_location" id="toLocation" required>
+                            <option value="">-- Select Destination --</option>
+                            {% for loc in locations %}
+                            <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-12 mb-3">
+                        <label class="form-label">Narration / Memo</label>
+                        <input type="text" class="form-control" name="narration" placeholder="Enter transfer details..." required>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items Section -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 font-weight-bold text-primary">Items to Transfer</h6>
+                <button type="button" class="btn btn-sm btn-success" onclick="addItemRow()">
+                    <i class="fas fa-plus"></i> Add Item
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-bordered table-hover mb-0" id="itemsTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 40%;">Item</th>
+                                <th style="width: 15%;">Unit</th>
+                                <th style="width: 15%;">Available Qty (Source)</th>
+                                <th style="width: 20%;">Transfer Qty</th>
+                                <th style="width: 10%;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Rows will be added dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 text-center text-muted" id="emptyMessage">
+                    No items added. Click "Add Item" to start.
+                </div>
+            </div>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary me-md-2">Cancel</a>
+            <button type="submit" class="btn btn-primary btn-lg px-5">
+                <i class="fas fa-check-circle me-2"></i> Process Transfer
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Template for new row -->
+<template id="rowTemplate">
+    <tr>
+        <td>
+            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)">
+                <option value="">-- Select Item --</option>
+                {% for item in items %}
+                <option value="{{ item.inventoy_name }}"
+                        data-code="{{ item.inventoy_code }}"
+                        data-unit="{{ item.inventoy_items_messurment_unit }}"
+                        data-cost="{{ item.inventory_price_purcharsing }}">
+                    {{ item.inventoy_name }} ({{ item.inventoy_code }})
+                </option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="item_code[]" class="item-code">
+            <input type="hidden" name="item_cost[]" class="item-cost">
+        </td>
+        <td>
+            <input type="text" class="form-control-plaintext item-unit" readonly>
+            <input type="hidden" name="item_unit[]" class="item-unit-input">
+        </td>
+        <td>
+            <span class="badge bg-info text-dark item-stock">-</span>
+        </td>
+        <td>
+            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00">
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                <i class="fas fa-trash"></i>
+            </button>
+        </td>
+    </tr>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function addItemRow() {
+        const template = document.getElementById('rowTemplate');
+        const clone = template.content.cloneNode(true);
+        const tbody = document.querySelector('#itemsTable tbody');
+
+        tbody.appendChild(clone);
+        document.getElementById('emptyMessage').style.display = 'none';
+
+        // Initialize Select2 on new row
+        $(tbody.lastElementChild).find('.select2').select2({
+            theme: 'bootstrap-5',
+            width: '100%'
+        });
+
+        // Specifically initialize the item select which might not have select2 class in template
+        $(tbody.lastElementChild).find('.item-select').select2({
+            theme: 'bootstrap-5',
+            width: '100%'
+        });
+    }
+
+    function removeRow(btn) {
+        const row = btn.closest('tr');
+        row.remove();
+
+        const tbody = document.querySelector('#itemsTable tbody');
+        if (tbody.children.length === 0) {
+            document.getElementById('emptyMessage').style.display = 'block';
+        }
+    }
+
+    function updateItemDetails(selectElement) {
+        // Select2 changes trigger 'change' on the original select element
+        // But the 'this' context might be tricky with jQuery wrapper.
+        // We handle it by finding the option selected.
+
+        // If called via onchange attribute, selectElement is the DOM element.
+        // If triggered via select2, we need to ensure we get the right data.
+
+        const option = selectElement.options[selectElement.selectedIndex];
+        const row = selectElement.closest('tr');
+
+        if (option.value) {
+            row.querySelector('.item-code').value = option.dataset.code;
+            row.querySelector('.item-unit').value = option.dataset.unit;
+            row.querySelector('.item-unit-input').value = option.dataset.unit;
+            row.querySelector('.item-cost').value = option.dataset.cost || 0;
+
+            // Optional: Fetch Stock for selected location
+            // We could make an AJAX call here if needed
+            fetchStock(option.value, row);
+        } else {
+            row.querySelector('.item-code').value = '';
+            row.querySelector('.item-unit').value = '';
+            row.querySelector('.item-unit-input').value = '';
+            row.querySelector('.item-cost').value = 0;
+            row.querySelector('.item-stock').textContent = '-';
+        }
+    }
+
+    // Bind select2 change event for dynamic rows
+    $(document).on('change', '.item-select', function() {
+        updateItemDetails(this);
+    });
+
+    async function fetchStock(itemName, row) {
+        const location = document.getElementById('fromLocation').value;
+        if (!location) {
+            row.querySelector('.item-stock').textContent = 'Select Loc';
+            return;
+        }
+
+        // Fetch logic would go here. For now just placeholder or simple API if we add it.
+        // Given complexity, we can just show '-' or implement a simple stock API.
+        // Let's implement a simple fetch if user changes location too.
+
+        try {
+            const response = await fetch(`/api/get_stock?item=${encodeURIComponent(itemName)}&location=${encodeURIComponent(location)}`);
+            const data = await response.json();
+            row.querySelector('.item-stock').textContent = data.stock || '0';
+        } catch (e) {
+            console.error(e);
+            row.querySelector('.item-stock').textContent = '?';
+        }
+    }
+
+    // Update all stock displays when location changes
+    $('#fromLocation').on('change', function() {
+        document.querySelectorAll('#itemsTable tbody tr').forEach(row => {
+            const select = row.querySelector('.item-select');
+            if (select.value) fetchStock(select.value, row);
+        });
+    });
+
+    // Form Validation
+    document.getElementById('transferForm').addEventListener('submit', function(e) {
+        const from = document.getElementById('fromLocation').value;
+        const to = document.getElementById('toLocation').value;
+
+        if (from === to) {
+            e.preventDefault();
+            alert('Source and Destination locations cannot be the same.');
+            hideLoading($(this).find('button[type="submit"]'));
+            return;
+        }
+
+        const rows = document.querySelectorAll('#itemsTable tbody tr');
+        if (rows.length === 0) {
+            e.preventDefault();
+            alert('Please add at least one item to transfer.');
+            hideLoading($(this).find('button[type="submit"]'));
+            return;
+        }
+    });
+</script>
+{% endblock %}

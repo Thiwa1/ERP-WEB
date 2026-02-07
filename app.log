@@ -6,4 +6,71 @@
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 410-907-091
-127.0.0.1 - - [07/Feb/2026 10:06:41] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [07/Feb/2026 11:12:01] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [07/Feb/2026 11:12:02] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [07/Feb/2026 11:12:02] "GET /login HTTP/1.1" 200 -
+ * Detected change in '/app/verify_inventory_ui.py', reloading
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+WARNING: Database connection failed. Cannot create default user.
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Payable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Receivable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cost Of Goods Sold
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Sales
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Inventory
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: VAT Control
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cash In Hand
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+127.0.0.1 - - [07/Feb/2026 11:21:09] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [07/Feb/2026 11:21:09] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [07/Feb/2026 11:21:09] "GET /login HTTP/1.1" 200 -
+ * Detected change in '/app/verify_templates.py', reloading
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+WARNING: Database connection failed. Cannot create default user.
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Payable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Receivable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cost Of Goods Sold
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Sales
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Inventory
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: VAT Control
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cash In Hand
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091

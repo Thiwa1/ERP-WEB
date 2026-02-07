@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Manufacturing / Production{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-industry me-2 text-warning"></i> Manufacturing Operations</h2>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <ul class="nav nav-tabs mb-4" id="productionTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-bold" id="issue-tab" data-bs-toggle="tab" data-bs-target="#issue" type="button" role="tab" aria-controls="issue" aria-selected="true">
+                <i class="fas fa-sign-out-alt me-2"></i> Issue to Production (Consumption)
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="receive-tab" data-bs-toggle="tab" data-bs-target="#receive" type="button" role="tab" aria-controls="receive" aria-selected="false">
+                <i class="fas fa-sign-in-alt me-2"></i> Receive from Production (Finished Goods)
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="productionTabContent">
+
+        <!-- ISSUE TAB (Raw Material Consumption) -->
+        <div class="tab-pane fade show active" id="issue" role="tabpanel" aria-labelledby="issue-tab">
+            <form action="{{ url_for('submit_production_issue') }}" method="POST" id="issueForm">
+                <div class="card shadow mb-4 border-left-warning">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-warning">Issue Details (Stock OUT)</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" name="issue_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Job Number (Optional)</label>
+                                <select class="form-select select2" name="job_no">
+                                    <option value="">-- Select Job --</option>
+                                    {% for job in jobs %}
+                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Source Location</label>
+                                <select class="form-select select2" name="source_location" required>
+                                    <option value="">-- Select Source --</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Cost Account (Debit)</label>
+                                <select class="form-select select2" name="cost_account" required>
+                                    <option value="">-- Select Expense Account --</option>
+                                    {% for acc in expense_accounts %}
+                                    <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Account to charge cost to (e.g., WIP/COGS)</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Narration</label>
+                                <input type="text" class="form-control" name="narration" placeholder="Raw material issue for..." required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-secondary">Raw Materials to Issue</h6>
+                        <button type="button" class="btn btn-sm btn-warning" onclick="addItemRow('issueTable')">
+                            <i class="fas fa-plus"></i> Add Material
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover mb-0" id="issueTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 40%;">Item</th>
+                                        <th style="width: 15%;">Unit</th>
+                                        <th style="width: 20%;">Quantity</th>
+                                        <th style="width: 15%;">Unit Cost</th>
+                                        <th style="width: 10%;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                    <button type="submit" class="btn btn-warning btn-lg px-5 text-white">
+                        <i class="fas fa-check-circle me-2"></i> Issue Material
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- RECEIVE TAB (Finished Goods Production) -->
+        <div class="tab-pane fade" id="receive" role="tabpanel" aria-labelledby="receive-tab">
+            <form action="{{ url_for('submit_production_receive') }}" method="POST" id="receiveForm">
+                <div class="card shadow mb-4 border-left-success">
+                    <div class="card-header py-3">
+                        <h6 class="m-0 font-weight-bold text-success">Production Receipt (Stock IN)</h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Date</label>
+                                <input type="date" class="form-control" name="receive_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Job Number (Optional)</label>
+                                <select class="form-select select2" name="job_no">
+                                    <option value="">-- Select Job --</option>
+                                    {% for job in jobs %}
+                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Target Location</label>
+                                <select class="form-select select2" name="target_location" required>
+                                    <option value="">-- Select Destination --</option>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label class="form-label">Credit Account (Source of Value)</label>
+                                <select class="form-select select2" name="credit_account" required>
+                                    <option value="">-- Select Source Account --</option>
+                                    {% for acc in expense_accounts %}
+                                    <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <small class="text-muted">Account to credit value from (e.g., WIP)</small>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-12 mb-3">
+                                <label class="form-label">Narration</label>
+                                <input type="text" class="form-control" name="narration" placeholder="Finished goods receipt for..." required>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Items Table -->
+                <div class="card shadow mb-4">
+                    <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                        <h6 class="m-0 font-weight-bold text-secondary">Finished Goods to Receive</h6>
+                        <button type="button" class="btn btn-sm btn-success" onclick="addItemRow('receiveTable')">
+                            <i class="fas fa-plus"></i> Add Product
+                        </button>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover mb-0" id="receiveTable">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th style="width: 40%;">Item</th>
+                                        <th style="width: 15%;">Unit</th>
+                                        <th style="width: 20%;">Quantity</th>
+                                        <th style="width: 15%;">Unit Cost (Value)</th>
+                                        <th style="width: 10%;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
+                    <button type="submit" class="btn btn-success btn-lg px-5">
+                        <i class="fas fa-check-circle me-2"></i> Receive Goods
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Template for new row -->
+<template id="rowTemplate">
+    <tr>
+        <td>
+            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)">
+                <option value="">-- Select Item --</option>
+                {% for item in items %}
+                <option value="{{ item.inventoy_name }}"
+                        data-code="{{ item.inventoy_code }}"
+                        data-unit="{{ item.inventoy_items_messurment_unit }}"
+                        data-cost="{{ item.inventory_price_purcharsing }}">
+                    {{ item.inventoy_name }} ({{ item.inventoy_code }})
+                </option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="item_code[]" class="item-code">
+        </td>
+        <td>
+            <input type="text" class="form-control-plaintext item-unit" readonly>
+            <input type="hidden" name="item_unit[]" class="item-unit-input">
+        </td>
+        <td>
+            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00">
+        </td>
+        <td>
+            <input type="number" class="form-control item-cost" name="unit_cost[]" step="0.01" min="0.01" required placeholder="0.00">
+        </td>
+        <td class="text-center">
+            <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
+                <i class="fas fa-trash"></i>
+            </button>
+        </td>
+    </tr>
+</template>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function addItemRow(tableId) {
+        const template = document.getElementById('rowTemplate');
+        const clone = template.content.cloneNode(true);
+        const tbody = document.querySelector(`#${tableId} tbody`);
+
+        tbody.appendChild(clone);
+
+        // Initialize Select2 on new row
+        $(tbody.lastElementChild).find('.item-select').select2({
+            theme: 'bootstrap-5',
+            width: '100%'
+        });
+    }
+
+    function removeRow(btn) {
+        const row = btn.closest('tr');
+        row.remove();
+    }
+
+    function updateItemDetails(selectElement) {
+        const option = selectElement.options[selectElement.selectedIndex];
+        const row = selectElement.closest('tr');
+
+        if (option.value) {
+            row.querySelector('.item-code').value = option.dataset.code;
+            row.querySelector('.item-unit').value = option.dataset.unit;
+            row.querySelector('.item-unit-input').value = option.dataset.unit;
+
+            // Set default cost, but user can edit
+            const costInput = row.querySelector('.item-cost');
+            if (costInput.value === "" || costInput.value == 0) {
+                 costInput.value = option.dataset.cost || 0;
+            }
+        } else {
+            row.querySelector('.item-code').value = '';
+            row.querySelector('.item-unit').value = '';
+            row.querySelector('.item-unit-input').value = '';
+            row.querySelector('.item-cost').value = '';
+        }
+    }
+
+    // Bind select2 change event
+    $(document).on('change', '.item-select', function() {
+        updateItemDetails(this);
+    });
+
+    // Validation
+    function validateForm(form) {
+        const rows = form.querySelectorAll('tbody tr');
+        if (rows.length === 0) {
+            alert('Please add at least one item.');
+            hideLoading($(form).find('button[type="submit"]'));
+            return false;
+        }
+        return true;
+    }
+
+    document.getElementById('issueForm').addEventListener('submit', function(e) {
+        if (!validateForm(this)) e.preventDefault();
+    });
+
+    document.getElementById('receiveForm').addEventListener('submit', function(e) {
+        if (!validateForm(this)) e.preventDefault();
+    });
+</script>
+{% endblock %}
