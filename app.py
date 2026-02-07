@@ -3890,60 +3890,101 @@ def profit_loss():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
 
-    # Using `new_account_table` structure where P&L Category is stored in `account_name_of_catogory_PL`
-    # Fetch all Income and Expense accounts with their balances in the period
+    # Calculate Previous Period (Same duration, immediately before)
+    f_date = datetime.strptime(from_date, '%Y-%m-%d')
+    t_date = datetime.strptime(to_date, '%Y-%m-%d')
+    delta = t_date - f_date
+    prev_to = f_date - date.resolution # Day before start
+    prev_from = prev_to - delta
+
+    prev_from_str = prev_from.strftime('%Y-%m-%d')
+    prev_to_str = prev_to.strftime('%Y-%m-%d')
+
+    # Fetch Data for Both Periods
+    # We select balances for current and previous period in one go using conditional aggregation
     query = """
         SELECT
             na.account_name,
             na.account_name_of_catogory_PL as category,
             na.account_income,
             na.account_expenses,
-            COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
-            COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
+            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_DR, 0) ELSE 0 END) as cur_dr,
+            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_CR, 0) ELSE 0 END) as cur_cr,
+            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_DR, 0) ELSE 0 END) as prev_dr,
+            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_CR, 0) ELSE 0 END) as prev_cr
         FROM new_account_table na
         LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND (ed.entry_effective_date BETWEEN %s AND %s OR ed.entry_effective_date BETWEEN %s AND %s)
             AND ed.entry_deleted = 0
         WHERE (na.account_income = 1 OR na.account_expenses = 1)
         GROUP BY na.account_name, na.account_name_of_catogory_PL, na.account_income, na.account_expenses, na.account_hold_possion_PL
         ORDER BY na.account_hold_possion_PL, na.account_name
     """
-    rows = db.execute_query(query, (from_date, to_date))
+
+    # Params: cur_start, cur_end, cur_start, cur_end (for current sums)
+    #         prev_start, prev_end, prev_start, prev_end (for prev sums)
+    #         prev_start, cur_end, prev_start, cur_end (for join) - actually simplified join range covers both
+
+    # Simplified: JOIN covers min(prev_from) to max(to_date)
+    # But to be safe on ranges, we just use OR in join condition as written.
+
+    params = (
+        from_date, to_date, from_date, to_date,
+        prev_from_str, prev_to_str, prev_from_str, prev_to_str,
+        prev_from_str, prev_to_str, from_date, to_date
+    )
+
+    rows = db.execute_query(query, params)
 
     # Process Data
     income_data = {}
     expense_data = {}
-    total_income = 0
-    total_expense = 0
+
+    totals = {
+        'inc_cur': 0, 'inc_prev': 0,
+        'exp_cur': 0, 'exp_prev': 0
+    }
 
     for r in rows:
-        balance = 0
+        cur_bal = 0
+        prev_bal = 0
+
         # Calculate balance based on type (Income = CR - DR, Expense = DR - CR)
         if r['account_income'] == 1:
-            balance = float(r['total_cr']) - float(r['total_dr'])
-            if balance != 0:
+            cur_bal = float(r['cur_cr']) - float(r['cur_dr'])
+            prev_bal = float(r['prev_cr']) - float(r['prev_dr'])
+
+            if cur_bal != 0 or prev_bal != 0:
                 cat = r['category'] or "Other Income"
                 if cat not in income_data: income_data[cat] = []
-                income_data[cat].append({'name': r['account_name'], 'amount': balance})
-                total_income += balance
+                income_data[cat].append({'name': r['account_name'], 'cur': cur_bal, 'prev': prev_bal})
+                totals['inc_cur'] += cur_bal
+                totals['inc_prev'] += prev_bal
+
         elif r['account_expenses'] == 1:
-            balance = float(r['total_dr']) - float(r['total_cr'])
-            if balance != 0:
+            cur_bal = float(r['cur_dr']) - float(r['cur_cr'])
+            prev_bal = float(r['prev_dr']) - float(r['prev_cr'])
+
+            if cur_bal != 0 or prev_bal != 0:
                 cat = r['category'] or "Operating Expenses"
                 if cat not in expense_data: expense_data[cat] = []
-                expense_data[cat].append({'name': r['account_name'], 'amount': balance})
-                total_expense += balance
+                expense_data[cat].append({'name': r['account_name'], 'cur': cur_bal, 'prev': prev_bal})
+                totals['exp_cur'] += cur_bal
+                totals['exp_prev'] += prev_bal
 
-    net_profit = total_income - total_expense
+    net_profit_cur = totals['inc_cur'] - totals['exp_cur']
+    net_profit_prev = totals['inc_prev'] - totals['exp_prev']
 
     return render_template('profit_loss.html',
                            from_date=from_date,
                            to_date=to_date,
+                           prev_from=prev_from_str,
+                           prev_to=prev_to_str,
                            income_data=income_data,
                            expense_data=expense_data,
-                           total_income=total_income,
-                           total_expense=total_expense,
-                           net_profit=net_profit)
+                           totals=totals,
+                           net_profit_cur=net_profit_cur,
+                           net_profit_prev=net_profit_prev)
 
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])

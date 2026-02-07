@@ -210,6 +210,30 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #94a3b8;
         }
+
+        /* Loading Spinner */
+        .btn-loading {
+            position: relative;
+            pointer-events: none;
+            color: transparent !important;
+        }
+        .btn-loading::after {
+            content: "";
+            position: absolute;
+            width: 1.2rem;
+            height: 1.2rem;
+            top: 50%;
+            left: 50%;
+            margin-top: -0.6rem;
+            margin-left: -0.6rem;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -386,7 +410,26 @@
                 theme: 'bootstrap-5',
                 width: '100%'
             });
+
+            // Global Form Loading Handler
+            $('form').on('submit', function() {
+                const btn = $(this).find('button[type="submit"]');
+                if(btn.length > 0 && !btn.hasClass('no-load')) {
+                    showLoading(btn);
+                }
+            });
         });
+
+        function showLoading(btn) {
+            // If passed a selector or element
+            if (!(btn instanceof jQuery)) btn = $(btn);
+            btn.addClass('btn-loading');
+        }
+
+        function hideLoading(btn) {
+            if (!(btn instanceof jQuery)) btn = $(btn);
+            btn.removeClass('btn-loading');
+        }
 
         // Sidebar Toggle Script for Mobile
         document.addEventListener('DOMContentLoaded', function() {
