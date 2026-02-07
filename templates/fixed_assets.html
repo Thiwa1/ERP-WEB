@@ -52,7 +52,12 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Asset Class</label>
-                            <input type="text" name="asset_class" class="form-control" placeholder="e.g. Computer Equipment" required>
+                            <input type="text" name="asset_class" class="form-control" list="assetClassList" placeholder="Search or Create..." required>
+                            <datalist id="assetClassList">
+                                {% for c in classes %}
+                                <option value="{{ c.asset_class }}">
+                                {% endfor %}
+                            </datalist>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Description</label>
@@ -72,7 +77,12 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Location</label>
-                            <input type="text" name="location" class="form-control">
+                            <input type="text" name="location" class="form-control" list="locationList" placeholder="Search or Create...">
+                            <datalist id="locationList">
+                                {% for l in locations %}
+                                <option value="{{ l.location }}">
+                                {% endfor %}
+                            </datalist>
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Purchasing Date</label>
@@ -91,7 +101,7 @@
 
                         <div class="col-md-4">
                             <label class="form-label">Asset Account</label>
-                            <select name="asset_account_id" class="form-select" required>
+                            <select name="asset_account_id" class="form-select select2" required>
                                 <option value="">-- Select --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.id }}">{{ acc.account_name }}</option>
@@ -100,7 +110,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Expense Account</label>
-                            <select name="expense_account_id" class="form-select" required>
+                            <select name="expense_account_id" class="form-select select2" required>
                                 <option value="">-- Select --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.id }}">{{ acc.account_name }}</option>
@@ -109,7 +119,7 @@
                         </div>
                         <div class="col-md-4">
                             <label class="form-label">Accumulated Dep. Account</label>
-                            <select name="accumulated_dep_account_id" class="form-select" required>
+                            <select name="accumulated_dep_account_id" class="form-select select2" required>
                                 <option value="">-- Select --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.id }}">{{ acc.account_name }}</option>

@@ -46,7 +46,7 @@
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Inventory Location</label>
-                            <select name="location" class="form-select">
+                            <select name="location" class="form-select select2">
                                 <option value="">-- Select Location --</option>
                                 {% for loc in locations %}
                                 <option value="{{ loc.inventory_locations_name }}" {% if settings.Select_Inventry_Location == loc.inventory_locations_name %}selected{% endif %}>
@@ -57,7 +57,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Credit Card Control Account</label>
-                            <select name="card_ac" class="form-select">
+                            <select name="card_ac" class="form-select select2">
                                 <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.account_name }}" {% if settings.Card_Control_AC == acc.account_name %}selected{% endif %}>
@@ -68,7 +68,7 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Cash Control Account</label>
-                            <select name="cash_ac" class="form-select">
+                            <select name="cash_ac" class="form-select select2">
                                 <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
                                 <option value="{{ acc.account_name }}" {% if settings.Cash_Account == acc.account_name %}selected{% endif %}>

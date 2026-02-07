@@ -93,7 +93,7 @@
                         <div class="row mb-3">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Main Category</label>
-                                <select class="form-select" name="main_category">
+                                <select class="form-select select2" name="main_category">
                                     <option value="">Select...</option>
                                     {% for cat in main_categories %}
                                     <option value="{{ cat.main_catogory }}">{{ cat.main_catogory }}</option>
@@ -102,7 +102,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Sub Category</label>
-                                <select class="form-select" name="sub_category">
+                                <select class="form-select select2" name="sub_category">
                                     <option value="">Select...</option>
                                     {% for cat in sub_categories %}
                                     <option value="{{ cat.sub_catogory }}">{{ cat.sub_catogory }}</option>

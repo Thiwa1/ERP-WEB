@@ -61,7 +61,7 @@
                         <h6 class="text-primary mt-3">Item Details</h6>
                         <div class="mb-2">
                             <label>Cost Account</label>
-                            <select name="cost_account" class="form-select">
+                            <select name="cost_account" class="form-select select2">
                                 {% for acc in cost_accounts %}
                                 <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
                                 {% endfor %}
@@ -69,7 +69,7 @@
                         </div>
                         <div class="mb-2">
                             <label>Inventory Item (Optional)</label>
-                            <select name="inventory_item" class="form-select">
+                            <select name="inventory_item" class="form-select select2">
                                 <option value="">-- No Item --</option>
                                 {% for item in inventory_items %}
                                 <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
@@ -97,7 +97,7 @@
                     <form method="POST" action="/direct_purchasing/submit">
                         <div class="mb-2">
                             <label>Cash Account</label>
-                            <select name="cash_account" class="form-select" required>
+                            <select name="cash_account" class="form-select select2" required>
                                 <option value="">Select Cash Account</option>
                                 {% for acc in cash_accounts %}
                                 <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>

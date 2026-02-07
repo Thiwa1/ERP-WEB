@@ -22,7 +22,7 @@
             <div class="card shadow-sm mb-3 border-0">
                 <div class="card-body">
                     <label class="form-label fw-bold" style="color: var(--primary-color);">Select Supplier</label>
-                    <select class="form-select" id="supplierSelect" onchange="loadSupplierData()">
+                        <select class="form-select select2" id="supplierSelect" name="supplier" onchange="loadSupplierData()">
                         <option value="">Select Supplier</option>
                         {% for s in suppliers %}
                         <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>

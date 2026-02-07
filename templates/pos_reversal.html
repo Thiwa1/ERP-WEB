@@ -1,17 +1,21 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0">POS Payment Reversal</h5>
-            <small class="text-light opacity-75">Reverse direct payments and restore inventory/GL entries</small>
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-undo me-2"></i> POS PAYMENT REVERSAL</h4>
+            <p class="mb-0 text-center small opacity-75">Reverse direct payments and restore inventory/GL entries</p>
         </div>
-        <div class="card-body">
+    </div>
+
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-4">
             <!-- Sales History DataGrid -->
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-light fw-bold text-primary">
-                    Sales History
+            <div class="card mb-4 border-0 shadow-sm">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-history me-2"></i> Sales History
                 </div>
                 <div class="card-body p-0">
                     <table class="table table-hover mb-0" id="salesTable">
@@ -47,40 +51,50 @@
             </div>
 
             <!-- Details Display -->
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-light fw-bold text-primary">
-                    Payment Details
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4 border-0 shadow-sm h-100">
+                        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                            <i class="fas fa-info-circle me-2"></i> Payment Details
+                        </div>
+                        <div class="card-body bg-light">
+                            <textarea id="detailsBox" class="form-control h-100" rows="6" readonly
+                                      style="font-family: monospace; font-weight: bold; font-size: 0.9rem; background-color: #f8fafc; border: 1px solid #e2e8f0;"></textarea>
+                        </div>
+                    </div>
                 </div>
-                <div class="card-body bg-light">
-                    <textarea id="detailsBox" class="form-control" rows="6" readonly
-                              style="font-family: monospace; font-weight: bold; background: linear-gradient(to bottom, #FFE6EFF9, white);"></textarea>
-                </div>
-            </div>
 
-            <!-- GL Entry Preview (Static as per C# example logic, or dynamic if needed) -->
-            <div class="card mb-4 border-secondary bg-light">
-                <div class="card-header fw-bold text-primary">
-                    GL and Inventory Impact
-                </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush" id="glPreview">
-                        <li class="list-group-item bg-transparent">Select a transaction to view impact...</li>
-                    </ul>
+                <!-- GL Entry Preview -->
+                <div class="col-md-6">
+                    <div class="card mb-4 border-0 shadow-sm h-100">
+                        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                            <i class="fas fa-list-alt me-2"></i> GL & Inventory Impact
+                        </div>
+                        <div class="card-body">
+                            <ul class="list-group list-group-flush" id="glPreview">
+                                <li class="list-group-item bg-transparent text-muted text-center py-4">Select a transaction to view impact...</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             </div>
 
             <!-- Actions -->
-            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded">
+            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded shadow-sm mt-2">
                 <div class="d-flex align-items-center">
-                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 16px; height: 16px;"></div>
-                    <span id="statusLabel" class="fw-bold text-primary">Ready to process reversal</span>
+                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 12px; height: 12px;"></div>
+                    <span id="statusLabel" class="fw-bold text-secondary">Ready to process reversal</span>
                 </div>
                 <div>
                     <form id="reversalForm" method="POST" action="/pos_reversal/process" style="display: inline;">
                         <input type="hidden" name="jv" id="selectedJV">
-                        <button type="submit" id="processBtn" class="btn btn-primary fw-bold px-4" disabled>Process Reversal</button>
+                        <button type="submit" id="processBtn" class="btn btn-primary fw-bold px-4 shadow-sm" style="background-color: var(--accent-color); border:none;" disabled>
+                            <i class="fas fa-undo me-2"></i> Process Reversal
+                        </button>
                     </form>
-                    <button class="btn btn-secondary fw-bold px-4 ms-2" onclick="window.history.back()">Close</button>
+                    <a href="/" class="btn btn-secondary fw-bold px-4 ms-2 shadow-sm">
+                        <i class="fas fa-times me-2"></i> Close
+                    </a>
                 </div>
             </div>
         </div>

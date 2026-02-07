@@ -20,7 +20,7 @@
                             <label class="form-label fw-bold text-primary mb-0 me-3">Select Supplier</label>
                             <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-toggle="collapse" data-bs-target="#supplierDetails">Toggle Details</button>
                         </div>
-                        <select class="form-select mb-3" name="supplier" id="supplierSelect" onchange="loadSupplierData()">
+                        <select class="form-select select2 mb-3" name="supplier" id="supplierSelect" onchange="loadSupplierData()">
                             <option value="">Select Supplier</option>
                             {% for sup in suppliers %}
                             <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
@@ -53,7 +53,7 @@
                         </div>
                         <div class="mb-2">
                             <label class="form-label fw-bold text-primary">Select Bank Account</label>
-                            <select class="form-select" name="bank_account" required>
+                            <select class="form-select select2" name="bank_account" required>
                                 <option value="">Select Bank Account</option>
                                 {% for acc in bank_accounts %}
                                 <option value="{{ acc.bank_bookcol_account_number }}">{{ acc.bank_bookcol_account_number }}</option>

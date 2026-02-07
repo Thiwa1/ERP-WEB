@@ -70,7 +70,7 @@
                             <div class="card-body bg-white">
                                 <div class="mb-3">
                                     <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier</label>
-                                    <select class="form-select" name="supplier" required>
+                                    <select class="form-select select2" name="supplier" required>
                                         <option value="">Select Supplier</option>
                                         {% for s in suppliers %}
                                         <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>

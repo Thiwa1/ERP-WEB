@@ -4278,7 +4278,7 @@ def run_schema_migrations():
         if not conn: return
         cursor = conn.cursor()
 
-        # Check User_Rights columns
+        # 1. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
         columns = [row[0] for row in cursor.fetchall()]
 
@@ -4290,6 +4290,39 @@ def run_schema_migrations():
             if col not in columns:
                 print(f"Migrating: Adding {col} to User_Rights")
                 cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+
+        # 2. Currency Table
+        cursor.execute("SHOW TABLES LIKE 'currency_table'")
+        if not cursor.fetchone():
+            print("Migrating: Creating currency_table")
+            cursor.execute("""
+                CREATE TABLE currency_table (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    currency_code VARCHAR(10) NOT NULL UNIQUE,
+                    currency_name VARCHAR(100),
+                    is_base_currency TINYINT DEFAULT 0
+                )
+            """)
+            # Insert default if empty
+            cursor.execute("INSERT INTO currency_table (currency_code, currency_name, is_base_currency) VALUES ('LKR', 'Sri Lankan Rupee', 1)")
+
+        # 3. New Account Table Columns
+        cursor.execute("SHOW COLUMNS FROM new_account_table")
+        acc_columns = [row[0] for row in cursor.fetchall()]
+        if 'currency_code' not in acc_columns:
+            print("Migrating: Adding currency_code to new_account_table")
+            cursor.execute("ALTER TABLE new_account_table ADD COLUMN currency_code VARCHAR(10) DEFAULT 'LKR'")
+
+        # 4. Inventory Items Columns (UOM)
+        cursor.execute("SHOW COLUMNS FROM inventoy_items")
+        inv_columns = [row[0] for row in cursor.fetchall()]
+        if 'uom_secondary' not in inv_columns:
+            print("Migrating: Adding uom_secondary to inventoy_items")
+            cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_secondary VARCHAR(45) NULL")
+
+        if 'uom_conversion_rate' not in inv_columns:
+            print("Migrating: Adding uom_conversion_rate to inventoy_items")
+            cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_conversion_rate DOUBLE DEFAULT 1")
 
         conn.commit()
         cursor.close()
@@ -4676,7 +4709,12 @@ def create_default_user():
 def fixed_assets():
     # Fetch accounts for dropdowns
     accounts = db.execute_query("SELECT id, account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name")
-    return render_template('fixed_assets.html', accounts=accounts)
+
+    # Fetch existing Classes and Locations for suggestions
+    classes = db.execute_query("SELECT DISTINCT asset_class FROM fixed_assets_register WHERE asset_class IS NOT NULL AND asset_class != ''")
+    locations = db.execute_query("SELECT DISTINCT location FROM fixed_assets_register WHERE location IS NOT NULL AND location != ''")
+
+    return render_template('fixed_assets.html', accounts=accounts, classes=classes, locations=locations)
 
 @app.route('/fixed_assets/add', methods=['POST'])
 @login_required
@@ -4908,8 +4946,17 @@ def fixed_assets_data():
     result['month_headers'] = sorted_months
     return json.dumps(result)
 
+# Ensure initialization runs once regardless of startup method
+app_initialized = False
+
+@app.before_request
+def initialize_app():
+    global app_initialized
+    if not app_initialized:
+        run_schema_migrations()
+        create_default_user()
+        ensure_default_accounts()
+        app_initialized = True
+
 if __name__ == '__main__':
-    run_schema_migrations()
-    create_default_user()
-    ensure_default_accounts()
     app.run(debug=True, port=5000)
