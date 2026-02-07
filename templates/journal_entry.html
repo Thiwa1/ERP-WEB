@@ -44,14 +44,15 @@
                 </button>
             </div>
             <div class="card-body p-0 table-responsive">
-                <table class="table table-bordered table-striped mb-0" id="journalTable">
+                <table class="table table-bordered table-striped mb-0" id="journalTable" style="min-width: 1200px;">
                     <thead class="text-white" style="background-color: var(--primary-color);">
                         <tr>
-                            <th style="width: 20%">Account</th>
-                            <th style="width: 20%">Sub Account</th>
-                            <th style="width: 10%">Currency</th>
+                            <th style="width: 15%">Account</th>
+                            <th style="width: 15%">Sub Account</th>
+                            <th style="width: 10%">Job No</th>
+                            <th style="width: 5%">Currency</th>
                             <th style="width: 10%">FC Amount</th>
-                            <th style="width: 10%">Rate</th>
+                            <th style="width: 5%">Rate</th>
                             <th style="width: 10%">Debit ({{ base_currency }})</th>
                             <th style="width: 10%">Credit ({{ base_currency }})</th>
                             <th style="width: 15%">Narration</th>
@@ -155,6 +156,12 @@
     {% endfor %}
 </datalist>
 
+<datalist id="jobList">
+    {% for job in jobs %}
+    <option value="{{ job.job_number }}">
+    {% endfor %}
+</datalist>
+
 <script>
     let rowCount = 0;
     const baseCurrency = "{{ base_currency }}";
@@ -171,6 +178,9 @@
                 <select class="form-select form-select-sm" name="sub_account_${rowCount}" disabled>
                     <option value="">-</option>
                 </select>
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" name="job_no_${rowCount}" list="jobList" placeholder="Job No">
             </td>
             <td>
                 <span class="badge bg-secondary row-currency">${baseCurrency}</span>
@@ -273,17 +283,6 @@
         const rate = parseFloat(row.querySelector('.rate-input').value) || 1;
         const baseVal = (fc * rate).toFixed(2);
 
-        // Determine if DR or CR based on existing logic or user intent?
-        // Usually FC input doesn't say DR/CR.
-        // Let's assume positive FC is DR, negative is CR? Or create FC_DR and FC_CR?
-        // UI simplification: Assume user puts FC, then it fills DR. If they want CR, they clear DR and put CR?
-        // Better: FC Input is just amount. User must check DR or CR box or have two inputs?
-        // Current table has DR (Base) and CR (Base).
-        // Let's unlock DR/CR but auto-fill one of them.
-        // Simplest: User types in FC, then we ask user? Or standard accounting often has FC Debit / FC Credit columns.
-        // Given constraints, I will auto-fill the LAST modified Base field or default to DR if both 0.
-
-        // Let's try: If user modifies FC, we update DR by default unless CR was non-zero?
         const drInput = row.querySelector('.dr-input');
         const crInput = row.querySelector('.cr-input');
 
@@ -351,6 +350,7 @@
                 rows.push({
                     account: acc,
                     sub_account: tr.querySelector('select[name^="sub_account_"]').value,
+                    job_no: tr.querySelector('input[name^="job_no_"]').value,
                     dr: parseFloat(tr.querySelector('.dr-input').value) || 0,
                     cr: parseFloat(tr.querySelector('.cr-input').value) || 0,
                     narration: tr.querySelector('input[name^="narration_"]').value,

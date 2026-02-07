@@ -1,47 +1,69 @@
 {% extends "base.html" %}
 
-{% block content %}
-<div class="container">
-    <h2 class="mb-4">Inventory Locations</h2>
+{% block title %}Inventory Locations{% endblock %}
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-primary text-white">Manage Inventory House</div>
+{% block content %}
+<div class="container-fluid">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-warehouse me-2 text-primary"></i> Inventory Locations</h2>
+    </div>
+
+    <!-- Create Location Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Manage Inventory House</h6>
+        </div>
         <div class="card-body">
             <form method="POST" action="/inventory_locations">
-                <div class="mb-3">
-                    <label for="house_name" class="form-label">House Name</label>
-                    <input type="text" class="form-control" id="house_name" name="house_name" required>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="house_name" class="form-label fw-bold text-secondary">House Name</label>
+                        <input type="text" class="form-control" id="house_name" name="house_name" placeholder="Enter location name" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="description" class="form-label fw-bold text-secondary">Short Description</label>
+                        <input type="text" class="form-control" id="description" name="description" placeholder="Enter description" required>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label for="description" class="form-label">Short Description</label>
-                    <input type="text" class="form-control" id="description" name="description" required>
+                <div class="d-flex justify-content-end">
+                    <button type="submit" class="btn btn-primary px-4 fw-bold">
+                        <i class="fas fa-plus-circle me-2"></i> Create New House
+                    </button>
                 </div>
-                <button type="submit" class="btn btn-primary">Create New House</button>
             </form>
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header">Existing Locations</div>
-        <div class="card-body">
-            <table class="table table-striped">
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Description</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for loc in locations %}
-                    <tr>
-                        <td>{{ loc.id }}</td>
-                        <td>{{ loc.inventory_locations_name }}</td>
-                        <td>{{ loc.inventory_locations_descriptions }}</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
+    <!-- Existing Locations Card -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary">Existing Locations</h6>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-bordered table-striped table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 10%">ID</th>
+                            <th style="width: 40%">Name</th>
+                            <th style="width: 50%">Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for loc in locations %}
+                        <tr>
+                            <td>{{ loc.id }}</td>
+                            <td class="fw-bold text-dark">{{ loc.inventory_locations_name }}</td>
+                            <td>{{ loc.inventory_locations_descriptions }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="3" class="text-center text-muted py-3">No locations found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>

@@ -1,102 +1,93 @@
 {% extends "base.html" %}
 
+{% block title %}Direct Purchasing{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
-    <h2 class="mb-4">Direct Purchasing</h2>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-hand-holding-usd me-2 text-success"></i> Direct Purchasing</h2>
+    </div>
 
     <div class="row">
-        <!-- Payment Items List -->
-        <div class="col-md-7">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-secondary text-white">Bill Payment Summary</div>
-                <div class="card-body">
-                    <table class="table table-bordered">
-                        <thead>
-                            <tr>
-                                <th>No</th>
-                                <th>Account</th>
-                                <th>Item</th>
-                                <th>Qty</th>
-                                <th>Price</th>
-                                <th>Total</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if session_payment_items %}
-                                {% for item in session_payment_items %}
-                                <tr>
-                                    <td>{{ loop.index }}</td>
-                                    <td>{{ item.account }}</td>
-                                    <td>{{ item.item_name }}</td>
-                                    <td>{{ item.qty }}</td>
-                                    <td>{{ item.price }}</td>
-                                    <td>{{ item.total }}</td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr><td colspan="6" class="text-center">No items added</td></tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-
-                    <div class="d-flex justify-content-end align-items-center mt-3">
-                        <label class="fw-bold me-2">Total with VAT:</label>
-                        <input type="text" class="form-control w-25 text-end" value="{{ total_value }}" readonly>
-                    </div>
+        <!-- Form Panel (Right Side on large screens, Top on mobile) -->
+        <div class="col-lg-5 order-lg-2 mb-4">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Add Item to Payment</h6>
                 </div>
-            </div>
-        </div>
-
-        <!-- Form Panel -->
-        <div class="col-md-5">
-            <div class="card shadow-sm">
-                <div class="card-header bg-primary text-white">Transaction Details</div>
                 <div class="card-body">
                     <form method="POST" action="/direct_purchasing/add_item">
-                        <h6 class="text-primary">Account Details</h6>
-                        <div class="mb-2">
-                            <label>Date</label>
-                            <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
-                        </div>
-                        <h6 class="text-primary mt-3">Item Details</h6>
-                        <div class="mb-2">
-                            <label>Cost Account</label>
-                            <select name="cost_account" class="form-select select2">
+
+                        <!-- Account Details Section -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Cost Account</label>
+                            <select name="cost_account" class="form-select select2" required>
+                                <option value="">Select Expense/Asset Account</option>
                                 {% for acc in cost_accounts %}
                                 <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="mb-2">
-                            <label>Inventory Item (Optional)</label>
+
+                        <!-- Item Details Section -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Inventory Item (Optional)</label>
                             <select name="inventory_item" class="form-select select2">
                                 <option value="">-- No Item --</option>
                                 {% for item in inventory_items %}
                                 <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
                                 {% endfor %}
                             </select>
-                        </div>
-                        <div class="row mb-2">
-                            <div class="col">
-                                <label>Qty</label>
-                                <input type="number" name="qty" class="form-control" step="0.01">
-                            </div>
-                            <div class="col">
-                                <label>Unit Price</label>
-                                <input type="number" name="price" class="form-control" step="0.01">
-                            </div>
-                        </div>
-                        <div class="mb-2">
-                            <label>Narration</label>
-                            <input type="text" name="narration" class="form-control">
+                            <small class="text-muted">Select only if this purchase adds stock.</small>
                         </div>
 
-                        <button type="submit" class="btn btn-secondary w-100 mb-3">Add Item to Payment</button>
+                        <!-- Job Number Section -->
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Job Number (Optional)</label>
+                            <select name="job_no" class="form-select select2">
+                                <option value="">-- No Job --</option>
+                                {% for job in jobs %}
+                                <option value="{{ job.job_number }}">{{ job.job_number }} - {{ job.job_description }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-secondary">Quantity</label>
+                                <input type="number" name="qty" class="form-control" step="0.01" placeholder="0.00">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold text-secondary">Unit Price / Amount</label>
+                                <input type="number" name="price" class="form-control" step="0.01" placeholder="0.00" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="form-label fw-bold text-secondary">Narration</label>
+                            <input type="text" name="narration" class="form-control" placeholder="Item description...">
+                        </div>
+
+                        <button type="submit" class="btn btn-secondary w-100 fw-bold">
+                            <i class="fas fa-plus me-1"></i> Add Line Item
+                        </button>
                     </form>
+                </div>
+            </div>
 
+            <!-- Submission Card -->
+            <div class="card shadow mb-4 border-left-success">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-success">Finalize Transaction</h6>
+                </div>
+                <div class="card-body">
                     <form method="POST" action="/direct_purchasing/submit">
-                        <div class="mb-2">
-                            <label>Cash Account</label>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Transaction Date</label>
+                            <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold text-secondary">Cash Account (Source)</label>
                             <select name="cash_account" class="form-select select2" required>
                                 <option value="">Select Cash Account</option>
                                 {% for acc in cash_accounts %}
@@ -104,12 +95,65 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="form-check mb-3">
+                        <!--
+                        <div class="form-check mb-4">
                             <input class="form-check-input" type="checkbox" name="vat_check" id="vatCheck">
-                            <label class="form-check-label fw-bold" for="vatCheck">Include VAT</label>
+                            <label class="form-check-label fw-bold text-dark" for="vatCheck">Include VAT</label>
                         </div>
-                        <button type="submit" class="btn btn-success w-100">Submit Payment</button>
+                        -->
+                        <button type="submit" class="btn btn-success w-100 fw-bold py-2">
+                            <i class="fas fa-check-circle me-1"></i> Submit Payment
+                        </button>
                     </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- List Panel (Left Side on large screens) -->
+        <div class="col-lg-7 order-lg-1">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">Payment Items Summary</h6>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-bordered table-striped table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%">#</th>
+                                    <th style="width: 20%">Account</th>
+                                    <th style="width: 20%">Item</th>
+                                    <th style="width: 15%">Job No</th>
+                                    <th style="width: 10%">Qty</th>
+                                    <th style="width: 15%">Price</th>
+                                    <th style="width: 15%">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if session_payment_items %}
+                                    {% for item in session_payment_items %}
+                                    <tr>
+                                        <td>{{ loop.index }}</td>
+                                        <td>{{ item.account }}</td>
+                                        <td>{{ item.item_name or '-' }}</td>
+                                        <td>{{ item.job_no or '-' }}</td>
+                                        <td class="text-end">{{ item.qty }}</td>
+                                        <td class="text-end">{{ item.price }}</td>
+                                        <td class="text-end fw-bold">{{ item.total }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr><td colspan="7" class="text-center text-muted py-4">No items added to this payment voucher yet.</td></tr>
+                                {% endif %}
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td colspan="6" class="text-end fw-bold text-dark">Total Amount:</td>
+                                    <td class="text-end fw-bold text-success fs-5">{{ total_value }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>

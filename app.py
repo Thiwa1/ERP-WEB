@@ -2634,6 +2634,7 @@ def direct_purchasing_add_item():
     item = {
         'account': request.form.get('cost_account'),
         'item_name': request.form.get('inventory_item'),
+        'job_no': request.form.get('job_no'),
         'qty': qty,
         'price': price,
         'narration': request.form.get('narration')
@@ -2699,13 +2700,17 @@ def direct_purchasing_submit():
 
         # Debit Expense/Asset Accounts (Per Item)
         for item in items:
+            # Handle Job No
+            job_no = item.get('job_no')
+            if job_no and job_no.strip() == "": job_no = None
+
             # Debit Entry
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (item['account'], item['total'], today_date, today_date, item['narration'], current_user, jv_no))
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (item['account'], item['total'], today_date, today_date, item['narration'], current_user, jv_no, job_no))
 
             # 4. Cash Book Record
             cursor.execute("""
