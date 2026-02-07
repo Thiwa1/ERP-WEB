@@ -1939,32 +1939,224 @@ def update_user_rights():
         print(f"Rights Update Error: {e}")
         return {'error': str(e)}, 500
 
-# --- Add New Job ---
-@app.route('/add_new_job', methods=['GET', 'POST'])
+# --- Job Management ---
+@app.route('/job_management', methods=['GET'])
 @login_required
-def add_new_job():
-    if request.method == 'POST':
-        job_no = request.form.get('job_no')
-        description = request.form.get('job_description')
+def job_management():
+    # Fetch all jobs with status
+    jobs = db.execute_query("SELECT * FROM jobs_unit ORDER BY job_number DESC")
+    return render_template('job_management.html', jobs=jobs)
 
-        if not job_no or not description:
-            flash('Job No and Description are required', 'danger')
-            return redirect(url_for('add_new_job'))
+@app.route('/jobs/create', methods=['POST'])
+@login_required
+def create_job():
+    job_no = request.form.get('job_no')
+    description = request.form.get('job_description')
 
-        current_user = get_current_user_id()
+    if not job_no or not description:
+        flash('Job No and Description are required', 'danger')
+        return redirect(url_for('job_management'))
 
-        try:
-            db.execute_query("""
-                INSERT INTO jobs_unit (id, job_number, job_description, job_create_date, job_create_user, job_finsh, job_cancell)
-                VALUES (0, %s, %s, %s, %s, 0, 0)
-            """, (job_no, description, date.today(), current_user), commit=True)
-            flash('New job created successfully', 'success')
-        except Exception as e:
-            flash(f'Error creating job: {str(e)}', 'danger')
+    current_user = get_current_user_id()
 
-        return redirect(url_for('add_new_job'))
+    try:
+        db.execute_query("""
+            INSERT INTO jobs_unit (id, job_number, job_description, job_create_date, job_create_user, job_finsh, job_cancell)
+            VALUES (0, %s, %s, %s, %s, 0, 0)
+        """, (job_no, description, date.today(), current_user), commit=True)
+        flash('New job created successfully', 'success')
+    except Exception as e:
+        flash(f'Error creating job: {str(e)}', 'danger')
 
-    return render_template('add_new_job.html')
+    return redirect(url_for('job_management'))
+
+@app.route('/jobs/toggle_status', methods=['POST'])
+@login_required
+def toggle_job_status():
+    job_id = request.form.get('job_id')
+    status = request.form.get('status') # 1 = Finish, 0 = Active
+
+    try:
+        db.execute_query("UPDATE jobs_unit SET job_finsh = %s WHERE id = %s", (status, job_id), commit=True)
+        msg = "Job finished" if str(status) == "1" else "Job re-activated"
+        flash(f'{msg} successfully', 'success')
+    except Exception as e:
+        flash(f'Error updating job: {str(e)}', 'danger')
+
+    return redirect(url_for('job_management'))
+
+# --- Job Profit Analysis ---
+@app.route('/job_profit_analysis', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def job_profit_analysis():
+    jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit ORDER BY job_number DESC")
+    default_from = date.today().replace(day=1).strftime('%Y-%m-%d')
+    default_to = date.today().strftime('%Y-%m-%d')
+    return render_template('job_profit_analysis.html', jobs=jobs, default_from=default_from, default_to=default_to)
+
+@app.route('/job_profit_analysis/data', methods=['POST'])
+@login_required
+@has_permission('Access_Reports')
+def job_profit_analysis_data():
+    data = request.json
+    scope = data.get('scope', 'single')
+    job_ids = data.get('job_ids', [])
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
+
+    # Handle single select coming as string vs list
+    if isinstance(job_ids, str): job_ids = [job_ids]
+    if not job_ids and scope in ['single', 'compare']:
+        return {'error': 'Please select job(s)'}, 400
+
+    # Build Filters
+    params = []
+    where_clause = "WHERE (na.account_income = 1 OR na.account_expenses = 1) AND ed.entry_deleted = 0"
+
+    # Job Filter
+    if scope == 'single' or scope == 'compare':
+        placeholders = ','.join(['%s'] * len(job_ids))
+        where_clause += f" AND ed.entry_job_number IN ({placeholders})"
+        params.extend(job_ids)
+    elif scope == 'open':
+        where_clause += " AND ed.entry_job_number IN (SELECT job_number FROM jobs_unit WHERE job_finsh = 0)"
+    elif scope == 'closed':
+        where_clause += " AND ed.entry_job_number IN (SELECT job_number FROM jobs_unit WHERE job_finsh = 1)"
+
+    # Date Filter
+    if from_date and to_date:
+        where_clause += " AND ed.entry_effective_date BETWEEN %s AND %s"
+        params.extend([from_date, to_date])
+
+    # Fetch Data
+    # Group by Job if Comparison, else Aggregate
+    group_cols = "na.account_name, na.account_name_of_catogory_PL, na.account_hold_possion_PL, na.account_income, na.account_expenses"
+    select_cols = group_cols
+
+    if scope == 'compare':
+        # If comparing, we need pivot-like data.
+        # Easier to fetch flat list (Account, Job, Amount) and process in Python
+        query = f"""
+            SELECT
+                ed.entry_job_number,
+                na.account_name,
+                na.account_name_of_catogory_PL as category,
+                na.account_hold_possion_PL as sort_order,
+                na.account_income,
+                SUM(COALESCE(ed.enty_values_CR, 0) - COALESCE(ed.enty_values_DR, 0)) as income_amount,
+                SUM(COALESCE(ed.enty_values_DR, 0) - COALESCE(ed.enty_values_CR, 0)) as expense_amount
+            FROM entry_details ed
+            JOIN new_account_table na ON ed.account_name = na.account_name
+            {where_clause}
+            GROUP BY ed.entry_job_number, {group_cols}
+            ORDER BY na.account_hold_possion_PL, na.account_name
+        """
+    else:
+        # Standard View (Aggregated)
+        query = f"""
+            SELECT
+                na.account_name,
+                na.account_name_of_catogory_PL as category,
+                na.account_hold_possion_PL as sort_order,
+                na.account_income,
+                SUM(COALESCE(ed.enty_values_CR, 0) - COALESCE(ed.enty_values_DR, 0)) as income_amount,
+                SUM(COALESCE(ed.enty_values_DR, 0) - COALESCE(ed.enty_values_CR, 0)) as expense_amount
+            FROM entry_details ed
+            JOIN new_account_table na ON ed.account_name = na.account_name
+            {where_clause}
+            GROUP BY {group_cols}
+            ORDER BY na.account_hold_possion_PL, na.account_name
+        """
+
+    rows = db.execute_query(query, tuple(params))
+
+    # Process Logic
+    summary = {'income': 0, 'expense': 0, 'profit': 0, 'margin': 0}
+    result_rows = []
+
+    if scope == 'compare':
+        # Organize by Account -> Job columns
+        acc_map = {}
+        unique_jobs = set()
+
+        for r in rows:
+            key = (r['category'], r['account_name'])
+            job = str(r['entry_job_number'])
+            unique_jobs.add(job)
+
+            val = float(r['income_amount']) if r['account_income'] == 1 else float(r['expense_amount'])
+
+            # Global Summary
+            if r['account_income'] == 1: summary['income'] += val
+            else: summary['expense'] += val
+
+            if key not in acc_map:
+                acc_map[key] = {'amounts': {}}
+
+            acc_map[key]['amounts'][job] = val
+
+        summary['profit'] = summary['income'] - summary['expense']
+        summary['margin'] = round((summary['profit'] / summary['income'] * 100) if summary['income'] else 0, 2)
+
+        for (cat, acc), data in acc_map.items():
+            total = sum(data['amounts'].values())
+            result_rows.append({
+                'category': cat or 'Uncategorized',
+                'account': acc,
+                'amounts': data['amounts'],
+                'total': total
+            })
+
+        return {'mode': 'compare', 'jobs': sorted(list(unique_jobs)), 'rows': result_rows, 'summary': summary}
+
+    else:
+        # Standard Aggregated View (with Categories)
+        grouped = {}
+
+        for r in rows:
+            cat = r['category'] or 'Uncategorized'
+            if cat not in grouped: grouped[cat] = {'total': 0, 'accounts': []}
+
+            val = float(r['income_amount']) if r['account_income'] == 1 else float(r['expense_amount'])
+
+            # Summary
+            if r['account_income'] == 1: summary['income'] += val
+            else: summary['expense'] += val
+
+            if val != 0:
+                grouped[cat]['accounts'].append({
+                    'name': r['account_name'],
+                    'val': val
+                })
+                grouped[cat]['total'] += val
+
+        summary['profit'] = summary['income'] - summary['expense']
+        summary['margin'] = round((summary['profit'] / summary['income'] * 100) if summary['income'] else 0, 2)
+
+        # Flatten for table
+        base_amt = summary['income'] # For % calculation (usually % of Sales)
+
+        for cat, data in grouped.items():
+            # Header Row
+            result_rows.append({
+                'is_header': True,
+                'category': cat,
+                'account': '',
+                'amount': data['total'],
+                'percent': round((data['total'] / base_amt * 100) if base_amt else 0, 1)
+            })
+            # Detail Rows
+            for acc in data['accounts']:
+                result_rows.append({
+                    'is_header': False,
+                    'category': '',
+                    'account': acc['name'],
+                    'amount': acc['val'],
+                    'percent': round((acc['val'] / base_amt * 100) if base_amt else 0, 1)
+                })
+
+        return {'mode': 'standard', 'rows': result_rows, 'summary': summary}
 
 # --- Warranty Period Management ---
 @app.route('/warranty_period', methods=['GET'])
