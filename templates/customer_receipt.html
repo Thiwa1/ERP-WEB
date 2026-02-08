@@ -91,17 +91,18 @@
                 </button>
             </div>
 
-            <!-- Right Column: Invoices -->
+            <!-- Right Column: Invoices & History -->
             <div class="col-md-8">
-                <div class="card shadow-sm h-100">
+                <!-- Outstanding Invoices -->
+                <div class="card shadow-sm mb-4">
                     <div class="card-header bg-light fw-bold d-flex justify-content-between align-items-center">
                         <span>Outstanding Invoices</span>
                         <small class="text-muted">Select invoices to pay</small>
                     </div>
                     <div class="card-body p-0">
-                        <div class="table-responsive">
+                        <div class="table-responsive" style="max-height: 300px;">
                             <table class="table table-hover mb-0 align-middle">
-                                <thead class="table-light">
+                                <thead class="table-light sticky-top">
                                     <tr>
                                         <th>Invoice No</th>
                                         <th>Date</th>
@@ -114,6 +115,35 @@
                                 <tbody id="invoiceTableBody">
                                     <tr>
                                         <td colspan="6" class="text-center py-5 text-muted">Select a customer to view invoices.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Receipt History -->
+                <div class="card shadow-sm">
+                    <div class="card-header bg-light fw-bold d-flex justify-content-between align-items-center">
+                        <span>Receipt History</span>
+                        <small class="text-muted">Past Payments</small>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive" style="max-height: 300px;">
+                            <table class="table table-hover mb-0 align-middle small">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th>Date</th>
+                                        <th>Receipt/Voucher</th>
+                                        <th>Account</th>
+                                        <th>Narration</th>
+                                        <th class="text-end">Amount</th>
+                                        <th class="text-center">Print</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="historyTableBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center py-3 text-muted">Select a customer to view history.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -149,15 +179,18 @@
     function loadOutstanding() {
         const customerId = document.getElementById('customerSelect').value;
         const tbody = document.getElementById('invoiceTableBody');
+        const histBody = document.getElementById('historyTableBody');
         const totalOutDisplay = document.getElementById('totalOutstandingDisplay');
 
         if (!customerId) {
             tbody.innerHTML = '<tr><td colspan="6" class="text-center py-5 text-muted">Select a customer to view invoices.</td></tr>';
+            histBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">Select a customer to view history.</td></tr>';
             totalOutDisplay.textContent = '0.00';
             updateTotal();
             return;
         }
 
+        // 1. Load Outstanding
         fetch(`/customer_receipt/get_outstanding?customer_id=${customerId}`)
             .then(res => res.json())
             .then(data => {
@@ -188,6 +221,35 @@
                 }
                 totalOutDisplay.textContent = totalOut.toFixed(2);
                 updateTotal();
+            });
+
+        // 2. Load History
+        fetch(`/customer_receipt/get_history?customer_id=${customerId}`)
+            .then(res => res.json())
+            .then(data => {
+                histBody.innerHTML = '';
+
+                if (data.history.length === 0) {
+                    histBody.innerHTML = '<tr><td colspan="6" class="text-center py-3 text-muted">No receipt history found.</td></tr>';
+                } else {
+                    data.history.forEach(h => {
+                        const row = `
+                            <tr>
+                                <td>${h.date}</td>
+                                <td>${h.voucher_no} <span class="badge bg-secondary">${h.type}</span></td>
+                                <td>${h.account}</td>
+                                <td class="text-truncate" style="max-width: 150px;" title="${h.narration}">${h.narration}</td>
+                                <td class="text-end fw-bold">${h.amount.toFixed(2)}</td>
+                                <td class="text-center">
+                                    <a href="/receipt/print/${h.jv_no}" target="_blank" class="btn btn-sm btn-outline-primary" title="Print Receipt">
+                                        <i class="fas fa-print"></i>
+                                    </a>
+                                </td>
+                            </tr>
+                        `;
+                        histBody.innerHTML += row;
+                    });
+                }
             });
     }
 

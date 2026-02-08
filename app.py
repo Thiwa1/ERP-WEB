@@ -3999,6 +3999,164 @@ def get_customer_outstanding():
 
     return {'invoices': data}
 
+@app.route('/customer_receipt/get_history')
+@login_required
+def get_customer_receipt_history():
+    customer_id = request.args.get('customer_id')
+    if not customer_id: return {'error': 'No customer ID'}, 400
+
+    # Get Customer Name
+    cursor = db.get_connection().cursor()
+    cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
+    res = cursor.fetchone()
+    if not res: return {'error': 'Customer not found'}, 404
+    cust_name = res[0]
+    cursor.close()
+
+    # Fetch History from Cash Book
+    # Grouping by JV to show single line per receipt transaction if multiple invoices paid
+    # However, C# grid shows individual lines. But for printing, we need to group by JV/Receipt.
+    # We will return list of receipt headers (unique by JV/Voucher)
+
+    query = """
+        SELECT
+            jv_numbers_jv_id as jv_no,
+            cash_book_recod_voucher_no as voucher_no,
+            Payment_Date as date,
+            SUM(cash_book_recode_dr) as amount,
+            cash_book_recode_accont_name as account,
+            cash_book_recode_naration as narration
+        FROM cash_book_recode
+        WHERE cash_book_recode_suplier_name = %s
+        GROUP BY jv_numbers_jv_id, cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_naration
+        ORDER BY Payment_Date DESC
+    """
+    cash_rows = db.execute_query(query, (cust_name,))
+
+    # Fetch History from Bank Book
+    query_bank = """
+        SELECT
+            jv_numbers_jv_id as jv_no,
+            bank_book_recod_voucher_no as voucher_no,
+            Bank_Payment_Date as date,
+            SUM(bank_book_book_recode_dr) as amount,
+            bank_book__accont_name as account,
+            bank_book__naration as narration
+        FROM bank_book_recod
+        WHERE bank_book__suplier_name = %s
+        GROUP BY jv_numbers_jv_id, bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__naration
+        ORDER BY Bank_Payment_Date DESC
+    """
+    bank_rows = db.execute_query(query_bank, (cust_name,))
+
+    history = []
+
+    for r in cash_rows:
+        history.append({
+            'type': 'Cash',
+            'jv_no': r['jv_no'],
+            'voucher_no': r['voucher_no'],
+            'date': str(r['date']),
+            'amount': float(r['amount'] or 0),
+            'account': r['account'],
+            'narration': r['narration']
+        })
+
+    for r in bank_rows:
+        history.append({
+            'type': 'Bank',
+            'jv_no': r['jv_no'],
+            'voucher_no': r['voucher_no'],
+            'date': str(r['date']),
+            'amount': float(r['amount'] or 0),
+            'account': r['account'],
+            'narration': r['narration']
+        })
+
+    # Sort combined history by date desc
+    history.sort(key=lambda x: x['date'], reverse=True)
+
+    return {'history': history}
+
+@app.route('/receipt/print/<int:jv_no>')
+@login_required
+def print_receipt(jv_no):
+    # Determine if Cash or Bank based on JV existence in tables
+
+    # Try Cash Book
+    cash_res = db.execute_query("""
+        SELECT
+            c.cash_book_recod_voucher_no as voucher_no,
+            c.Payment_Date as date,
+            c.cash_book_recode_suplier_name as received_from,
+            c.cash_book_recode_accont_name as account,
+            c.cash_book_recode_naration as narration,
+            SUM(c.cash_book_recode_dr) as amount,
+            c.User_Enter as user_id
+        FROM cash_book_recode c
+        WHERE c.jv_numbers_jv_id = %s
+        GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
+                 c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
+    """, (jv_no,))
+
+    # Try Bank Book
+    bank_res = db.execute_query("""
+        SELECT
+            b.bank_book_recod_voucher_no as voucher_no,
+            b.Bank_Payment_Date as date,
+            b.bank_book__suplier_name as received_from,
+            b.bank_book__accont_name as account,
+            b.bank_book__naration as narration,
+            SUM(b.bank_book_book_recode_dr) as amount,
+            b.Bank_User_Id as user_id
+        FROM bank_book_recod b
+        WHERE b.jv_numbers_jv_id = %s
+        GROUP BY b.bank_book_recod_voucher_no, b.Bank_Payment_Date, b.bank_book__suplier_name,
+                 b.bank_book__accont_name, b.bank_book__naration, b.Bank_User_Id
+    """, (jv_no,))
+
+    receipt = None
+    if cash_res: receipt = cash_res[0]
+    elif bank_res: receipt = bank_res[0]
+
+    if not receipt:
+        return "Receipt Not Found", 404
+
+    # Get Invoice Details (Invoices settled by this JV)
+    # We join with invoice_oustanding or check `cash_book_suplier_oustanding_id` links
+    # Note: `cash_book_recode` has `cash_book_recode_suplier_oustanding_id` which links to `Invoice_Oustanding.Id`
+
+    invoices = []
+    if cash_res:
+        inv_query = """
+            SELECT io.invoice_number, c.cash_book_recode_dr as amount_paid
+            FROM cash_book_recode c
+            JOIN Invoice_Oustanding io ON c.cash_book_recode_suplier_oustanding_id = io.Id
+            WHERE c.jv_numbers_jv_id = %s
+        """
+        invoices = db.execute_query(inv_query, (jv_no,))
+    elif bank_res:
+        inv_query = """
+            SELECT io.invoice_number, b.bank_book_book_recode_dr as amount_paid
+            FROM bank_book_recod b
+            JOIN Invoice_Oustanding io ON b.bank_book__suplier_oustanding_id = io.Id
+            WHERE b.jv_numbers_jv_id = %s
+        """
+        invoices = db.execute_query(inv_query, (jv_no,))
+
+    # Company Info
+    company_res = db.execute_query("SELECT * FROM company LIMIT 1")
+    company = company_res[0] if company_res else {}
+
+    # Amount in words (Basic implementation or placeholder)
+    # Ideally use a library like num2words
+
+    return render_template('receipt_print.html',
+                           receipt=receipt,
+                           invoices=invoices,
+                           company=company,
+                           jv_no=jv_no)
+
 @app.route('/customer_receipt/submit', methods=['POST'])
 @login_required
 def submit_customer_receipt():
