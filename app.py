@@ -2564,37 +2564,50 @@ def customer_loyalty():
         delivery = request.form.get('delivery_address')
         email = request.form.get('email')
         mobile = request.form.get('mobile_no')
-        paid = request.form.get('amount_paid', 0)
+        paid = request.form.get('amount_paid')
 
         if not mobile:
-            flash('Mobile number is required', 'danger')
+            flash('Please enter the mobile number', 'danger')
             return redirect(url_for('customer_loyalty'))
 
-        current_date = datetime.now().date()
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
 
-        # Determine next ID (simplified vs MAX+60001)
-        # Using auto-increment for ID but custom logic for code
-        max_id_res = db.execute_query("SELECT MAX(id) as max_id FROM customer")
-        max_id = max_id_res[0]['max_id'] if max_id_res else 0
-        if not max_id: max_id = 0
-        customer_code = max_id + 60001
+            # Determine next ID
+            cursor.execute("SELECT MAX(id) FROM customer")
+            res = cursor.fetchone()
+            max_id = res[0] if res and res[0] else 0
+            customer_code = max_id + 60001
 
-        query = """
-            INSERT INTO customer (
-                id, customer_name, customer_code,
-                customer_Billing_Address, costomer_Delivery_Address,
-                e_mail, coustomer_credit_limit, Mobile_nimber,
-                Is_Loyality_Customer, Compay_Or_Not, Create_Date,
-                Paid_Amountl, Create_Cashiyer
-            ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        params = (
-            name, customer_code, billing, delivery, email,
-            1, mobile, 1, 0, current_date, paid, 0
-        )
+            current_date = datetime.utcnow()
 
-        db.execute_query(query, params, commit=True)
-        flash('Loyalty customer registered', 'success')
+            query = """
+                INSERT INTO customer (
+                    id, customer_name, customer_code,
+                    customer_Billing_Address, costomer_Delivery_Address,
+                    e_mail, coustomer_credit_limit, Mobile_nimber,
+                    Is_Loyality_Customer, Compay_Or_Not, Create_Date,
+                    Paid_Amountl, Create_Cashiyer
+                ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            params = (
+                name, customer_code, billing, delivery, email,
+                1, mobile, 1, 0, current_date, paid if paid else 0, 0
+            )
+
+            cursor.execute(query, params)
+            conn.commit()
+            flash('Updated ..', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
         return redirect(url_for('customer_loyalty'))
 
     return render_template('customer_loyalty.html')
@@ -3332,11 +3345,16 @@ def sales_summary_cashier():
 
     current_cashier_id = get_current_user_id()
 
-    # 1. Fetch Current User Name (Cashier)
-    # The C# code fetches from `pose_setting_table` or `Login_Table`.
-    # Based on session user_id (User_Code), let's get the name.
-    # Actually C# fetches from `pose_setting_table` where ID = POS_User_ID.
-    # We will assume session['username'] is the cashier name or fetch from login.
+    # 1. Fetch Current User PK (Session stores user_pk as 'id' from Login_Table)
+    current_user_pk = session.get('user_pk')
+
+    # Fetch cashier name from pose_setting_table if possible, or Login_Table
+    # The C# error suggests RecodeUserId in pos_sales_invoice_01 is INT (likely Login_Table.id or pose_setting_table.Id)
+    # But C# uses `control_variable.POS_User_ID` which implies it might be different from Login User.
+    # However, given `current_cashier_id = get_current_user_id()` returns `session['user_id']` (User_Code e.g., 'ADM001'),
+    # and the error says "Truncated incorrect DOUBLE value: 'ADM001'", it means `RecodeUserId` column is numeric.
+    # We should use `session['user_pk']` (the auto-inc ID) for filtering if RecodeUserId stores the ID.
+
     cashier_name = session.get('username', 'Unknown')
 
     # 2. Build Query
@@ -3361,15 +3379,16 @@ def sales_summary_cashier():
             s.RecodeUserId,
             lt.User_Name as CashierName
         FROM pos_sales_invoice_01 s
-        LEFT JOIN Login_Table lt ON s.RecodeUserId = lt.User_Code
+        LEFT JOIN Login_Table lt ON s.RecodeUserId = lt.id
         WHERE DATE(s.AcctionDate) = %s
         AND s.Revers = 0
     """
     params = [selected_date]
 
     if filter_type == 'current':
+        # Use user_pk (INT) instead of User_Code (VARCHAR)
         query += " AND s.RecodeUserId = %s"
-        params.append(current_cashier_id)
+        params.append(current_user_pk)
 
     query += " ORDER BY s.AcctionDate DESC, s.jv DESC"
 
