@@ -273,6 +273,9 @@ def add_supplier():
             contact_2 = request.form.get('contact_2')
             email = request.form.get('email')
 
+            tin = request.form.get('tin_no')
+            nic = request.form.get('nic_no')
+
             if not supplier_name or not supplier_code:
                 flash('Supplier Name and Code are required.', 'danger')
                 return redirect(url_for('add_supplier'))
@@ -288,8 +291,8 @@ def add_supplier():
                     supplier_create_date, suppliers_create_user,
                     suppliers_last_edit_user, suppliers_last_edit_date,
                     suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                    Is_Suplier, Is_Customer
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             params_supplier = (
                 0, supplier_name, supplier_code,
@@ -298,7 +301,7 @@ def add_supplier():
                 current_date, current_user,
                 current_user, current_date,
                 email, vat_no, salutation,
-                1, 0 # Is_Suplier=1, Is_Customer=0
+                1, 0, tin, nic
             )
 
             query_sub_account = """
@@ -1372,12 +1375,13 @@ def cash_payment_submit():
     cash_account = request.form.get('cash_account')
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
+    wht_amount = float(request.form.get('wht_amount', 0))
 
     if not supplier_name or not cash_account:
         flash('Missing supplier or cash account', 'danger')
         return redirect(url_for('cash_payment'))
 
-    # Collect payments
+    # Collect payments (Total Gross Payment to Supplier)
     payments = []
     total_payment = 0
 
@@ -1422,7 +1426,8 @@ def cash_payment_submit():
         sub_ac_code = res[0] if res else 0
 
         # 3. Create GL Entries
-        # Debit AP
+
+        # A. Debit AP (Full Invoice Amount settled)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
@@ -1430,18 +1435,29 @@ def cash_payment_submit():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
 
-        # Credit Cash
+        # B. Credit Cash (Net Amount = Total - WHT)
+        net_payment = total_payment - wht_amount
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (cash_account, total_payment, payment_date, date.today(), narration, current_user, jv_no))
+        """, (cash_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
 
-        # 4. Process Individual Payments
+        # C. Credit WHT Payable (If any)
+        if wht_amount > 0:
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+
+        # 4. Process Individual Payments (Update Outstanding)
         for p in payments:
             # Update Invoice Outstanding using Stored Procedure (vender_settele)
             # Parameters: curent_value (outstanding), settelment_value (new payment), id
+            # Note: The payment amount here is the GROSS settlement amount, so AP reduces by full amount.
             cursor.execute("SELECT suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
             res = cursor.fetchone()
             current_outstanding = float(res[0] or 0)
@@ -1449,7 +1465,16 @@ def cash_payment_submit():
             # Call Stored Procedure
             cursor.execute("CALL vender_settele(%s, %s, %s)", (current_outstanding, p['amount'], p['id']))
 
-            # Insert Cash Book Record
+            # Insert Cash Book Record (Net Payment?)
+            # Usually Cash Book reflects actual cash movement.
+            # So if we pay 900 (1000 inv - 100 tax), cash book should show 900.
+            # But we are iterating payments.
+            # If we split proportionately: Net_Item = Item_Gross * (Net_Total / Gross_Total)
+
+            net_item_amount = p['amount']
+            if total_payment > 0:
+                net_item_amount = p['amount'] * (net_payment / total_payment)
+
             cursor.execute("""
                 INSERT INTO cash_book_recode (
                     cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
@@ -1459,7 +1484,7 @@ def cash_payment_submit():
                     cash_book_recod_voucher_no, User_Enter, Payment_Date
                 ) VALUES (0, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
             """, (
-                p['amount'], cash_account, narration,
+                net_item_amount, cash_account, narration,
                 p['id'], supplier_name, jv_no,
                 p['id'], new_voucher, current_user, payment_date
             ))
@@ -2477,6 +2502,7 @@ def bank_payment_submit():
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
     cheque_no = request.form.get('cheque_no')
+    wht_amount = float(request.form.get('wht_amount', 0))
 
     if not supplier_name or not bank_account:
         flash('Missing supplier or bank account', 'danger')
@@ -2508,13 +2534,8 @@ def bank_payment_submit():
         for p in payments:
             # Check balance again to be safe
             cursor.execute("SELECT suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
-            res = cursor.fetchone() # returns tuple (outstanding, total_payment)
+            res = cursor.fetchone()
             if not res: continue
-
-            # Note: The C# code fetches outstanding from DB. My execute_query returns dictionary,
-            # but raw cursor returns tuple. Let's assume tuple for raw cursor.
-            # Actually, let's use the helper to keep it consistent if possible, but we are inside transaction.
-            # Raw cursor fetchone returns tuple.
 
             current_outstanding = float(res[0])
             current_paid = float(res[1])
@@ -2543,7 +2564,7 @@ def bank_payment_submit():
         res = cursor.fetchone()
         sub_ac_code = res[0] if res else 0
 
-        # Debit AP
+        # Debit AP (Full amount settled)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
@@ -2551,26 +2572,42 @@ def bank_payment_submit():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
 
-        # Credit Bank
+        # Credit Bank (Net amount = Total - WHT)
+        net_payment = total_payment - wht_amount
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (bank_account, total_payment, payment_date, date.today(), narration, current_user, jv_no))
+        """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
 
-        # 4. Record Bank Transactions
+        # Credit WHT Payable (If any)
+        if wht_amount > 0:
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+
+        # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
+        # Bank Book typically matches bank statement, so record NET payment.
+
         sup_id_res = db.execute_query("SELECT sup_id FROM suppliers WHERE supplier_name = %s", (supplier_name,))
         sup_id = sup_id_res[0]['sup_id'] if sup_id_res else 0
 
         for p in payments:
+            net_item_amount = p['amount']
+            if total_payment > 0:
+                net_item_amount = p['amount'] * (net_payment / total_payment)
+
             cursor.execute("""
                 INSERT INTO bank_book_recod (
                     bank_book__accont_name, bank_book__recode_cr, bank_book__naration,
                     bank_book__suplier_oustanding_id, bank_book__suplier_name, jv_numbers_jv_id,
                     bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (bank_account, p['amount'], narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date))
+            """, (bank_account, net_item_amount, narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date))
 
         conn.commit()
         flash(f'Payment processed successfully. Voucher No: {new_voucher}', 'success')
@@ -4879,6 +4916,36 @@ def run_schema_migrations():
         if 'uom_conversion_rate' not in inv_columns:
             print("Migrating: Adding uom_conversion_rate to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_conversion_rate DOUBLE DEFAULT 1")
+
+        # 5. Suppliers Table Columns (TIN, NIC)
+        cursor.execute("SHOW COLUMNS FROM suppliers")
+        sup_columns = [row[0] for row in cursor.fetchall()]
+
+        if 'suppliers_TIN' not in sup_columns:
+            print("Migrating: Adding suppliers_TIN to suppliers")
+            cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_TIN VARCHAR(50) NULL")
+
+        if 'suppliers_NIC' not in sup_columns:
+            print("Migrating: Adding suppliers_NIC to suppliers")
+            cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
+
+        # 6. Tax Rates Table
+        cursor.execute("SHOW TABLES LIKE 'tax_rates'")
+        if not cursor.fetchone():
+            print("Migrating: Creating tax_rates table")
+            cursor.execute("""
+                CREATE TABLE tax_rates (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    tax_name VARCHAR(100) NOT NULL,
+                    rate DOUBLE NOT NULL,
+                    description VARCHAR(255),
+                    active TINYINT DEFAULT 1
+                )
+            """)
+            # Default Data
+            cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Interest', 10.0, 'Withholding Tax on Interest')")
+            cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Rent', 10.0, 'Withholding Tax on Rent')")
+            cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Professional Fees', 5.0, 'Withholding Tax on Professional Fees')")
 
         conn.commit()
         cursor.close()

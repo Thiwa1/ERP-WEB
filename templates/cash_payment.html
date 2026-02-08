@@ -106,6 +106,27 @@
                             </select>
                         </div>
 
+                        <!-- WHT Section -->
+                        <div class="mb-3 border-top pt-3">
+                            <label class="form-label fw-bold small text-uppercase text-danger">WHT Deduction</label>
+                            <div class="input-group mb-2">
+                                <select class="form-select form-select-sm" id="wht_rate" onchange="calculateWHT()">
+                                    <option value="0">No WHT</option>
+                                    <option value="10">Interest (10%)</option>
+                                    <option value="10">Rent (10%)</option>
+                                    <option value="5">Prof. Fees (5%)</option>
+                                    <option value="14">Royalties (14%)</option>
+                                    <option value="-1">Manual</option>
+                                </select>
+                            </div>
+                            <div class="input-group">
+                                <span class="input-group-text small">Amount</span>
+                                <input type="number" name="wht_amount" id="wht_amount" class="form-control text-end fw-bold"
+                                       placeholder="0.00" step="0.01" value="0.00" readonly>
+                            </div>
+                            <small class="text-muted d-block mt-1 fst-italic">This amount will be deducted from payment but credited to supplier.</small>
+                        </div>
+
                         <div class="mb-4">
                             <label class="form-label fw-bold">Narration</label>
                             <textarea class="form-control" name="narration" rows="2" required></textarea>
@@ -233,6 +254,34 @@
                 }
             }
         });
+        calculateWHT(); // Recalc WHT when payment inputs change
+    }
+
+    function calculateWHT() {
+        const rateSelect = document.getElementById('wht_rate');
+        const whtInput = document.getElementById('wht_amount');
+        const rate = parseFloat(rateSelect.value);
+
+        // Enable manual input if 'Manual' selected
+        if (rate === -1) {
+            whtInput.readOnly = false;
+            return;
+        }
+        whtInput.readOnly = true;
+
+        // Calculate total payment entered
+        let totalPay = 0;
+        document.querySelectorAll('.payment-input').forEach(inp => {
+            const val = parseFloat(inp.value);
+            if (!isNaN(val)) totalPay += val;
+        });
+
+        if (rate > 0 && totalPay > 0) {
+            const wht = (totalPay * rate) / 100;
+            whtInput.value = wht.toFixed(2);
+        } else {
+            whtInput.value = "0.00";
+        }
     }
 
     document.getElementById('paymentForm').onsubmit = function(e) {

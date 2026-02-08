@@ -95,6 +95,27 @@
                                 <input type="text" class="form-control" name="cheque_no" placeholder="xxxxxx">
                             </div>
 
+                            <!-- WHT Section -->
+                            <div class="mb-3 border-top pt-3">
+                                <label class="form-label fw-bold small text-uppercase text-danger">WHT Deduction</label>
+                                <div class="input-group mb-2">
+                                    <select class="form-select form-select-sm" id="wht_rate" onchange="calculateWHT()">
+                                        <option value="0">No WHT</option>
+                                        <option value="10">Interest (10%)</option>
+                                        <option value="10">Rent (10%)</option>
+                                        <option value="5">Prof. Fees (5%)</option>
+                                        <option value="14">Royalties (14%)</option>
+                                        <option value="-1">Manual</option>
+                                    </select>
+                                </div>
+                                <div class="input-group">
+                                    <span class="input-group-text small">Amount</span>
+                                    <input type="number" name="wht_amount" id="wht_amount" class="form-control text-end fw-bold"
+                                           placeholder="0.00" step="0.01" value="0.00" readonly>
+                                </div>
+                                <small class="text-muted d-block mt-1 fst-italic">This amount will be deducted from payment but credited to supplier.</small>
+                            </div>
+
                             <div class="mb-4">
                                 <label class="form-label fw-bold small text-uppercase text-muted">Narration</label>
                                 <textarea class="form-control" name="narration" rows="3" placeholder="Payment description..." required></textarea>
@@ -170,9 +191,9 @@ function loadSupplierData() {
                             <td class="text-end">${inv.paid.toFixed(2)}</td>
                             <td class="text-end fw-bold text-danger">${inv.balance.toFixed(2)}</td>
                             <td>
-                                <input type="number" class="form-control form-control-sm text-end"
+                                <input type="number" class="form-control form-control-sm text-end pay-input"
                                        name="payment_${inv.id}" step="0.01" min="0" max="${inv.balance}"
-                                       placeholder="0.00">
+                                       placeholder="0.00" oninput="calculateWHT()">
                             </td>
                         </tr>
                     `;
@@ -209,6 +230,47 @@ function loadSupplierData() {
             console.error(err);
             hideLoading($('#supplierSelect'));
         });
+}
+
+function calculateWHT() {
+    const rateSelect = document.getElementById('wht_rate');
+    const whtInput = document.getElementById('wht_amount');
+    const rate = parseFloat(rateSelect.value);
+
+    // Enable manual input if 'Manual' selected
+    if (rate === -1) {
+        whtInput.readOnly = false;
+        return;
+    }
+    whtInput.readOnly = true;
+
+    // Calculate total payment entered
+    let totalPay = 0;
+    const inputs = document.querySelectorAll('.pay-input');
+    inputs.forEach(inp => {
+        const val = parseFloat(inp.value);
+        if (!isNaN(val)) totalPay += val;
+    });
+
+    if (rate > 0 && totalPay > 0) {
+        // WHT calculation depends on whether the entered amount is Gross or Net.
+        // Assuming user enters Gross Amount to settle invoice.
+        // WHT = Gross * Rate%
+        // Net Pay = Gross - WHT
+        // Wait, normally user enters amount to PAY.
+        // If I enter 1000 to pay, and WHT is 10%.
+        // Does 1000 include WHT?
+        // Scenario A: I owe 1000. I want to clear 1000.
+        // I pay 900 cash, 100 tax.
+        // So 'pay_input' should be the GROSS amount being settled (1000).
+        // Then WHT is 100.
+        // Bank payment is 900.
+
+        const wht = (totalPay * rate) / 100;
+        whtInput.value = wht.toFixed(2);
+    } else {
+        whtInput.value = "0.00";
+    }
 }
 </script>
 {% endblock %}
