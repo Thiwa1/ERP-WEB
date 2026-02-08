@@ -3184,6 +3184,115 @@ def process_reconciliation():
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
 
+# --- Ledger View ---
+@app.route('/ledger_view')
+@login_required
+@has_permission('Access_Reports')
+def ledger_view():
+    # Fetch accounts grouped/labeled like C# (P&L vs BS)
+    # C# Logic:
+    # 1. P&L: account_income=1 OR account_expenses=1
+    # 2. BS: account_assets=1 OR account_liabilities=1 OR account_equity=1
+
+    pl_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_income = 1 OR account_expenses = 1 ORDER BY account_name")
+    bs_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_assets = 1 OR account_liabilities = 1 OR account_equity = 1 ORDER BY account_name")
+
+    # Structure for Select2 optgroups
+    # However, HTML select structure is easier:
+    return render_template('ledger_view.html',
+                           pl_accounts=pl_accounts,
+                           bs_accounts=bs_accounts,
+                           default_from=date.today().replace(day=1).strftime('%Y-%m-%d'),
+                           default_to=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/api/ledger_data', methods=['POST'])
+@login_required
+def get_ledger_data():
+    account_name = request.json.get('account_name')
+    from_date = request.json.get('from_date')
+    to_date = request.json.get('to_date')
+
+    if not account_name or not from_date or not to_date:
+        return {'error': 'Missing parameters'}, 400
+
+    # 1. Get Account Basement (DR/CR)
+    acc_res = db.execute_query("SELECT account_basment FROM new_account_table WHERE account_name = %s", (account_name,))
+    if not acc_res:
+        return {'error': 'Account not found'}, 404
+    basement = acc_res[0]['account_basment'] # 'DR' or 'CR'
+
+    # 2. Calculate Opening Balance
+    # Logic: Sum previous entries based on basement
+
+    op_dr = 0
+    op_cr = 0
+
+    # Calculate Sums before from_date
+    op_res = db.execute_query("""
+        SELECT SUM(enty_values_DR), SUM(enty_values_CR)
+        FROM entry_details
+        WHERE account_name = %s AND entry_effective_date < %s AND entry_deleted = 0
+    """, (account_name, from_date))
+
+    if op_res:
+        op_dr = float(op_res[0]['SUM(enty_values_DR)'] or 0)
+        op_cr = float(op_res[0]['SUM(enty_values_CR)'] or 0)
+
+    opening_balance = 0
+    if basement == 'DR':
+        opening_balance = op_dr - op_cr
+    else: # CR
+        opening_balance = op_cr - op_dr
+
+    # 3. Fetch Transactions
+    rows = db.execute_query("""
+        SELECT
+            entry_effective_date as date,
+            entry_naration as narration,
+            enty_values_DR as dr,
+            enty_values_CR as cr,
+            entry_jv as jv_no
+        FROM entry_details
+        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+        ORDER BY entry_effective_date, id
+    """, (account_name, from_date, to_date))
+
+    # 4. Process Running Balance
+    data = []
+
+    # Add Opening Balance Row
+    data.append({
+        'date': from_date,
+        'narration': 'Opening Balance',
+        'dr': 0,
+        'cr': 0,
+        'balance': opening_balance,
+        'is_opening': True
+    })
+
+    current_bal = opening_balance
+
+    for r in rows:
+        dr = float(r['dr'] or 0)
+        cr = float(r['cr'] or 0)
+
+        if basement == 'DR':
+            current_bal = current_bal + dr - cr
+        else: # CR
+            current_bal = current_bal + cr - dr
+
+        data.append({
+            'date': str(r['date']),
+            'narration': r['narration'],
+            'dr': dr,
+            'cr': cr,
+            'balance': current_bal,
+            'jv_no': r['jv_no'],
+            'is_opening': False
+        })
+
+    return {'data': data, 'basement': basement}
+
 # --- Trial Balance ---
 @app.route('/trial_balance')
 @login_required

@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-book-open me-2"></i> LEDGER ACCOUNT VIEW</h4>
+        </div>
+    </div>
+
+    <!-- Filters Section -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body bg-light">
+            <div class="row g-3 align-items-end">
+                <!-- Account Selector -->
+                <div class="col-md-4">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">Select Account</label>
+                    <select id="accountSelect" class="form-select select2">
+                        <option value="">-- Select Account --</option>
+                        <optgroup label="P&L Accounts">
+                            {% for acc in pl_accounts %}
+                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                        <optgroup label="Balance Sheet Accounts">
+                            {% for acc in bs_accounts %}
+                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                            {% endfor %}
+                        </optgroup>
+                    </select>
+                </div>
+
+                <!-- Date Range -->
+                <div class="col-md-2">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">From Date</label>
+                    <input type="date" id="fromDate" class="form-control" value="{{ default_from }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">To Date</label>
+                    <input type="date" id="toDate" class="form-control" value="{{ default_to }}">
+                </div>
+
+                <!-- Load Button -->
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-primary w-100 fw-bold" onclick="loadLedger()" style="background-color: var(--accent-color); border: none;">
+                        <i class="fas fa-sync-alt me-1"></i> Load Details
+                    </button>
+                </div>
+
+                <!-- Search Box -->
+                <div class="col-md-2">
+                    <label class="form-label fw-bold" style="color: var(--primary-color);">Search</label>
+                    <input type="text" id="searchBox" class="form-control" placeholder="Search entries..." onkeyup="filterTable()">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Grid -->
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0 table-responsive" style="max-height: 600px;">
+            <table class="table table-bordered table-striped table-hover mb-0" id="ledgerTable">
+                <thead class="text-white sticky-top" style="background-color: var(--secondary-color); z-index: 1;">
+                    <tr>
+                        <th width="5%">No</th>
+                        <th width="15%">Date</th>
+                        <th width="10%">JV No</th>
+                        <th width="40%">Narration</th>
+                        <th width="10%" class="text-end">Debit</th>
+                        <th width="10%" class="text-end">Credit</th>
+                        <th width="10%" class="text-end">Balance</th>
+                    </tr>
+                </thead>
+                <tbody id="tableBody">
+                    <tr>
+                        <td colspan="7" class="text-center py-5 text-muted fst-italic">Select an account and click Load to view transactions.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+    function loadLedger() {
+        const account = $('#accountSelect').val(); // Select2 uses jQuery val()
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate = document.getElementById('toDate').value;
+        const tbody = document.getElementById('tableBody');
+
+        if (!account) {
+            alert("Please select an account.");
+            return;
+        }
+
+        // Show Loading
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">Loading transactions...</div></td></tr>';
+
+        fetch('/api/ledger_data', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                account_name: account,
+                from_date: fromDate,
+                to_date: toDate
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>${data.error}</td></tr>`;
+                return;
+            }
+
+            if (data.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-muted">No transactions found for this period.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            let count = 0;
+
+            data.data.forEach((row, index) => {
+                const isOpening = row.is_opening;
+                const rowClass = isOpening ? 'table-warning fw-bold' : '';
+                const narrationStyle = isOpening ? 'fst-italic' : '';
+                const no = isOpening ? '-' : ++count;
+
+                // Format Numbers
+                const dr = row.dr !== 0 ? parseFloat(row.dr).toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const cr = row.cr !== 0 ? parseFloat(row.cr).toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
+                const bal = parseFloat(row.balance).toLocaleString('en-US', {minimumFractionDigits: 2});
+                const jv = row.jv_no || '-';
+
+                const tr = `
+                    <tr class="${rowClass}">
+                        <td class="text-center">${no}</td>
+                        <td>${row.date}</td>
+                        <td class="text-center">${jv}</td>
+                        <td class="${narrationStyle}">${row.narration}</td>
+                        <td class="text-end text-danger">${dr}</td>
+                        <td class="text-end text-success">${cr}</td>
+                        <td class="text-end fw-bold">${bal}</td>
+                    </tr>
+                `;
+                tbody.innerHTML += tr;
+            });
+        })
+        .catch(err => {
+            console.error(err);
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-danger">Error loading data. See console for details.</td></tr>';
+        });
+    }
+
+    // Client-side Search/Filter
+    function filterTable() {
+        const input = document.getElementById("searchBox");
+        const filter = input.value.toUpperCase();
+        const table = document.getElementById("ledgerTable");
+        const tr = table.getElementsByTagName("tr");
+
+        for (let i = 1; i < tr.length; i++) { // Start from 1 to skip header
+            let visible = false;
+            const tds = tr[i].getElementsByTagName("td");
+
+            for (let j = 0; j < tds.length; j++) {
+                if (tds[j]) {
+                    const txtValue = tds[j].textContent || tds[j].innerText;
+                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                        visible = true;
+                        break;
+                    }
+                }
+            }
+            tr[i].style.display = visible ? "" : "none";
+        }
+    }
+</script>
+{% endblock %}
