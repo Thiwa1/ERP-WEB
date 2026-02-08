@@ -1068,15 +1068,45 @@ def create_bank_account():
             return redirect(url_for('create_bank_account'))
 
         current_user = get_current_user_id()
+        today_date = date.today()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
 
         try:
-            db.execute_query("""
+            conn.start_transaction()
+
+            # 1. Check/Create GL Account (Using Account Number as Name)
+            cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (acc_no,))
+            if not cursor.fetchone():
+                # Find 'Current assets' or 'Cash & Bank'
+                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Bank%' OR name_of_category LIKE '%Cash%' LIMIT 1")
+                res = cursor.fetchone()
+                bs_pos = res[0] if res else 3
+
+                cursor.execute("""
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
+                        account_assets, account_basment, accont_create_date, account_create_user, account_active,
+                        currency_code
+                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_no, bs_pos, today_date, current_user))
+
+            # 2. Insert into Bank Book
+            cursor.execute("""
                 INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                 VALUES (%s, %s, %s, %s)
-            """, (acc_no, bank_name, date.today(), current_user), commit=True)
+            """, (acc_no, bank_name, today_date, current_user))
+
+            conn.commit()
             flash('New bank account created', 'success')
+
         except Exception as e:
+            conn.rollback()
             flash(f'Error creating bank account: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
 
         return redirect(url_for('create_bank_account'))
 
@@ -1095,16 +1125,47 @@ def create_cash_account():
             return redirect(url_for('create_cash_account'))
 
         current_user = get_current_user_id()
+        today_date = date.today()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
 
         try:
+            conn.start_transaction()
+
+            # 1. Check if GL Account exists
+            cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (acc_name,))
+            if not cursor.fetchone():
+                # Create GL Account (Current Asset)
+                # Need to find 'Current assets' category position
+                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Current asset%' LIMIT 1")
+                res = cursor.fetchone()
+                bs_pos = res[0] if res else 3 # Default to 3 (common for Current Assets)
+
+                cursor.execute("""
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
+                        account_assets, account_basment, accont_create_date, account_create_user, account_active,
+                        currency_code
+                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_name, bs_pos, today_date, current_user))
+
+            # 2. Insert into Cash Book
             # cash_book schema: cash_id, cash_book_account_name, cash_creat_date, cash_created_user, Select_As
-            db.execute_query("""
+            cursor.execute("""
                 INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
                 VALUES (%s, %s, %s, 0)
-            """, (acc_name, date.today(), current_user), commit=True)
+            """, (acc_name, today_date, current_user))
+
+            conn.commit()
             flash('New cash account created', 'success')
+
         except Exception as e:
+            conn.rollback()
             flash(f'Error creating cash account: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
 
         return redirect(url_for('create_cash_account'))
 
@@ -1203,6 +1264,38 @@ def control_panel_update():
         flash('No changes selected.', 'info')
 
     return redirect(url_for('control_panel'))
+
+# --- Tax Settings ---
+@app.route('/tax_settings', methods=['GET', 'POST'])
+@login_required
+@has_permission('Add_New_User') # Assuming admin/setup permission
+def tax_settings():
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'add':
+            name = request.form.get('tax_name')
+            rate = request.form.get('tax_rate')
+            desc = request.form.get('description')
+
+            if name and rate:
+                try:
+                    db.execute_query("INSERT INTO tax_rates (tax_name, rate, description, active) VALUES (%s, %s, %s, 1)",
+                                     (name, rate, desc), commit=True)
+                    flash('Tax rate added successfully', 'success')
+                except Exception as e:
+                    flash(f'Error adding tax rate: {e}', 'danger')
+
+        elif action == 'delete':
+            tid = request.form.get('id')
+            if tid:
+                db.execute_query("DELETE FROM tax_rates WHERE id = %s", (tid,), commit=True)
+                flash('Tax rate deleted', 'success')
+
+        return redirect(url_for('tax_settings'))
+
+    rates = db.execute_query("SELECT * FROM tax_rates")
+    return render_template('tax_settings.html', rates=rates)
 
 # --- Company Profile ---
 @app.route('/company_profile', methods=['GET', 'POST'])
