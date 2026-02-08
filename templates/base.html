@@ -349,50 +349,80 @@
                 </div>
                 <div class="modal-body p-4" style="background-color: var(--bg-light);">
                     <div class="row g-4">
-                        <!-- Column 1 -->
+                        <!-- Column 1: Company & Accounting -->
                         <div class="col-md-4">
+                            <!-- Company Setup -->
+                            <div class="card h-100 border-0 shadow-sm mb-3">
+                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
+                                    1) Company Setup
+                                </div>
+                                <div class="list-group list-group-flush rounded-bottom">
+                                    <a href="/company_profile" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-building me-2 text-muted"></i> Setup Company Profile</a>
+                                    <a href="/create_bank_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-university me-2 text-muted"></i> Create Bank Account</a>
+                                    <a href="/create_cash_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-money-bill me-2 text-muted"></i> Create Cash Account</a>
+                                    <a href="/job_management" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-briefcase me-2 text-muted"></i> Create New Jobs</a>
+                                    <a href="/admin/users" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-plus me-2 text-muted"></i> Add New User</a>
+                                </div>
+                            </div>
+
+                            <!-- Accounting -->
                             <div class="card h-100 border-0 shadow-sm">
                                 <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
-                                    <i class="fas fa-building me-2"></i> COMPANY & USERS
+                                    2) Accounting
                                 </div>
                                 <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/company_profile" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Setup Company Profile</a>
-                                    <a href="/create_bank_account" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Bank Account</a>
-                                    <a href="/create_cash_account" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Cash Account</a>
-                                    <a href="/job_management" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Job Management</a>
-                                    <a href="/admin/users" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Manage Users</a>
+                                    <a href="/balance_sheet_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-balance-scale me-2 text-muted"></i> Balance Sheet Category</a>
+                                    <a href="/pl_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-chart-pie me-2 text-muted"></i> P&L Category</a>
+                                    <a href="/add_new_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-invoice me-2 text-muted"></i> Create New Account</a>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Column 2 -->
+                        <!-- Column 2: Suppliers/Customer & Inventory -->
                         <div class="col-md-4">
+                            <!-- Suppliers & Customer -->
+                            <div class="card h-100 border-0 shadow-sm mb-3">
+                                <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
+                                    3) Suppliers & Customer
+                                </div>
+                                <div class="list-group list-group-flush rounded-bottom">
+                                    <a href="/add_customer" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-tag me-2 text-muted"></i> Create New Customer</a>
+                                    <a href="/add_supplier" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-truck me-2 text-muted"></i> Create New Supplier</a>
+                                </div>
+                            </div>
+
+                            <!-- Inventory Management -->
                             <div class="card h-100 border-0 shadow-sm">
                                 <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
-                                    <i class="fas fa-box-open me-2"></i> INVENTORY & POS
+                                    4) Inventory Management
                                 </div>
                                 <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/add_inventory_item" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Inventory Items</a>
-                                    <a href="/inventory_category" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Manage Categories</a>
-                                    <a href="/inventory_locations" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Create Locations</a>
-                                    <a href="/pos_settings" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> POS Settings</a>
-                                    <a href="/warranty_period" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Warranty Setup</a>
-                                    <a href="/balance_sheet_category" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Balance Sheet Category</a>
-                                    <a href="/pl_category" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Profit & Loss Category</a>
+                                    <a href="/inventory_locations" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-warehouse me-2 text-muted"></i> Create Inventory House</a>
+                                    <a href="/add_inventory_item" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-box me-2 text-muted"></i> Create Inventory Items</a>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Column 3 -->
+                        <!-- Column 3: POS & Backup -->
                         <div class="col-md-4">
-                            <div class="card h-100 border-0 shadow-sm">
+                            <!-- Point of Sales -->
+                            <div class="card h-100 border-0 shadow-sm mb-3">
                                 <div class="card-header bg-white fw-bold text-warning border-bottom-0 pt-3">
-                                    <i class="fas fa-users me-2"></i> PARTNERS & ACCOUNTS
+                                    5) Point of Sales
                                 </div>
                                 <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/add_customer" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Add Customer</a>
-                                    <a href="/add_supplier" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Add Supplier</a>
-                                    <a href="/add_new_account" class="list-group-item list-group-item-action border-0 px-4 py-3"><i class="fas fa-angle-right me-2 text-muted"></i> Add GL Account</a>
+                                    <a href="/pos_settings" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-cogs me-2 text-muted"></i> POS Settings</a>
+                                    <a href="/warranty_period" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-shield-alt me-2 text-muted"></i> Warranty Period</a>
+                                </div>
+                            </div>
+
+                            <!-- System Backup -->
+                            <div class="card h-100 border-0 shadow-sm">
+                                <div class="card-header bg-white fw-bold text-info border-bottom-0 pt-3">
+                                    6) System Backup
+                                </div>
+                                <div class="list-group list-group-flush rounded-bottom">
+                                    <a href="/system_backup" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-download me-2 text-muted"></i> System Backup</a>
                                 </div>
                             </div>
                         </div>

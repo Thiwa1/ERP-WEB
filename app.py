@@ -9,6 +9,7 @@ import os
 import difflib
 import knowledge_base
 import random # For mocking exchange rate
+import subprocess
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -4939,6 +4940,54 @@ def create_default_user():
             print("Users exist in database. Skipping default user creation.")
     except Exception as e:
         print(f"Error creating default user: {e}")
+
+# --- System Backup ---
+@app.route('/system_backup')
+@login_required
+def system_backup():
+    # Only allow admin or specific users? For now, login_required is minimal.
+    # Ideally should be restricted.
+
+    # Database config is in db_config
+    try:
+        # Use mysqldump
+        # Note: This requires mysqldump to be installed and accessible in the environment.
+        # It also assumes password is empty as per config 'password': ''
+
+        filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
+
+        # Command construction
+        # mysqldump -u root -h localhost Book_keeping > filename
+        # Since we are in python, we can pipe output to string or file.
+
+        cmd = [
+            'mysqldump',
+            '-u', db_config['user'],
+            '-h', db_config['host'],
+            db_config['database']
+        ]
+
+        # If password exists (it is empty in config, but good practice to handle)
+        if db_config['password']:
+            cmd.insert(1, f"-p{db_config['password']}")
+
+        # Run command
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output, error = process.communicate()
+
+        if process.returncode != 0:
+            flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
+            return redirect(url_for('index'))
+
+        # Return as file download
+        response = make_response(output)
+        response.headers['Content-Type'] = 'application/sql'
+        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+        return response
+
+    except Exception as e:
+        flash(f'Backup error: {str(e)}', 'danger')
+        return redirect(url_for('index'))
 
 # --- Fixed Assets Module ---
 @app.route('/fixed_assets')
