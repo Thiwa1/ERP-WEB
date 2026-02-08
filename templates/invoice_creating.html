@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i> NEW INVOICE CREATION</h4>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('submit_invoice') }}" id="invoiceForm">
+        <div class="row">
+            <!-- Left Panel: Added Items List -->
+            <div class="col-md-8">
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                        <span><i class="fas fa-list me-2"></i> Invoice Items</span>
+                        <span class="badge bg-light text-dark" id="itemCount">0 Items</span>
+                    </div>
+                    <div class="card-body p-0 table-responsive">
+                        <table class="table table-bordered table-striped mb-0 text-center align-middle" id="invoiceTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Item Name</th>
+                                    <th>Code</th>
+                                    <th>Unit</th>
+                                    <th width="10%">Qty</th>
+                                    <th width="15%">Price</th>
+                                    <th width="15%">Total</th>
+                                    <th width="10%">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rows added via JS -->
+                                <tr id="emptyRow">
+                                    <td colspan="8" class="text-muted py-4">No items added yet.</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <!-- Hidden Inputs for Backend -->
+                    <input type="hidden" name="inventory_items_json" id="invItemsJson">
+                    <input type="hidden" name="non_inventory_items_json" id="nonInvItemsJson">
+                </div>
+
+                <!-- Totals Section (Left Bottom for visibility) -->
+                <div class="card shadow-sm border-0 bg-light">
+                    <div class="card-body">
+                        <div class="row text-end">
+                            <div class="col-md-8 offset-md-4">
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="fw-bold">Subtotal:</span>
+                                    <span class="fw-bold" id="subTotalDisplay">0.00</span>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2 align-items-center">
+                                    <div class="form-check form-switch m-0">
+                                        <input class="form-check-input" type="checkbox" id="applyVat" name="apply_vat" onchange="recalcTotals()">
+                                        <label class="form-check-label fw-bold" for="applyVat">Apply VAT</label>
+                                    </div>
+                                    <div class="input-group w-50">
+                                        <input type="number" class="form-control text-end form-control-sm" name="vat_rate" id="vatRate" value="0" step="0.01" oninput="recalcTotals()">
+                                        <span class="input-group-text">%</span>
+                                    </div>
+                                </div>
+                                <div class="d-flex justify-content-between mb-2">
+                                    <span class="text-muted">VAT Amount:</span>
+                                    <span id="vatAmountDisplay">0.00</span>
+                                </div>
+                                <hr>
+                                <div class="d-flex justify-content-between">
+                                    <h4 class="fw-bold text-success">Grand Total:</h4>
+                                    <h4 class="fw-bold text-success" id="grandTotalDisplay">0.00</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Controls & Inputs -->
+            <div class="col-md-4">
+                <!-- Header Info -->
+                <div class="card shadow-sm mb-3 border-0">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                        <i class="fas fa-info-circle me-2"></i> Invoice Details
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <label class="form-label fw-bold small">Customer</label>
+                            <select class="form-select form-select-sm" name="customer" required>
+                                <option value="">Select Customer</option>
+                                {% for cust in customers %}
+                                <option value="{{ cust.customer_name }}">{{ cust.customer_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Date</label>
+                                <input type="date" class="form-control form-control-sm" name="invoice_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Due Date</label>
+                                <input type="date" class="form-control form-control-sm" name="due_date" value="{{ today_date }}" required>
+                            </div>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Location</label>
+                                <select class="form-select form-select-sm" name="location" required>
+                                    {% for loc in locations %}
+                                    <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Job No</label>
+                                <select class="form-select form-select-sm" name="job_no">
+                                    <option value="">None</option>
+                                    {% for job in jobs %}
+                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Add Items Tabs -->
+                <div class="card shadow-sm border-0">
+                    <div class="card-header p-0 border-0">
+                        <ul class="nav nav-tabs nav-fill" id="itemTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active fw-bold" id="inv-tab" data-bs-toggle="tab" data-bs-target="#invPanel" type="button" role="tab">Inventory Item</button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link fw-bold" id="non-tab" data-bs-toggle="tab" data-bs-target="#nonPanel" type="button" role="tab">Service/Non-Inv</button>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content" id="itemTabsContent">
+
+                            <!-- Inventory Item Tab -->
+                            <div class="tab-pane fade show active" id="invPanel" role="tabpanel">
+                                <div class="mb-2">
+                                    <label class="form-label small fw-bold">Select Item</label>
+                                    <select class="form-select form-select-sm" id="invItemSelect" onchange="loadItemDetails()">
+                                        <option value="">-- Choose Item --</option>
+                                        {% for item in inventory_items %}
+                                        <option value="{{ item.id }}"
+                                                data-name="{{ item.inventoy_name }}"
+                                                data-code="{{ item.inventoy_code }}"
+                                                data-unit="{{ item.unit }}"
+                                                data-cost="{{ item.cost }}">
+                                            {{ item.inventoy_name }} ({{ item.inventoy_code }})
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-4">
+                                        <label class="form-label small fw-bold">Unit</label>
+                                        <input type="text" class="form-control form-control-sm bg-light" id="invUnit" readonly>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small fw-bold">Stock Cost</label>
+                                        <input type="text" class="form-control form-control-sm bg-light" id="invCost" readonly>
+                                    </div>
+                                    <div class="col-4">
+                                        <label class="form-label small fw-bold">Qty</label>
+                                        <input type="number" class="form-control form-control-sm" id="invQty" value="1" min="0.01" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Selling Price</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">Rs.</span>
+                                        <input type="number" class="form-control" id="invPrice" step="0.01">
+                                        <button class="btn btn-outline-secondary" type="button" onclick="fetchPrice()" title="Refresh Price"><i class="fas fa-sync-alt"></i></button>
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-success w-100 btn-sm fw-bold" onclick="addInvItem()">
+                                    <i class="fas fa-plus me-1"></i> Add Inventory Item
+                                </button>
+                            </div>
+
+                            <!-- Non-Inventory/Service Tab -->
+                            <div class="tab-pane fade" id="nonPanel" role="tabpanel">
+                                <div class="mb-2">
+                                    <label class="form-label small fw-bold">Description/Item Name</label>
+                                    <input type="text" class="form-control form-control-sm" id="nonName" placeholder="e.g. Service Charge">
+                                </div>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-6">
+                                        <label class="form-label small fw-bold">Unit (Optional)</label>
+                                        <input type="text" class="form-control form-control-sm" id="nonUnit" value="Each">
+                                    </div>
+                                    <div class="col-6">
+                                        <label class="form-label small fw-bold">Qty</label>
+                                        <input type="number" class="form-control form-control-sm" id="nonQty" value="1" min="0.01" step="0.01">
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label small fw-bold">Price</label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text">Rs.</span>
+                                        <input type="number" class="form-control" id="nonPrice" step="0.01">
+                                    </div>
+                                </div>
+                                <button type="button" class="btn btn-info text-white w-100 btn-sm fw-bold" onclick="addNonItem()">
+                                    <i class="fas fa-plus me-1"></i> Add Service Item
+                                </button>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <div class="d-grid mt-4">
+                    <button type="submit" class="btn btn-primary fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
+                        <i class="fas fa-check-circle me-2"></i> CREATE INVOICE
+                    </button>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    let inventoryItems = [];
+    let nonInventoryItems = [];
+
+    // --- Inventory Item Logic ---
+    function loadItemDetails() {
+        const select = document.getElementById('invItemSelect');
+        const option = select.options[select.selectedIndex];
+
+        if (option.value) {
+            document.getElementById('invUnit').value = option.dataset.unit || '';
+            document.getElementById('invCost').value = option.dataset.cost || '0.00';
+            fetchPrice(option.value);
+        } else {
+            document.getElementById('invUnit').value = '';
+            document.getElementById('invCost').value = '';
+            document.getElementById('invPrice').value = '';
+        }
+    }
+
+    function fetchPrice(itemId) {
+        if(!itemId) {
+            const select = document.getElementById('invItemSelect');
+            itemId = select.value;
+        }
+        if(!itemId) return;
+
+        fetch(`/api/get_item_prices/${itemId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data && data.length > 0) {
+                    // Default to first price found
+                    document.getElementById('invPrice').value = data[0];
+                } else {
+                    document.getElementById('invPrice').value = '0.00';
+                }
+            })
+            .catch(err => console.error("Error fetching price:", err));
+    }
+
+    function addInvItem() {
+        const select = document.getElementById('invItemSelect');
+        const option = select.options[select.selectedIndex];
+        const qty = parseFloat(document.getElementById('invQty').value) || 0;
+        const price = parseFloat(document.getElementById('invPrice').value) || 0;
+
+        if (!option.value || qty <= 0) {
+            alert("Please select an item and enter a valid quantity.");
+            return;
+        }
+
+        const item = {
+            id: option.value,
+            name: option.dataset.name,
+            code: option.dataset.code,
+            unit: option.dataset.unit,
+            cost: parseFloat(option.dataset.cost) || 0,
+            qty: qty,
+            price: price,
+            total: qty * price,
+            type: 'Inventory'
+        };
+
+        inventoryItems.push(item);
+        refreshTable();
+        resetInvForm();
+    }
+
+    function resetInvForm() {
+        document.getElementById('invItemSelect').value = "";
+        document.getElementById('invUnit').value = "";
+        document.getElementById('invCost').value = "";
+        document.getElementById('invQty').value = "1";
+        document.getElementById('invPrice').value = "";
+    }
+
+
+    // --- Non-Inventory Item Logic ---
+    function addNonItem() {
+        const name = document.getElementById('nonName').value;
+        const unit = document.getElementById('nonUnit').value;
+        const qty = parseFloat(document.getElementById('nonQty').value) || 0;
+        const price = parseFloat(document.getElementById('nonPrice').value) || 0;
+
+        if (!name || qty <= 0) {
+            alert("Please enter item description and valid quantity.");
+            return;
+        }
+
+        const item = {
+            name: name,
+            code: "N/A",
+            unit: unit,
+            qty: qty,
+            price: price,
+            total: qty * price,
+            type: 'Service'
+        };
+
+        nonInventoryItems.push(item);
+        refreshTable();
+        resetNonForm();
+    }
+
+    function resetNonForm() {
+        document.getElementById('nonName').value = "";
+        document.getElementById('nonUnit').value = "Each";
+        document.getElementById('nonQty').value = "1";
+        document.getElementById('nonPrice').value = "";
+    }
+
+
+    // --- Common Table & Calc Logic ---
+    function refreshTable() {
+        const tbody = document.querySelector('#invoiceTable tbody');
+        tbody.innerHTML = '';
+
+        const allItems = [
+            ...inventoryItems.map((item, idx) => ({...item, idx, source: 'inv'})),
+            ...nonInventoryItems.map((item, idx) => ({...item, idx, source: 'non'}))
+        ];
+
+        if (allItems.length === 0) {
+            tbody.innerHTML = '<tr id="emptyRow"><td colspan="8" class="text-muted py-4">No items added yet.</td></tr>';
+            document.getElementById('itemCount').textContent = '0 Items';
+        } else {
+            document.getElementById('itemCount').textContent = `${allItems.length} Items`;
+
+            allItems.forEach(item => {
+                const badgeClass = item.type === 'Inventory' ? 'bg-primary' : 'bg-info text-dark';
+                const row = `
+                    <tr>
+                        <td><span class="badge ${badgeClass}">${item.type}</span></td>
+                        <td class="text-start">${item.name}</td>
+                        <td>${item.code}</td>
+                        <td>${item.unit}</td>
+                        <td>${item.qty}</td>
+                        <td>${item.price.toFixed(2)}</td>
+                        <td class="fw-bold">${item.total.toFixed(2)}</td>
+                        <td>
+                            <button type="button" class="btn btn-outline-danger btn-sm border-0"
+                                onclick="removeItem('${item.source}', ${item.idx})">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
+
+        // Update Hidden Inputs
+        document.getElementById('invItemsJson').value = JSON.stringify(inventoryItems);
+        document.getElementById('nonInvItemsJson').value = JSON.stringify(nonInventoryItems);
+
+        recalcTotals();
+    }
+
+    function removeItem(source, index) {
+        if (source === 'inv') {
+            inventoryItems.splice(index, 1);
+        } else {
+            nonInventoryItems.splice(index, 1);
+        }
+        refreshTable();
+    }
+
+    function recalcTotals() {
+        let subTotal = 0;
+        inventoryItems.forEach(i => subTotal += i.total);
+        nonInventoryItems.forEach(i => subTotal += i.total);
+
+        document.getElementById('subTotalDisplay').textContent = subTotal.toFixed(2);
+
+        const applyVat = document.getElementById('applyVat').checked;
+        const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+        let vatAmount = 0;
+
+        if (applyVat) {
+            vatAmount = (subTotal * vatRate) / 100;
+        }
+
+        document.getElementById('vatAmountDisplay').textContent = vatAmount.toFixed(2);
+        document.getElementById('grandTotalDisplay').textContent = (subTotal + vatAmount).toFixed(2);
+    }
+</script>
+{% endblock %}

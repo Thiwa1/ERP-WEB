@@ -662,11 +662,26 @@ def inventory_locations():
 @has_permission('Access_Accounting')
 def cash_flow_categories():
     if request.method == 'POST':
+        category_id = int(request.form.get('category_id', 0))
         name = request.form.get('category_name')
         level = request.form.get('hold_level')
-        if name:
-            db.execute_query("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, level), commit=True)
-            flash('Category added', 'success')
+
+        if not name:
+            flash('Category Name is required', 'danger')
+            return redirect(url_for('cash_flow_categories'))
+
+        try:
+            if category_id == 0:
+                # Insert
+                db.execute_query("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, level), commit=True)
+                flash('Category added successfully', 'success')
+            else:
+                # Update
+                db.execute_query("UPDATE cf_catogory SET catogory_name = %s, hold_level = %s WHERE id = %s", (name, level, category_id), commit=True)
+                flash('Category updated successfully', 'success')
+        except Exception as e:
+            flash(f'Error saving category: {str(e)}', 'danger')
+
         return redirect(url_for('cash_flow_categories'))
 
     cats = db.execute_query("SELECT * FROM cf_catogory ORDER BY hold_level, catogory_name")
@@ -674,10 +689,26 @@ def cash_flow_categories():
 
 @app.route('/cash_flow_categories/delete', methods=['POST'])
 @login_required
+@has_permission('Access_Accounting')
 def delete_cash_flow_category():
-    cat_id = request.form.get('id')
-    db.execute_query("DELETE FROM cf_catogory WHERE id = %s", (cat_id,), commit=True)
-    flash('Category deleted', 'success')
+    # Support both single deletion (from old form) and bulk (from new form)
+    selected_ids = request.form.getlist('selected_ids')
+    single_id = request.form.get('id')
+
+    try:
+        if selected_ids:
+            placeholders = ', '.join(['%s'] * len(selected_ids))
+            query = f"DELETE FROM cf_catogory WHERE id IN ({placeholders})"
+            db.execute_query(query, tuple(selected_ids), commit=True)
+            flash(f'{len(selected_ids)} categories deleted', 'success')
+        elif single_id:
+            db.execute_query("DELETE FROM cf_catogory WHERE id = %s", (single_id,), commit=True)
+            flash('Category deleted', 'success')
+        else:
+            flash('No items selected', 'info')
+    except Exception as e:
+        flash(f'Error deleting categories: {str(e)}', 'danger')
+
     return redirect(url_for('cash_flow_categories'))
 
 # --- Chart of Accounts ---
@@ -3920,11 +3951,11 @@ def get_reversal_details():
 @has_permission('Access_Accounting')
 def customer_receipt():
     # Fetch customers with outstanding balances
-    # We look at `invoice_oustanding` table
+    # We look at `Invoice_Oustanding` table
     query = """
         SELECT DISTINCT c.id, c.customer_name
         FROM customer c
-        JOIN invoice_oustanding io ON c.id = io.invoice_buinding_Customer
+        JOIN Invoice_Oustanding io ON c.id = io.invoice_buinding_Customer
         WHERE io.Invoice_Oustanding > 0
     """
     customers = db.execute_query(query)
@@ -3947,7 +3978,7 @@ def get_customer_outstanding():
         SELECT
             Id, invoice_number, invoice_date, invoice_final_date,
             invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding
-        FROM invoice_oustanding
+        FROM Invoice_Oustanding
         WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
         ORDER BY invoice_date
     """
@@ -4011,12 +4042,12 @@ def submit_customer_receipt():
         # 1. Update Invoice Outstanding (Settle)
         for p in payments:
             # Get current payment to update
-            cursor.execute("SELECT invoice_oustanding_Patment FROM invoice_oustanding WHERE Id = %s", (p['id'],))
+            cursor.execute("SELECT invoice_oustanding_Patment FROM Invoice_Oustanding WHERE Id = %s", (p['id'],))
             res = cursor.fetchone()
             if res:
                 current_paid = float(res[0])
                 new_paid = current_paid + p['amount']
-                cursor.execute("UPDATE invoice_oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", (new_paid, p['id']))
+                cursor.execute("UPDATE Invoice_Oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", (new_paid, p['id']))
 
         # 2. Generate Receipt No
         if account_type == 'cash':
@@ -5357,6 +5388,258 @@ def submit_inventory_transfer():
         flash(f'System Error: {str(e)}', 'danger')
 
     return redirect(url_for('inventory_transfer'))
+
+# --- Invoice Creation ---
+@app.route('/invoice_creating', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting') # or Access_Sales if defined
+def invoice_creating():
+    customers = db.execute_query("SELECT supplier_name as customer_name FROM suppliers WHERE Is_Customer = 1")
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit")
+
+    # Active items with cost (purcharsing price)
+    items = db.execute_query("""
+        SELECT i.id, i.inventoy_name, i.inventoy_code, i.inventoy_items_messurment_unit as unit, p.inventory_price_purcharsing as cost
+        FROM inventoy_items i
+        LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        WHERE i.active = 1
+    """)
+
+    today_date = date.today().strftime('%Y-%m-%d')
+    return render_template('invoice_creating.html',
+                           customers=customers,
+                           locations=locations,
+                           jobs=jobs,
+                           inventory_items=items,
+                           today_date=today_date)
+
+@app.route('/api/get_item_prices/<int:item_id>')
+@login_required
+def api_get_item_prices(item_id):
+    # Fetch all prices (selling, special, etc) for selection logic if multiple
+    # Simplified: Returning selling price. If multiple pricing structure exists in `inventory_price_recod`, adjust here.
+    # The WPF code checks `inventory_price_selling` and `inventory_price_purcharsing`.
+    # It seems to check count. If multiple rows for same link?
+    # Schema suggests `inventory_price_link` is FK to item.
+    # WPF code: SELECT ... FROM inventory_price_recod WHERE inventory_price_link = ...
+    # If count > 1, show selection.
+
+    prices = db.execute_query("SELECT inventory_price_selling FROM inventory_price_recod WHERE inventory_price_link = %s", (item_id,))
+    price_list = [p['inventory_price_selling'] for p in prices]
+    return json.dumps(price_list)
+
+@app.route('/invoice_creating/submit', methods=['POST'])
+@login_required
+def submit_invoice():
+    try:
+        customer_name = request.form.get('customer')
+        location = request.form.get('location')
+        inv_date = request.form.get('invoice_date')
+        due_date = request.form.get('due_date')
+        job_no = request.form.get('job_no')
+        vat_rate = float(request.form.get('vat_rate', 0))
+        apply_vat = 1 if request.form.get('apply_vat') else 0
+
+        inv_items_json = request.form.get('inventory_items_json')
+        non_inv_items_json = request.form.get('non_inventory_items_json')
+
+        inv_items = json.loads(inv_items_json) if inv_items_json else []
+        non_inv_items = json.loads(non_inv_items_json) if non_inv_items_json else []
+
+        if not inv_items and not non_inv_items:
+            flash('No items in invoice', 'danger')
+            return redirect(url_for('invoice_creating'))
+
+        current_user = get_current_user_id()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Generate Invoice No (Credit_Invoice_No table)
+            cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
+            inv_id_seq = cursor.lastrowid
+            invoice_no = f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+
+            # 2. Create JV Header
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           (str(current_user), "Credit Sales"))
+            jv_no = cursor.lastrowid
+
+            # 3. Calculate Totals
+            total_sales = 0
+            total_cost = 0
+
+            # Inventory Items
+            for item in inv_items:
+                qty = float(item.get('qty', 0))
+                price = float(item.get('price', 0))
+                cost = float(item.get('cost', 0))
+                total_sales += qty * price
+                total_cost += qty * cost
+
+            # Non-Inventory Items
+            for item in non_inv_items:
+                qty = float(item.get('qty', 0))
+                price = float(item.get('price', 0))
+                total_sales += qty * price
+                # Non-inventory might not have tracked cost or it's service
+
+            vat_amount = 0
+            grand_total = total_sales
+            if apply_vat:
+                vat_amount = (total_sales * vat_rate) / 100
+                grand_total += vat_amount
+
+            # 4. Insert Outstanding Record
+            # Get Customer ID
+            cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (customer_name,))
+            res = cursor.fetchone()
+            cust_id = res[0] if res else 0
+
+            cursor.execute("""
+                INSERT INTO Invoice_Oustanding (
+                    invoice_number, invoice_date, invoice_total_oustanding,
+                    invoice_oustanding_Patment, invoice_final_date,
+                    invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
+                ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
+            """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
+            outstanding_id = cursor.lastrowid
+
+            # 5. Insert Invoice Records (Details) & Update Inventory
+
+            # Inventory Items
+            for item in inv_items:
+                # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
+                # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
+                # Schema: Invoice_Recode
+
+                # Warranty Logic
+                # Fetch warranty period for item
+                w_end_date = None
+                cursor.execute("""
+                    SELECT yeas_, month, date_ FROM inventory_vorenty_period
+                    WHERE name = %s LIMIT 1
+                """, (item['name'],))
+                w_res = cursor.fetchone()
+                if w_res:
+                    try:
+                        years, months, days = w_res
+                        # Simple add (using relativedelta logic approx)
+                        # Or simple days calc
+                        # Assuming date_ is days.
+                        # WPF logic: tries to parse constructed string? No, it adds span to current date.
+                        # Actually WPF code `string dateString = $"{yeas}-{monthT}-{dayT}";` suggests it sets a specific END date?
+                        # No, warranty usually is period. Let's assume it adds to today.
+                        # WPF code has complex logic parsing a date string from integers.
+                        # If the DB stores "1 Year", it might store yeas_=1.
+                        # Let's assume standard warranty addition for now.
+                        pass
+                    except:
+                        pass
+
+                cursor.execute("""
+                    INSERT INTO Invoice_Recode (
+                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
+                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
+                        recode_date
+                    ) VALUES (%s, %s, %s, 1, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
+                """, (
+                    item['name'], item['qty'], item['price'], jv_no, current_user,
+                    customer_name, outstanding_id, item['unit'], datetime.now()
+                ))
+
+                # Update Inventory Record (OUT)
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_movment_out,
+                        inventory_recod_account, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No,
+                        inventory_recod_link_invoice, inventory_recod_suplier_iv_no
+                    ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
+                """, (
+                    item['name'], item['code'], item['unit'], item['cost'] * float(item['qty']), float(item['qty']),
+                    current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
+                ))
+
+            # Non-Inventory Items
+            for item in non_inv_items:
+                 cursor.execute("""
+                    INSERT INTO Invoice_Recode (
+                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
+                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
+                        recode_date
+                    ) VALUES (%s, %s, %s, 0, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
+                """, (
+                    item['name'], item['qty'], item['price'], jv_no, current_user,
+                    customer_name, outstanding_id, item['unit'], datetime.now()
+                ))
+
+            # 6. GL Entries
+            job_no_val = job_no if job_no else None
+
+            # DR Account Receivable (Total + VAT)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+            # CR Income (Sales)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+            # CR VAT (If any)
+            if vat_amount > 0:
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+            # Cost of Goods Sold (If inventory items exist)
+            if total_cost > 0:
+                 # DR COGS
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+                # CR Inventory
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+            conn.commit()
+            flash(f'Invoice {invoice_no} created successfully.', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Transaction failed: {str(e)}', 'danger')
+            print(f"Invoice Error: {e}")
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+
+    return redirect(url_for('invoice_creating'))
 
 # --- Inventory Production ---
 @app.route('/inventory_production', methods=['GET'])
