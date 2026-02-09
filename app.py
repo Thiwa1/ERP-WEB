@@ -1176,24 +1176,40 @@ def create_cash_account():
 @login_required
 @has_permission('Access_Accounting')
 def control_panel():
-    # 1. Handle Warranty Settings
+    # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
-        enabled = 1 if request.form.get('warranty_enabled') else 0
-        count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
-        count = count_res[0]['cnt'] if count_res else 0
-        if count == 0:
-            db.execute_query("INSERT INTO adding_new (id, yes) VALUES (0, %s)", (enabled,), commit=True)
-        else:
-            db.execute_query("UPDATE adding_new SET yes = %s", (enabled,), commit=True)
+        # Warranty
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form:
+            # Warranty Logic
+            warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
+            count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
+            if count_res and count_res[0]['cnt'] == 0:
+                db.execute_query("INSERT INTO adding_new (id, yes) VALUES (0, %s)", (warranty_enabled,), commit=True)
+            else:
+                db.execute_query("UPDATE adding_new SET yes = %s", (warranty_enabled,), commit=True)
 
-        flash('Settings updated', 'success')
-        return redirect(url_for('control_panel'))
+            # Approval Workflow Logic
+            approval_enabled = 1 if request.form.get('approval_enabled') else 0
+            # Check if setting exists
+            check = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+            if not check:
+                db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', %s, 'Enable Park & Post Workflow')", (str(approval_enabled),), commit=True)
+            else:
+                db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'enable_approval_workflow'", (str(approval_enabled),), commit=True)
 
-    # 2. Fetch Warranty Status
+            flash('Settings updated', 'success')
+            return redirect(url_for('control_panel'))
+
+    # 2. Fetch Status
     res = db.execute_query("SELECT yes FROM adding_new")
     warranty_enabled = False
     if res and res[0]['yes'] == 1:
         warranty_enabled = True
+
+    res_app = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+    approval_enabled = False
+    if res_app and res_app[0]['setting_value'] == '1':
+        approval_enabled = True
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -1217,6 +1233,7 @@ def control_panel():
 
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
+                           approval_enabled=approval_enabled,
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
@@ -1264,6 +1281,83 @@ def control_panel_update():
         flash('No changes selected.', 'info')
 
     return redirect(url_for('control_panel'))
+
+# --- Approvals Dashboard ---
+@app.route('/approvals', methods=['GET'])
+@login_required
+@has_permission('OP_Approved') # Assuming this permission covers all approvals for now
+def approvals():
+    # 1. Pending Purchase Orders (Status = 0)
+    pending_pos = db.execute_query("""
+        SELECT id, OP_NO_Other as ref_no, Create_Date as date, Sup_Name as party,
+               'Purchase Order' as type,
+               (SELECT SUM(QTY*Unit_price) FROM PO_Recode_Details WHERE Link_OP_NO_Table=OP_NO_Table.id) as amount
+        FROM OP_NO_Table
+        WHERE status = 0 AND Delete_PO = 0
+    """)
+
+    # 2. Pending JVs (Manual, Payments, Receipts) (Status = 0)
+    pending_jvs = db.execute_query("""
+        SELECT j.jv_id as id, j.jv_user_code as ref_no, e.entry_effective_date as date,
+               'Journal Voucher' as type, j.jv_naration as narration,
+               SUM(e.enty_values_DR) as amount
+        FROM jv_numbers j
+        LEFT JOIN entry_details e ON j.jv_id = e.entry_jv
+        WHERE j.status = 0
+        GROUP BY j.jv_id, j.jv_user_code, e.entry_effective_date, j.jv_naration
+    """)
+
+    # Combine lists
+    items = []
+    for po in pending_pos:
+        items.append({
+            'id': po['id'],
+            'ref_no': po['ref_no'],
+            'date': str(po['date']),
+            'party': po['party'],
+            'type': 'Purchase Order',
+            'amount': float(po['amount'] or 0),
+            'source': 'po'
+        })
+
+    for jv in pending_jvs:
+        items.append({
+            'id': jv['id'],
+            'ref_no': f"JV-{jv['id']}", # JV User Code might be user ID, using ID for ref
+            'date': str(jv['date']),
+            'party': jv['narration'], # Use narration as description/party
+            'type': 'Journal/Payment',
+            'amount': float(jv['amount'] or 0),
+            'source': 'jv'
+        })
+
+    return render_template('approvals.html', items=items)
+
+@app.route('/approvals/action', methods=['POST'])
+@login_required
+@has_permission('OP_Approved')
+def approval_action():
+    item_id = request.form.get('id')
+    source = request.form.get('source')
+    action = request.form.get('action') # 'approve' or 'reject'
+
+    current_user = get_current_user_id()
+    new_status = 1 if action == 'approve' else 2
+
+    try:
+        if source == 'po':
+            db.execute_query("UPDATE OP_NO_Table SET status = %s, Aprove_By = %s, Aproed_Date = %s WHERE id = %s",
+                             (new_status, current_user, date.today(), item_id), commit=True)
+
+        elif source == 'jv':
+            db.execute_query("UPDATE jv_numbers SET status = %s WHERE jv_id = %s",
+                             (new_status, item_id), commit=True)
+
+        flash(f'Item {action}d successfully', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+
+    return redirect(url_for('approvals'))
 
 # --- Cheque Print Setup ---
 @app.route('/cheque_print_setup', methods=['GET', 'POST'])
@@ -2759,6 +2853,12 @@ def bank_payment_submit():
             new_total_paid = current_paid + p['amount']
             cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
 
+        # Check Workflow
+        cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+        res_set = cursor.fetchone()
+        workflow_enabled = res_set and res_set[0] == '1'
+        status = 0 if workflow_enabled else 1
+
         # 2. Generate Voucher Number
         cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
         res = cursor.fetchone()
@@ -2769,7 +2869,8 @@ def bank_payment_submit():
                        (bank_account, new_voucher, cheque_no))
 
         # 3. Create Journal Voucher (JV)
-        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM PAYMENT', narration))
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                       ('JV FROM PAYMENT', narration, status))
         jv_no = cursor.lastrowid
 
         # Get Sub Account Code for Supplier
@@ -5228,6 +5329,47 @@ def run_schema_migrations():
                 )
             """)
 
+        # 9. Approval Workflow Updates
+        # Add status columns to transaction tables
+        # Status: 0=Parked, 1=Posted/Approved, 2=Rejected
+
+        # OP_NO_Table (Purchase Orders)
+        cursor.execute("SHOW COLUMNS FROM OP_NO_Table")
+        op_cols = [row[0] for row in cursor.fetchall()]
+        if 'status' not in op_cols:
+            print("Migrating: Adding status to OP_NO_Table")
+            cursor.execute("ALTER TABLE OP_NO_Table ADD COLUMN status TINYINT DEFAULT 1")
+            # Default 1 (Posted) for existing data to avoid breaking current flow
+
+        # jv_numbers (Journal Vouchers - covers JV, Payments, Receipts)
+        cursor.execute("SHOW COLUMNS FROM jv_numbers")
+        jv_cols = [row[0] for row in cursor.fetchall()]
+        if 'status' not in jv_cols:
+            print("Migrating: Adding status to jv_numbers")
+            cursor.execute("ALTER TABLE jv_numbers ADD COLUMN status TINYINT DEFAULT 1")
+
+        # System Settings Table (for toggles)
+        cursor.execute("SHOW TABLES LIKE 'system_settings'")
+        if not cursor.fetchone():
+            print("Migrating: Creating system_settings table")
+            cursor.execute("""
+                CREATE TABLE system_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    setting_key VARCHAR(100) UNIQUE,
+                    setting_value VARCHAR(255),
+                    description VARCHAR(255)
+                )
+            """)
+            # Default: Disable workflow initially (value '0') to match user request "if need it need to diasable"
+            # User request: "post parking is doing ground workers and post is doing managing level if need it need to diasable"
+            # I interpret this as "Enable it, but allow disabling". Let's default to DISABLED ('0') to not disrupt current flow immediately, or ENABLED ('1')?
+            # User says "I Need to authentication proses... we cant bilt it like park and post".
+            # "we cant bilt it like park and post" might mean "we can build it"? Or "we count bill it"?
+            # Context: "parking is doing ground workers and post is doing managing level".
+            # "if need it need to diasable" -> feature toggle.
+            # I'll default to '0' (Disabled) so they can turn it on when ready.
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -5582,8 +5724,15 @@ def save_journal_entry():
         conn.start_transaction()
 
         try:
+            # Check Workflow
+            cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+            res_set = cursor.fetchone()
+            workflow_enabled = res_set and res_set[0] == '1'
+            status = 0 if workflow_enabled else 1
+
             # 1. Create JV Header
-            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", (user_code, main_narration))
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                           (user_code, main_narration, status))
             jv_no = cursor.lastrowid
 
             # 2. Insert Entries

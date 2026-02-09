@@ -132,7 +132,11 @@
                             <input class="form-check-input" type="checkbox" id="warrantyCheck" name="warranty_enabled" {% if warranty_enabled %}checked{% endif %}>
                             <label class="form-check-label fw-bold" for="warrantyCheck">Enable Warranty Period Features</label>
                         </div>
-                        <button type="submit" class="btn btn-secondary btn-sm">Save Settings</button>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="approvalCheck" name="approval_enabled" {% if approval_enabled %}checked{% endif %}>
+                            <label class="form-check-label fw-bold" for="approvalCheck">Enable Park & Post Workflow</label>
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Save Settings</button>
                     </form>
                 </div>
             </div>
