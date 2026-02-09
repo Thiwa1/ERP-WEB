@@ -1,0 +1,198 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-invoice me-2"></i> PROFORMA INVOICE</h4>
+        </div>
+    </div>
+
+    <form method="POST" action="{{ url_for('proforma_invoice') }}" id="piForm">
+        <div class="row">
+            <!-- Left: Items -->
+            <div class="col-lg-8 mb-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header fw-bold text-white d-flex justify-content-between" style="background-color: var(--secondary-color);">
+                        <span><i class="fas fa-list me-2"></i> Invoice Items</span>
+                        <span class="badge bg-light text-dark" id="itemCount">0 Items</span>
+                    </div>
+                    <div class="card-body p-0">
+                        <table class="table table-bordered table-hover mb-0" id="itemsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Description</th>
+                                    <th width="10%">Qty</th>
+                                    <th width="15%">Price</th>
+                                    <th width="15%">Total</th>
+                                    <th width="5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Rows via JS -->
+                            </tbody>
+                        </table>
+                        <div class="p-3 bg-light border-top">
+                            <div class="row g-2">
+                                <div class="col-md-4">
+                                    <select class="form-select select2" id="itemSelect" onchange="itemSelected()">
+                                        <option value="">Select Inventory Item</option>
+                                        {% for item in items %}
+                                        <option value="{{ item.inventoy_name }}"
+                                                data-unit="{{ item.inventoy_items_messurment_unit }}"
+                                                data-price="{{ item.inventory_price_selling }}">
+                                            {{ item.inventoy_name }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <input type="text" class="form-control" id="customDesc" placeholder="Description (Optional)">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" id="qtyInput" placeholder="Qty" step="0.01">
+                                </div>
+                                <div class="col-md-2">
+                                    <input type="number" class="form-control" id="priceInput" placeholder="Price" step="0.01">
+                                </div>
+                                <div class="col-md-1">
+                                    <button type="button" class="btn btn-success w-100" onclick="addItem()"><i class="fas fa-plus"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right: Details -->
+            <div class="col-lg-4 mb-4">
+                <div class="card shadow-sm h-100 border-0">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                        <i class="fas fa-info-circle me-2"></i> PI Details
+                    </div>
+                    <div class="card-body bg-light">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Customer</label>
+                            <input type="text" class="form-control" name="customer_name" list="custOptions" required placeholder="Select or Type Customer">
+                            <datalist id="custOptions">
+                                {% for c in customers %}
+                                <option value="{{ c.customer_name }}">
+                                {% endfor %}
+                            </datalist>
+                        </div>
+
+                        <div class="mb-3 row">
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Date</label>
+                                <input type="date" class="form-control" name="pi_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold small">Valid Until</label>
+                                <input type="date" class="form-control" name="expiry_date" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small">Narration / Terms</label>
+                            <textarea class="form-control" name="narration" rows="3"></textarea>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between mb-2">
+                            <span class="fw-bold">Subtotal:</span>
+                            <span class="fw-bold" id="subTotal">0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between mb-3">
+                            <span class="fw-bold text-success fs-5">Grand Total:</span>
+                            <span class="fw-bold text-success fs-5" id="grandTotal">0.00</span>
+                        </div>
+
+                        <input type="hidden" name="items_json" id="itemsJson">
+
+                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2">
+                            <i class="fas fa-save me-2"></i> CREATE & PRINT
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    let items = [];
+
+    function itemSelected() {
+        const select = document.getElementById('itemSelect');
+        const option = select.options[select.selectedIndex];
+        if (option.value) {
+            document.getElementById('priceInput').value = option.dataset.price || '';
+            document.getElementById('qtyInput').focus();
+        }
+    }
+
+    function addItem() {
+        const select = document.getElementById('itemSelect');
+        const customDesc = document.getElementById('customDesc').value;
+        const qty = parseFloat(document.getElementById('qtyInput').value) || 0;
+        const price = parseFloat(document.getElementById('priceInput').value) || 0;
+
+        let itemName = select.value;
+        if (!itemName && customDesc) itemName = "Service/Item"; // Fallback if only desc entered
+
+        if ((!itemName && !customDesc) || qty <= 0) {
+            alert("Please enter item details and quantity.");
+            return;
+        }
+
+        items.push({
+            name: itemName,
+            desc: customDesc,
+            qty: qty,
+            price: price,
+            total: qty * price
+        });
+
+        renderTable();
+
+        // Reset Inputs
+        select.value = "";
+        document.getElementById('customDesc').value = "";
+        document.getElementById('qtyInput').value = "";
+        document.getElementById('priceInput').value = "";
+    }
+
+    function removeItem(index) {
+        items.splice(index, 1);
+        renderTable();
+    }
+
+    function renderTable() {
+        const tbody = document.querySelector('#itemsTable tbody');
+        tbody.innerHTML = '';
+        let total = 0;
+
+        items.forEach((item, idx) => {
+            total += item.total;
+            tbody.innerHTML += `
+                <tr>
+                    <td>${item.name || '-'}</td>
+                    <td>${item.desc || '-'}</td>
+                    <td>${item.qty}</td>
+                    <td>${item.price.toFixed(2)}</td>
+                    <td class="fw-bold">${item.total.toFixed(2)}</td>
+                    <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeItem(${idx})"><i class="fas fa-times"></i></button></td>
+                </tr>
+            `;
+        });
+
+        document.getElementById('itemCount').textContent = items.length + " Items";
+        document.getElementById('subTotal').textContent = total.toFixed(2);
+        document.getElementById('grandTotal').textContent = total.toFixed(2);
+        document.getElementById('itemsJson').value = JSON.stringify(items);
+    }
+</script>
+{% endblock %}

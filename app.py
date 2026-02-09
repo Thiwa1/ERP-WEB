@@ -5192,6 +5192,42 @@ def run_schema_migrations():
                 )
             """)
 
+        # 8. Proforma Invoice Tables
+        cursor.execute("SHOW TABLES LIKE 'proforma_invoice_header'")
+        if not cursor.fetchone():
+            print("Migrating: Creating proforma_invoice_header table")
+            cursor.execute("""
+                CREATE TABLE proforma_invoice_header (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    pi_number VARCHAR(50) NOT NULL UNIQUE,
+                    customer_name VARCHAR(200),
+                    pi_date DATE,
+                    expiry_date DATE,
+                    subtotal DOUBLE,
+                    vat_amount DOUBLE,
+                    grand_total DOUBLE,
+                    narration TEXT,
+                    created_by INT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'proforma_invoice_details'")
+        if not cursor.fetchone():
+            print("Migrating: Creating proforma_invoice_details table")
+            cursor.execute("""
+                CREATE TABLE proforma_invoice_details (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    pi_id INT,
+                    item_name VARCHAR(200),
+                    description TEXT,
+                    qty DOUBLE,
+                    unit_price DOUBLE,
+                    total DOUBLE,
+                    FOREIGN KEY (pi_id) REFERENCES proforma_invoice_header(id) ON DELETE CASCADE
+                )
+            """)
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -5239,6 +5275,168 @@ def ensure_default_accounts():
                 ), commit=True)
     except Exception as e:
         print(f"Error ensuring default accounts: {e}")
+
+# --- Quotation Evaluation ---
+@app.route('/quotation_evaluation', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def quotation_evaluation():
+    return render_template('quotation_evaluation.html')
+
+@app.route('/api/evaluate_quotations', methods=['POST'])
+@login_required
+def evaluate_quotations():
+    data = request.json
+    constraints = data.get('constraints', {})
+    suppliers = data.get('suppliers', [])
+
+    # Constraints
+    max_days = float(constraints.get('max_days') or 9999)
+    # Weights (Simple priority: Price, Speed, Quality)
+    priority = constraints.get('priority', 'price')
+
+    # 1. Filter Step
+    filtered = []
+    for s in suppliers:
+        s_days = float(s.get('days', 0))
+        if s_days <= max_days:
+            filtered.append(s)
+
+    if not filtered:
+        return {'results': [], 'message': 'No suppliers meet the delivery deadline constraint.'}
+
+    # 2. Scoring Step
+    # Normalize values for scoring
+    # Price: Lower is better
+    # Days: Lower is better
+    # Quality: Higher is better (1-5)
+
+    # Avoid division by zero
+    min_price = min(float(s['price']) for s in filtered) if filtered else 1
+    min_days = min(float(s['days']) for s in filtered) if filtered else 1
+    max_qual = max(float(s['quality']) for s in filtered) if filtered else 1
+
+    scored = []
+    for s in filtered:
+        price = float(s['price'])
+        days = float(s['days'])
+        qual = float(s['quality'])
+
+        # Calculate Scores (0 to 1 scale, 1 is best)
+        # Price Score: (Min / Actual)
+        s_price = min_price / price if price > 0 else 0
+        # Days Score: (Min / Actual)
+        s_days = min_days / days if days > 0 else 0
+        # Quality Score: (Actual / Max)
+        s_qual = qual / max_qual if max_qual > 0 else 0
+
+        # Apply Weights based on Priority
+        if priority == 'speed':
+            # Speed is King: Speed 60%, Price 20%, Quality 20%
+            final_score = (s_days * 0.6) + (s_price * 0.2) + (s_qual * 0.2)
+            reason = "Fastest delivery within constraints"
+        elif priority == 'quality':
+            # Quality Focus: Quality 60%, Price 20%, Speed 20%
+            final_score = (s_qual * 0.6) + (s_price * 0.2) + (s_days * 0.2)
+            reason = "Best quality rating"
+        else: # Default Price
+            # Price Focus: Price 60%, Speed 20%, Quality 20%
+            final_score = (s_price * 0.6) + (s_days * 0.2) + (s_qual * 0.2)
+            reason = "Best price"
+
+        s['score'] = round(final_score * 100, 1)
+        scored.append(s)
+
+    # Sort by Score Descending
+    scored.sort(key=lambda x: x['score'], reverse=True)
+
+    # Mark the winner
+    if scored:
+        scored[0]['is_winner'] = True
+        scored[0]['win_reason'] = reason
+
+    return {'results': scored}
+
+# --- Proforma Invoice ---
+@app.route('/proforma_invoice', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting') # or Sales
+def proforma_invoice():
+    if request.method == 'POST':
+        cust_name = request.form.get('customer_name')
+        pi_date = request.form.get('pi_date')
+        exp_date = request.form.get('expiry_date')
+        narration = request.form.get('narration')
+        items_json = request.form.get('items_json')
+
+        items = json.loads(items_json) if items_json else []
+        if not items:
+            flash('No items', 'danger')
+            return redirect(url_for('proforma_invoice'))
+
+        current_user = get_current_user_id()
+
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            conn.start_transaction()
+
+            # Generate PI Number
+            # Simple timestamp based or sequence
+            pi_no = f"PI-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+
+            # Calc Totals
+            subtotal = sum(float(i['total']) for i in items)
+            vat_rate = 0 # Can add VAT logic if needed, simple for now
+            vat_amount = 0
+            grand_total = subtotal + vat_amount
+
+            # Insert Header
+            cursor.execute("""
+                INSERT INTO proforma_invoice_header (
+                    pi_number, customer_name, pi_date, expiry_date,
+                    subtotal, vat_amount, grand_total, narration, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (pi_no, cust_name, pi_date, exp_date, subtotal, vat_amount, grand_total, narration, current_user))
+            pi_id = cursor.lastrowid
+
+            # Insert Details
+            for i in items:
+                cursor.execute("""
+                    INSERT INTO proforma_invoice_details (
+                        pi_id, item_name, description, qty, unit_price, total
+                    ) VALUES (%s, %s, %s, %s, %s, %s)
+                """, (pi_id, i['name'], i.get('desc', ''), i['qty'], i['price'], i['total']))
+
+            conn.commit()
+            flash(f'Proforma Invoice {pi_no} created', 'success')
+            return redirect(url_for('print_proforma', pi_id=pi_id))
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error: {str(e)}', 'danger')
+
+        return redirect(url_for('proforma_invoice'))
+
+    customers = db.execute_query("SELECT customer_name FROM customer")
+    items = db.execute_query("SELECT inventoy_name, inventoy_items_messurment_unit, inventory_price_selling FROM inventoy_items LEFT JOIN inventory_price_recod ON inventoy_items.id = inventory_price_link")
+
+    return render_template('proforma_invoice.html',
+                           customers=customers,
+                           items=items,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/proforma/print/<int:pi_id>')
+@login_required
+def print_proforma(pi_id):
+    header_res = db.execute_query("SELECT * FROM proforma_invoice_header WHERE id = %s", (pi_id,))
+    if not header_res: return "Not Found", 404
+    header = header_res[0]
+
+    details = db.execute_query("SELECT * FROM proforma_invoice_details WHERE pi_id = %s", (pi_id,))
+    company = db.execute_query("SELECT * FROM company LIMIT 1")[0]
+
+    return render_template('proforma_print.html', header=header, details=details, company=company)
 
 # --- Currency Setup ---
 @app.route('/currency_setup', methods=['GET', 'POST'])

@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-balance-scale-right me-2"></i> QUOTATION EVALUATION</h4>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Input Panel -->
+        <div class="col-lg-4 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <i class="fas fa-filter me-2"></i> Evaluation Criteria
+                </div>
+                <div class="card-body bg-light">
+                    <!-- Item Info -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-muted">Item / Product Name</label>
+                        <input type="text" class="form-control" id="itemName" placeholder="e.g. Coca Cola">
+                    </div>
+
+                    <!-- Constraints -->
+                    <h6 class="border-bottom pb-2 mb-3 fw-bold text-secondary mt-4">Constraints</h6>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small text-danger">Max Delivery Days</label>
+                        <input type="number" class="form-control" id="maxDays" placeholder="e.g. 2">
+                        <small class="text-muted">Suppliers exceeding this will be disqualified.</small>
+                    </div>
+
+                    <!-- Priorities -->
+                    <h6 class="border-bottom pb-2 mb-3 fw-bold text-secondary mt-4">Optimization Goal</h6>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold small">Priority Factor</label>
+                        <select class="form-select" id="priority">
+                            <option value="price">Lowest Price (Cost Focus)</option>
+                            <option value="speed">Fastest Delivery (Speed Focus)</option>
+                            <option value="quality">Highest Quality (Quality Focus)</option>
+                        </select>
+                    </div>
+
+                    <button class="btn btn-primary w-100 fw-bold mt-3" onclick="evaluateQuotations()">
+                        <i class="fas fa-search me-2"></i> FIND BEST SUPPLIER
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Supplier Data Entry -->
+        <div class="col-lg-8 mb-4">
+            <div class="card shadow-sm h-100 border-0">
+                <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <span><i class="fas fa-users me-2"></i> Supplier Quotations</span>
+                    <button class="btn btn-sm btn-light text-dark fw-bold" onclick="addSupplierRow()">
+                        <i class="fas fa-plus me-1"></i> Add Supplier
+                    </button>
+                </div>
+                <div class="card-body p-0 table-responsive">
+                    <table class="table table-bordered table-striped mb-0" id="supplierTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Supplier Name</th>
+                                <th width="20%">Price</th>
+                                <th width="20%">Delivery (Days)</th>
+                                <th width="15%">Quality (1-5)</th>
+                                <th width="10%">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="supplierBody">
+                            <!-- Default Rows -->
+                            <tr>
+                                <td><input type="text" class="form-control form-control-sm sup-name" placeholder="Supplier A"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-price" placeholder="0.00" step="0.01"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-days" placeholder="0" step="1"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-qual" placeholder="5" min="1" max="5"></td>
+                                <td class="text-center"><button class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)"><i class="fas fa-times"></i></button></td>
+                            </tr>
+                            <tr>
+                                <td><input type="text" class="form-control form-control-sm sup-name" placeholder="Supplier B"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-price" placeholder="0.00" step="0.01"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-days" placeholder="0" step="1"></td>
+                                <td><input type="number" class="form-control form-control-sm sup-qual" placeholder="5" min="1" max="5"></td>
+                                <td class="text-center"><button class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)"><i class="fas fa-times"></i></button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Results Section -->
+    <div class="row" id="resultsSection" style="display: none;">
+        <div class="col-12">
+            <div class="card shadow-sm border-0 border-top border-5 border-success">
+                <div class="card-header bg-white fw-bold h5 py-3">
+                    <i class="fas fa-trophy text-warning me-2"></i> Evaluation Results
+                </div>
+                <div class="card-body">
+                    <div id="winnerAlert" class="alert alert-success d-flex align-items-center" role="alert">
+                        <i class="fas fa-check-circle fa-2x me-3"></i>
+                        <div>
+                            <h5 class="alert-heading fw-bold mb-1">Recommended Supplier: <span id="winnerName">Name</span></h5>
+                            <p class="mb-0" id="winnerReason">Reason goes here.</p>
+                        </div>
+                    </div>
+
+                    <h6 class="fw-bold mt-4">Ranked List</h6>
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Supplier</th>
+                                    <th>Score</th>
+                                    <th>Price</th>
+                                    <th>Delivery</th>
+                                    <th>Quality</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="resultsBody">
+                                <!-- Populated via JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function addSupplierRow() {
+        const tbody = document.getElementById('supplierBody');
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" class="form-control form-control-sm sup-name" placeholder="Supplier Name"></td>
+            <td><input type="number" class="form-control form-control-sm sup-price" placeholder="0.00" step="0.01"></td>
+            <td><input type="number" class="form-control form-control-sm sup-days" placeholder="0" step="1"></td>
+            <td><input type="number" class="form-control form-control-sm sup-qual" placeholder="5" min="1" max="5"></td>
+            <td class="text-center"><button class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)"><i class="fas fa-times"></i></button></td>
+        `;
+        tbody.appendChild(row);
+    }
+
+    function removeRow(btn) {
+        const row = btn.closest('tr');
+        if (document.querySelectorAll('#supplierBody tr').length > 1) {
+            row.remove();
+        }
+    }
+
+    function evaluateQuotations() {
+        // Gather Constraints
+        const constraints = {
+            max_days: document.getElementById('maxDays').value,
+            priority: document.getElementById('priority').value
+        };
+
+        // Gather Suppliers
+        const suppliers = [];
+        document.querySelectorAll('#supplierBody tr').forEach(row => {
+            const name = row.querySelector('.sup-name').value;
+            const price = row.querySelector('.sup-price').value;
+            const days = row.querySelector('.sup-days').value;
+            const qual = row.querySelector('.sup-qual').value;
+
+            if (name && price && days) {
+                suppliers.push({
+                    name: name,
+                    price: price,
+                    days: days,
+                    quality: qual || 5
+                });
+            }
+        });
+
+        if (suppliers.length < 2) {
+            alert("Please enter at least 2 suppliers to compare.");
+            return;
+        }
+
+        // API Call
+        fetch('/api/evaluate_quotations', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ constraints, suppliers })
+        })
+        .then(res => res.json())
+        .then(data => {
+            renderResults(data);
+        })
+        .catch(err => alert("Evaluation failed: " + err));
+    }
+
+    function renderResults(data) {
+        document.getElementById('resultsSection').style.display = 'block';
+        const tbody = document.getElementById('resultsBody');
+        tbody.innerHTML = '';
+
+        if (data.results.length === 0) {
+            document.getElementById('winnerAlert').className = "alert alert-warning";
+            document.getElementById('winnerName').textContent = "None";
+            document.getElementById('winnerReason').textContent = data.message || "No suppliers met the criteria.";
+            return;
+        }
+
+        const winner = data.results[0];
+        document.getElementById('winnerAlert').className = "alert alert-success d-flex align-items-center";
+        document.getElementById('winnerName').textContent = winner.name;
+        document.getElementById('winnerReason').textContent = winner.win_reason;
+
+        data.results.forEach((s, index) => {
+            const tr = document.createElement('tr');
+            if (s.is_winner) tr.className = "table-success fw-bold";
+
+            tr.innerHTML = `
+                <td>${index + 1}</td>
+                <td>${s.name}</td>
+                <td>${s.score}</td>
+                <td>${parseFloat(s.price).toFixed(2)}</td>
+                <td>${s.days} Days</td>
+                <td>${s.quality}/5</td>
+                <td>${s.is_winner ? '<span class="badge bg-success">Recommended</span>' : ''}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        // Scroll to results
+        document.getElementById('resultsSection').scrollIntoView({behavior: 'smooth'});
+    }
+</script>
+{% endblock %}

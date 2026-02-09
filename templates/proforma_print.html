@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Proforma Invoice - {{ header.pi_number }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background: #eee; }
+        .page {
+            background: white;
+            margin: 20px auto;
+            padding: 40px;
+            width: 210mm;
+            min-height: 297mm;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+
+        .header { border-bottom: 2px solid #333; padding-bottom: 20px; margin-bottom: 30px; }
+        .company-name { font-size: 24px; font-weight: bold; color: #2c3e50; }
+        .doc-title { font-size: 28px; font-weight: bold; text-transform: uppercase; color: #7f8c8d; text-align: right; }
+
+        .info-box { margin-bottom: 30px; }
+        .label { font-weight: bold; color: #7f8c8d; font-size: 12px; text-transform: uppercase; }
+
+        .table-items th { background-color: #2c3e50; color: white; text-transform: uppercase; font-size: 12px; padding: 10px; }
+        .table-items td { padding: 10px; border-bottom: 1px solid #eee; }
+        .table-items tr:last-child td { border-bottom: 2px solid #333; }
+
+        .totals { margin-top: 20px; }
+        .total-row td { padding: 5px 10px; }
+        .grand-total { font-size: 18px; font-weight: bold; background-color: #f8f9fa; border-top: 2px solid #333; }
+
+        .terms { margin-top: 50px; padding: 20px; background-color: #f9f9f9; border-left: 4px solid #2c3e50; }
+
+        .footer { margin-top: 50px; text-align: center; font-size: 12px; color: #95a5a6; border-top: 1px solid #eee; padding-top: 20px; }
+
+        @media print {
+            body { background: white; margin: 0; }
+            .page { margin: 0; box-shadow: none; width: 100%; height: auto; padding: 20px; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container text-center no-print py-3">
+        <button onclick="window.print()" class="btn btn-primary"><i class="fas fa-print"></i> Print Invoice</button>
+        <button onclick="window.close()" class="btn btn-secondary">Close</button>
+    </div>
+
+    <div class="page">
+        <!-- Header -->
+        <div class="row header align-items-end">
+            <div class="col-6">
+                <div class="company-name">{{ company.company_name }}</div>
+                <div class="small">
+                    {{ company.company_addras_1 }}<br>
+                    {% if company.company_addras_2 %}{{ company.company_addras_2 }}<br>{% endif %}
+                    {% if company.company_land_line %}Tel: {{ company.company_land_line }}{% endif %}
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="doc-title">Proforma Invoice</div>
+                <div class="text-end mt-2">
+                    <span class="label d-block">PI Number</span>
+                    <span class="fs-5 fw-bold">{{ header.pi_number }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info -->
+        <div class="row info-box">
+            <div class="col-6">
+                <div class="label">Bill To</div>
+                <div class="fs-5 fw-bold">{{ header.customer_name }}</div>
+            </div>
+            <div class="col-6 text-end">
+                <div class="row">
+                    <div class="col-6">
+                        <div class="label">Date</div>
+                        <div>{{ header.pi_date }}</div>
+                    </div>
+                    <div class="col-6">
+                        <div class="label">Valid Until</div>
+                        <div>{{ header.expiry_date }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Items -->
+        <table class="w-100 table-items">
+            <thead>
+                <tr>
+                    <th class="text-center" width="5%">#</th>
+                    <th width="40%">Item & Description</th>
+                    <th class="text-center" width="10%">Qty</th>
+                    <th class="text-end" width="15%">Unit Price</th>
+                    <th class="text-end" width="20%">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in details %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td>
+                        <div class="fw-bold">{{ item.item_name }}</div>
+                        {% if item.description %}
+                        <div class="small text-muted">{{ item.description }}</div>
+                        {% endif %}
+                    </td>
+                    <td class="text-center">{{ item.qty }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.unit_price) }}</td>
+                    <td class="text-end">{{ "{:,.2f}".format(item.total) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <!-- Totals -->
+        <div class="row totals">
+            <div class="col-6 offset-6">
+                <table class="w-100">
+                    <tr class="total-row">
+                        <td class="text-end label">Subtotal</td>
+                        <td class="text-end">{{ "{:,.2f}".format(header.subtotal) }}</td>
+                    </tr>
+                    {% if header.vat_amount > 0 %}
+                    <tr class="total-row">
+                        <td class="text-end label">VAT</td>
+                        <td class="text-end">{{ "{:,.2f}".format(header.vat_amount) }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr class="total-row grand-total">
+                        <td class="text-end">Total ({{ company.company_curency }})</td>
+                        <td class="text-end">{{ "{:,.2f}".format(header.grand_total) }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Terms -->
+        {% if header.narration %}
+        <div class="terms">
+            <div class="label mb-2">Terms & Conditions / Notes</div>
+            <div class="small">{{ header.narration }}</div>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="footer">
+            This is a computer generated Proforma Invoice and does not require a signature.
+        </div>
+    </div>
+
+</body>
+</html>
