@@ -215,9 +215,14 @@ function loadSupplierData() {
                         <td class="fw-bold">${hist.amount.toFixed(2)}</td>
                         <td>${hist.narration}</td>
                         <td>
-                            <a href="/voucher/print/bank/${hist.jv_no}" target="_blank" class="btn btn-sm btn-info text-white shadow-sm py-0">
-                                <i class="fas fa-print"></i> Print
-                            </a>
+                            <div class="btn-group btn-group-sm">
+                                <a href="/voucher/print/bank/${hist.jv_no}" target="_blank" class="btn btn-info text-white" title="Print Voucher">
+                                    <i class="fas fa-file-invoice"></i>
+                                </a>
+                                <a href="/cheque/print/${hist.jv_no}" target="_blank" class="btn btn-warning text-dark" title="Print Cheque">
+                                    <i class="fas fa-money-check"></i>
+                                </a>
+                            </div>
                         </td>
                     </tr>
                 `;

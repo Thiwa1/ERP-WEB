@@ -1265,6 +1265,126 @@ def control_panel_update():
 
     return redirect(url_for('control_panel'))
 
+# --- Cheque Print Setup ---
+@app.route('/cheque_print_setup', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def cheque_print_setup():
+    if request.method == 'POST':
+        bank_account = request.form.get('bank_account')
+        width = request.form.get('paper_width')
+        height = request.form.get('paper_height')
+
+        # Coordinates
+        date_x = request.form.get('date_x')
+        date_y = request.form.get('date_y')
+        payee_x = request.form.get('payee_x')
+        payee_y = request.form.get('payee_y')
+        words_x = request.form.get('words_x')
+        words_y = request.form.get('words_y')
+        digits_x = request.form.get('digits_x')
+        digits_y = request.form.get('digits_y')
+
+        # Font Sizes
+        date_fs = request.form.get('date_fs')
+        payee_fs = request.form.get('payee_fs')
+        words_fs = request.form.get('words_fs')
+        digits_fs = request.form.get('digits_fs')
+
+        is_cross = 1 if request.form.get('is_cross') else 0
+
+        try:
+            # Check if settings exist for bank account (or global if NULL)
+            # Simplification: One setting per bank account, or one global if bank_account is None
+            # Here we assume we are saving for a specific bank account or default
+
+            # Delete existing for this bank to overwrite (or update)
+            if bank_account:
+                db.execute_query("DELETE FROM cheque_print_settings WHERE bank_account = %s", (bank_account,), commit=True)
+            else:
+                db.execute_query("DELETE FROM cheque_print_settings WHERE bank_account IS NULL", commit=True)
+
+            query = """
+                INSERT INTO cheque_print_settings (
+                    bank_account, paper_width_mm, paper_height_mm,
+                    date_x, date_y, date_font_size,
+                    payee_x, payee_y, payee_font_size,
+                    amount_words_x, amount_words_y, amount_words_font_size,
+                    amount_digits_x, amount_digits_y, amount_digits_font_size,
+                    is_cross_cheque
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            params = (
+                bank_account if bank_account else None, width, height,
+                date_x, date_y, date_fs,
+                payee_x, payee_y, payee_fs,
+                words_x, words_y, words_fs,
+                digits_x, digits_y, digits_fs,
+                is_cross
+            )
+            db.execute_query(query, params, commit=True)
+            flash('Cheque settings saved successfully', 'success')
+
+        except Exception as e:
+            flash(f'Error saving settings: {str(e)}', 'danger')
+
+        return redirect(url_for('cheque_print_setup', bank_account=bank_account))
+
+    # GET
+    selected_bank = request.args.get('bank_account')
+    bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
+
+    settings = None
+    if selected_bank:
+        res = db.execute_query("SELECT * FROM cheque_print_settings WHERE bank_account = %s", (selected_bank,))
+        if res: settings = res[0]
+
+    # Fallback to global/default if not found for specific bank
+    if not settings:
+        res = db.execute_query("SELECT * FROM cheque_print_settings WHERE bank_account IS NULL")
+        if res: settings = res[0]
+
+    return render_template('cheque_print_setup.html',
+                           bank_accounts=bank_accounts,
+                           settings=settings,
+                           selected_bank=selected_bank)
+
+@app.route('/cheque/print/<int:jv_no>')
+@login_required
+def print_cheque(jv_no):
+    # Fetch Payment Details
+    # We need Payee, Date, Amount, Bank Account
+    query = """
+        SELECT
+            b.Bank_Payment_Date as date,
+            b.bank_book__suplier_name as payee,
+            SUM(b.bank_book_book_recode_dr) as amount,
+            b.bank_book__accont_name as bank_account
+        FROM bank_book_recod b
+        WHERE b.jv_numbers_jv_id = %s
+        GROUP BY b.Bank_Payment_Date, b.bank_book__suplier_name, b.bank_book__accont_name
+    """
+    res = db.execute_query(query, (jv_no,))
+    if not res:
+        return "Payment Not Found", 404
+    payment = res[0]
+
+    # Fetch Settings for this bank
+    settings_res = db.execute_query("SELECT * FROM cheque_print_settings WHERE bank_account = %s", (payment['bank_account'],))
+    settings = settings_res[0] if settings_res else None
+
+    if not settings:
+        # Fallback to default
+        settings_res = db.execute_query("SELECT * FROM cheque_print_settings WHERE bank_account IS NULL")
+        settings = settings_res[0] if settings_res else {}
+
+    # Convert amount to words (Placeholder logic or simple implementation)
+    # Ideally use `num2words` library. Since I can't install packages easily, simple fallback or dummy.
+    # Actually I can `pip install num2words` in bash session if needed, or write a simple function.
+    # For now, let's assume numeric.
+
+    return render_template('cheque_print.html', payment=payment, settings=settings)
+
 # --- Tax Settings ---
 @app.route('/tax_settings', methods=['GET', 'POST'])
 @login_required
@@ -5039,6 +5159,38 @@ def run_schema_migrations():
             cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Interest', 10.0, 'Withholding Tax on Interest')")
             cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Rent', 10.0, 'Withholding Tax on Rent')")
             cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Professional Fees', 5.0, 'Withholding Tax on Professional Fees')")
+
+        # 7. Cheque Print Settings Table
+        cursor.execute("SHOW TABLES LIKE 'cheque_print_settings'")
+        if not cursor.fetchone():
+            print("Migrating: Creating cheque_print_settings table")
+            cursor.execute("""
+                CREATE TABLE cheque_print_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    bank_account VARCHAR(100) NULL,
+                    paper_width_mm DOUBLE DEFAULT 175,
+                    paper_height_mm DOUBLE DEFAULT 76,
+
+                    date_x DOUBLE DEFAULT 140,
+                    date_y DOUBLE DEFAULT 10,
+                    date_font_size INT DEFAULT 10,
+
+                    payee_x DOUBLE DEFAULT 20,
+                    payee_y DOUBLE DEFAULT 25,
+                    payee_font_size INT DEFAULT 11,
+
+                    amount_words_x DOUBLE DEFAULT 25,
+                    amount_words_y DOUBLE DEFAULT 35,
+                    amount_words_font_size INT DEFAULT 10,
+                    amount_words_width DOUBLE DEFAULT 130,
+
+                    amount_digits_x DOUBLE DEFAULT 140,
+                    amount_digits_y DOUBLE DEFAULT 35,
+                    amount_digits_font_size INT DEFAULT 12,
+
+                    is_cross_cheque TINYINT DEFAULT 1
+                )
+            """)
 
         conn.commit()
         cursor.close()

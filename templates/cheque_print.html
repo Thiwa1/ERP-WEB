@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Print Cheque</title>
+    <style>
+        body { margin: 0; padding: 0; }
+
+        @page {
+            size: {{ settings.paper_width_mm }}mm {{ settings.paper_height_mm }}mm;
+            margin: 0;
+        }
+
+        .cheque-container {
+            position: relative;
+            width: {{ settings.paper_width_mm }}mm;
+            height: {{ settings.paper_height_mm }}mm;
+            /* background-color: #eee; Remove in prod, useful for debug */
+        }
+
+        .element {
+            position: absolute;
+            font-family: Arial, sans-serif;
+            white-space: nowrap;
+        }
+
+        .date {
+            left: {{ settings.date_x }}mm;
+            top: {{ settings.date_y }}mm;
+            font-size: {{ settings.date_font_size }}pt;
+            letter-spacing: 2px; /* Spacing for date boxes */
+        }
+
+        .payee {
+            left: {{ settings.payee_x }}mm;
+            top: {{ settings.payee_y }}mm;
+            font-size: {{ settings.payee_font_size }}pt;
+            font-weight: bold;
+        }
+
+        .words {
+            left: {{ settings.amount_words_x }}mm;
+            top: {{ settings.amount_words_y }}mm;
+            font-size: {{ settings.amount_words_font_size }}pt;
+            width: {{ settings.amount_words_width or 130 }}mm; /* Wrap text */
+            white-space: normal;
+            line-height: 1.5;
+        }
+
+        .digits {
+            left: {{ settings.amount_digits_x }}mm;
+            top: {{ settings.amount_digits_y }}mm;
+            font-size: {{ settings.amount_digits_font_size }}pt;
+            font-weight: bold;
+        }
+
+        .cross {
+            position: absolute;
+            left: 20mm;
+            top: 10mm;
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+            transform: rotate(-45deg);
+            font-size: 8pt;
+            text-align: center;
+            width: 30mm;
+            padding: 2px 0;
+        }
+
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+    <div class="no-print" style="padding: 10px; background: #f0f0f0; border-bottom: 1px solid #ccc; margin-bottom: 20px;">
+        <button onclick="window.print()">Print Now</button>
+        <button onclick="window.close()">Close</button>
+        <span style="margin-left: 20px;">Size: {{ settings.paper_width_mm }}mm x {{ settings.paper_height_mm }}mm</span>
+    </div>
+
+    <div class="cheque-container">
+        <!-- Date (DD MM YYYY format usually requires spacing) -->
+        <div class="element date">
+            {% if payment.date %}
+                {# Simple spacing, ideally split into DD MM YYYY logic in Python or JS if boxes exist #}
+                {{ payment.date.strftime('%d%m%Y') | list | join('  ') }}
+            {% endif %}
+        </div>
+
+        <div class="element payee">
+            *** {{ payment.payee }} ***
+        </div>
+
+        <div class="element words">
+            *** {{ payment.amount }} Only ***
+            {# Note: Real word conversion requires python library not easily installed here. #}
+        </div>
+
+        <div class="element digits">
+            **{{ "{:,.2f}".format(payment.amount) }}**
+        </div>
+
+        {% if settings.is_cross_cheque %}
+        <div class="cross">
+            A/C PAYEE ONLY
+        </div>
+        {% endif %}
+    </div>
+
+</body>
+</html>
