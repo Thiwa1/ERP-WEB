@@ -152,7 +152,7 @@
 <!-- Hidden Datalists -->
 <datalist id="accountList">
     {% for acc in accounts %}
-    <option value="{{ acc.account_name }}" data-curr="{{ acc.currency_code }}">
+    <option value="{{ acc.account_name }}" label="{{ acc.account_type }}" data-curr="{{ acc.currency_code }}">
     {% endfor %}
 </datalist>
 

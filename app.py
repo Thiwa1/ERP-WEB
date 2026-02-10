@@ -5909,9 +5909,16 @@ def get_exchange_rate():
 @login_required
 @has_permission('Access_Accounting')
 def journal_entry():
-    # Fetch accounts with currency info
+    # Fetch accounts with currency info and type classification
     accounts = db.execute_query("""
-        SELECT account_name, account_income, account_expenses, currency_code
+        SELECT
+            account_name,
+            currency_code,
+            CASE
+                WHEN account_income = 1 OR account_expenses = 1 THEN 'P&L Account'
+                WHEN account_assets = 1 OR account_liabilities = 1 OR account_equity = 1 THEN 'BS Account'
+                ELSE 'Other'
+            END as account_type
         FROM new_account_table
         WHERE account_active = 1
     """)
