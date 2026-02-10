@@ -3890,6 +3890,7 @@ def get_ledger_data():
 
     return {'data': data, 'basement': basement}
 
+
 # --- Trial Balance ---
 @app.route('/trial_balance')
 @login_required

@@ -1,7 +1,12 @@
- * Serving Flask app 'app'
- * Debug mode: on
-Address already in use
-Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.
-127.0.0.1 - - [10/Feb/2026 04:22:10] "GET /login HTTP/1.1" 200 -
-127.0.0.1 - - [10/Feb/2026 04:22:10] "[32mPOST /login HTTP/1.1[0m" 302 -
-127.0.0.1 - - [10/Feb/2026 04:22:10] "GET /login HTTP/1.1" 200 -
+Traceback (most recent call last):
+  File "/app/app.py", line 3894, in <module>
+    @app.route('/ledger_view')
+     ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/flask/sansio/scaffold.py", line 362, in decorator
+    self.add_url_rule(rule, endpoint, f, **options)
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/flask/sansio/scaffold.py", line 47, in wrapper_func
+    return f(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.12/lib/python3.12/site-packages/flask/sansio/app.py", line 657, in add_url_rule
+    raise AssertionError(
+AssertionError: View function mapping is overwriting an existing endpoint function: ledger_view
