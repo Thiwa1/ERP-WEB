@@ -4072,8 +4072,7 @@ def supplier_aging():
                                'report_date': today
                            })
 
-# --- Sales Summary Report (Cashier Wise) ---
-@app.route('/sales_summary_cashier')
+# --- Supplier Aging Report ---
 @login_required
 @has_permission('Access_Reports')
 def sales_summary_cashier():
