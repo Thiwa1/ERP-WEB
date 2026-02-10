@@ -1359,6 +1359,252 @@ def approval_action():
 
     return redirect(url_for('approvals'))
 
+# --- Bulk Upload Module ---
+@app.route('/bulk_upload_gl', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bulk_upload_gl():
+    if request.method == 'POST':
+        # Step 2: Process Uploaded File
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                flash('No file selected', 'danger')
+                return redirect(url_for('bulk_upload_gl'))
+
+            try:
+                # Parse CSV
+                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                csv_input = csv.DictReader(stream)
+
+                rows = []
+                for row in csv_input:
+                    # Clean keys/values
+                    clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
+                    if not clean_row.get('Account Name'): continue
+                    rows.append(clean_row)
+
+                # Fetch Existing Data for Validation/Dropdowns
+                existing_accounts = {a['account_name']: a for a in db.execute_query("SELECT account_name, account_basment FROM new_account_table")}
+                bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+                pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+                cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+
+                return render_template('bulk_upload_review.html',
+                                       rows=rows,
+                                       existing=existing_accounts,
+                                       bs_cats=bs_cats,
+                                       pl_cats=pl_cats,
+                                       cf_cats=cf_cats)
+
+            except Exception as e:
+                flash(f'Error processing file: {str(e)}', 'danger')
+                return redirect(url_for('bulk_upload_gl'))
+
+        # Step 3: Save Data
+        elif 'save_data' in request.form:
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                conn.start_transaction()
+
+                current_user = get_current_user_id()
+                today = date.today()
+
+                # Iterate through form lists
+                # Assuming form structure: account_name[], type[], category[], cf_category[], action[]
+
+                names = request.form.getlist('account_name[]')
+                types = request.form.getlist('account_type[]')
+                cats = request.form.getlist('category[]') # "Name,Pos|Type" e.g. "Current Assets,3|BS"
+                cfs = request.form.getlist('cf_category[]')
+                actions = request.form.getlist('action[]')
+
+                count = 0
+                for i in range(len(names)):
+                    if actions[i] == 'skip': continue
+
+                    name = names[i]
+                    acc_type = types[i] # Asset, Liability, Equity, Income, Expense
+                    cat_val = cats[i] # "CategoryName,Position|BS" or "|PL"
+                    cf = cfs[i]
+
+                    # Parse Category
+                    cat_name = None
+                    cat_pos = None
+                    is_bs = False
+                    is_pl = False
+
+                    if cat_val:
+                        parts = cat_val.split('|')
+                        if len(parts) == 2:
+                            cat_data, cat_type = parts
+                            cat_name, cat_pos = cat_data.split(',')
+                            if cat_type == 'BS': is_bs = True
+                            elif cat_type == 'PL': is_pl = True
+
+                    # Flags
+                    is_inc = 1 if acc_type == 'Income' else 0
+                    is_exp = 1 if acc_type == 'Expense' else 0
+                    is_ast = 1 if acc_type == 'Asset' else 0
+                    is_lia = 1 if acc_type == 'Liability' else 0
+                    is_equ = 1 if acc_type == 'Equity' else 0
+
+                    basement = 'DR' if is_ast or is_exp else 'CR'
+
+                    # Insert or Update
+                    # Check existence
+                    cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
+                    exists = cursor.fetchone()
+
+                    if exists:
+                        # Update
+                        cursor.execute("""
+                            UPDATE new_account_table SET
+                                account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                                account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                                account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                                cf_catogory=%s, account_basment=%s
+                            WHERE id=%s
+                        """, (
+                            cat_pos if is_pl else None, cat_pos if is_bs else None,
+                            cat_name if is_pl else None, cat_name if is_bs else None,
+                            is_inc, is_exp, is_ast, is_lia, is_equ,
+                            cf, basement, exists[0]
+                        ))
+                    else:
+                        # Insert
+                        cursor.execute("""
+                            INSERT INTO new_account_table (
+                                account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                                account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                                account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                                cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                        """, (
+                            name, cat_pos if is_pl else None, cat_pos if is_bs else None,
+                            cat_name if is_pl else None, cat_name if is_bs else None,
+                            is_inc, is_exp, is_ast, is_lia, is_equ,
+                            cf, today, current_user, basement
+                        ))
+                    count += 1
+
+                conn.commit()
+                flash(f'Successfully processed {count} accounts.', 'success')
+                return redirect(url_for('chart_of_accounts'))
+
+            except Exception as e:
+                conn.rollback()
+                flash(f'Transaction failed: {str(e)}', 'danger')
+                return redirect(url_for('bulk_upload_gl'))
+            finally:
+                cursor.close()
+                conn.close()
+
+    return render_template('bulk_upload_gl.html')
+
+@app.route('/bulk_upload_tb', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bulk_upload_tb():
+    if request.method == 'POST':
+        if 'file' in request.files:
+            file = request.files['file']
+            if file.filename == '':
+                flash('No file selected', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
+
+            try:
+                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                csv_input = csv.DictReader(stream)
+
+                rows = []
+                missing_accounts = []
+
+                # Fetch existing accounts
+                existing = {a['account_name'] for a in db.execute_query("SELECT account_name FROM new_account_table")}
+
+                for row in csv_input:
+                    name = row.get('Account Name', '').strip()
+                    dr = float(row.get('Debit', 0) or 0)
+                    cr = float(row.get('Credit', 0) or 0)
+
+                    if not name: continue
+
+                    status = 'OK'
+                    if name not in existing:
+                        status = 'Missing'
+                        missing_accounts.append(name)
+
+                    rows.append({'name': name, 'dr': dr, 'cr': cr, 'status': status})
+
+                if missing_accounts:
+                    flash(f'Found {len(missing_accounts)} missing accounts. Please create them first.', 'warning')
+                    # Pass rows to review page which allows creation?
+                    # Or simpler: Redirect to GL upload with these names pre-filled?
+                    # Let's render a TB review page that highlights missing ones and offers "Quick Create" button.
+
+                    # Fetch categories again for quick create modal
+                    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+                    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+                    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+
+                    return render_template('bulk_upload_tb_review.html',
+                                           rows=rows,
+                                           bs_cats=bs_cats, pl_cats=pl_cats, cf_cats=cf_cats)
+
+                # If no missing, allow posting immediately? Or Review first.
+                return render_template('bulk_upload_tb_review.html', rows=rows)
+
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+
+        elif 'save_tb' in request.form:
+            # Post TB as Opening Balance JV?
+            # Or just update balances? Standard is posting a JV.
+            names = request.form.getlist('account_name[]')
+            drs = request.form.getlist('dr[]')
+            crs = request.form.getlist('cr[]')
+
+            try:
+                conn = db.get_connection()
+                cursor = conn.cursor()
+                conn.start_transaction()
+
+                current_user = get_current_user_id()
+                today = date.today()
+
+                # Create JV
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                               ('OB-UPLOAD', 'Opening Balance Upload'))
+                jv_no = cursor.lastrowid
+
+                count = 0
+                for i in range(len(names)):
+                    dr = float(drs[i] or 0)
+                    cr = float(crs[i] or 0)
+                    if dr == 0 and cr == 0: continue
+
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, enty_values_CR,
+                            entry_effective_date, entry_create_date, entry_naration,
+                            entry_create_user, entry_jv
+                        ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
+                    """, (names[i], dr, cr, today, today, current_user, jv_no))
+                    count += 1
+
+                conn.commit()
+                flash(f'TB Uploaded successfully. {count} entries posted to JV {jv_no}', 'success')
+                return redirect(url_for('trial_balance'))
+
+            except Exception as e:
+                conn.rollback()
+                flash(f'Error posting TB: {str(e)}', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
+
+    return render_template('bulk_upload_tb.html')
+
 # --- Cheque Print Setup ---
 @app.route('/cheque_print_setup', methods=['GET', 'POST'])
 @login_required

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-upload me-2"></i> BULK UPLOAD GL ACCOUNTS</h4>
+        </div>
+    </div>
+
+    <!-- Upload Form -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body bg-light text-center py-5">
+            <form method="POST" enctype="multipart/form-data">
+                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
+                <h5 class="mb-3">Select CSV File to Upload</h5>
+                <p class="text-muted small mb-4">Required Headers: Account Name, Account Type (Income/Expense/Asset/Liability/Equity), Category (Optional), Cash Flow (Optional)</p>
+
+                <div class="d-flex justify-content-center">
+                    <input type="file" name="file" class="form-control w-50" accept=".csv" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary fw-bold mt-4 px-5">
+                    <i class="fas fa-check me-2"></i> Upload & Review
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Instructions -->
+    <div class="alert alert-info">
+        <h6 class="fw-bold"><i class="fas fa-info-circle me-2"></i> Instructions</h6>
+        <ul class="mb-0 small">
+            <li>Ensure the file is in <strong>CSV format</strong>.</li>
+            <li>Duplicate account names will update the existing record.</li>
+            <li>You can review and map categories in the next step.</li>
+        </ul>
+    </div>
+</div>
+{% endblock %}

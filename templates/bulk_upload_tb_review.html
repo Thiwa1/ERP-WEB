@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-search-dollar me-2"></i> REVIEW TRIAL BALANCE UPLOAD</h4>
+        </div>
+    </div>
+
+    <!-- Alert for Missing -->
+    {% set missing_count = rows|selectattr('status', 'equalto', 'Missing')|list|length %}
+    {% if missing_count > 0 %}
+    <div class="alert alert-warning d-flex align-items-center mb-4 shadow-sm" role="alert">
+        <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
+        <div>
+            <h5 class="alert-heading fw-bold">Action Required: {{ missing_count }} Accounts Missing</h5>
+            <p class="mb-0">Some accounts in the uploaded file do not exist in the system. You must create them before posting the opening balance.</p>
+            <button class="btn btn-sm btn-dark mt-2" data-bs-toggle="modal" data-bs-target="#createMissingModal">
+                <i class="fas fa-magic me-1"></i> Quick Create Missing Accounts
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <form method="POST">
+        <input type="hidden" name="save_tb" value="1">
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-0 table-responsive" style="max-height: 700px;">
+                <table class="table table-bordered table-hover mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th>Account Name</th>
+                            <th class="text-end">Debit</th>
+                            <th class="text-end">Credit</th>
+                            <th class="text-center">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        <tr class="{% if row.status == 'Missing' %}table-danger{% endif %}">
+                            <td>
+                                <input type="hidden" name="account_name[]" value="{{ row.name }}">
+                                {{ row.name }}
+                            </td>
+                            <td class="text-end">
+                                <input type="hidden" name="dr[]" value="{{ row.dr }}">
+                                {{ "{:,.2f}".format(row.dr) }}
+                            </td>
+                            <td class="text-end">
+                                <input type="hidden" name="cr[]" value="{{ row.cr }}">
+                                {{ "{:,.2f}".format(row.cr) }}
+                            </td>
+                            <td class="text-center">
+                                {% if row.status == 'Missing' %}
+                                <span class="badge bg-danger">Missing</span>
+                                {% else %}
+                                <span class="badge bg-success">OK</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-footer bg-white text-end">
+                <a href="{{ url_for('bulk_upload_tb') }}" class="btn btn-secondary me-2">Cancel</a>
+                <button type="submit" class="btn btn-success fw-bold px-4" {% if missing_count > 0 %}disabled{% endif %}>
+                    <i class="fas fa-save me-2"></i> Post Opening Balances
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<!-- Modal for Quick Create -->
+<div class="modal fade" id="createMissingModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> Create Missing Accounts</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <!-- Using same logic as GL Bulk Upload Review but strictly for missing ones -->
+                <!-- We can reuse the GL Bulk route by posting these missing rows to it? -->
+                <!-- Or implement a mini-form here. Let's redirect to GL Bulk Logic or use an iframe/form submission to a helper. -->
+
+                <form action="{{ url_for('bulk_upload_gl') }}" method="POST" id="quickCreateForm">
+                    <input type="hidden" name="save_data" value="1">
+                    <div class="table-responsive">
+                        <table class="table table-bordered mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Account Name</th>
+                                    <th>Type</th>
+                                    <th>Category</th>
+                                    <th>Cash Flow</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in rows if row.status == 'Missing' %}
+                                <tr>
+                                    <td>
+                                        <input type="text" class="form-control form-control-sm fw-bold" name="account_name[]" value="{{ row.name }}" readonly>
+                                        <input type="hidden" name="action[]" value="save">
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" name="account_type[]" required>
+                                            <option value="Asset">Asset (BS)</option>
+                                            <option value="Liability">Liability (BS)</option>
+                                            <option value="Equity">Equity (BS)</option>
+                                            <option value="Income">Income (PL)</option>
+                                            <option value="Expense">Expense (PL)</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm select2" name="category[]" required>
+                                            <option value="">-- Select --</option>
+                                            <optgroup label="Balance Sheet">
+                                                {% for c in bs_cats %}
+                                                <option value="{{ c.name_of_category }},{{ c.holding_position }}|BS">{{ c.name_of_category }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                            <optgroup label="Profit & Loss">
+                                                {% for c in pl_cats %}
+                                                <option value="{{ c.name_of_category }},{{ c.holding_position }}|PL">{{ c.name_of_category }}</option>
+                                                {% endfor %}
+                                            </optgroup>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select form-select-sm" name="cf_category[]">
+                                            <option value="">-- Select --</option>
+                                            {% for cf in cf_cats %}
+                                            <option value="{{ cf.catogory_name }}">{{ cf.catogory_name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="p-3 text-end bg-light border-top">
+                        <button type="submit" class="btn btn-primary fw-bold">Create Accounts & Return</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

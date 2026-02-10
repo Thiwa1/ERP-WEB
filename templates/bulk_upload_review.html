@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-tasks me-2"></i> REVIEW GL ACCOUNTS UPLOAD</h4>
+        </div>
+    </div>
+
+    <form method="POST">
+        <input type="hidden" name="save_data" value="1">
+
+        <div class="card shadow-sm border-0">
+            <div class="card-body p-0 table-responsive" style="max-height: 700px;">
+                <table class="table table-bordered table-hover mb-0 align-middle">
+                    <thead class="table-light sticky-top">
+                        <tr>
+                            <th width="20%">Account Name</th>
+                            <th width="15%">Type</th>
+                            <th width="25%">Category (BS/PL)</th>
+                            <th width="20%">Cash Flow Category</th>
+                            <th width="10%">Action</th>
+                            <th width="10%">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in rows %}
+                        {% set is_exist = row['Account Name'] in existing %}
+                        <tr class="{% if is_exist %}table-warning{% endif %}">
+                            <td>
+                                <input type="text" class="form-control form-control-sm fw-bold" name="account_name[]" value="{{ row['Account Name'] }}" readonly>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="account_type[]" onchange="updateRowColor(this)">
+                                    <option value="Asset" {% if row['Account Type'] == 'Asset' %}selected{% endif %}>Asset (BS)</option>
+                                    <option value="Liability" {% if row['Account Type'] == 'Liability' %}selected{% endif %}>Liability (BS)</option>
+                                    <option value="Equity" {% if row['Account Type'] == 'Equity' %}selected{% endif %}>Equity (BS)</option>
+                                    <option value="Income" {% if row['Account Type'] == 'Income' %}selected{% endif %}>Income (PL)</option>
+                                    <option value="Expense" {% if row['Account Type'] == 'Expense' %}selected{% endif %}>Expense (PL)</option>
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm select2" name="category[]">
+                                    <option value="">-- Select Category --</option>
+                                    <optgroup label="Balance Sheet">
+                                        {% for c in bs_cats %}
+                                        <option value="{{ c.name_of_category }},{{ c.holding_position }}|BS"
+                                            {% if row['Category'] == c.name_of_category %}selected{% endif %}>
+                                            {{ c.name_of_category }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                    <optgroup label="Profit & Loss">
+                                        {% for c in pl_cats %}
+                                        <option value="{{ c.name_of_category }},{{ c.holding_position }}|PL"
+                                            {% if row['Category'] == c.name_of_category %}selected{% endif %}>
+                                            {{ c.name_of_category }}
+                                        </option>
+                                        {% endfor %}
+                                    </optgroup>
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="cf_category[]">
+                                    <option value="">-- Select CF --</option>
+                                    {% for cf in cf_cats %}
+                                    <option value="{{ cf.catogory_name }}" {% if row['Cash Flow Category'] == cf.catogory_name %}selected{% endif %}>{{ cf.catogory_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </td>
+                            <td>
+                                <select class="form-select form-select-sm" name="action[]">
+                                    <option value="save">Save</option>
+                                    <option value="skip">Skip</option>
+                                </select>
+                            </td>
+                            <td class="text-center">
+                                {% if is_exist %}
+                                <span class="badge bg-warning text-dark">Update</span>
+                                {% else %}
+                                <span class="badge bg-success">New</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="card-footer bg-white text-end">
+                <a href="{{ url_for('bulk_upload_gl') }}" class="btn btn-secondary me-2">Cancel</a>
+                <button type="submit" class="btn btn-success fw-bold px-4">
+                    <i class="fas fa-check-circle me-2"></i> Confirm Import
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    function updateRowColor(select) {
+        const row = select.closest('tr');
+        const type = select.value;
+        // Optional: Change visual cues based on type if needed
+        // e.g., if (type === 'Income' || type === 'Expense') row.classList.add('table-info');
+    }
+</script>
+{% endblock %}
