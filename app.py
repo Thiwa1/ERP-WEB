@@ -4995,108 +4995,161 @@ def submit_customer_receipt():
     return redirect(url_for('customer_receipt'))
 
 # --- Profit & Loss Report ---
-@app.route('/profit_loss')
+@app.route('/profit_loss', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Reports')
 def profit_loss():
-    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
-    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    periods = []
 
-    # Calculate Previous Period (Same duration, immediately before)
-    f_date = datetime.strptime(from_date, '%Y-%m-%d')
-    t_date = datetime.strptime(to_date, '%Y-%m-%d')
-    delta = t_date - f_date
-    prev_to = f_date - date.resolution # Day before start
-    prev_from = prev_to - delta
+    if request.method == 'POST':
+        starts = request.form.getlist('start_date[]')
+        ends = request.form.getlist('end_date[]')
+        for s, e in zip(starts, ends):
+            if s and e:
+                periods.append({'start': s, 'end': e})
 
-    prev_from_str = prev_from.strftime('%Y-%m-%d')
-    prev_to_str = prev_to.strftime('%Y-%m-%d')
+    # If no periods (GET or empty POST), Default to Current Month
+    if not periods:
+        today = date.today()
+        start = today.replace(day=1).strftime('%Y-%m-%d')
+        end = today.strftime('%Y-%m-%d')
+        periods.append({'start': start, 'end': end})
 
-    # Fetch Data for Both Periods
-    # We select balances for current and previous period in one go using conditional aggregation
-    query = """
-        SELECT
-            na.account_name,
-            na.account_name_of_catogory_PL as category,
-            na.account_income,
-            na.account_expenses,
-            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_DR, 0) ELSE 0 END) as cur_dr,
-            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_CR, 0) ELSE 0 END) as cur_cr,
-            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_DR, 0) ELSE 0 END) as prev_dr,
-            SUM(CASE WHEN ed.entry_effective_date BETWEEN %s AND %s THEN COALESCE(ed.enty_values_CR, 0) ELSE 0 END) as prev_cr
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND (ed.entry_effective_date BETWEEN %s AND %s OR ed.entry_effective_date BETWEEN %s AND %s)
-            AND ed.entry_deleted = 0
-        WHERE (na.account_income = 1 OR na.account_expenses = 1)
-        GROUP BY na.account_name, na.account_name_of_catogory_PL, na.account_income, na.account_expenses, na.account_hold_possion_PL
-        ORDER BY na.account_hold_possion_PL, na.account_name
-    """
+    # Prepare Data Structure
+    # Map: Account Name -> {'category': cat, 'values': [0.0, 0.0, ...]}
+    acc_map = {}
 
-    # Params: cur_start, cur_end, cur_start, cur_end (for current sums)
-    #         prev_start, prev_end, prev_start, prev_end (for prev sums)
-    #         prev_start, cur_end, prev_start, cur_end (for join) - actually simplified join range covers both
+    # Pre-fetch all P&L accounts to ensure rows exist even if 0 balance?
+    # Or just fetch active ones.
+    # Better to fetch data per period and merge.
 
-    # Simplified: JOIN covers min(prev_from) to max(to_date)
-    # But to be safe on ranges, we just use OR in join condition as written.
+    conn = db.get_connection()
+    if not conn:
+        flash('Database connection failed', 'danger')
+        return redirect(url_for('index'))
 
-    params = (
-        from_date, to_date, from_date, to_date,
-        prev_from_str, prev_to_str, prev_from_str, prev_to_str,
-        prev_from_str, prev_to_str, from_date, to_date
-    )
+    cursor = conn.cursor(dictionary=True)
 
-    rows = db.execute_query(query, params)
+    try:
+        # 1. Fetch all P&L Accounts (Income/Expense) to have a base list
+        # We need this to ensure alignment across columns if an account has value in Period 1 but not Period 2
+        cursor.execute("""
+            SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL, account_income, account_expenses
+            FROM new_account_table
+            WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+            ORDER BY account_hold_possion_PL, account_name
+        """)
+        all_accounts = cursor.fetchall()
 
-    # Process Data
-    income_data = {}
-    expense_data = {}
+        # Initialize Map with zero values for all periods
+        for acc in all_accounts:
+            acc_map[acc['account_name']] = {
+                'meta': acc,
+                'values': [0.0] * len(periods)
+            }
 
-    totals = {
-        'inc_cur': 0, 'inc_prev': 0,
-        'exp_cur': 0, 'exp_prev': 0
+        # 2. Iterate Periods and Fill Data
+        for idx, p in enumerate(periods):
+            # Query sum of DR and CR for this period
+            # Income = CR - DR, Expense = DR - CR
+            query = """
+                SELECT
+                    account_name,
+                    SUM(enty_values_DR) as dr,
+                    SUM(enty_values_CR) as cr
+                FROM entry_details
+                WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+                GROUP BY account_name
+            """
+            cursor.execute(query, (p['start'], p['end']))
+            rows = cursor.fetchall()
+
+            for r in rows:
+                name = r['account_name']
+                if name in acc_map:
+                    dr = float(r['dr'] or 0)
+                    cr = float(r['cr'] or 0)
+
+                    is_income = acc_map[name]['meta']['account_income'] == 1
+                    val = (cr - dr) if is_income else (dr - cr)
+
+                    acc_map[name]['values'][idx] = val
+
+    finally:
+        cursor.close()
+        conn.close()
+
+    # 3. Structure for Template
+    # We need lists of categories, sorted by position
+    # Each category has 'name', 'order', 'accounts' list
+
+    # Using dictionaries to group by category name
+    income_cats_dict = {}
+    expense_cats_dict = {}
+
+    # Process Map into Categories
+    for name, data in acc_map.items():
+        # Check if any non-zero value across periods
+        # We can hide accounts that are zero in ALL selected periods to keep report clean
+        if all(abs(v) < 0.01 for v in data['values']):
+            continue
+
+        cat_name = data['meta']['account_name_of_catogory_PL'] or 'Uncategorized'
+        is_income = data['meta']['account_income'] == 1
+        sort_order = data['meta']['account_hold_possion_PL'] or 999
+
+        target_dict = income_cats_dict if is_income else expense_cats_dict
+
+        if cat_name not in target_dict:
+            target_dict[cat_name] = {'name': cat_name, 'order': sort_order, 'accounts': []}
+
+        target_dict[cat_name]['accounts'].append({
+            'name': name,
+            'amounts': data['values']
+        })
+
+    # Convert Dicts to Sorted Lists
+    # Sort categories by 'order'
+    income_categories = sorted(income_cats_dict.values(), key=lambda x: x['order'])
+    expense_categories = sorted(expense_cats_dict.values(), key=lambda x: x['order'])
+
+    # Sort accounts within categories alphabetically
+    for cat in income_categories:
+        cat['accounts'].sort(key=lambda x: x['name'])
+    for cat in expense_categories:
+        cat['accounts'].sort(key=lambda x: x['name'])
+
+    # Calculate Column Totals
+    total_income = [0.0] * len(periods)
+    total_expense = [0.0] * len(periods)
+
+    # Sum Incomes
+    for cat in income_categories:
+        for acc in cat['accounts']:
+            for i, v in enumerate(acc['amounts']):
+                total_income[i] += v
+
+    # Sum Expenses
+    for cat in expense_categories:
+        for acc in cat['accounts']:
+            for i, v in enumerate(acc['amounts']):
+                total_expense[i] += v
+
+    net_profit = [i - e for i, e in zip(total_income, total_expense)]
+
+    report_data = {
+        'income_categories': income_categories,
+        'expense_categories': expense_categories,
+        'total_income': total_income,
+        'total_expense': total_expense,
+        'net_profit': net_profit
     }
 
-    for r in rows:
-        cur_bal = 0
-        prev_bal = 0
-
-        # Calculate balance based on type (Income = CR - DR, Expense = DR - CR)
-        if r['account_income'] == 1:
-            cur_bal = float(r['cur_cr']) - float(r['cur_dr'])
-            prev_bal = float(r['prev_cr']) - float(r['prev_dr'])
-
-            if cur_bal != 0 or prev_bal != 0:
-                cat = r['category'] or "Other Income"
-                if cat not in income_data: income_data[cat] = []
-                income_data[cat].append({'name': r['account_name'], 'cur': cur_bal, 'prev': prev_bal})
-                totals['inc_cur'] += cur_bal
-                totals['inc_prev'] += prev_bal
-
-        elif r['account_expenses'] == 1:
-            cur_bal = float(r['cur_dr']) - float(r['cur_cr'])
-            prev_bal = float(r['prev_dr']) - float(r['prev_cr'])
-
-            if cur_bal != 0 or prev_bal != 0:
-                cat = r['category'] or "Operating Expenses"
-                if cat not in expense_data: expense_data[cat] = []
-                expense_data[cat].append({'name': r['account_name'], 'cur': cur_bal, 'prev': prev_bal})
-                totals['exp_cur'] += cur_bal
-                totals['exp_prev'] += prev_bal
-
-    net_profit_cur = totals['inc_cur'] - totals['exp_cur']
-    net_profit_prev = totals['inc_prev'] - totals['exp_prev']
-
     return render_template('profit_loss.html',
-                           from_date=from_date,
-                           to_date=to_date,
-                           prev_from=prev_from_str,
-                           prev_to=prev_to_str,
-                           income_data=income_data,
-                           expense_data=expense_data,
-                           totals=totals,
-                           net_profit_cur=net_profit_cur,
-                           net_profit_prev=net_profit_prev)
+                           periods=periods,
+                           report_data=report_data,
+                           default_start=date.today().replace(day=1).strftime('%Y-%m-%d'),
+                           default_end=date.today().strftime('%Y-%m-%d'))
 
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])

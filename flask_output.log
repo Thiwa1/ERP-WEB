@@ -5,3 +5,54 @@ Port 5000 is in use by another program. Either identify and stop that program, o
 127.0.0.1 - - [11/Feb/2026 07:43:07] "GET /login HTTP/1.1" 200 -
 127.0.0.1 - - [11/Feb/2026 07:43:07] "[32mPOST /login HTTP/1.1[0m" 302 -
 127.0.0.1 - - [11/Feb/2026 07:43:07] "GET /login HTTP/1.1" 200 -
+ * Detected change in '/app/app.py', reloading
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+WARNING: Database connection failed. Cannot create default user.
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Payable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Account Receivable
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cost Of Goods Sold
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Sales
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Inventory
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: VAT Control
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Creating default account: Cash In Hand
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+ * Detected change in '/app/tests/test_profit_loss.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+ * Detected change in '/app/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+ * Detected change in '/app/app.py', reloading
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 410-907-091
+127.0.0.1 - - [11/Feb/2026 11:56:02] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [11/Feb/2026 11:56:03] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [11/Feb/2026 11:56:03] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [11/Feb/2026 11:56:03] "[32mGET /profit_loss HTTP/1.1[0m" 302 -
+127.0.0.1 - - [11/Feb/2026 11:56:03] "GET /login HTTP/1.1" 200 -
