@@ -5288,7 +5288,8 @@ def vat_report():
             'tin': r['tin'],
             'description': 'Purchase',
             'value': net,
-            'vat': vat
+            'vat': vat,
+            'disallowed_vat': 0.0 # Default 0 as not tracked explicitly
         })
         total_input_value += net
         total_input_vat += vat
@@ -5350,7 +5351,8 @@ def vat_report():
             'tin': '-',
             'description': r['narration'],
             'value': 0, # Unknown base
-            'vat': vat
+            'vat': vat,
+            'disallowed_vat': 0.0
         })
         total_input_vat += vat
 

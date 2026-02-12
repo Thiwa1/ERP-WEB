@@ -137,10 +137,11 @@
                                     <th>Invoice Date</th>
                                     <th>Tax Invoice No</th>
                                     <th>Supplier's TIN</th>
-                                    <th>Name of Supplier</th>
+                                    <th>Name of the Supplier</th>
                                     <th>Description</th>
-                                    <th>Value of Supply</th>
+                                    <th>Value of purchase</th>
                                     <th>VAT Amount</th>
+                                    <th>Disallowed VAT Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -154,12 +155,14 @@
                                     <td>{{ row.description }}</td>
                                     <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
                                     <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end text-muted">{{ "{:,.2f}".format(row.disallowed_vat or 0) }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="6" class="text-end">TOTAL</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_input_value) }}</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                    <td class="text-end">-</td>
                                 </tr>
                             </tbody>
                         </table>
