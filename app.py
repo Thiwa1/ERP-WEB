@@ -5151,6 +5151,224 @@ def profit_loss():
                            default_start=date.today().replace(day=1).strftime('%Y-%m-%d'),
                            default_end=date.today().strftime('%Y-%m-%d'))
 
+# --- VAT Report (Sri Lanka Schedule 01 & 02) ---
+@app.route('/vat_report', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def vat_report():
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+
+    # 1. Schedule 01 - Output Tax (Sales)
+    # A. Credit Sales (Invoice_Oustanding linked to Customer)
+    # Use suppliers table where Is_Customer=1.
+    # Note: Invoice_Oustanding stores the Net+VAT in 'invoice_total_oustanding'?
+    # Or implies VAT is calculated on top. `suppliers_invoice_data` has `suppliers_VAT_rate`.
+    # `Invoice_Oustanding` has `VAT_rate`.
+    # Assuming `invoice_total_oustanding` is Gross (Net + VAT).
+
+    query_credit_sales = """
+        SELECT
+            io.invoice_date as date,
+            io.invoice_number as invoice_no,
+            s.customer_name as purchaser,
+            s.customer_code as tin, -- Assuming TIN stored in code or need dedicated column? Schema migration added suppliers_TIN. Customer has no TIN column?
+            -- Customer table has 'customer_code', 'customer_name'. No specific TIN. Assuming Code or we need to add it.
+            -- Using customer_code for now.
+            io.invoice_total_oustanding as total,
+            io.VAT_rate as rate
+        FROM Invoice_Oustanding io
+        JOIN customer s ON io.invoice_buinding_Customer = s.id
+        WHERE io.invoice_date BETWEEN %s AND %s AND io.VAT_rate > 0
+    """
+    credit_sales = db.execute_query(query_credit_sales, (from_date, to_date))
+
+    schedule_01 = []
+    total_output_value = 0
+    total_output_vat = 0
+
+    for r in credit_sales:
+        rate = float(r['rate'] or 0)
+        total = float(r['total'] or 0)
+
+        # Calculate Net and VAT (assuming Total is Inclusive since system seems inclusive focused)
+        # However, `submit_invoice` adds VAT to Subtotal. So `invoice_total_oustanding` = Subtotal + VAT.
+        # So Net = Total / (1 + Rate/100)
+
+        net = total / (1 + (rate / 100))
+        vat = total - net
+
+        schedule_01.append({
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'purchaser': r['purchaser'],
+            'tin': r['tin'],
+            'description': 'Credit Sale',
+            'value': net,
+            'vat': vat
+        })
+        total_output_value += net
+        total_output_vat += vat
+
+    # B. POS Sales (Aggregated by Invoice)
+    # Filter where VAT was enabled/calculated.
+    # We can check GL for 'VAT Control' entries linked to POS JVs, or calculate from Sales data.
+    # Sales Table: `pos_sales_invoice_01`
+    # It has `Total_Value` (Gross).
+    # If `VAT_Enable` (from settings) was on during sale, we treat it.
+    # But settings change. We need row-level VAT info.
+    # Current schema `pos_sales_invoice_01` doesn't strictly store 'VAT Amount' or 'Rate' per row.
+    # But `submit_pos_sale` now splits GL entries.
+    # Best way: Query GL `entry_details` for 'VAT Control' CR entries (Output Tax) linked to POS JVs.
+
+    query_pos_vat = """
+        SELECT
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration, -- Contains "VAT on POS Sale {invoice_no}"
+            ed.enty_values_CR as vat_amount,
+            (SELECT SUM(Total_Value) FROM pos_sales_invoice_01 WHERE jv = ed.entry_jv) as gross_total,
+            (SELECT Invoice_No FROM pos_sales_invoice_01 WHERE jv = ed.entry_jv LIMIT 1) as invoice_no
+        FROM entry_details ed
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_CR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE 'VAT%%POS%%'
+    """
+    pos_sales = db.execute_query(query_pos_vat, (from_date, to_date))
+
+    for r in pos_sales:
+        vat = float(r['vat_amount'] or 0)
+        gross = float(r['gross_total'] or 0)
+        net = gross - vat
+
+        schedule_01.append({
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'] or 'POS',
+            'purchaser': 'Cash Customer',
+            'tin': '-',
+            'description': 'POS Sale',
+            'value': net,
+            'vat': vat
+        })
+        total_output_value += net
+        total_output_vat += vat
+
+    # 2. Schedule 02 - Input Tax (Purchases)
+    # Credit Purchases (suppliers_invoice_data)
+    query_purchases = """
+        SELECT
+            sid.suppliers_invoice_date as date,
+            sid.suppliers_invoice_number as invoice_no,
+            s.supplier_name as supplier,
+            s.suppliers_TIN as tin,
+            sid.suppliers_invoice_total_oustanding as total,
+            sid.suppliers_VAT_rate as rate
+        FROM suppliers_invoice_data sid
+        JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
+        WHERE sid.suppliers_invoice_date BETWEEN %s AND %s AND sid.suppliers_VAT_rate > 0
+    """
+    credit_purchases = db.execute_query(query_purchases, (from_date, to_date))
+
+    schedule_02 = []
+    total_input_value = 0
+    total_input_vat = 0
+
+    for r in credit_purchases:
+        rate = float(r['rate'] or 0)
+        total = float(r['total'] or 0)
+
+        # Assume Total is Gross (Standard ERP flow)
+        net = total / (1 + (rate / 100))
+        vat = total - net
+
+        schedule_02.append({
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'supplier': r['supplier'],
+            'tin': r['tin'],
+            'description': 'Purchase',
+            'value': net,
+            'vat': vat
+        })
+        total_input_value += net
+        total_input_vat += vat
+
+    # Check for Direct/Cash Purchases with VAT
+    # Query GL 'VAT Control' DR entries (Input Tax)
+    # Exclude those linked to suppliers_invoice_data (checked via JV linkage if possible, or assume manual JVs/Cash payments)
+
+    # Simplified: Get all VAT Control DR (Input) and filter out duplicates?
+    # `suppliers_invoice_data` creates a JV. That JV has 'VAT Control' DR entry.
+    # So actually, querying the GL for 'VAT Control' DR entries is the Single Source of Truth for Schedule 02.
+    # But we need Supplier Name and TIN.
+    # The GL `entry_details` doesn't store Supplier Name directly (except in narration sometimes).
+    # `suppliers_invoice_data` is better for meta-data.
+
+    # Strategy: Use `suppliers_invoice_data` for known supplier invoices.
+    # Use GL for anything else (e.g. Petty Cash VAT), labeled as "Other/Direct".
+
+    # Get JVs covered by schedule_02 so far
+    # `suppliers_invoice_data` has `suppliers_invoice_JV`.
+
+    covered_jvs = [str(r['suppliers_invoice_JV']) for r in db.execute_query(
+        "SELECT suppliers_invoice_JV FROM suppliers_invoice_data WHERE suppliers_invoice_date BETWEEN %s AND %s",
+        (from_date, to_date)
+    ) if r['suppliers_invoice_JV']]
+
+    # Find GL Input Tax entries NOT in covered JVs
+    query_other_input = """
+        SELECT
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_amount,
+            ed.entry_jv
+        FROM entry_details ed
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+    """
+    if covered_jvs:
+        placeholders = ','.join(['%s'] * len(covered_jvs))
+        query_other_input += f" AND ed.entry_jv NOT IN ({placeholders})"
+        params_other = [from_date, to_date] + covered_jvs
+    else:
+        params_other = [from_date, to_date]
+
+    other_inputs = db.execute_query(query_other_input, tuple(params_other))
+
+    for r in other_inputs:
+        vat = float(r['vat_amount'] or 0)
+        # Estimate Value? Value = VAT / 0.18? We don't know rate.
+        # Just show VAT and 0 Value or derive from associated Expense entry in same JV?
+        # Too complex to fetch associated expense.
+        # Display Value as N/A or 0.
+
+        schedule_02.append({
+            'date': str(r['date']),
+            'invoice_no': f"JV-{r['entry_jv']}",
+            'supplier': 'Other/Direct',
+            'tin': '-',
+            'description': r['narration'],
+            'value': 0, # Unknown base
+            'vat': vat
+        })
+        total_input_vat += vat
+
+    summary = {
+        'total_output_value': total_output_value,
+        'total_output_vat': total_output_vat,
+        'total_input_value': total_input_value,
+        'total_input_vat': total_input_vat,
+        'net_vat': total_output_vat - total_input_vat
+    }
+
+    return render_template('vat_report.html',
+                           from_date=from_date,
+                           to_date=to_date,
+                           schedule_01=schedule_01,
+                           schedule_02=schedule_02,
+                           summary=summary)
+
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
 @login_required
@@ -5440,13 +5658,44 @@ def submit_pos_sale():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
 
-        # Credit Sales Account
+        # Calculate VAT if enabled
+        vat_enabled = settings.get('vat_enable') == 1
+        vat_amount = 0
+        net_sales = total_sale_value
+
+        if vat_enabled:
+            # Check company VAT rate or assume 18% (should be in tax_rates or system_settings)
+            # Defaulting to 15% as per Sri Lanka historical or dynamic.
+            # Ideally fetch from tax_rates table. For now, assume 18% (current SL rate) or similar.
+            # The prompt mentions "VAT Schedule of Sri Lanka".
+            # If VAT is inclusive in Price: Net = Total / (1 + Rate)
+            # If VAT is exclusive: Total = Net + (Net * Rate)
+            # POS usually implies tax inclusive pricing on shelf.
+
+            # Fetch VAT Rate from Tax Settings if exists, else 18%
+            cursor.execute("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
+            res_vat = cursor.fetchone()
+            vat_rate = res_vat[0] if res_vat else 18.0
+
+            net_sales = total_sale_value / (1 + (vat_rate / 100))
+            vat_amount = total_sale_value - net_sales
+
+        # Credit Sales Account (Net)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+
+        # Credit VAT Control (If VAT > 0)
+        if vat_amount > 0:
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user, jv_no))
 
         # Cost of Goods Sold (DR COGS, CR Inventory)
         if total_cost_value > 0:

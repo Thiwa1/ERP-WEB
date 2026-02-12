@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h2 class="text-primary fw-bold mb-4">VAT RETURN - SCHEDULE 01 & 02</h2>
+
+    <!-- Filter -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body bg-light">
+            <form method="GET" action="/vat_report" class="row align-items-end g-3 justify-content-center">
+                <div class="col-auto">
+                    <label class="form-label fw-bold">From Date</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
+                </div>
+                <div class="col-auto">
+                    <label class="form-label fw-bold">To Date</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary fw-bold px-4">Generate Report</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-3" id="vatTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active fw-bold" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab">Summary</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule01-tab" data-bs-toggle="tab" data-bs-target="#schedule01" type="button" role="tab">Schedule 01 (Sales/Output)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule02-tab" data-bs-toggle="tab" data-bs-target="#schedule02" type="button" role="tab">Schedule 02 (Purchases/Input)</button>
+        </li>
+    </ul>
+
+    <!-- Content -->
+    <div class="tab-content" id="vatTabsContent">
+
+        <!-- SUMMARY -->
+        <div class="tab-pane fade show active" id="summary" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <h4 class="card-title text-center text-secondary mb-4">VAT Summary ({{ from_date }} to {{ to_date }})</h4>
+                    <div class="row justify-content-center">
+                        <div class="col-md-6">
+                            <table class="table table-bordered">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Description</th>
+                                        <th class="text-end">Amount ({{ company_currency }})</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Total Output Tax (Sales)</td>
+                                        <td class="text-end text-success fw-bold">{{ "{:,.2f}".format(summary.total_output_vat) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Input Tax (Purchases)</td>
+                                        <td class="text-end text-danger fw-bold">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                    </tr>
+                                    <tr class="table-primary border-top border-3">
+                                        <td class="fw-bold">Net VAT Payable / (Refundable)</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(summary.net_vat) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 01 (Sales) -->
+        <div class="tab-pane fade" id="schedule01" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 01 - Output Tax</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_01.csv', 'table_s01')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s01">
+                            <thead class="bg-primary text-white text-center">
+                                <tr>
+                                    <th>Serial No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Tax Invoice No</th>
+                                    <th>Purchaser's TIN</th>
+                                    <th>Name of Purchaser</th>
+                                    <th>Description</th>
+                                    <th>Value of Supply</th>
+                                    <th>VAT Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_01 %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.tin or '-' }}</td>
+                                    <td>{{ row.purchaser }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="6" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_output_value) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_output_vat) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 02 (Purchases) -->
+        <div class="tab-pane fade" id="schedule02" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 02 - Input Tax</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_02.csv', 'table_s02')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s02">
+                            <thead class="bg-success text-white text-center">
+                                <tr>
+                                    <th>Serial No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Tax Invoice No</th>
+                                    <th>Supplier's TIN</th>
+                                    <th>Name of Supplier</th>
+                                    <th>Description</th>
+                                    <th>Value of Supply</th>
+                                    <th>VAT Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_02 %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.tin or '-' }}</td>
+                                    <td>{{ row.supplier }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="6" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_input_value) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function exportTableToCSV(filename, tableId) {
+    var csv = [];
+    var rows = document.querySelectorAll("#" + tableId + " tr");
+
+    for (var i = 0; i < rows.length; i++) {
+        var row = [], cols = rows[i].querySelectorAll("td, th");
+
+        for (var j = 0; j < cols.length; j++)
+            row.push('"' + cols[j].innerText + '"');
+
+        csv.push(row.join(","));
+    }
+
+    downloadCSV(csv.join("\\n"), filename);
+}
+
+function downloadCSV(csv, filename) {
+    var csvFile;
+    var downloadLink;
+
+    csvFile = new Blob([csv], {type: "text/csv"});
+    downloadLink = document.createElement("a");
+    downloadLink.download = filename;
+    downloadLink.href = window.URL.createObjectURL(csvFile);
+    downloadLink.style.display = "none";
+    document.body.appendChild(downloadLink);
+    downloadLink.click();
+}
+</script>
+{% endblock %}
