@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container d-flex flex-column align-items-center justify-content-center" style="min-height: 60vh;">
+    <h2 class="mb-4">System Installation / Update</h2>
+    <div class="card shadow-lg p-4" style="width: 100%; max-width: 600px;">
+        <h5 class="text-center mb-3">Applying Database Migrations...</h5>
+        <div class="progress mb-3" style="height: 25px;">
+            <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
+        </div>
+        <ul id="logList" class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto; font-size: 0.9rem;">
+            <li class="list-group-item text-muted">Initializing...</li>
+        </ul>
+        <div class="mt-3 text-center" id="completionArea" style="display: none;">
+            <div class="alert alert-success">Installation Complete!</div>
+            <a href="/" class="btn btn-primary fw-bold">Go to Dashboard</a>
+        </div>
+    </div>
+</div>
+
+<script>
+    const eventSource = new EventSource("/install_stream");
+    const progressBar = document.getElementById("progressBar");
+    const logList = document.getElementById("logList");
+    const completionArea = document.getElementById("completionArea");
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        // Update Progress
+        if (data.progress) {
+            progressBar.style.width = data.progress + "%";
+            progressBar.innerText = data.progress + "%";
+        }
+
+        // Add Log
+        if (data.message) {
+            const li = document.createElement("li");
+            li.className = "list-group-item py-1";
+            li.textContent = data.message;
+            if (data.status === 'error') li.classList.add("text-danger");
+            else if (data.status === 'success') li.classList.add("text-success");
+
+            logList.appendChild(li);
+            logList.scrollTop = logList.scrollHeight;
+        }
+
+        // Completion
+        if (data.done) {
+            eventSource.close();
+            progressBar.classList.remove("progress-bar-animated");
+            progressBar.classList.add("bg-success");
+            completionArea.style.display = "block";
+        }
+    };
+
+    eventSource.onerror = function(err) {
+        console.error("EventSource failed:", err);
+        eventSource.close();
+    };
+</script>
+{% endblock %}

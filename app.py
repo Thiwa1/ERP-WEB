@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, make_response
+from flask import Flask, render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
 from database import Database
 from datetime import datetime, date
 from functools import wraps
@@ -7,6 +7,7 @@ import io
 import json
 import os
 import difflib
+import time
 import knowledge_base
 import random # For mocking exchange rate
 import subprocess
@@ -147,7 +148,66 @@ def logout():
 @app.route('/')
 @login_required
 def index():
+    # Check if critical migration table exists, if not, force install page
+    # In production, use a more robust check (e.g. system_settings table)
+    try:
+        conn = db.get_connection()
+        if conn:
+            cursor = conn.cursor()
+            cursor.execute("SHOW TABLES LIKE 'migrations'")
+            if not cursor.fetchone():
+                return redirect(url_for('installing'))
+    except:
+        pass
     return render_template('index.html')
+
+@app.route('/installing')
+def installing():
+    return render_template('installing.html')
+
+@app.route('/install_stream')
+def install_stream():
+    def generate():
+        yield f"data: {json.dumps({'message': 'Starting schema migration...', 'progress': 10})}\n\n"
+
+        # We invoke run_schema_migrations logic step-by-step or call it and capture output
+        # For simplicity, we assume run_schema_migrations is modified to yield or we check state.
+        # But run_schema_migrations is synchronous. We can't yield from it easily without refactoring it into a generator.
+        # Let's verify DB connection first.
+
+        try:
+            conn = db.get_connection()
+            if not conn:
+                yield f"data: {json.dumps({'message': 'Database connection failed!', 'status': 'error', 'progress': 100, 'done': True})}\n\n"
+                return
+
+            yield f"data: {json.dumps({'message': 'Database connected.', 'progress': 20})}\n\n"
+
+            # Execute Migrations (Sync call, but fast enough for this demo or we refactor)
+            # Actually, `run_schema_migrations` prints to console.
+            # We will call it here.
+
+            try:
+                run_schema_migrations()
+                yield f"data: {json.dumps({'message': 'Schema migrations applied successfully.', 'status': 'success', 'progress': 60})}\n\n"
+            except Exception as e:
+                yield f"data: {json.dumps({'message': f'Migration Error: {str(e)}', 'status': 'error', 'progress': 100, 'done': True})}\n\n"
+                return
+
+            # Default User
+            create_default_user()
+            yield f"data: {json.dumps({'message': 'Default user checked/created.', 'progress': 80})}\n\n"
+
+            # Default Accounts
+            ensure_default_accounts()
+            yield f"data: {json.dumps({'message': 'Default accounts verified.', 'progress': 90})}\n\n"
+
+            yield f"data: {json.dumps({'message': 'Installation complete!', 'status': 'success', 'progress': 100, 'done': True})}\n\n"
+
+        except Exception as e:
+            yield f"data: {json.dumps({'message': f'Critical Error: {str(e)}', 'status': 'error', 'progress': 100, 'done': True})}\n\n"
+
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 @app.route('/placeholder')
 @login_required
@@ -5735,6 +5795,27 @@ def run_schema_migrations():
         if not conn: return
         cursor = conn.cursor()
 
+        # 0. Migration Table
+        try:
+            cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        except Exception as e:
+            print(f"Error creating migrations table: {e}")
+
+        # Helper to check/record migration
+        def is_migration_applied(name):
+            try:
+                cursor.execute("SELECT id FROM migrations WHERE migration_name = %s", (name,))
+                return cursor.fetchone() is not None
+            except:
+                return False
+
+        def record_migration(name):
+            try:
+                cursor.execute("INSERT INTO migrations (migration_name) VALUES (%s)", (name,))
+                conn.commit()
+            except Exception as e:
+                print(f"Error recording migration {name}: {e}")
+
         # 1. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
         columns = [row[0] for row in cursor.fetchall()]
@@ -5764,11 +5845,20 @@ def run_schema_migrations():
             cursor.execute("INSERT INTO currency_table (currency_code, currency_name, is_base_currency) VALUES ('LKR', 'Sri Lankan Rupee', 1)")
 
         # 3. New Account Table Columns
-        cursor.execute("SHOW COLUMNS FROM new_account_table")
-        acc_columns = [row[0] for row in cursor.fetchall()]
-        if 'currency_code' not in acc_columns:
-            print("Migrating: Adding currency_code to new_account_table")
-            cursor.execute("ALTER TABLE new_account_table ADD COLUMN currency_code VARCHAR(10) DEFAULT 'LKR'")
+        if not is_migration_applied('add_currency_code_to_new_account'):
+            try:
+                # Check column existence just in case, or use ADD COLUMN IF NOT EXISTS (MariaDB 10.2+)
+                # Standard MySQL doesn't support IF NOT EXISTS in ALTER TABLE nicely without stored proc.
+                # But since we track migration_name, we assume if not applied, we run it.
+                # Wrap in try-except to handle "Duplicate column" if manually added.
+                cursor.execute("ALTER TABLE new_account_table ADD COLUMN currency_code VARCHAR(10) DEFAULT 'LKR'")
+                record_migration('add_currency_code_to_new_account')
+                print("Migrated: add_currency_code_to_new_account")
+            except Exception as e:
+                if "Duplicate column" in str(e) or "1060" in str(e):
+                    record_migration('add_currency_code_to_new_account')
+                else:
+                    print(f"Migration failed: {e}")
 
         # 4. Inventory Items Columns (UOM)
         cursor.execute("SHOW COLUMNS FROM inventoy_items")

@@ -6,8 +6,5 @@
  * Restarting with stat
  * Debugger is active!
  * Debugger PIN: 410-907-091
-127.0.0.1 - - [12/Feb/2026 11:55:48] "GET /login HTTP/1.1" 200 -
-127.0.0.1 - - [12/Feb/2026 11:55:48] "[32mPOST /login HTTP/1.1[0m" 302 -
-127.0.0.1 - - [12/Feb/2026 11:55:48] "GET /login HTTP/1.1" 200 -
-127.0.0.1 - - [12/Feb/2026 11:55:48] "[32mGET /vat_report HTTP/1.1[0m" 302 -
-127.0.0.1 - - [12/Feb/2026 11:55:48] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [14/Feb/2026 02:41:31] "[32mGET / HTTP/1.1[0m" 302 -
+127.0.0.1 - - [14/Feb/2026 02:41:31] "GET /login HTTP/1.1" 200 -
