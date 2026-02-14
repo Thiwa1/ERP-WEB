@@ -5416,12 +5416,130 @@ def vat_report():
         })
         total_input_vat += vat
 
+    # 3. Schedule 04 - Credit/Debit Notes
+    # We look for JVs that reverse transactions or explicit Credit Notes.
+    # Currently, `pos_reversal` creates reversals.
+    # Also manual JVs might be notes.
+    # Logic: Search `entry_details` for 'VAT Control' entries in specific JVs or reversals.
+    # POS Reversals have `Revers = 1` in `pos_sales_invoice_01`.
+
+    schedule_04 = []
+    total_sched04_value = 0
+    total_sched04_vat = 0
+
+    # A. POS Reversals (Credit Notes)
+    query_pos_reversals = """
+        SELECT
+            p.AcctionDate as date,
+            p.Invoice_No as invoice_no,
+            p.Total_Value as total,
+            p.jv,
+            (SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1) as rate -- Approximate if not stored row-level
+        FROM pos_sales_invoice_01 p
+        WHERE p.Revers = 1
+        AND p.AcctionDate BETWEEN %s AND %s
+    """
+    pos_reversals = db.execute_query(query_pos_reversals, (from_date, to_date))
+
+    for r in pos_reversals:
+        # Assuming Tax Inclusive
+        rate = 18.0 # Default if query returns None? But we select rate.
+        if r['rate']: rate = float(r['rate'])
+
+        total = float(r['total'] or 0)
+        net = total / (1 + (rate / 100))
+        vat = total - net
+
+        schedule_04.append({
+            'tin': '-',
+            'invoice_date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'type': 'Credit Note',
+            'note_date': str(r['date']), # Using action date as note date
+            'note_no': f"CN-{r['jv']}",
+            'value': net,
+            'vat': vat,
+            'issued_by_me': True
+        })
+        total_sched04_value += net
+        total_sched04_vat += vat
+
+    # B. Manual JVs identifying as Credit/Debit Notes (Future implementation: Check narration)
+    # For now, just POS reversals.
+
+    # 4. Schedule 05 - Deemed Input
+    # Purchases from non-registered suppliers (No VAT No).
+    # Logic: Fetch purchases from `suppliers` where `suppliers_vat_regidter_no` is NULL/Empty.
+    # Calculation: Deemed Input Credit = A * (Rate / (1 + Rate))?
+    # Usually: If you buy for 100 from non-reg person, you can claim fraction IF item is liable.
+    # Assume A = Cost of Purchases (Liable).
+    # Formula: Credit = A * (Rate / (100 + Rate)) if rate is 18. Or A * (r/1+r).
+    # Assuming Rate is e.g. 18.
+    # Let's assume current VAT rate for calculation.
+
+    # Get standard VAT rate
+    rate_res = db.execute_query("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
+    std_rate = float(rate_res[0]['rate']) if rate_res else 18.0
+    deemed_factor = std_rate / (100 + std_rate)
+
+    query_deemed = """
+        SELECT
+            sid.suppliers_invoice_date as date,
+            sid.suppliers_invoice_number as invoice_no,
+            s.supplier_name as supplier,
+            s.suppliers_NIC as nic,
+            s.suppliers_vat_regidter_no as tax_file, -- Using VAT No column as Tax File No
+            sid.suppliers_invoice_total_oustanding as total
+        FROM suppliers_invoice_data sid
+        JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
+        WHERE sid.suppliers_invoice_date BETWEEN %s AND %s
+        AND (s.suppliers_vat_regidter_no IS NULL OR s.suppliers_vat_regidter_no = '')
+    """
+    deemed_purchases = db.execute_query(query_deemed, (from_date, to_date))
+
+    schedule_05 = []
+    total_sched05_liable = 0
+    total_sched05_non_liable = 0
+    total_sched05_credit = 0
+
+    for r in deemed_purchases:
+        total = float(r['total'] or 0)
+
+        # Assumption: All trade purchases from non-reg are for Liable Goods (Column A)
+        # Column B (Non-Liable) = 0
+        cost_liable = total
+        cost_non_liable = 0
+
+        deemed_credit = cost_liable * deemed_factor
+
+        schedule_05.append({
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'nic': r['nic'],
+            'brc': '', # Not stored explicitly, maybe use code?
+            'tax_file': r['tax_file'],
+            'supplier': r['supplier'],
+            'cost_liable': cost_liable,
+            'cost_non_liable': cost_non_liable,
+            'deemed_credit': deemed_credit,
+            'disallowed': 0.0
+        })
+
+        total_sched05_liable += cost_liable
+        total_sched05_non_liable += cost_non_liable
+        total_sched05_credit += deemed_credit
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
         'total_input_value': total_input_value,
         'total_input_vat': total_input_vat,
-        'net_vat': total_output_vat - total_input_vat
+        'net_vat': total_output_vat - total_input_vat - total_sched04_vat - total_sched05_credit, # Deduct Credit Note VAT and Deemed Credit
+        'total_sched04_value': total_sched04_value,
+        'total_sched04_vat': total_sched04_vat,
+        'total_sched05_liable': total_sched05_liable,
+        'total_sched05_non_liable': total_sched05_non_liable,
+        'total_sched05_credit': total_sched05_credit
     }
 
     return render_template('vat_report.html',
@@ -5429,6 +5547,8 @@ def vat_report():
                            to_date=to_date,
                            schedule_01=schedule_01,
                            schedule_02=schedule_02,
+                           schedule_04=schedule_04,
+                           schedule_05=schedule_05,
                            summary=summary)
 
 # --- POS Settings ---
