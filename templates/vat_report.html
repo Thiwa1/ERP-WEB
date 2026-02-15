@@ -55,6 +55,9 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule04amd-tab" data-bs-toggle="tab" data-bs-target="#schedule04amd" type="button" role="tab">Schedule 04 Amd</button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule05amd-tab" data-bs-toggle="tab" data-bs-target="#schedule05amd" type="button" role="tab">Schedule 05 Amd</button>
+        </li>
     </ul>
 
     <!-- Content -->
@@ -554,6 +557,61 @@
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_value) }}</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_vat) }}</td>
                                     <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 05 Amd (Deemed Input Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule05amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 05 Amendment - Deemed Input Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_05_amd.csv', 'table_s05amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s05amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No.</th>
+                                    <th>Invoice Date</th>
+                                    <th>Invoice No.</th>
+                                    <th>NIC No. of the Supplier</th>
+                                    <th>BRC No.</th>
+                                    <th>Income Tax file No.</th>
+                                    <th>Name of the Supplier</th>
+                                    <th>Cost (VAT Liable) (A)</th>
+                                    <th>Cost (VAT Non-Liable) (B)</th>
+                                    <th>Deemed Input Credit</th>
+                                    <th>Disallowed Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_05_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.nic }}</td>
+                                    <td class="text-center">{{ row.brc }}</td>
+                                    <td class="text-center">{{ row.tax_file }}</td>
+                                    <td>{{ row.supplier }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_liable) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_non_liable) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.deemed_credit) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="10" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_amd_credit) }}</td>
+                                    <td>-</td>
                                 </tr>
                             </tbody>
                         </table>

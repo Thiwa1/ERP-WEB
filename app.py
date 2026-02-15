@@ -5791,6 +5791,53 @@ def vat_report():
         total_sched04_amd_value += value
         total_sched04_amd_vat += vat
 
+    # 10. Schedule 05 Amendment (Deemed Input Amendment)
+    # Search for JVs with 'Amendment' AND 'Deemed' in narration (likely Debit VAT Control)
+    query_sched05_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_amount
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Deemed%%'
+    """
+    sched05_amd_rows = db.execute_query(query_sched05_amd, (from_date, to_date))
+    schedule_05_amendment = []
+    total_sched05_amd_credit = 0
+
+    # Rate for back-calc (already fetched std_rate above: `rate_res` -> `std_rate` (e.g. 18.0))
+    # Deemed Credit = A * (R / (100 + R))
+    # A = Credit * (100 + R) / R
+    calc_factor = (100 + std_rate) / std_rate if std_rate > 0 else 0
+
+    for r in sched05_amd_rows:
+        vat = float(r['vat_amount'] or 0)
+        cost_liable = vat * calc_factor
+
+        schedule_05_amendment.append({
+            'indicator': 'A',
+            'serial_no': r['ref_no'],
+            'date': str(r['date']),
+            'invoice_no': '-', # Manual
+            'nic': '-',
+            'brc': '-',
+            'tax_file': '-',
+            'supplier': 'Manual Amendment',
+            'description': r['narration'], # Added for internal tracking if needed, displayed in Supplier name?
+            'cost_liable': cost_liable,
+            'cost_non_liable': 0.0,
+            'deemed_credit': vat,
+            'disallowed': 0.0
+        })
+        total_sched05_amd_credit += vat
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
@@ -5803,7 +5850,8 @@ def vat_report():
         # For simplicity, treated as adjustments that might go either way.
         # But Report usually subtracts Sched 04 (Credits).
         # If Amd is adding to Credit Notes, we subtract it.
-        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - total_sched05_credit,
+        # Deemed Amendment (Debit VAT) -> Increase Input Credit -> Subtract from Payable
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - (total_sched05_credit + total_sched05_amd_credit),
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
@@ -5815,7 +5863,8 @@ def vat_report():
         'total_sched02_amd_vat': total_sched02_amd_vat,
         'total_sched03_amd_vat': total_sched03_amd_vat,
         'total_sched04_amd_value': total_sched04_amd_value,
-        'total_sched04_amd_vat': total_sched04_amd_vat
+        'total_sched04_amd_vat': total_sched04_amd_vat,
+        'total_sched05_amd_credit': total_sched05_amd_credit
     }
 
     return render_template('vat_report.html',
@@ -5830,6 +5879,7 @@ def vat_report():
                            schedule_02_amendment=schedule_02_amendment,
                            schedule_03_amendment=schedule_03_amendment,
                            schedule_04_amendment=schedule_04_amendment,
+                           schedule_05_amendment=schedule_05_amendment,
                            summary=summary)
 
 # --- POS Settings ---
