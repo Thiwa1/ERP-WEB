@@ -4,11 +4,13 @@ from datetime import datetime
 class Database:
     def __init__(self, config):
         self.config = config
+        self.last_error = None
 
     def get_connection(self):
         try:
             return mysql.connector.connect(**self.config)
         except mysql.connector.Error as err:
+            self.last_error = str(err)
             print(f"Error connecting to database: {err}")
             return None
 
