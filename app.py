@@ -5530,6 +5530,63 @@ def vat_report():
         total_sched05_non_liable += cost_non_liable
         total_sched05_credit += deemed_credit
 
+    # 5. Schedule 07 - Service Export Schedule
+    # Income entries in foreign currency
+    query_sched07 = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as description,
+            ed.fc_amount,
+            ed.currency_code,
+            ed.exchange_rate,
+            ed.enty_values_CR as lkr_value
+        FROM entry_details ed
+        JOIN new_account_table acc ON ed.account_name = acc.account_name
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE acc.account_income = 1
+        AND ed.currency_code IS NOT NULL
+        AND ed.currency_code != 'LKR'
+        AND ed.entry_effective_date BETWEEN %s AND %s
+    """
+    sched07_rows = db.execute_query(query_sched07, (from_date, to_date))
+    schedule_07 = []
+
+    for r in sched07_rows:
+        # Find NRFC Account (Debit side Bank Account)
+        nrfc_acc = ""
+        payment_date = ""
+
+        # Find Debit entries for this JV
+        dr_res = db.execute_query("SELECT account_name FROM entry_details WHERE entry_jv = %s AND enty_values_DR > 0", (r['entry_jv'],))
+
+        for dr in dr_res:
+            # Check if this account is a bank account
+            # bank_book has bank_bookcol_account_number matching account_name usually, or link
+            # bank_book: bank_bookcol_account_number (Name/Number)
+            chk_bank = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number = %s", (dr['account_name'],))
+            if chk_bank:
+                nrfc_acc = dr['account_name']
+                payment_date = str(r['date']) # Assuming receipt date matches entry date
+                break
+
+        # If no bank account found, maybe it's Receivable (Credit Sale)
+        if not nrfc_acc:
+            payment_date = "Receivable"
+
+        schedule_07.append({
+            'invoice_no': r['invoice_no'],
+            'date': str(r['date']),
+            'description': r['description'],
+            'fc_value': float(r['fc_amount'] or 0),
+            'currency': r['currency_code'],
+            'rate': float(r['exchange_rate'] or 1),
+            'lkr_value': float(r['lkr_value'] or 0),
+            'nrfc_account': nrfc_acc,
+            'payment_date': payment_date
+        })
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
@@ -5550,6 +5607,7 @@ def vat_report():
                            schedule_02=schedule_02,
                            schedule_04=schedule_04,
                            schedule_05=schedule_05,
+                           schedule_07=schedule_07,
                            summary=summary)
 
 # --- POS Settings ---
