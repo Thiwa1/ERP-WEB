@@ -5656,6 +5656,7 @@ def vat_report():
         AND ed.enty_values_DR > 0
         AND ed.entry_effective_date BETWEEN %s AND %s
         AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration NOT LIKE '%%Import%%' -- Exclude Import amendments (Sched 03)
     """
     amd_input_rows = db.execute_query(query_amd_input, (from_date, to_date))
     schedule_02_amendment = []
@@ -5693,6 +5694,45 @@ def vat_report():
         total_sched02_amd_value += value
         total_sched02_amd_vat += vat
 
+    # 8. Schedule 03 Amendment (Input Schedule for Imports - Amendment)
+    # Search for JVs with 'Amendment' AND 'Import' in narration affecting VAT Control (Debit)
+    query_sched03_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as cusdec_no, -- Assuming User Code is used for Cusdec No
+            ed.entry_job_number as serial_id, -- Using Job No as Serial ID
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_upfront
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Import%%'
+    """
+    sched03_amd_rows = db.execute_query(query_sched03_amd, (from_date, to_date))
+    schedule_03_amendment = []
+    total_sched03_amd_vat = 0
+
+    for i, r in enumerate(sched03_amd_rows):
+        vat = float(r['vat_upfront'] or 0)
+
+        schedule_03_amendment.append({
+            'indicator': 'A',
+            'serial_no': i + 1,
+            'cusdec_date': str(r['date']),
+            'cusdec_no': r['cusdec_no'],
+            'cusdec_serial_id': r['serial_id'] or '-',
+            'cusdec_reg_date': str(r['date']), # Assuming same as date
+            'cusdec_office_id': '-', # Placeholder
+            'vat_deferred': 0.0,
+            'vat_upfront': vat,
+            'disallowed': 0.0
+        })
+        total_sched03_amd_vat += vat
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
@@ -5701,7 +5741,7 @@ def vat_report():
         # Deduct Credit Note VAT, Deemed Credit.
         # Add Output Amendments (Increase Liability).
         # Deduct Input Amendments (Increase Credit/Refund).
-        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat) - total_sched04_vat - total_sched05_credit,
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - total_sched04_vat - total_sched05_credit,
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
@@ -5710,7 +5750,8 @@ def vat_report():
         'total_sched01_amd_value': total_sched01_amd_value,
         'total_sched01_amd_vat': total_sched01_amd_vat,
         'total_sched02_amd_value': total_sched02_amd_value,
-        'total_sched02_amd_vat': total_sched02_amd_vat
+        'total_sched02_amd_vat': total_sched02_amd_vat,
+        'total_sched03_amd_vat': total_sched03_amd_vat
     }
 
     return render_template('vat_report.html',
@@ -5723,6 +5764,7 @@ def vat_report():
                            schedule_07=schedule_07,
                            schedule_01_amendment=schedule_01_amendment,
                            schedule_02_amendment=schedule_02_amendment,
+                           schedule_03_amendment=schedule_03_amendment,
                            summary=summary)
 
 # --- POS Settings ---

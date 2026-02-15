@@ -49,6 +49,9 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule02amd-tab" data-bs-toggle="tab" data-bs-target="#schedule02amd" type="button" role="tab">Schedule 02 Amd</button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule03amd-tab" data-bs-toggle="tab" data-bs-target="#schedule03amd" type="button" role="tab">Schedule 03 Amd</button>
+        </li>
     </ul>
 
     <!-- Content -->
@@ -442,6 +445,58 @@
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_value) }}</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_vat) }}</td>
                                     <td>-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 03 Amd (Input Schedule for Imports - Amendment) -->
+        <div class="tab-pane fade" id="schedule03amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 03 Amendment - Input Schedule for Imports (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_03_amd.csv', 'table_s03amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s03amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Cusdec Date</th>
+                                    <th>Cusdec No</th>
+                                    <th>Cusdec Serial ID</th>
+                                    <th>Cusdec Reg Date</th>
+                                    <th>Cusdec Office ID</th>
+                                    <th>VAT Deferred</th>
+                                    <th>VAT Upfront</th>
+                                    <th>Disallowed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_03_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_serial_id }}</td>
+                                    <td class="text-center">{{ row.cusdec_reg_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_office_id }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="7" class="text-end">TOTAL</td>
+                                    <td class="text-end">-</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_amd_vat) }}</td>
+                                    <td class="text-end">-</td>
                                 </tr>
                             </tbody>
                         </table>
