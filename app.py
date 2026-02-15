@@ -20,10 +20,10 @@ app.config['SECRET_KEY'] = app.secret_key
 
 # Database Configuration
 db_config = {
-    'user': 'root',
-    'password': '',
-    'host': 'localhost',
-    'database': 'Book_keeping',
+    'user': os.environ.get('DB_USER', 'root'),
+    'password': os.environ.get('DB_PASSWORD', ''),
+    'host': os.environ.get('DB_HOST', 'localhost'),
+    'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
 }
 
@@ -123,7 +123,8 @@ def login():
         users = db.execute_query(query, (username,))
 
         if users is None:
-            flash('Database connection failed. Please check your database configuration.', 'danger')
+            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed. Please check your database configuration."
+            flash(error_msg, 'danger')
         elif users:
             user = users[0]
             if user['Password'] == password:
