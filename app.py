@@ -5641,21 +5641,76 @@ def vat_report():
         total_sched01_amd_value += value
         total_sched01_amd_vat += vat
 
+    # 7. Schedule 02 Amendment (Input Tax Amendments)
+    # Search for JVs with 'Amendment' in narration affecting VAT Control (Debit)
+    query_amd_input = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_amount
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+    """
+    amd_input_rows = db.execute_query(query_amd_input, (from_date, to_date))
+    schedule_02_amendment = []
+    total_sched02_amd_value = 0
+    total_sched02_amd_vat = 0
+
+    for r in amd_input_rows:
+        vat = float(r['vat_amount'] or 0)
+
+        # Estimate Value or find Expense Debit in same JV
+        exp_res = db.execute_query("""
+            SELECT SUM(enty_values_DR) as exp_val
+            FROM entry_details ed
+            JOIN new_account_table na ON ed.account_name = na.account_name
+            WHERE ed.entry_jv = %s AND (na.account_expenses = 1 OR na.account_assets = 1)
+        """, (r['entry_jv'],))
+
+        value = 0
+        if exp_res and exp_res[0]['exp_val']:
+            value = float(exp_res[0]['exp_val'])
+        else:
+            value = vat / 0.18
+
+        schedule_02_amendment.append({
+            'indicator': 'A',
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'tin': '-',
+            'supplier': 'Manual Amendment',
+            'description': r['narration'],
+            'value': value,
+            'vat': vat,
+            'disallowed_vat': 0.0
+        })
+        total_sched02_amd_value += value
+        total_sched02_amd_vat += vat
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
         'total_input_value': total_input_value,
         'total_input_vat': total_input_vat,
-        # Deduct Credit Note VAT, Deemed Credit. Add Amendments (if positive output tax)
-        # Output Amendments increase Output Tax Liability
-        'net_vat': total_output_vat + total_sched01_amd_vat - total_input_vat - total_sched04_vat - total_sched05_credit,
+        # Deduct Credit Note VAT, Deemed Credit.
+        # Add Output Amendments (Increase Liability).
+        # Deduct Input Amendments (Increase Credit/Refund).
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat) - total_sched04_vat - total_sched05_credit,
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
         'total_sched05_non_liable': total_sched05_non_liable,
         'total_sched05_credit': total_sched05_credit,
         'total_sched01_amd_value': total_sched01_amd_value,
-        'total_sched01_amd_vat': total_sched01_amd_vat
+        'total_sched01_amd_vat': total_sched01_amd_vat,
+        'total_sched02_amd_value': total_sched02_amd_value,
+        'total_sched02_amd_vat': total_sched02_amd_vat
     }
 
     return render_template('vat_report.html',
@@ -5667,6 +5722,7 @@ def vat_report():
                            schedule_05=schedule_05,
                            schedule_07=schedule_07,
                            schedule_01_amendment=schedule_01_amendment,
+                           schedule_02_amendment=schedule_02_amendment,
                            summary=summary)
 
 # --- POS Settings ---
