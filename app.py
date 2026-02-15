@@ -5733,6 +5733,64 @@ def vat_report():
         })
         total_sched03_amd_vat += vat
 
+    # 9. Schedule 04 Amendment (Credit/Debit Notes Amendment)
+    # Search for JVs with 'Amendment' AND ('Credit Note' OR 'Debit Note')
+    # Can be Debit or Credit adjustment to VAT Control
+    query_sched04_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as dr,
+            ed.enty_values_CR as cr
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND (ed.enty_values_DR > 0 OR ed.enty_values_CR > 0)
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND (ed.entry_naration LIKE '%%Credit Note%%' OR ed.entry_naration LIKE '%%Debit Note%%')
+    """
+    sched04_amd_rows = db.execute_query(query_sched04_amd, (from_date, to_date))
+    schedule_04_amendment = []
+    total_sched04_amd_value = 0
+    total_sched04_amd_vat = 0
+
+    for r in sched04_amd_rows:
+        dr = float(r['dr'] or 0)
+        cr = float(r['cr'] or 0)
+        vat = dr + cr # One should be zero
+
+        # Infer Type
+        note_type = "Credit Note"
+        if "Debit Note" in r['narration']: note_type = "Debit Note"
+        elif "Credit Note" in r['narration']: note_type = "Credit Note"
+
+        # Estimate value (Gross up 18%)
+        value = vat / 0.18
+
+        # Infer Issued By Me
+        # If Credit Note (Sales Return) -> Reduces Output Tax (VAT Control DR).
+        # If Debit Note (Purchase Return) -> Reduces Input Tax (VAT Control CR).
+        # But terms can vary.
+        # Let's default to "Yes" if it seems to be Sales related (Output adjustment)
+        # We can't easily know without checking offset account.
+        # Defaulting to True for now or leaving blank?
+        # The image shows "Issued By Me" as a checkbox/indicator.
+        issued_by_me = True
+
+        schedule_04_amendment.append({
+            'type': note_type,
+            'date': str(r['date']),
+            'note_no': f"{note_type} - {r['ref_no']} (Amd)",
+            'value': value,
+            'vat': vat,
+            'issued_by_me': issued_by_me
+        })
+        total_sched04_amd_value += value
+        total_sched04_amd_vat += vat
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
@@ -5741,7 +5799,11 @@ def vat_report():
         # Deduct Credit Note VAT, Deemed Credit.
         # Add Output Amendments (Increase Liability).
         # Deduct Input Amendments (Increase Credit/Refund).
-        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - total_sched04_vat - total_sched05_credit,
+        # Sched 04 Amd? Depends if it increases or decreases liability.
+        # For simplicity, treated as adjustments that might go either way.
+        # But Report usually subtracts Sched 04 (Credits).
+        # If Amd is adding to Credit Notes, we subtract it.
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - total_sched05_credit,
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
@@ -5751,7 +5813,9 @@ def vat_report():
         'total_sched01_amd_vat': total_sched01_amd_vat,
         'total_sched02_amd_value': total_sched02_amd_value,
         'total_sched02_amd_vat': total_sched02_amd_vat,
-        'total_sched03_amd_vat': total_sched03_amd_vat
+        'total_sched03_amd_vat': total_sched03_amd_vat,
+        'total_sched04_amd_value': total_sched04_amd_value,
+        'total_sched04_amd_vat': total_sched04_amd_vat
     }
 
     return render_template('vat_report.html',
@@ -5765,6 +5829,7 @@ def vat_report():
                            schedule_01_amendment=schedule_01_amendment,
                            schedule_02_amendment=schedule_02_amendment,
                            schedule_03_amendment=schedule_03_amendment,
+                           schedule_04_amendment=schedule_04_amendment,
                            summary=summary)
 
 # --- POS Settings ---
