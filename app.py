@@ -11,6 +11,7 @@ import time
 import knowledge_base
 import random # For mocking exchange rate
 import subprocess
+import mysql.connector
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -1435,7 +1436,21 @@ def bulk_upload_gl():
 
             try:
                 # Parse CSV
-                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                file_bytes = file.stream.read()
+                decoded_str = None
+
+                # Try multiple encodings
+                for encoding in ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']:
+                    try:
+                        decoded_str = file_bytes.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+
+                if decoded_str is None:
+                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
+
+                stream = io.StringIO(decoded_str, newline=None)
                 csv_input = csv.DictReader(stream)
 
                 rows = []
@@ -1576,7 +1591,21 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
-                stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+                file_bytes = file.stream.read()
+                decoded_str = None
+
+                # Try multiple encodings
+                for encoding in ['utf-8', 'utf-8-sig', 'latin1', 'cp1252', 'utf-16']:
+                    try:
+                        decoded_str = file_bytes.decode(encoding)
+                        break
+                    except UnicodeDecodeError:
+                        continue
+
+                if decoded_str is None:
+                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
+
+                stream = io.StringIO(decoded_str, newline=None)
                 csv_input = csv.DictReader(stream)
 
                 rows = []
@@ -8073,6 +8102,78 @@ def submit_production_receive():
 
     return redirect(url_for('inventory_production'))
 
+def create_db_if_missing():
+    """Attempts to create the database if it does not exist."""
+    try:
+        # Check connection
+        try:
+            conn = mysql.connector.connect(**db_config)
+            conn.close()
+            return # Connected successfully
+        except mysql.connector.Error:
+            pass # Failed, proceed to create
+
+        # Connect without DB name
+        temp_config = db_config.copy()
+        if 'database' in temp_config:
+            del temp_config['database']
+
+        conn_root = mysql.connector.connect(**temp_config)
+        cursor = conn_root.cursor()
+
+        db_name = db_config.get('database', 'Book_keeping')
+        print(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+        conn_root.commit()
+        cursor.close()
+        conn_root.close()
+        print(f"Database '{db_name}' checked/created.")
+    except Exception as e:
+        print(f"Warning: Could not check/create database: {e}")
+
+def import_initial_schema():
+    """Imports database_schema.sql if Login_Table is missing."""
+    try:
+        conn = db.get_connection()
+        if not conn: return
+        cursor = conn.cursor()
+
+        cursor.execute("SHOW TABLES LIKE 'Login_Table'")
+        if cursor.fetchone():
+            cursor.close()
+            conn.close()
+            return # Schema likely exists
+
+        print("Login_Table missing. Attempting to import initial schema...")
+        cursor.close()
+        conn.close()
+
+        if os.path.exists('database_schema.sql'):
+            host = db_config.get('host', 'localhost')
+            user = db_config.get('user', 'root')
+            password = db_config.get('password', '')
+            database = db_config.get('database', 'Book_keeping')
+
+            # Simple shell escape for password (not robust but consistent with setup_wizard)
+            pwd_str = f"-p'{password}'" if password else ""
+
+            cmd = f"mysql -h {host} -u {user} {pwd_str} {database} < database_schema.sql"
+            ret = os.system(cmd)
+
+            if ret == 0:
+                print("Schema imported successfully.")
+                # Also try fixed_assets.sql
+                if os.path.exists('fixed_assets.sql'):
+                    cmd_fa = f"mysql -h {host} -u {user} {pwd_str} {database} < fixed_assets.sql"
+                    os.system(cmd_fa)
+            else:
+                print("Failed to import schema via shell command.")
+        else:
+            print("database_schema.sql not found.")
+
+    except Exception as e:
+        print(f"Error importing initial schema: {e}")
+
 # Ensure initialization runs once regardless of startup method
 app_initialized = False
 
@@ -8080,6 +8181,8 @@ app_initialized = False
 def initialize_app():
     global app_initialized
     if not app_initialized:
+        create_db_if_missing()
+        import_initial_schema()
         run_schema_migrations()
         create_default_user()
         ensure_default_accounts()
