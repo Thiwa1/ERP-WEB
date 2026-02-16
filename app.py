@@ -5396,6 +5396,9 @@ def vat_report():
     else:
         params_other = [from_date, to_date]
 
+    # Exclude Imports (Sched 03) and Amendments from Sched 02 (Other)
+    query_other_input += " AND ed.entry_naration NOT LIKE '%%Import%%' AND ed.entry_naration NOT LIKE '%%Amendment%%'"
+
     other_inputs = db.execute_query(query_other_input, tuple(params_other))
 
     for r in other_inputs:
@@ -5417,7 +5420,45 @@ def vat_report():
         })
         total_input_vat += vat
 
-    # 3. Schedule 04 - Credit/Debit Notes
+    # 3. Schedule 03 - Input Schedule for Imports
+    # Search for JVs with 'Import' but NOT 'Amendment' in narration (Debit VAT Control)
+    query_sched03 = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as cusdec_no, -- Assuming User Code is used for Cusdec No
+            ed.entry_job_number as serial_id, -- Using Job No as Serial ID
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_upfront
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Import%%'
+        AND ed.entry_naration NOT LIKE '%%Amendment%%'
+    """
+    sched03_rows = db.execute_query(query_sched03, (from_date, to_date))
+    schedule_03 = []
+    total_sched03_vat = 0
+
+    for i, r in enumerate(sched03_rows):
+        vat = float(r['vat_upfront'] or 0)
+
+        schedule_03.append({
+            'serial_no': i + 1,
+            'cusdec_date': str(r['date']),
+            'cusdec_no': r['cusdec_no'],
+            'cusdec_serial_id': r['serial_id'] or '-',
+            'cusdec_reg_date': str(r['date']),
+            'cusdec_office_id': '-',
+            'vat_deferred': 0.0,
+            'vat_upfront': vat,
+            'disallowed': 0.0
+        })
+        total_sched03_vat += vat
+
+    # 4. Schedule 04 - Credit/Debit Notes
     # We look for JVs that reverse transactions or explicit Credit Notes.
     # Currently, `pos_reversal` creates reversals.
     # Also manual JVs might be notes.
@@ -5945,7 +5986,8 @@ def vat_report():
         # But Report usually subtracts Sched 04 (Credits).
         # If Amd is adding to Credit Notes, we subtract it.
         # Deemed Amendment (Debit VAT) -> Increase Input Credit -> Subtract from Payable
-        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - (total_sched05_credit + total_sched05_amd_credit),
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - (total_sched05_credit + total_sched05_amd_credit),
+        'total_sched03_vat': total_sched03_vat,
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
@@ -5966,6 +6008,7 @@ def vat_report():
                            to_date=to_date,
                            schedule_01=schedule_01,
                            schedule_02=schedule_02,
+                           schedule_03=schedule_03,
                            schedule_04=schedule_04,
                            schedule_05=schedule_05,
                            schedule_07=schedule_07,

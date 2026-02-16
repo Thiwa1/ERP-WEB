@@ -35,6 +35,9 @@
             <button class="nav-link fw-bold" id="schedule02-tab" data-bs-toggle="tab" data-bs-target="#schedule02" type="button" role="tab">Schedule 02 (Purchases/Input)</button>
         </li>
         <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule03-tab" data-bs-toggle="tab" data-bs-target="#schedule03" type="button" role="tab">Schedule 03 (Imports)</button>
+        </li>
+        <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule04-tab" data-bs-toggle="tab" data-bs-target="#schedule04" type="button" role="tab">Schedule 04 (Credit/Debit Notes)</button>
         </li>
         <li class="nav-item" role="presentation">
@@ -192,6 +195,56 @@
                                     <td colspan="6" class="text-end">TOTAL</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_input_value) }}</td>
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                    <td class="text-end">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 03 (Imports) -->
+        <div class="tab-pane fade" id="schedule03" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 03 - Input Schedule for Imports</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_03.csv', 'table_s03')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s03">
+                            <thead class="bg-success text-white text-center">
+                                <tr>
+                                    <th>Serial No</th>
+                                    <th>Cusdec Date</th>
+                                    <th>Cusdec No</th>
+                                    <th>Cusdec Serial ID</th>
+                                    <th>Cusdec Reg Date</th>
+                                    <th>Cusdec Office ID</th>
+                                    <th>VAT Deferred</th>
+                                    <th>VAT Upfront</th>
+                                    <th>Disallowed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_03 %}
+                                <tr>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_serial_id }}</td>
+                                    <td class="text-center">{{ row.cusdec_reg_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_office_id }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="6" class="text-end">TOTAL</td>
+                                    <td class="text-end">-</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_vat) }}</td>
                                     <td class="text-end">-</td>
                                 </tr>
                             </tbody>
