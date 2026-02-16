@@ -29,6 +29,10 @@ def main():
     # New App Credentials
     print("\n--- Application Database Configuration ---")
     app_db_name = get_input("Database Name", "Book_keeping")
+
+    # Feature Toggles
+    vat_input = get_input("Is the company VAT Registered? (y/n)", "n")
+    vat_registered = 1 if vat_input.lower().startswith('y') else 0
     app_user = get_input("New Application User", "bookkeeper")
     app_pass = get_input("New Application Password", "bookkeeper123")
 
@@ -274,9 +278,9 @@ def main():
         cursor.execute("SELECT COUNT(*) FROM company")
         if cursor.fetchone()[0] == 0:
             cursor.execute("""
-                INSERT INTO company (id, company_name, company_curency)
-                VALUES (0, 'My Company', 'LKR')
-            """)
+                INSERT INTO company (id, company_name, company_curency, vat_registered)
+                VALUES (0, 'My Company', 'LKR', %s)
+            """, (vat_registered,))
 
         conn.commit()
         print("\n=== Setup Complete! ===")

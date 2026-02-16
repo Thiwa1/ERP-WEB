@@ -1836,6 +1836,7 @@ def company_profile():
         fax = request.form.get('fax_no')
         vat = request.form.get('vat_no')
         curr = request.form.get('currency')
+        vat_registered = 1 if request.form.get('vat_registered') else 0
 
         # Handle Logo Upload
         logo_data = None
@@ -1855,9 +1856,9 @@ def company_profile():
                     company_name=%s, company_addras_1=%s, company_addras_2=%s,
                     company_addras_3=%s, company_addras_4=%s, company_addras_5=%s,
                     company_land_line=%s, company_fax_line=%s, company_vate_code=%s,
-                    company_curency=%s
+                    company_curency=%s, vat_registered=%s
                 """
-                params = [name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr]
+                params = [name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, vat_registered]
 
                 if logo_data:
                     query += ", company_log=%s"
@@ -1870,10 +1871,10 @@ def company_profile():
                     INSERT INTO company (
                         id, company_name, company_addras_1, company_addras_2, company_addras_3,
                         company_addras_4, company_addras_5, company_land_line, company_fax_line,
-                        company_vate_code, company_curency, company_log
-                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        company_vate_code, company_curency, company_log, vat_registered
+                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, logo_data), commit=True)
+                db.execute_query(query, (name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, logo_data, vat_registered), commit=True)
 
             flash('Company profile updated successfully', 'success')
         except Exception as e:
@@ -5217,6 +5218,18 @@ def profit_loss():
 @login_required
 @has_permission('Access_Reports')
 def vat_report():
+    # Check if VAT Registered
+    comp_res = db.execute_query("SELECT vat_registered FROM company LIMIT 1")
+    is_vat_registered = False
+    if comp_res and comp_res[0].get('vat_registered') == 1:
+        is_vat_registered = True
+
+    if not is_vat_registered:
+        flash("Company is not VAT Registered. Please enable VAT in Company Profile to view reports.", "warning")
+        # Could redirect or render empty with warning
+        # Render with empty data but a flag
+        return render_template('vat_report.html', vat_enabled=False)
+
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
 
@@ -5396,6 +5409,9 @@ def vat_report():
     else:
         params_other = [from_date, to_date]
 
+    # Exclude Imports (Sched 03) and Amendments from Sched 02 (Other)
+    query_other_input += " AND ed.entry_naration NOT LIKE '%%Import%%' AND ed.entry_naration NOT LIKE '%%Amendment%%'"
+
     other_inputs = db.execute_query(query_other_input, tuple(params_other))
 
     for r in other_inputs:
@@ -5417,7 +5433,45 @@ def vat_report():
         })
         total_input_vat += vat
 
-    # 3. Schedule 04 - Credit/Debit Notes
+    # 3. Schedule 03 - Input Schedule for Imports
+    # Search for JVs with 'Import' but NOT 'Amendment' in narration (Debit VAT Control)
+    query_sched03 = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as cusdec_no, -- Assuming User Code is used for Cusdec No
+            ed.entry_job_number as serial_id, -- Using Job No as Serial ID
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_upfront
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Import%%'
+        AND ed.entry_naration NOT LIKE '%%Amendment%%'
+    """
+    sched03_rows = db.execute_query(query_sched03, (from_date, to_date))
+    schedule_03 = []
+    total_sched03_vat = 0
+
+    for i, r in enumerate(sched03_rows):
+        vat = float(r['vat_upfront'] or 0)
+
+        schedule_03.append({
+            'serial_no': i + 1,
+            'cusdec_date': str(r['date']),
+            'cusdec_no': r['cusdec_no'],
+            'cusdec_serial_id': r['serial_id'] or '-',
+            'cusdec_reg_date': str(r['date']),
+            'cusdec_office_id': '-',
+            'vat_deferred': 0.0,
+            'vat_upfront': vat,
+            'disallowed': 0.0
+        })
+        total_sched03_vat += vat
+
+    # 4. Schedule 04 - Credit/Debit Notes
     # We look for JVs that reverse transactions or explicit Credit Notes.
     # Currently, `pos_reversal` creates reversals.
     # Also manual JVs might be notes.
@@ -5530,27 +5584,487 @@ def vat_report():
         total_sched05_non_liable += cost_non_liable
         total_sched05_credit += deemed_credit
 
+    # 5. Schedule 07 - Service Export Schedule
+    # Income entries in foreign currency
+    query_sched07 = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as description,
+            ed.fc_amount,
+            ed.currency_code,
+            ed.exchange_rate,
+            ed.enty_values_CR as lkr_value
+        FROM entry_details ed
+        JOIN new_account_table acc ON ed.account_name = acc.account_name
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE acc.account_income = 1
+        AND ed.currency_code IS NOT NULL
+        AND ed.currency_code != 'LKR'
+        AND ed.entry_effective_date BETWEEN %s AND %s
+    """
+    sched07_rows = db.execute_query(query_sched07, (from_date, to_date))
+    schedule_07 = []
+
+    for r in sched07_rows:
+        # Find NRFC Account (Debit side Bank Account)
+        nrfc_acc = ""
+        payment_date = ""
+
+        # Find Debit entries for this JV
+        dr_res = db.execute_query("SELECT account_name FROM entry_details WHERE entry_jv = %s AND enty_values_DR > 0", (r['entry_jv'],))
+
+        for dr in dr_res:
+            # Check if this account is a bank account
+            # bank_book has bank_bookcol_account_number matching account_name usually, or link
+            # bank_book: bank_bookcol_account_number (Name/Number)
+            chk_bank = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number = %s", (dr['account_name'],))
+            if chk_bank:
+                nrfc_acc = dr['account_name']
+                payment_date = str(r['date']) # Assuming receipt date matches entry date
+                break
+
+        # If no bank account found, maybe it's Receivable (Credit Sale)
+        if not nrfc_acc:
+            payment_date = "Receivable"
+
+        schedule_07.append({
+            'invoice_no': r['invoice_no'],
+            'date': str(r['date']),
+            'description': r['description'],
+            'fc_value': float(r['fc_amount'] or 0),
+            'currency': r['currency_code'],
+            'rate': float(r['exchange_rate'] or 1),
+            'lkr_value': float(r['lkr_value'] or 0),
+            'nrfc_account': nrfc_acc,
+            'payment_date': payment_date
+        })
+
+    # 6. Schedule 01 Amendment (Output Tax Amendments)
+    # Search for JVs with 'Amendment' in narration affecting VAT Control (Credit)
+    query_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_CR as vat_amount
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_CR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+    """
+    amd_rows = db.execute_query(query_amd, (from_date, to_date))
+    schedule_01_amendment = []
+    total_sched01_amd_value = 0
+    total_sched01_amd_vat = 0
+
+    for r in amd_rows:
+        vat = float(r['vat_amount'] or 0)
+        # Estimate Value (Gross up? Assume 18% if unknown)
+        # Value = VAT / 0.18
+        # Or check associated Income account entry?
+        # Let's try to find associated Income Credit entry in same JV
+        income_res = db.execute_query("""
+            SELECT SUM(enty_values_CR) as income_val
+            FROM entry_details ed
+            JOIN new_account_table na ON ed.account_name = na.account_name
+            WHERE ed.entry_jv = %s AND na.account_income = 1
+        """, (r['entry_jv'],))
+
+        value = 0
+        if income_res and income_res[0]['income_val']:
+            value = float(income_res[0]['income_val'])
+        else:
+            # Fallback estimation
+            value = vat / 0.18
+
+        schedule_01_amendment.append({
+            'indicator': 'A', # Default indicator
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'tin': '-', # Hard to link to customer without more data
+            'purchaser': 'Manual Amendment',
+            'description': r['narration'],
+            'value': value,
+            'vat': vat
+        })
+        total_sched01_amd_value += value
+        total_sched01_amd_vat += vat
+
+    # 7. Schedule 02 Amendment (Input Tax Amendments)
+    # Search for JVs with 'Amendment' in narration affecting VAT Control (Debit)
+    query_amd_input = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_amount
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration NOT LIKE '%%Import%%' -- Exclude Import amendments (Sched 03)
+    """
+    amd_input_rows = db.execute_query(query_amd_input, (from_date, to_date))
+    schedule_02_amendment = []
+    total_sched02_amd_value = 0
+    total_sched02_amd_vat = 0
+
+    for r in amd_input_rows:
+        vat = float(r['vat_amount'] or 0)
+
+        # Estimate Value or find Expense Debit in same JV
+        exp_res = db.execute_query("""
+            SELECT SUM(enty_values_DR) as exp_val
+            FROM entry_details ed
+            JOIN new_account_table na ON ed.account_name = na.account_name
+            WHERE ed.entry_jv = %s AND (na.account_expenses = 1 OR na.account_assets = 1)
+        """, (r['entry_jv'],))
+
+        value = 0
+        if exp_res and exp_res[0]['exp_val']:
+            value = float(exp_res[0]['exp_val'])
+        else:
+            value = vat / 0.18
+
+        schedule_02_amendment.append({
+            'indicator': 'A',
+            'date': str(r['date']),
+            'invoice_no': r['invoice_no'],
+            'tin': '-',
+            'supplier': 'Manual Amendment',
+            'description': r['narration'],
+            'value': value,
+            'vat': vat,
+            'disallowed_vat': 0.0
+        })
+        total_sched02_amd_value += value
+        total_sched02_amd_vat += vat
+
+    # 8. Schedule 03 Amendment (Input Schedule for Imports - Amendment)
+    # Search for JVs with 'Amendment' AND 'Import' in narration affecting VAT Control (Debit)
+    query_sched03_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as cusdec_no, -- Assuming User Code is used for Cusdec No
+            ed.entry_job_number as serial_id, -- Using Job No as Serial ID
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_upfront
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Import%%'
+    """
+    sched03_amd_rows = db.execute_query(query_sched03_amd, (from_date, to_date))
+    schedule_03_amendment = []
+    total_sched03_amd_vat = 0
+
+    for i, r in enumerate(sched03_amd_rows):
+        vat = float(r['vat_upfront'] or 0)
+
+        schedule_03_amendment.append({
+            'indicator': 'A',
+            'serial_no': i + 1,
+            'cusdec_date': str(r['date']),
+            'cusdec_no': r['cusdec_no'],
+            'cusdec_serial_id': r['serial_id'] or '-',
+            'cusdec_reg_date': str(r['date']), # Assuming same as date
+            'cusdec_office_id': '-', # Placeholder
+            'vat_deferred': 0.0,
+            'vat_upfront': vat,
+            'disallowed': 0.0
+        })
+        total_sched03_amd_vat += vat
+
+    # 9. Schedule 04 Amendment (Credit/Debit Notes Amendment)
+    # Search for JVs with 'Amendment' AND ('Credit Note' OR 'Debit Note')
+    # Can be Debit or Credit adjustment to VAT Control
+    query_sched04_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as dr,
+            ed.enty_values_CR as cr
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND (ed.enty_values_DR > 0 OR ed.enty_values_CR > 0)
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND (ed.entry_naration LIKE '%%Credit Note%%' OR ed.entry_naration LIKE '%%Debit Note%%')
+    """
+    sched04_amd_rows = db.execute_query(query_sched04_amd, (from_date, to_date))
+    schedule_04_amendment = []
+    total_sched04_amd_value = 0
+    total_sched04_amd_vat = 0
+
+    for r in sched04_amd_rows:
+        dr = float(r['dr'] or 0)
+        cr = float(r['cr'] or 0)
+        vat = dr + cr # One should be zero
+
+        # Infer Type
+        note_type = "Credit Note"
+        if "Debit Note" in r['narration']: note_type = "Debit Note"
+        elif "Credit Note" in r['narration']: note_type = "Credit Note"
+
+        # Estimate value (Gross up 18%)
+        value = vat / 0.18
+
+        # Infer Issued By Me
+        # If Credit Note (Sales Return) -> Reduces Output Tax (VAT Control DR).
+        # If Debit Note (Purchase Return) -> Reduces Input Tax (VAT Control CR).
+        # But terms can vary.
+        # Let's default to "Yes" if it seems to be Sales related (Output adjustment)
+        # We can't easily know without checking offset account.
+        # Defaulting to True for now or leaving blank?
+        # The image shows "Issued By Me" as a checkbox/indicator.
+        issued_by_me = True
+
+        schedule_04_amendment.append({
+            'type': note_type,
+            'date': str(r['date']),
+            'note_no': f"{note_type} - {r['ref_no']} (Amd)",
+            'value': value,
+            'vat': vat,
+            'issued_by_me': issued_by_me
+        })
+        total_sched04_amd_value += value
+        total_sched04_amd_vat += vat
+
+    # 10. Schedule 05 Amendment (Deemed Input Amendment)
+    # Search for JVs with 'Amendment' AND 'Deemed' in narration (likely Debit VAT Control)
+    query_sched05_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as vat_amount
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE ed.account_name = 'VAT Control'
+        AND ed.enty_values_DR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Deemed%%'
+    """
+    sched05_amd_rows = db.execute_query(query_sched05_amd, (from_date, to_date))
+    schedule_05_amendment = []
+    total_sched05_amd_credit = 0
+
+    # Rate for back-calc (already fetched std_rate above: `rate_res` -> `std_rate` (e.g. 18.0))
+    # Deemed Credit = A * (R / (100 + R))
+    # A = Credit * (100 + R) / R
+    calc_factor = (100 + std_rate) / std_rate if std_rate > 0 else 0
+
+    for r in sched05_amd_rows:
+        vat = float(r['vat_amount'] or 0)
+        cost_liable = vat * calc_factor
+
+        schedule_05_amendment.append({
+            'indicator': 'A',
+            'serial_no': r['ref_no'],
+            'date': str(r['date']),
+            'invoice_no': '-', # Manual
+            'nic': '-',
+            'brc': '-',
+            'tax_file': '-',
+            'supplier': 'Manual Amendment',
+            'description': r['narration'], # Added for internal tracking if needed, displayed in Supplier name?
+            'cost_liable': cost_liable,
+            'cost_non_liable': 0.0,
+            'deemed_credit': vat,
+            'disallowed': 0.0
+        })
+        total_sched05_amd_credit += vat
+
+    # 11. Schedule 06 Amendment (Goods Export Schedule - Amendment)
+    # Search for JVs with 'Amendment' AND 'Export' AND 'Goods' in narration
+    # This likely affects Sales/Income (Credit) or VAT Control (but export is zero rated)
+    # We look for Income entries labeled as such.
+    query_sched06_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_CR as lkr_value
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        JOIN new_account_table acc ON ed.account_name = acc.account_name
+        WHERE acc.account_income = 1
+        AND ed.enty_values_CR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Export%%'
+        AND ed.entry_naration LIKE '%%Goods%%'
+    """
+    sched06_amd_rows = db.execute_query(query_sched06_amd, (from_date, to_date))
+    schedule_06_amendment = []
+
+    for i, r in enumerate(sched06_amd_rows):
+        val = float(r['lkr_value'] or 0)
+
+        schedule_06_amendment.append({
+            'indicator': 'A',
+            'serial_no': i + 1,
+            'date': str(r['date']),
+            'cusdec_no': '-', # Placeholder
+            'office_id': '-',
+            'serial_id': '-',
+            'mass': 0.0,
+            'value': val,
+            'nrfc': '-',
+            'payment_date': '-'
+        })
+
+    # 12. Schedule 07 Amendment (Service Export Schedule - Amendment)
+    # Search for Income entries with Foreign Currency AND 'Amendment'
+    query_sched07_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as invoice_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as description,
+            ed.fc_amount,
+            ed.currency_code,
+            ed.exchange_rate,
+            ed.enty_values_CR as lkr_value
+        FROM entry_details ed
+        JOIN new_account_table acc ON ed.account_name = acc.account_name
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        WHERE acc.account_income = 1
+        AND ed.currency_code IS NOT NULL
+        AND ed.currency_code != 'LKR'
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+    """
+    sched07_amd_rows = db.execute_query(query_sched07_amd, (from_date, to_date))
+    schedule_07_amendment = []
+
+    for r in sched07_amd_rows:
+        # Find NRFC Account (Debit side Bank Account)
+        nrfc_acc = ""
+        payment_date = ""
+
+        dr_res = db.execute_query("SELECT account_name FROM entry_details WHERE entry_jv = %s AND enty_values_DR > 0", (r['entry_jv'],))
+        for dr in dr_res:
+            chk_bank = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number = %s", (dr['account_name'],))
+            if chk_bank:
+                nrfc_acc = dr['account_name']
+                payment_date = str(r['date'])
+                break
+
+        if not nrfc_acc:
+            payment_date = "Receivable"
+
+        schedule_07_amendment.append({
+            'indicator': 'A',
+            'serial_no': r['entry_jv'], # Using JV ID as serial for uniqueness
+            'invoice_no': r['invoice_no'],
+            'date': str(r['date']),
+            'description': r['description'],
+            'fc_value': float(r['fc_amount'] or 0),
+            'currency': r['currency_code'],
+            'rate': float(r['exchange_rate'] or 1),
+            'lkr_value': float(r['lkr_value'] or 0),
+            'nrfc_account': nrfc_acc,
+            'payment_date': payment_date
+        })
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
         'total_input_value': total_input_value,
         'total_input_vat': total_input_vat,
-        'net_vat': total_output_vat - total_input_vat - total_sched04_vat - total_sched05_credit, # Deduct Credit Note VAT and Deemed Credit
+        # Deduct Credit Note VAT, Deemed Credit.
+        # Add Output Amendments (Increase Liability).
+        # Deduct Input Amendments (Increase Credit/Refund).
+        # Sched 04 Amd? Depends if it increases or decreases liability.
+        # For simplicity, treated as adjustments that might go either way.
+        # But Report usually subtracts Sched 04 (Credits).
+        # If Amd is adding to Credit Notes, we subtract it.
+        # Deemed Amendment (Debit VAT) -> Increase Input Credit -> Subtract from Payable
+        'net_vat': total_output_vat + total_sched01_amd_vat - (total_input_vat + total_sched02_amd_vat + total_sched03_vat + total_sched03_amd_vat) - (total_sched04_vat + total_sched04_amd_vat) - (total_sched05_credit + total_sched05_amd_credit),
+        'total_sched03_vat': total_sched03_vat,
         'total_sched04_value': total_sched04_value,
         'total_sched04_vat': total_sched04_vat,
         'total_sched05_liable': total_sched05_liable,
         'total_sched05_non_liable': total_sched05_non_liable,
-        'total_sched05_credit': total_sched05_credit
+        'total_sched05_credit': total_sched05_credit,
+        'total_sched01_amd_value': total_sched01_amd_value,
+        'total_sched01_amd_vat': total_sched01_amd_vat,
+        'total_sched02_amd_value': total_sched02_amd_value,
+        'total_sched02_amd_vat': total_sched02_amd_vat,
+        'total_sched03_amd_vat': total_sched03_amd_vat,
+        'total_sched04_amd_value': total_sched04_amd_value,
+        'total_sched04_amd_vat': total_sched04_amd_vat,
+        'total_sched05_amd_credit': total_sched05_amd_credit
+    }
+
+    # 13. Reconciliation (GL vs Schedules)
+    # GL Movement (Credit - Debit) for the period should match Net VAT (Output - Input)
+    query_gl_mvmt = """
+        SELECT SUM(enty_values_CR) - SUM(enty_values_DR) as movement
+        FROM entry_details
+        WHERE account_name = 'VAT Control'
+        AND entry_effective_date BETWEEN %s AND %s
+        AND entry_deleted = 0
+    """
+    mvmt_res = db.execute_query(query_gl_mvmt, (from_date, to_date))
+    gl_movement = float(mvmt_res[0]['movement'] or 0) if mvmt_res else 0.0
+
+    # Fetch Closing Balance for reference
+    query_gl_bal = """
+        SELECT SUM(enty_values_CR) - SUM(enty_values_DR) as balance
+        FROM entry_details
+        WHERE account_name = 'VAT Control'
+        AND entry_effective_date <= %s
+        AND entry_deleted = 0
+    """
+    bal_res = db.execute_query(query_gl_bal, (to_date,))
+    gl_balance = float(bal_res[0]['balance'] or 0) if bal_res else 0.0
+
+    reconciliation = {
+        'gl_movement': gl_movement,
+        'gl_balance': gl_balance,
+        'schedule_net': summary['net_vat'],
+        'difference': gl_movement - summary['net_vat']
     }
 
     return render_template('vat_report.html',
                            from_date=from_date,
+                           reconciliation=reconciliation,
                            to_date=to_date,
                            schedule_01=schedule_01,
                            schedule_02=schedule_02,
+                           schedule_03=schedule_03,
                            schedule_04=schedule_04,
                            schedule_05=schedule_05,
-                           summary=summary)
+                           schedule_07=schedule_07,
+                           schedule_01_amendment=schedule_01_amendment,
+                           schedule_02_amendment=schedule_02_amendment,
+                           schedule_03_amendment=schedule_03_amendment,
+                           schedule_04_amendment=schedule_04_amendment,
+                           schedule_05_amendment=schedule_05_amendment,
+                           schedule_06_amendment=schedule_06_amendment,
+                           schedule_07_amendment=schedule_07_amendment,
+                           summary=summary,
+                           vat_enabled=True)
 
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
@@ -6003,6 +6517,13 @@ def run_schema_migrations():
         if 'suppliers_NIC' not in sup_columns:
             print("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
+
+        # 5b. Company Table (VAT Registered)
+        cursor.execute("SHOW COLUMNS FROM company")
+        comp_columns = [row[0] for row in cursor.fetchall()]
+        if 'vat_registered' not in comp_columns:
+            print("Migrating: Adding vat_registered to company")
+            cursor.execute("ALTER TABLE company ADD COLUMN vat_registered TINYINT DEFAULT 0")
 
         # 6. Tax Rates Table
         cursor.execute("SHOW TABLES LIKE 'tax_rates'")

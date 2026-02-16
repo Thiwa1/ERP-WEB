@@ -35,10 +35,40 @@
             <button class="nav-link fw-bold" id="schedule02-tab" data-bs-toggle="tab" data-bs-target="#schedule02" type="button" role="tab">Schedule 02 (Purchases/Input)</button>
         </li>
         <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule03-tab" data-bs-toggle="tab" data-bs-target="#schedule03" type="button" role="tab">Schedule 03 (Imports)</button>
+        </li>
+        <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule04-tab" data-bs-toggle="tab" data-bs-target="#schedule04" type="button" role="tab">Schedule 04 (Credit/Debit Notes)</button>
         </li>
         <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule05-tab" data-bs-toggle="tab" data-bs-target="#schedule05" type="button" role="tab">Schedule 05 (Deemed Input)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule07-tab" data-bs-toggle="tab" data-bs-target="#schedule07" type="button" role="tab">Schedule 07 (Service Export)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule01amd-tab" data-bs-toggle="tab" data-bs-target="#schedule01amd" type="button" role="tab">Schedule 01 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule02amd-tab" data-bs-toggle="tab" data-bs-target="#schedule02amd" type="button" role="tab">Schedule 02 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule03amd-tab" data-bs-toggle="tab" data-bs-target="#schedule03amd" type="button" role="tab">Schedule 03 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule04amd-tab" data-bs-toggle="tab" data-bs-target="#schedule04amd" type="button" role="tab">Schedule 04 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule05amd-tab" data-bs-toggle="tab" data-bs-target="#schedule05amd" type="button" role="tab">Schedule 05 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule06amd-tab" data-bs-toggle="tab" data-bs-target="#schedule06amd" type="button" role="tab">Schedule 06 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule07amd-tab" data-bs-toggle="tab" data-bs-target="#schedule07amd" type="button" role="tab">Schedule 07 Amd</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold text-dark" id="reconciliation-tab" data-bs-toggle="tab" data-bs-target="#reconciliation" type="button" role="tab">Reconciliation</button>
         </li>
     </ul>
 
@@ -50,6 +80,14 @@
             <div class="card shadow border-0">
                 <div class="card-body">
                     <h4 class="card-title text-center text-secondary mb-4">VAT Summary ({{ from_date }} to {{ to_date }})</h4>
+
+                    {% if not vat_enabled %}
+                    <div class="alert alert-warning text-center">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Company is NOT registered for VAT.</strong><br>
+                        Enable VAT Registration in <a href="/company_profile">Company Profile</a> to view the report.
+                    </div>
+                    {% else %}
+
                     <div class="row justify-content-center">
                         <div class="col-md-6">
                             <table class="table table-bordered">
@@ -177,6 +215,56 @@
             </div>
         </div>
 
+        <!-- SCHEDULE 03 (Imports) -->
+        <div class="tab-pane fade" id="schedule03" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 03 - Input Schedule for Imports</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_03.csv', 'table_s03')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s03">
+                            <thead class="bg-success text-white text-center">
+                                <tr>
+                                    <th>Serial No</th>
+                                    <th>Cusdec Date</th>
+                                    <th>Cusdec No</th>
+                                    <th>Cusdec Serial ID</th>
+                                    <th>Cusdec Reg Date</th>
+                                    <th>Cusdec Office ID</th>
+                                    <th>VAT Deferred</th>
+                                    <th>VAT Upfront</th>
+                                    <th>Disallowed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_03 %}
+                                <tr>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_serial_id }}</td>
+                                    <td class="text-center">{{ row.cusdec_reg_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_office_id }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="6" class="text-end">TOTAL</td>
+                                    <td class="text-end">-</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_vat) }}</td>
+                                    <td class="text-end">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- SCHEDULE 04 (Credit/Debit Notes) -->
         <div class="tab-pane fade" id="schedule04" role="tabpanel">
             <div class="card shadow border-0">
@@ -294,7 +382,466 @@
             </div>
         </div>
 
+        <!-- SCHEDULE 07 (Service Export) -->
+        <div class="tab-pane fade" id="schedule07" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 07 - Service Export Schedule</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_07.csv', 'table_s07')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s07">
+                            <thead class="bg-secondary text-white text-center">
+                                <tr>
+                                    <th>Serial No</th>
+                                    <th>Invoice Number</th>
+                                    <th>Invoice Date</th>
+                                    <th>Description of Service</th>
+                                    <th>Invoice Value (Foreign)</th>
+                                    <th>Type of Currency</th>
+                                    <th>Exchange rate</th>
+                                    <th>Rupee Value (Rs.)</th>
+                                    <th>NRFC Account Number</th>
+                                    <th>Payment Date (Received/Receivable)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_07 %}
+                                <tr>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.fc_value) }}</td>
+                                    <td class="text-center">{{ row.currency }}</td>
+                                    <td class="text-end">{{ "{:,.4f}".format(row.rate) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.lkr_value) }}</td>
+                                    <td class="text-center">{{ row.nrfc_account or '-' }}</td>
+                                    <td class="text-center">{{ row.payment_date or '-' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 01 Amd (Output Schedule Amendment) -->
+        <div class="tab-pane fade" id="schedule01amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 01 Amendment - Output Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_01_amd.csv', 'table_s01amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s01amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Tax Invoice No</th>
+                                    <th>Purchaser's TIN</th>
+                                    <th>Name of the Purchaser</th>
+                                    <th>Description</th>
+                                    <th>Value of supply</th>
+                                    <th>VAT Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_01_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.tin or '-' }}</td>
+                                    <td>{{ row.purchaser }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="7" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched01_amd_value) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched01_amd_vat) }}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 02 Amd (Input Schedule Amendment) -->
+        <div class="tab-pane fade" id="schedule02amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 02 Amendment - Input Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_02_amd.csv', 'table_s02amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s02amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Invoice Date</th>
+                                    <th>Tax Invoice No</th>
+                                    <th>Supplier's TIN</th>
+                                    <th>Name of the Supplier</th>
+                                    <th>Description</th>
+                                    <th>Value of purchase</th>
+                                    <th>VAT Amount</th>
+                                    <th>Disallowed VAT Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_02_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ loop.index }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.tin or '-' }}</td>
+                                    <td>{{ row.supplier }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end text-muted">{{ "{:,.2f}".format(row.disallowed_vat or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="7" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_value) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_vat) }}</td>
+                                    <td>-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 03 Amd (Input Schedule for Imports - Amendment) -->
+        <div class="tab-pane fade" id="schedule03amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 03 Amendment - Input Schedule for Imports (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_03_amd.csv', 'table_s03amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s03amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Cusdec Date</th>
+                                    <th>Cusdec No</th>
+                                    <th>Cusdec Serial ID</th>
+                                    <th>Cusdec Reg Date</th>
+                                    <th>Cusdec Office ID</th>
+                                    <th>VAT Deferred</th>
+                                    <th>VAT Upfront</th>
+                                    <th>Disallowed</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_03_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.cusdec_serial_id }}</td>
+                                    <td class="text-center">{{ row.cusdec_reg_date }}</td>
+                                    <td class="text-center">{{ row.cusdec_office_id }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="7" class="text-end">TOTAL</td>
+                                    <td class="text-end">-</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_amd_vat) }}</td>
+                                    <td class="text-end">-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 04 Amd (Credit/Debit Notes Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule04amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 04 Amendment - Credit and Debit Notes Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_04_amd.csv', 'table_s04amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s04amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Tax Credit / Tax Debit Note</th>
+                                    <th>Date of Tax Credit / Tax Debit Note</th>
+                                    <th>Tax Credit No. / Tax Debit Note No.</th>
+                                    <th>Value of Tax Credit Note / Tax Debit Note</th>
+                                    <th>VAT Amount</th>
+                                    <th>Issued By Me</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_04_amendment %}
+                                <tr>
+                                    <td class="text-center">
+                                        <span class="badge {{ 'bg-success' if row.type == 'Credit Note' else 'bg-danger' }}">
+                                            {{ row.type }}
+                                        </span>
+                                    </td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.note_no }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-center">
+                                        {% if row.issued_by_me %}
+                                        <i class="bi bi-check-circle-fill text-success"></i>
+                                        {% else %}
+                                        <i class="bi bi-circle text-muted"></i>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="3" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_value) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_vat) }}</td>
+                                    <td></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 05 Amd (Deemed Input Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule05amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 05 Amendment - Deemed Input Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_05_amd.csv', 'table_s05amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s05amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No.</th>
+                                    <th>Invoice Date</th>
+                                    <th>Invoice No.</th>
+                                    <th>NIC No. of the Supplier</th>
+                                    <th>BRC No.</th>
+                                    <th>Income Tax file No.</th>
+                                    <th>Name of the Supplier</th>
+                                    <th>Cost (VAT Liable) (A)</th>
+                                    <th>Cost (VAT Non-Liable) (B)</th>
+                                    <th>Deemed Input Credit</th>
+                                    <th>Disallowed Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_05_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.nic }}</td>
+                                    <td class="text-center">{{ row.brc }}</td>
+                                    <td class="text-center">{{ row.tax_file }}</td>
+                                    <td>{{ row.supplier }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_liable) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_non_liable) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.deemed_credit) }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                </tr>
+                                {% endfor %}
+                                <tr class="fw-bold table-light">
+                                    <td colspan="10" class="text-end">TOTAL</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_amd_credit) }}</td>
+                                    <td>-</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 06 Amd (Goods Export Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule06amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 06 Amendment - Goods Export Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_06_amd.csv', 'table_s06amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s06amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Date of exportation</th>
+                                    <th>CUSDEC Number</th>
+                                    <th>Office ID</th>
+                                    <th>Serial ID</th>
+                                    <th>Net Mass (Kg.)</th>
+                                    <th>FOB/CIF Value (Rs.)</th>
+                                    <th>NRFC Account Number</th>
+                                    <th>Payment Date (Received/Receivable)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_06_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.office_id }}</td>
+                                    <td class="text-center">{{ row.serial_id }}</td>
+                                    <td class="text-end">{{ row.mass }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-center">{{ row.nrfc }}</td>
+                                    <td class="text-center">{{ row.payment_date }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 07 Amd (Service Export Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule07amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 07 Amendment - Service Export Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_07_amd.csv', 'table_s07amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s07amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Invoice Number</th>
+                                    <th>Invoice Date</th>
+                                    <th>Description of Service</th>
+                                    <th>Invoice Value (Foreign)</th>
+                                    <th>Type of Currency</th>
+                                    <th>Exchange rate</th>
+                                    <th>Rupee Value (Rs.)</th>
+                                    <th>NRFC Account Number</th>
+                                    <th>Payment Date (Received/Receivable)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_07_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.invoice_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td>{{ row.description }}</td>
+                                    <td class="text-end">{{ "{:,.2f}".format(row.fc_value) }}</td>
+                                    <td class="text-center">{{ row.currency }}</td>
+                                    <td class="text-end">{{ "{:,.4f}".format(row.rate) }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.lkr_value) }}</td>
+                                    <td class="text-center">{{ row.nrfc_account }}</td>
+                                    <td class="text-center">{{ row.payment_date }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RECONCILIATION -->
+        <div class="tab-pane fade" id="reconciliation" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <h4 class="card-title text-center text-secondary mb-4">VAT Reconciliation (GL vs Return)</h4>
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <table class="table table-hover table-bordered">
+                                <thead class="table-light text-center">
+                                    <tr>
+                                        <th>Description</th>
+                                        <th>Source</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Net VAT Payable / (Refundable) per Return</td>
+                                        <td class="text-muted small">Schedules (Summary)</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.schedule_net) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>VAT Control Account Movement (Period)</td>
+                                        <td class="text-muted small">General Ledger (Net CR)</td>
+                                        <td class="text-end fw-bold text-primary">{{ "{:,.2f}".format(reconciliation.gl_movement) }}</td>
+                                    </tr>
+                                    <tr class="table-secondary">
+                                        <td class="fw-bold">Difference (Unreconciled)</td>
+                                        <td></td>
+                                        <td class="text-end fw-bold {{ 'text-danger' if reconciliation.difference != 0 else 'text-success' }}">
+                                            {{ "{:,.2f}".format(reconciliation.difference) }}
+                                        </td>
+                                    </tr>
+                                    <tr class="border-top border-3">
+                                        <td colspan="3" class="bg-light"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>VAT Control Account Closing Balance</td>
+                                        <td class="text-muted small">As at {{ to_date }}</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.gl_balance) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Note:</strong> GL Movement (Credit - Debit) should ideally match the Net VAT Payable (Output - Input) for the period.
+                                Differences may arise from manual journals to VAT Control not reflected in schedules, or timing differences.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div>
+
     </div>
+    {% endif %} <!-- End if vat_enabled -->
 </div>
 
 <script>

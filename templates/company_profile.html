@@ -80,6 +80,15 @@
                                 <div class="form-text text-muted small">System-wide currency symbol (e.g., LKR, $, €)</div>
                             </div>
                         </div>
+                        <div class="mb-3 row">
+                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">VAT Registered</label>
+                            <div class="col-sm-8 d-flex align-items-center">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" name="vat_registered" id="vatRegistered" {% if company.vat_registered == 1 %}checked{% endif %}>
+                                    <label class="form-check-label" for="vatRegistered">Company is VAT Registered</label>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
