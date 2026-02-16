@@ -1836,6 +1836,7 @@ def company_profile():
         fax = request.form.get('fax_no')
         vat = request.form.get('vat_no')
         curr = request.form.get('currency')
+        vat_registered = 1 if request.form.get('vat_registered') else 0
 
         # Handle Logo Upload
         logo_data = None
@@ -1855,9 +1856,9 @@ def company_profile():
                     company_name=%s, company_addras_1=%s, company_addras_2=%s,
                     company_addras_3=%s, company_addras_4=%s, company_addras_5=%s,
                     company_land_line=%s, company_fax_line=%s, company_vate_code=%s,
-                    company_curency=%s
+                    company_curency=%s, vat_registered=%s
                 """
-                params = [name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr]
+                params = [name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, vat_registered]
 
                 if logo_data:
                     query += ", company_log=%s"
@@ -1870,10 +1871,10 @@ def company_profile():
                     INSERT INTO company (
                         id, company_name, company_addras_1, company_addras_2, company_addras_3,
                         company_addras_4, company_addras_5, company_land_line, company_fax_line,
-                        company_vate_code, company_curency, company_log
-                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        company_vate_code, company_curency, company_log, vat_registered
+                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, logo_data), commit=True)
+                db.execute_query(query, (name, addr1, addr2, addr3, addr4, addr5, land, fax, vat, curr, logo_data, vat_registered), commit=True)
 
             flash('Company profile updated successfully', 'success')
         except Exception as e:
@@ -5217,6 +5218,18 @@ def profit_loss():
 @login_required
 @has_permission('Access_Reports')
 def vat_report():
+    # Check if VAT Registered
+    comp_res = db.execute_query("SELECT vat_registered FROM company LIMIT 1")
+    is_vat_registered = False
+    if comp_res and comp_res[0].get('vat_registered') == 1:
+        is_vat_registered = True
+
+    if not is_vat_registered:
+        flash("Company is not VAT Registered. Please enable VAT in Company Profile to view reports.", "warning")
+        # Could redirect or render empty with warning
+        # Render with empty data but a flag
+        return render_template('vat_report.html', vat_enabled=False)
+
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
 
@@ -6003,8 +6016,39 @@ def vat_report():
         'total_sched05_amd_credit': total_sched05_amd_credit
     }
 
+    # 13. Reconciliation (GL vs Schedules)
+    # GL Movement (Credit - Debit) for the period should match Net VAT (Output - Input)
+    query_gl_mvmt = """
+        SELECT SUM(enty_values_CR) - SUM(enty_values_DR) as movement
+        FROM entry_details
+        WHERE account_name = 'VAT Control'
+        AND entry_effective_date BETWEEN %s AND %s
+        AND entry_deleted = 0
+    """
+    mvmt_res = db.execute_query(query_gl_mvmt, (from_date, to_date))
+    gl_movement = float(mvmt_res[0]['movement'] or 0) if mvmt_res else 0.0
+
+    # Fetch Closing Balance for reference
+    query_gl_bal = """
+        SELECT SUM(enty_values_CR) - SUM(enty_values_DR) as balance
+        FROM entry_details
+        WHERE account_name = 'VAT Control'
+        AND entry_effective_date <= %s
+        AND entry_deleted = 0
+    """
+    bal_res = db.execute_query(query_gl_bal, (to_date,))
+    gl_balance = float(bal_res[0]['balance'] or 0) if bal_res else 0.0
+
+    reconciliation = {
+        'gl_movement': gl_movement,
+        'gl_balance': gl_balance,
+        'schedule_net': summary['net_vat'],
+        'difference': gl_movement - summary['net_vat']
+    }
+
     return render_template('vat_report.html',
                            from_date=from_date,
+                           reconciliation=reconciliation,
                            to_date=to_date,
                            schedule_01=schedule_01,
                            schedule_02=schedule_02,
@@ -6019,7 +6063,8 @@ def vat_report():
                            schedule_05_amendment=schedule_05_amendment,
                            schedule_06_amendment=schedule_06_amendment,
                            schedule_07_amendment=schedule_07_amendment,
-                           summary=summary)
+                           summary=summary,
+                           vat_enabled=True)
 
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
@@ -6472,6 +6517,13 @@ def run_schema_migrations():
         if 'suppliers_NIC' not in sup_columns:
             print("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
+
+        # 5b. Company Table (VAT Registered)
+        cursor.execute("SHOW COLUMNS FROM company")
+        comp_columns = [row[0] for row in cursor.fetchall()]
+        if 'vat_registered' not in comp_columns:
+            print("Migrating: Adding vat_registered to company")
+            cursor.execute("ALTER TABLE company ADD COLUMN vat_registered TINYINT DEFAULT 0")
 
         # 6. Tax Rates Table
         cursor.execute("SHOW TABLES LIKE 'tax_rates'")

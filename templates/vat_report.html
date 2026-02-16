@@ -67,6 +67,9 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule07amd-tab" data-bs-toggle="tab" data-bs-target="#schedule07amd" type="button" role="tab">Schedule 07 Amd</button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold text-dark" id="reconciliation-tab" data-bs-toggle="tab" data-bs-target="#reconciliation" type="button" role="tab">Reconciliation</button>
+        </li>
     </ul>
 
     <!-- Content -->
@@ -77,6 +80,14 @@
             <div class="card shadow border-0">
                 <div class="card-body">
                     <h4 class="card-title text-center text-secondary mb-4">VAT Summary ({{ from_date }} to {{ to_date }})</h4>
+
+                    {% if not vat_enabled %}
+                    <div class="alert alert-warning text-center">
+                        <strong><i class="bi bi-exclamation-triangle"></i> Company is NOT registered for VAT.</strong><br>
+                        Enable VAT Registration in <a href="/company_profile">Company Profile</a> to view the report.
+                    </div>
+                    {% else %}
+
                     <div class="row justify-content-center">
                         <div class="col-md-6">
                             <table class="table table-bordered">
@@ -773,7 +784,64 @@
             </div>
         </div>
 
+        <!-- RECONCILIATION -->
+        <div class="tab-pane fade" id="reconciliation" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <h4 class="card-title text-center text-secondary mb-4">VAT Reconciliation (GL vs Return)</h4>
+                    <div class="row justify-content-center">
+                        <div class="col-md-8">
+                            <table class="table table-hover table-bordered">
+                                <thead class="table-light text-center">
+                                    <tr>
+                                        <th>Description</th>
+                                        <th>Source</th>
+                                        <th>Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Net VAT Payable / (Refundable) per Return</td>
+                                        <td class="text-muted small">Schedules (Summary)</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.schedule_net) }}</td>
+                                    </tr>
+                                    <tr>
+                                        <td>VAT Control Account Movement (Period)</td>
+                                        <td class="text-muted small">General Ledger (Net CR)</td>
+                                        <td class="text-end fw-bold text-primary">{{ "{:,.2f}".format(reconciliation.gl_movement) }}</td>
+                                    </tr>
+                                    <tr class="table-secondary">
+                                        <td class="fw-bold">Difference (Unreconciled)</td>
+                                        <td></td>
+                                        <td class="text-end fw-bold {{ 'text-danger' if reconciliation.difference != 0 else 'text-success' }}">
+                                            {{ "{:,.2f}".format(reconciliation.difference) }}
+                                        </td>
+                                    </tr>
+                                    <tr class="border-top border-3">
+                                        <td colspan="3" class="bg-light"></td>
+                                    </tr>
+                                    <tr>
+                                        <td>VAT Control Account Closing Balance</td>
+                                        <td class="text-muted small">As at {{ to_date }}</td>
+                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.gl_balance) }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Note:</strong> GL Movement (Credit - Debit) should ideally match the Net VAT Payable (Output - Input) for the period.
+                                Differences may arise from manual journals to VAT Control not reflected in schedules, or timing differences.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        </div>
+
     </div>
+    {% endif %} <!-- End if vat_enabled -->
 </div>
 
 <script>
