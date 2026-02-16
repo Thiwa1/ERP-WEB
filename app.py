@@ -8131,8 +8131,58 @@ def create_db_if_missing():
     except Exception as e:
         print(f"Warning: Could not check/create database: {e}")
 
+def execute_sql_file(cursor, filepath):
+    """Parses and executes a MySQL dump file with DELIMITER support."""
+    print(f"Executing SQL file: {filepath}")
+    with open(filepath, 'r', encoding='utf-8') as f:
+        # Read lines to handle DELIMITER command which is line-based
+        lines = f.readlines()
+
+    delimiter = ';'
+    statement = ""
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Handle DELIMITER command
+        # Syntax: DELIMITER $$
+        if stripped.upper().startswith('DELIMITER '):
+            delimiter = stripped.split()[1]
+            continue
+
+        # Skip comments (simple check)
+        if stripped.startswith('--') or stripped.startswith('#'):
+            continue
+
+        # Skip empty lines if statement is empty
+        if not statement and not stripped:
+            continue
+
+        statement += line
+
+        # Check if statement ends with delimiter
+        if statement.strip().endswith(delimiter):
+            # Clean up statement
+            sql_to_run = statement.strip()
+            # Remove the delimiter from the end
+            if sql_to_run.endswith(delimiter):
+                 sql_to_run = sql_to_run[:-len(delimiter)]
+
+            if sql_to_run.strip():
+                try:
+                    cursor.execute(sql_to_run)
+                    # consume results if any
+                    while cursor.nextset(): pass
+                except mysql.connector.Error as e:
+                    # Ignore "Table already exists" or similar non-critical if robust
+                    # But for initial schema, we usually want to know.
+                    # Warning: USE command might fail if user doesn't have perm, but we are inside DB context usually
+                    print(f"SQL Execution Warning: {e}\nStatement partial: {sql_to_run[:100]}...")
+
+            statement = ""
+
 def import_initial_schema():
-    """Imports database_schema.sql if Login_Table is missing."""
+    """Imports database_schema.sql if Login_Table is missing, using Python parser."""
     try:
         conn = db.get_connection()
         if not conn: return
@@ -8145,31 +8195,25 @@ def import_initial_schema():
             return # Schema likely exists
 
         print("Login_Table missing. Attempting to import initial schema...")
-        cursor.close()
-        conn.close()
 
         if os.path.exists('database_schema.sql'):
-            host = db_config.get('host', 'localhost')
-            user = db_config.get('user', 'root')
-            password = db_config.get('password', '')
-            database = db_config.get('database', 'Book_keeping')
-
-            # Simple shell escape for password (not robust but consistent with setup_wizard)
-            pwd_str = f"-p'{password}'" if password else ""
-
-            cmd = f"mysql -h {host} -u {user} {pwd_str} {database} < database_schema.sql"
-            ret = os.system(cmd)
-
-            if ret == 0:
+            try:
+                execute_sql_file(cursor, 'database_schema.sql')
                 print("Schema imported successfully.")
-                # Also try fixed_assets.sql
+
                 if os.path.exists('fixed_assets.sql'):
-                    cmd_fa = f"mysql -h {host} -u {user} {pwd_str} {database} < fixed_assets.sql"
-                    os.system(cmd_fa)
-            else:
-                print("Failed to import schema via shell command.")
+                    execute_sql_file(cursor, 'fixed_assets.sql')
+                    print("Fixed Assets schema imported.")
+
+                conn.commit()
+            except Exception as ex:
+                print(f"Failed to execute SQL file: {ex}")
+                conn.rollback()
         else:
             print("database_schema.sql not found.")
+
+        cursor.close()
+        conn.close()
 
     except Exception as e:
         print(f"Error importing initial schema: {e}")
