@@ -101,6 +101,8 @@ account_types = {
     "Freight & Shipping Charges": "Cost Account",
     "Warranty Expenses": "Cost Account",
     "Loss on Asset Disposal": "Cost Account",
+    "Expense Account": "Cost Account",
+    "Expenses Account": "Cost Account",
     "Insurance Premium Expense": "Cost Account",
     "Software Subscription Fees": "Cost Account",
     "IT Support Charges": "Cost Account",
