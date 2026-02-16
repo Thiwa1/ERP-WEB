@@ -58,6 +58,9 @@
         <li class="nav-item" role="presentation">
             <button class="nav-link fw-bold" id="schedule05amd-tab" data-bs-toggle="tab" data-bs-target="#schedule05amd" type="button" role="tab">Schedule 05 Amd</button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link fw-bold" id="schedule06amd-tab" data-bs-toggle="tab" data-bs-target="#schedule06amd" type="button" role="tab">Schedule 06 Amd</button>
+        </li>
     </ul>
 
     <!-- Content -->
@@ -613,6 +616,52 @@
                                     <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_amd_credit) }}</td>
                                     <td>-</td>
                                 </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SCHEDULE 06 Amd (Goods Export Schedule - Amendment) -->
+        <div class="tab-pane fade" id="schedule06amd" role="tabpanel">
+            <div class="card shadow border-0">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h5 class="text-secondary">Schedule 06 Amendment - Goods Export Schedule (Amendment)</h5>
+                        <button class="btn btn-sm btn-outline-success" onclick="exportTableToCSV('vat_sched_06_amd.csv', 'table_s06amd')"><i class="bi bi-file-earmark-excel"></i> Export CSV</button>
+                    </div>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover table-bordered" id="table_s06amd">
+                            <thead class="bg-dark text-white text-center">
+                                <tr>
+                                    <th>Amendment Indicator</th>
+                                    <th>Serial No</th>
+                                    <th>Date of exportation</th>
+                                    <th>CUSDEC Number</th>
+                                    <th>Office ID</th>
+                                    <th>Serial ID</th>
+                                    <th>Net Mass (Kg.)</th>
+                                    <th>FOB/CIF Value (Rs.)</th>
+                                    <th>NRFC Account Number</th>
+                                    <th>Payment Date (Received/Receivable)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in schedule_06_amendment %}
+                                <tr>
+                                    <td class="text-center">{{ row.indicator }}</td>
+                                    <td class="text-center">{{ row.serial_no }}</td>
+                                    <td class="text-center">{{ row.date }}</td>
+                                    <td class="text-center">{{ row.cusdec_no }}</td>
+                                    <td class="text-center">{{ row.office_id }}</td>
+                                    <td class="text-center">{{ row.serial_id }}</td>
+                                    <td class="text-end">{{ row.mass }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-center">{{ row.nrfc }}</td>
+                                    <td class="text-center">{{ row.payment_date }}</td>
+                                </tr>
+                                {% endfor %}
                             </tbody>
                         </table>
                     </div>

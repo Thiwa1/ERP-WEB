@@ -5838,6 +5838,46 @@ def vat_report():
         })
         total_sched05_amd_credit += vat
 
+    # 11. Schedule 06 Amendment (Goods Export Schedule - Amendment)
+    # Search for JVs with 'Amendment' AND 'Export' AND 'Goods' in narration
+    # This likely affects Sales/Income (Credit) or VAT Control (but export is zero rated)
+    # We look for Income entries labeled as such.
+    query_sched06_amd = """
+        SELECT
+            ed.entry_jv,
+            jv.jv_user_code as ref_no,
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_CR as lkr_value
+        FROM entry_details ed
+        JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+        JOIN new_account_table acc ON ed.account_name = acc.account_name
+        WHERE acc.account_income = 1
+        AND ed.enty_values_CR > 0
+        AND ed.entry_effective_date BETWEEN %s AND %s
+        AND ed.entry_naration LIKE '%%Amendment%%'
+        AND ed.entry_naration LIKE '%%Export%%'
+        AND ed.entry_naration LIKE '%%Goods%%'
+    """
+    sched06_amd_rows = db.execute_query(query_sched06_amd, (from_date, to_date))
+    schedule_06_amendment = []
+
+    for i, r in enumerate(sched06_amd_rows):
+        val = float(r['lkr_value'] or 0)
+
+        schedule_06_amendment.append({
+            'indicator': 'A',
+            'serial_no': i + 1,
+            'date': str(r['date']),
+            'cusdec_no': '-', # Placeholder
+            'office_id': '-',
+            'serial_id': '-',
+            'mass': 0.0,
+            'value': val,
+            'nrfc': '-',
+            'payment_date': '-'
+        })
+
     summary = {
         'total_output_value': total_output_value,
         'total_output_vat': total_output_vat,
@@ -5880,6 +5920,7 @@ def vat_report():
                            schedule_03_amendment=schedule_03_amendment,
                            schedule_04_amendment=schedule_04_amendment,
                            schedule_05_amendment=schedule_05_amendment,
+                           schedule_06_amendment=schedule_06_amendment,
                            summary=summary)
 
 # --- POS Settings ---
