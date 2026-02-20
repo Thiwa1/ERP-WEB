@@ -64,6 +64,18 @@ def currency_filter(value):
     except (ValueError, TypeError):
         return "0.00"
 
+def parse_float(value):
+    """Safely parses a string or number into a float, handling commas and None."""
+    try:
+        if value is None:
+            return 0.0
+        if isinstance(value, str):
+            value = value.replace(',', '').strip()
+            if not value: return 0.0
+        return float(value)
+    except (ValueError, TypeError):
+        return 0.0
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -260,7 +272,7 @@ def add_customer():
             params_supplier = (
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
-                float(credit_limit) if credit_limit else 0.0, contact_1, contact_2,
+                parse_float(credit_limit), contact_1, contact_2,
                 current_date, current_user,
                 current_user, current_date,
                 email, vat_no, salutation,
@@ -359,7 +371,7 @@ def add_supplier():
             params_supplier = (
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
-                float(credit_limit) if credit_limit else 0.0, contact_1, contact_2,
+                parse_float(credit_limit), contact_1, contact_2,
                 current_date, current_user,
                 current_user, current_date,
                 email, vat_no, salutation,
@@ -503,9 +515,9 @@ def add_inventory_item():
             unit = request.form.get('measurement_unit')
             main_cat = request.form.get('main_category')
             sub_cat = request.form.get('sub_category')
-            min_qty = float(request.form.get('min_qty', 0))
-            selling_price = float(request.form.get('selling_price', 0))
-            cost_price = float(request.form.get('cost_price', 0))
+            min_qty = parse_float(request.form.get('min_qty', 0))
+            selling_price = parse_float(request.form.get('selling_price', 0))
+            cost_price = parse_float(request.form.get('cost_price', 0))
 
             # 2. Handle Image
             img_data = None
@@ -594,10 +606,10 @@ def grn():
             job_no = request.form.get('job_no')
             location = request.form.get('location')
 
-            total_value = float(request.form.get('total_value', 0))
-            vat_rate = float(request.form.get('vat_rate', 0))
-            vat_amount = float(request.form.get('vat_amount', 0))
-            grand_total = float(request.form.get('grand_total', 0))
+            total_value = parse_float(request.form.get('total_value', 0))
+            vat_rate = parse_float(request.form.get('vat_rate', 0))
+            vat_amount = parse_float(request.form.get('vat_amount', 0))
+            grand_total = parse_float(request.form.get('grand_total', 0))
 
             items = json.loads(items_json) if items_json else []
 
@@ -1616,8 +1628,8 @@ def bulk_upload_tb():
 
                 for row in csv_input:
                     name = row.get('Account Name', '').strip()
-                    dr = float(row.get('Debit', 0) or 0)
-                    cr = float(row.get('Credit', 0) or 0)
+                    dr = parse_float(row.get('Debit', 0) or 0)
+                    cr = parse_float(row.get('Credit', 0) or 0)
 
                     if not name: continue
 
@@ -1671,8 +1683,8 @@ def bulk_upload_tb():
 
                 count = 0
                 for i in range(len(names)):
-                    dr = float(drs[i] or 0)
-                    cr = float(crs[i] or 0)
+                    dr = parse_float(drs[i] or 0)
+                    cr = parse_float(crs[i] or 0)
                     if dr == 0 and cr == 0: continue
 
                     cursor.execute("""
@@ -2019,7 +2031,7 @@ def cash_payment_submit():
     cash_account = request.form.get('cash_account')
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
-    wht_amount = float(request.form.get('wht_amount', 0))
+    wht_amount = parse_float(request.form.get('wht_amount', 0))
 
     if not supplier_name or not cash_account:
         flash('Missing supplier or cash account', 'danger')
@@ -2034,7 +2046,7 @@ def cash_payment_submit():
         if key.startswith('payment_'):
             inv_id = key.split('_')[1]
             try:
-                amount = float(request.form[key])
+                amount = parse_float(request.form[key])
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_payment += amount
@@ -2104,7 +2116,7 @@ def cash_payment_submit():
             # Note: The payment amount here is the GROSS settlement amount, so AP reduces by full amount.
             cursor.execute("SELECT suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
             res = cursor.fetchone()
-            current_outstanding = float(res[0] or 0)
+            current_outstanding = parse_float(res[0] or 0)
 
             # Call Stored Procedure
             cursor.execute("CALL vender_settele(%s, %s, %s)", (current_outstanding, p['amount'], p['id']))
@@ -6692,12 +6704,12 @@ def ensure_default_accounts():
     try:
         defaults = [
             # Name, BS Position, BS Category, P&L Position, P&L Category, Type
-            ('Account Payable', 4, 'Current liabilities', None, None, 'liabilities'),
+            ('Account Payable', 6, 'Current liabilities', None, None, 'liabilities'),
             ('Account Receivable', 3, 'Current assets', None, None, 'assets'),
             ('Cost Of Goods Sold', None, None, 2, 'Cost Of Sales', 'expenses'),
             ('Sales', None, None, 1, 'Revenue', 'income'),
             ('Inventory', 3, 'Current assets', None, None, 'assets'),
-            ('VAT Control', 4, 'Current liabilities', None, None, 'liabilities'),
+            ('VAT Control', 6, 'Current liabilities', None, None, 'liabilities'),
             ('Cash In Hand', 3, 'Current assets', None, None, 'assets')
         ]
 
@@ -7028,8 +7040,8 @@ def save_journal_entry():
             return redirect(url_for('journal_entry'))
 
         # Verify balance again (Base Currency)
-        total_dr = sum(float(e['dr']) for e in entries)
-        total_cr = sum(float(e['cr']) for e in entries)
+        total_dr = sum(parse_float(e['dr']) for e in entries)
+        total_cr = sum(parse_float(e['cr']) for e in entries)
 
         if abs(total_dr - total_cr) > 0.01:
             flash(f'Entries not balanced. Diff: {total_dr - total_cr}', 'danger')
@@ -7067,8 +7079,8 @@ def save_journal_entry():
 
                 # Currency Info
                 curr_code = e.get('currency', 'LKR')
-                fc_amt = float(e.get('fc_amount', 0))
-                rate = float(e.get('rate', 1))
+                fc_amt = parse_float(e.get('fc_amount', 0))
+                rate = parse_float(e.get('rate', 1))
 
                 cursor.execute("""
                     INSERT INTO entry_details (
@@ -7234,6 +7246,74 @@ def create_default_user():
             print("Users exist in database. Skipping default user creation.")
     except Exception as e:
         print(f"Error creating default user: {e}")
+
+def ensure_default_categories():
+    """Ensures default Balance Sheet and P&L categories exist."""
+    try:
+        conn = db.get_connection()
+        if not conn: return
+        cursor = conn.cursor()
+
+        # Balance Sheet Categories
+        bs_cats = [
+            ('ASSETS', 1),
+            ('Non-current assets', 2),
+            ('Current assets', 3),
+            ('EQUITY AND LIABILITIES', 4),
+            ('Capital and reserves', 5),
+            ('Current liabilities', 6)
+        ]
+        for name, pos in bs_cats:
+            # Check if exists by position to avoid duplicate key error on position
+            cursor.execute("SELECT id FROM balance_sheet_category WHERE holding_position = %s", (pos,))
+            if not cursor.fetchone():
+                try:
+                    cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
+                except Exception as e:
+                    print(f"Error inserting BS category {name}: {e}")
+
+        # P&L Categories
+        pl_cats = [
+            ('Revenue', 1),
+            ('Cost of sales', 2),
+            ('Gross profit', 3),
+            ('Distribution costs', 4),
+            ('Administrative expenses', 5),
+            ('Other operating expenses', 6),
+            ('Finance cost', 7),
+            ('Income from associates', 8),
+            ('Income tax expenses', 9),
+            ('Minority interest', 10),
+            ('Extraordinary items', 11)
+        ]
+        for name, pos in pl_cats:
+            cursor.execute("SELECT id FROM `p&l_category` WHERE holding_position = %s", (pos,))
+            if not cursor.fetchone():
+                try:
+                    cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
+                except Exception as e:
+                    print(f"Error inserting PL category {name}: {e}")
+
+        # CF Categories
+        cf_cats = [
+            ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
+            ('Adjustments', 0), ('Changes In Working Capital', 0)
+        ]
+        for name, pos in cf_cats:
+             cursor.execute("SELECT id FROM cf_catogory WHERE catogory_name = %s", (name,))
+             if not cursor.fetchone():
+                 try:
+                     cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
+                 except Exception as e:
+                     print(f"Error inserting CF category {name}: {e}")
+
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("Default categories checked/created.")
+
+    except Exception as e:
+        print(f"Error ensuring default categories: {e}")
 
 # --- System Backup ---
 @app.route('/system_backup')
@@ -7682,7 +7762,7 @@ def submit_invoice():
         inv_date = request.form.get('invoice_date')
         due_date = request.form.get('due_date')
         job_no = request.form.get('job_no')
-        vat_rate = float(request.form.get('vat_rate', 0))
+        vat_rate = parse_float(request.form.get('vat_rate', 0))
         apply_vat = 1 if request.form.get('apply_vat') else 0
 
         inv_items_json = request.form.get('inventory_items_json')
@@ -7718,16 +7798,16 @@ def submit_invoice():
 
             # Inventory Items
             for item in inv_items:
-                qty = float(item.get('qty', 0))
-                price = float(item.get('price', 0))
-                cost = float(item.get('cost', 0))
+                qty = parse_float(item.get('qty', 0))
+                price = parse_float(item.get('price', 0))
+                cost = parse_float(item.get('cost', 0))
                 total_sales += qty * price
                 total_cost += qty * cost
 
             # Non-Inventory Items
             for item in non_inv_items:
-                qty = float(item.get('qty', 0))
-                price = float(item.get('price', 0))
+                qty = parse_float(item.get('qty', 0))
+                price = parse_float(item.get('price', 0))
                 total_sales += qty * price
                 # Non-inventory might not have tracked cost or it's service
 
@@ -7806,7 +7886,7 @@ def submit_invoice():
                         inventory_recod_link_invoice, inventory_recod_suplier_iv_no
                     ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
                 """, (
-                    item['name'], item['code'], item['unit'], item['cost'] * float(item['qty']), float(item['qty']),
+                    item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
                     current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
                 ))
 
@@ -8228,6 +8308,7 @@ def initialize_app():
         create_db_if_missing()
         import_initial_schema()
         run_schema_migrations()
+        ensure_default_categories()
         create_default_user()
         ensure_default_accounts()
         app_initialized = True
