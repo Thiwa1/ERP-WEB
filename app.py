@@ -1640,11 +1640,12 @@ def bulk_upload_tb():
 
                     rows.append({'name': name, 'dr': dr, 'cr': cr, 'status': status})
 
+                # Calculate Totals
+                total_dr = sum(r['dr'] for r in rows)
+                total_cr = sum(r['cr'] for r in rows)
+
                 if missing_accounts:
                     flash(f'Found {len(missing_accounts)} missing accounts. Please create them first.', 'warning')
-                    # Pass rows to review page which allows creation?
-                    # Or simpler: Redirect to GL upload with these names pre-filled?
-                    # Let's render a TB review page that highlights missing ones and offers "Quick Create" button.
 
                     # Fetch categories again for quick create modal
                     bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
@@ -1652,21 +1653,33 @@ def bulk_upload_tb():
                     cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
 
                     return render_template('bulk_upload_tb_review.html',
-                                           rows=rows,
-                                           bs_cats=bs_cats, pl_cats=pl_cats, cf_cats=cf_cats)
+                                           rows=rows, total_dr=total_dr, total_cr=total_cr,
+                                           bs_cats=bs_cats, pl_cats=pl_cats, cf_cats=cf_cats,
+                                           today_date=date.today().strftime('%Y-%m-%d'))
 
-                # If no missing, allow posting immediately? Or Review first.
-                return render_template('bulk_upload_tb_review.html', rows=rows)
+                return render_template('bulk_upload_tb_review.html', rows=rows, total_dr=total_dr, total_cr=total_cr, today_date=date.today().strftime('%Y-%m-%d'))
 
             except Exception as e:
                 flash(f'Error: {str(e)}', 'danger')
 
         elif 'save_tb' in request.form:
-            # Post TB as Opening Balance JV?
-            # Or just update balances? Standard is posting a JV.
+            # Post TB as Opening Balance JV
             names = request.form.getlist('account_name[]')
             drs = request.form.getlist('dr[]')
             crs = request.form.getlist('cr[]')
+            opening_date = request.form.get('opening_date')
+
+            if not opening_date:
+                flash('Opening Balance Date is required', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
+
+            # Verify Totals
+            total_dr = sum(parse_float(d) for d in drs)
+            total_cr = sum(parse_float(c) for c in crs)
+
+            if abs(total_dr - total_cr) > 0.01:
+                flash(f'Totals do not match! Debit: {total_dr}, Credit: {total_cr}. Difference: {total_dr - total_cr}', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
 
             try:
                 conn = db.get_connection()
@@ -1693,7 +1706,7 @@ def bulk_upload_tb():
                             entry_effective_date, entry_create_date, entry_naration,
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
-                    """, (names[i], dr, cr, today, today, current_user, jv_no))
+                    """, (names[i], dr, cr, opening_date, today, current_user, jv_no))
                     count += 1
 
                 conn.commit()
