@@ -1575,6 +1575,27 @@ def bulk_upload_gl():
                             is_inc, is_exp, is_ast, is_lia, is_equ,
                             cf, today, current_user, basement
                         ))
+
+                        # Auto-create Bank/Cash Book entries if applicable
+                        if is_ast:
+                            acc_name_lower = name.lower()
+                            if 'bank' in acc_name_lower:
+                                # Check if exists in bank_book
+                                cursor.execute("SELECT bank_id FROM bank_book WHERE bank_bookcol_account_number = %s", (name,))
+                                if not cursor.fetchone():
+                                    cursor.execute("""
+                                        INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                                        VALUES (%s, %s, %s, %s)
+                                    """, (name, name, today, current_user))
+                            elif 'cash' in acc_name_lower:
+                                # Check if exists in cash_book
+                                cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
+                                if not cursor.fetchone():
+                                    cursor.execute("""
+                                        INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                                        VALUES (%s, %s, %s, 0)
+                                    """, (name, today, current_user))
+
                     count += 1
 
                 conn.commit()
@@ -1640,11 +1661,12 @@ def bulk_upload_tb():
 
                     rows.append({'name': name, 'dr': dr, 'cr': cr, 'status': status})
 
+                # Calculate Totals
+                total_dr = sum(r['dr'] for r in rows)
+                total_cr = sum(r['cr'] for r in rows)
+
                 if missing_accounts:
                     flash(f'Found {len(missing_accounts)} missing accounts. Please create them first.', 'warning')
-                    # Pass rows to review page which allows creation?
-                    # Or simpler: Redirect to GL upload with these names pre-filled?
-                    # Let's render a TB review page that highlights missing ones and offers "Quick Create" button.
 
                     # Fetch categories again for quick create modal
                     bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
@@ -1652,21 +1674,33 @@ def bulk_upload_tb():
                     cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
 
                     return render_template('bulk_upload_tb_review.html',
-                                           rows=rows,
-                                           bs_cats=bs_cats, pl_cats=pl_cats, cf_cats=cf_cats)
+                                           rows=rows, total_dr=total_dr, total_cr=total_cr,
+                                           bs_cats=bs_cats, pl_cats=pl_cats, cf_cats=cf_cats,
+                                           today_date=date.today().strftime('%Y-%m-%d'))
 
-                # If no missing, allow posting immediately? Or Review first.
-                return render_template('bulk_upload_tb_review.html', rows=rows)
+                return render_template('bulk_upload_tb_review.html', rows=rows, total_dr=total_dr, total_cr=total_cr, today_date=date.today().strftime('%Y-%m-%d'))
 
             except Exception as e:
                 flash(f'Error: {str(e)}', 'danger')
 
         elif 'save_tb' in request.form:
-            # Post TB as Opening Balance JV?
-            # Or just update balances? Standard is posting a JV.
+            # Post TB as Opening Balance JV
             names = request.form.getlist('account_name[]')
             drs = request.form.getlist('dr[]')
             crs = request.form.getlist('cr[]')
+            opening_date = request.form.get('opening_date')
+
+            if not opening_date:
+                flash('Opening Balance Date is required', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
+
+            # Verify Totals
+            total_dr = sum(parse_float(d) for d in drs)
+            total_cr = sum(parse_float(c) for c in crs)
+
+            if abs(total_dr - total_cr) > 0.01:
+                flash(f'Totals do not match! Debit: {total_dr}, Credit: {total_cr}. Difference: {total_dr - total_cr}', 'danger')
+                return redirect(url_for('bulk_upload_tb'))
 
             try:
                 conn = db.get_connection()
@@ -1693,7 +1727,7 @@ def bulk_upload_tb():
                             entry_effective_date, entry_create_date, entry_naration,
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
-                    """, (names[i], dr, cr, today, today, current_user, jv_no))
+                    """, (names[i], dr, cr, opening_date, today, current_user, jv_no))
                     count += 1
 
                 conn.commit()
@@ -4479,7 +4513,7 @@ def pos_reversal_process():
         conn.start_transaction()
 
         # 1. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 2. Mark POS Customer as Reversed/Deleted
         cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
@@ -4589,7 +4623,7 @@ def bank_payment_reversal_process():
         cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Supplier Outstanding (Bank Version)
         cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
@@ -4651,7 +4685,7 @@ def cash_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Supplier Outstanding
         cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
@@ -4714,7 +4748,7 @@ def direct_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Inventory In (Bring items out/mark deleted)
         # Note: The C# code called `Inventory_Items_Revers_IN`.
@@ -7168,7 +7202,7 @@ def reverse_journal_entry():
         # Call Stored Procedure
         # Note: schema.sql defined `JV_Entry_Revers` with params (jv_No, User01, Edit_Date)
         # User01 is TEXT, Edit_Date is DATE
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, str(current_user), datetime.now().date()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.now().date()))
 
         conn.commit()
         cursor.close()

@@ -27,6 +27,14 @@
     <form method="POST">
         <input type="hidden" name="save_tb" value="1">
 
+        <!-- Date Selection -->
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label for="opening_date" class="form-label fw-bold">Opening Balance Date:</label>
+                <input type="date" class="form-control" id="opening_date" name="opening_date" value="{{ today_date }}" required>
+            </div>
+        </div>
+
         <div class="card shadow-sm border-0">
             <div class="card-body p-0 table-responsive" style="max-height: 700px;">
                 <table class="table table-bordered table-hover mb-0 align-middle">
@@ -63,12 +71,28 @@
                         </tr>
                         {% endfor %}
                     </tbody>
+                    <tfoot class="table-light fw-bold">
+                        {% set diff = (total_dr - total_cr) | abs %}
+                        <tr class="{% if diff > 0.01 %}table-danger{% else %}table-success{% endif %}">
+                            <td class="text-end">TOTALS:</td>
+                            <td class="text-end">{{ "{:,.2f}".format(total_dr) }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(total_cr) }}</td>
+                            <td class="text-center">
+                                {% if diff > 0.01 %}
+                                <span class="text-danger"><i class="fas fa-times-circle"></i> Diff: {{ "{:,.2f}".format(total_dr - total_cr) }}</span>
+                                {% else %}
+                                <span class="text-success"><i class="fas fa-check-circle"></i> Balanced</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
 
             <div class="card-footer bg-white text-end">
                 <a href="{{ url_for('bulk_upload_tb') }}" class="btn btn-secondary me-2">Cancel</a>
-                <button type="submit" class="btn btn-success fw-bold px-4" {% if missing_count > 0 %}disabled{% endif %}>
+                {% set is_disabled = missing_count > 0 or diff > 0.01 %}
+                <button type="submit" class="btn btn-success fw-bold px-4" {% if is_disabled %}disabled{% endif %}>
                     <i class="fas fa-save me-2"></i> Post Opening Balances
                 </button>
             </div>
