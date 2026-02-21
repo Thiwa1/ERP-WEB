@@ -1575,6 +1575,27 @@ def bulk_upload_gl():
                             is_inc, is_exp, is_ast, is_lia, is_equ,
                             cf, today, current_user, basement
                         ))
+
+                        # Auto-create Bank/Cash Book entries if applicable
+                        if is_ast:
+                            acc_name_lower = name.lower()
+                            if 'bank' in acc_name_lower:
+                                # Check if exists in bank_book
+                                cursor.execute("SELECT bank_id FROM bank_book WHERE bank_bookcol_account_number = %s", (name,))
+                                if not cursor.fetchone():
+                                    cursor.execute("""
+                                        INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                                        VALUES (%s, %s, %s, %s)
+                                    """, (name, name, today, current_user))
+                            elif 'cash' in acc_name_lower:
+                                # Check if exists in cash_book
+                                cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
+                                if not cursor.fetchone():
+                                    cursor.execute("""
+                                        INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                                        VALUES (%s, %s, %s, 0)
+                                    """, (name, today, current_user))
+
                     count += 1
 
                 conn.commit()
@@ -4492,7 +4513,7 @@ def pos_reversal_process():
         conn.start_transaction()
 
         # 1. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 2. Mark POS Customer as Reversed/Deleted
         cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
@@ -4602,7 +4623,7 @@ def bank_payment_reversal_process():
         cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Supplier Outstanding (Bank Version)
         cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
@@ -4664,7 +4685,7 @@ def cash_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Supplier Outstanding
         cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
@@ -4727,7 +4748,7 @@ def direct_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, current_user, datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
 
         # 3. Reverse Inventory In (Bring items out/mark deleted)
         # Note: The C# code called `Inventory_Items_Revers_IN`.
@@ -7181,7 +7202,7 @@ def reverse_journal_entry():
         # Call Stored Procedure
         # Note: schema.sql defined `JV_Entry_Revers` with params (jv_No, User01, Edit_Date)
         # User01 is TEXT, Edit_Date is DATE
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, str(current_user), datetime.now().date()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.now().date()))
 
         conn.commit()
         cursor.close()
