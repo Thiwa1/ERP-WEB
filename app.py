@@ -88,7 +88,11 @@ def get_current_user_id():
     return session.get('user_id', 0)
 
 def get_current_user_pk():
-    return session.get('user_pk', 0)
+    try:
+        pk = session.get('user_pk', 0)
+        return int(pk)
+    except (ValueError, TypeError):
+        return 0
 
 def check_permission(perm_name):
     """Checks if current user has specific permission."""
