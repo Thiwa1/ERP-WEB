@@ -8378,3 +8378,41 @@ def initialize_app():
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
+@app.route('/sales_summary_customer', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def sales_summary_customer():
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+
+    query = """
+        SELECT
+            c.customer_code,
+            c.customer_name,
+            COUNT(io.Id) as invoice_count,
+            SUM(io.invoice_total_oustanding) as total_sales,
+            SUM(io.invoice_oustanding_Patment) as total_paid,
+            SUM(io.invoice_total_oustanding - io.invoice_oustanding_Patment) as balance_due
+        FROM Invoice_Oustanding io
+        JOIN customer c ON io.invoice_buinding_Customer = c.id
+        WHERE io.invoice_date BETWEEN %s AND %s
+        AND io.oustanding_delete = 0
+        GROUP BY c.id, c.customer_code, c.customer_name
+        ORDER BY total_sales DESC
+    """
+
+    rows = db.execute_query(query, (from_date, to_date))
+
+    # Calculate Grand Totals
+    totals = {
+        'sales': sum(float(r['total_sales'] or 0) for r in rows),
+        'paid': sum(float(r['total_paid'] or 0) for r in rows),
+        'balance': sum(float(r['balance_due'] or 0) for r in rows),
+        'count': sum(int(r['invoice_count'] or 0) for r in rows)
+    }
+
+    return render_template('sales_summary_customer.html',
+                           rows=rows,
+                           totals=totals,
+                           from_date=from_date,
+                           to_date=to_date)
