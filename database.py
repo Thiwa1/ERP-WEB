@@ -5,10 +5,20 @@ class Database:
     def __init__(self, config):
         self.config = config
         self.last_error = None
+        self.db_name_getter = None
+
+    def set_db_name_getter(self, getter):
+        self.db_name_getter = getter
 
     def get_connection(self):
         try:
-            return mysql.connector.connect(**self.config)
+            config = self.config.copy()
+            if self.db_name_getter:
+                dynamic_db = self.db_name_getter()
+                if dynamic_db:
+                    config['database'] = dynamic_db
+
+            return mysql.connector.connect(**config)
         except mysql.connector.Error as err:
             self.last_error = str(err)
             print(f"Error connecting to database: {err}")

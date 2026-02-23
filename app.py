@@ -29,6 +29,177 @@ db_config = {
 }
 
 db = Database(db_config)
+MASTER_DB_NAME = 'Book_keeping_Master'
+
+def get_session_db_name():
+    return session.get('tenant_db')
+
+db.set_db_name_getter(get_session_db_name)
+
+# Master DB Connection (Dedicated)
+master_db_config = db_config.copy()
+master_db_config['database'] = MASTER_DB_NAME
+master_db = Database(master_db_config)
+
+def setup_master_db():
+    """Ensure the Master DB and its tables exist."""
+    try:
+        # Connect without DB to create Master DB if needed
+        temp_config = db_config.copy()
+        if 'database' in temp_config:
+            del temp_config['database']
+
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+        cursor.close()
+        conn.close()
+
+        # Now create tables in Master DB
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_name VARCHAR(255) NOT NULL UNIQUE,
+                db_name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                tenant_id INT,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            )
+        """)
+        print("Master DB setup complete.")
+    except Exception as e:
+        print(f"Error setting up Master DB: {e}")
+
+def parse_and_execute_sql(cursor, content):
+    """Parses SQL content with DELIMITER support and executes it."""
+    delimiter = ';'
+    statement = ""
+
+    lines = content.split('\n')
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.upper().startswith('DELIMITER '):
+            delimiter = stripped.split()[1]
+            continue
+
+        if stripped.startswith('--') or stripped.startswith('#'):
+            continue
+
+        if not statement and not stripped:
+            continue
+
+        statement += line + "\n"
+
+        if statement.strip().endswith(delimiter):
+            sql_to_run = statement.strip()
+            if sql_to_run.endswith(delimiter):
+                 sql_to_run = sql_to_run[:-len(delimiter)]
+
+            if sql_to_run.strip():
+                try:
+                    cursor.execute(sql_to_run)
+                    while cursor.nextset(): pass
+                except Exception as e:
+                    print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+            statement = ""
+
+def create_tenant_db(company_name, username, password, email):
+    """Creates a new tenant DB, runs schema, and registers in Master DB."""
+    import re
+
+    safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
+    db_name = f"bk_{safe_name}"
+
+    existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
+    if existing_user: return False, "Username already exists."
+
+    existing_tenant = master_db.execute_query("SELECT id FROM tenants WHERE company_name = %s", (company_name,))
+    if existing_tenant: return False, "Company already registered."
+
+    try:
+        # Create DB
+        temp_config = db_config.copy()
+        if 'database' in temp_config: del temp_config['database']
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.close()
+        conn.close()
+
+        # Connect to New DB
+        t_config = db_config.copy()
+        t_config['database'] = db_name
+        t_conn = mysql.connector.connect(**t_config)
+        t_cursor = t_conn.cursor()
+
+        # Execute Schema
+        if os.path.exists('database_schema.sql'):
+            with open('database_schema.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        if os.path.exists('fixed_assets.sql'):
+            with open('fixed_assets.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        t_conn.commit()
+        t_conn.close()
+
+        # Insert Admin User
+        t_db_conf = db_config.copy()
+        t_db_conf['database'] = db_name
+        t_db = Database(t_db_conf)
+
+        t_db.execute_query("""
+            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
+            VALUES (%s, %s, %s, '1001', 1)
+        """, (username, password, email))
+
+        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,))
+
+        # Insert into Master
+        master_db.execute_query("INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)", (company_name, db_name))
+        tenant_id_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (db_name,))
+        tenant_id = tenant_id_res[0]['id']
+
+        master_db.execute_query("""
+            INSERT INTO users (username, password, email, tenant_id)
+            VALUES (%s, %s, %s, %s)
+        """, (username, password, email, tenant_id))
+
+        return True, "Registration successful."
+
+    except Exception as e:
+        print(f"Registration Error: {e}")
+        return False, str(e)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        company_name = request.form['company_name']
+        username = request.form['username']
+        password = request.form['password']
+        email = request.form['email']
+
+        success, message = create_tenant_db(company_name, username, password, email)
+        if success:
+            flash(message, 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(message, 'danger')
+
+    return render_template('register.html')
 
 # Context Processor for Currency
 @app.context_processor
@@ -136,14 +307,52 @@ def login():
             flash('Please enter both username and password.', 'danger')
             return redirect(url_for('login'))
 
-        # Check credentials
-        # Note: In production, passwords should be hashed.
-        # The provided C# code compares plain text, so we replicate that.
+        # 1. Try Login via Master DB (Multi-Tenant)
+        try:
+            # Query Master DB for user and tenant DB
+            master_user_res = master_db.execute_query("""
+                SELECT u.username, u.password, t.db_name
+                FROM users u
+                JOIN tenants t ON u.tenant_id = t.id
+                WHERE u.username = %s
+            """, (username,))
+
+            if master_user_res:
+                master_user = master_user_res[0]
+                if master_user['password'] == password:
+                    # Login Successful on Master
+                    session['tenant_db'] = master_user['db_name']
+                    session['username'] = username
+
+                    # Fetch User Details from Tenant DB (for permissions/FKs)
+                    # Note: db instance now points to tenant_db via session
+                    tenant_user_res = db.execute_query("SELECT id, User_Code FROM Login_Table WHERE User_Name = %s", (username,))
+
+                    if tenant_user_res:
+                        tenant_user = tenant_user_res[0]
+                        session['user_id'] = tenant_user['User_Code']
+                        session['user_pk'] = tenant_user['id']
+                        return redirect(url_for('index'))
+                    else:
+                        flash('User record missing in tenant database.', 'danger')
+                        session.pop('tenant_db', None)
+                        return redirect(url_for('login'))
+                else:
+                    flash('Incorrect password.', 'danger')
+                    return redirect(url_for('login'))
+        except Exception as e:
+            print(f"Master Login Error: {e}")
+            # Fallthrough to legacy
+
+        # 2. Fallback to Legacy Login (Default DB)
+        # Ensure clean session regarding tenant
+        session.pop('tenant_db', None)
+
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
 
         if users is None:
-            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed. Please check your database configuration."
+            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed."
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
@@ -8361,23 +8570,6 @@ def import_initial_schema():
     except Exception as e:
         print(f"Error importing initial schema: {e}")
 
-# Ensure initialization runs once regardless of startup method
-app_initialized = False
-
-@app.before_request
-def initialize_app():
-    global app_initialized
-    if not app_initialized:
-        create_db_if_missing()
-        import_initial_schema()
-        run_schema_migrations()
-        ensure_default_categories()
-        create_default_user()
-        ensure_default_accounts()
-        app_initialized = True
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
 @app.route('/sales_summary_customer', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
@@ -8416,3 +8608,22 @@ def sales_summary_customer():
                            totals=totals,
                            from_date=from_date,
                            to_date=to_date)
+
+# Ensure initialization runs once regardless of startup method
+app_initialized = False
+
+@app.before_request
+def initialize_app():
+    global app_initialized
+    if not app_initialized:
+        create_db_if_missing()
+        setup_master_db()
+        import_initial_schema()
+        run_schema_migrations()
+        ensure_default_categories()
+        create_default_user()
+        ensure_default_accounts()
+        app_initialized = True
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000)
