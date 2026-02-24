@@ -19,6 +19,40 @@ app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
 app.config['SECRET_KEY'] = app.secret_key
 
+# Theme Configuration
+THEMES = {
+    'default': {
+        'name': 'Professional (Default)',
+        'primary': '#0f172a',
+        'secondary': '#1e293b',
+        'accent': '#2563eb'
+    },
+    'ocean': {
+        'name': 'Ocean Blue',
+        'primary': '#003366',
+        'secondary': '#004080',
+        'accent': '#0073e6'
+    },
+    'forest': {
+        'name': 'Forest Green',
+        'primary': '#143d14',
+        'secondary': '#1f5c1f',
+        'accent': '#2eb82e'
+    },
+    'ruby': {
+        'name': 'Ruby Red',
+        'primary': '#4d0000',
+        'secondary': '#800000',
+        'accent': '#e60000'
+    },
+    'midnight': {
+        'name': 'Midnight Dark',
+        'primary': '#000000',
+        'secondary': '#1a1a1a',
+        'accent': '#ffcc00'
+    }
+}
+
 # Database Configuration
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
@@ -201,17 +235,29 @@ def register():
 
     return render_template('register.html')
 
-# Context Processor for Currency
+# Context Processor for Currency & Theme
 @app.context_processor
-def inject_currency():
-    # Cache lookup could be implemented here for performance
-    # For now, fetching single row is fast enough
+def inject_globals():
+    globals_dict = {}
+
+    # Currency
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
-        currency = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
+        globals_dict['company_currency'] = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
     except:
-        currency = 'LKR'
-    return dict(company_currency=currency)
+        globals_dict['company_currency'] = 'LKR'
+
+    # Theme
+    try:
+        res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+        theme_key = res[0]['setting_value'] if res else 'default'
+        globals_dict['current_theme'] = THEMES.get(theme_key, THEMES['default'])
+        globals_dict['theme_key'] = theme_key
+    except:
+        globals_dict['current_theme'] = THEMES['default']
+        globals_dict['theme_key'] = 'default'
+
+    return globals_dict
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
@@ -1476,8 +1522,8 @@ def create_cash_account():
 def control_panel():
     # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
-        # Warranty
-        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form:
+        # Warranty & Settings
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form:
             # Warranty Logic
             warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
             count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
@@ -1495,6 +1541,15 @@ def control_panel():
             else:
                 db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'enable_approval_workflow'", (str(approval_enabled),), commit=True)
 
+            # Theme Logic
+            new_theme = request.form.get('system_theme')
+            if new_theme and new_theme in THEMES:
+                check_theme = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+                if not check_theme:
+                    db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', %s, 'Active System Theme')", (new_theme,), commit=True)
+                else:
+                    db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'system_theme'", (new_theme,), commit=True)
+
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
 
@@ -1508,6 +1563,9 @@ def control_panel():
     approval_enabled = False
     if res_app and res_app[0]['setting_value'] == '1':
         approval_enabled = True
+
+    res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+    current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -1532,6 +1590,8 @@ def control_panel():
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
                            approval_enabled=approval_enabled,
+                           current_theme_key=current_theme_key,
+                           themes=THEMES,
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
@@ -6958,6 +7018,11 @@ def run_schema_migrations():
             # "if need it need to diasable" -> feature toggle.
             # I'll default to '0' (Disabled) so they can turn it on when ready.
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
+
+        # Default Theme Setting
+        cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', 'default', 'Active System Theme')")
 
         conn.commit()
         cursor.close()

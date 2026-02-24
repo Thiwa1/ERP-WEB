@@ -12,11 +12,11 @@
     <style>
         :root {
             --sidebar-width: 260px;
-            --primary-color: #0f172a; /* Deep Navy - More Professional */
-            --secondary-color: #1e293b;
-            --accent-color: #2563eb; /* Stronger Blue */
+            --primary-color: {{ current_theme.primary }};
+            --secondary-color: {{ current_theme.secondary }};
+            --accent-color: {{ current_theme.accent }};
             --text-light: #f8fafc;
-            --bg-light: #f8fafc; /* Clean White/Gray, less blue tint */
+            --bg-light: #f8fafc;
             --text-muted: #94a3b8;
             --header-bg: #ffffff;
             --card-border: #e2e8f0;
