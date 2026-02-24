@@ -3,118 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suwin Accounting - Register</title>
+    <title>Register - Suwin Accounting</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body, html { height: 100%; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .bg-primary-custom { background-color: #1E3A5F; }
-        .text-accent { color: #149AEF; }
-        .login-container { height: 100vh; }
-        .branding-section { color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
-        .login-form-section { background-color: white; display: flex; align-items: center; justify-content: center; overflow-y: auto; }
-        .brand-icon { width: 120px; height: 120px; background-color: #F8FBFF; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 30px; position: relative; }
-        .form-control-lg { font-size: 14px; padding: 12px; }
-        .btn-login { background-color: #1E3A5F; color: white; padding: 10px 30px; font-weight: 600; width: 100%; }
-        .btn-login:hover { background-color: #2B5B80; color: white; }
-        .feature-list i { color: #A0B8D0; margin-right: 10px; font-size: 12px; }
-        .feature-list div { color: #A0B8D0; font-size: 13px; margin-bottom: 5px; }
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: #f4f5f8;
+            color: #393a3d;
+        }
+
+        /* Navigation */
+        .navbar {
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            padding: 15px 0;
+        }
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 24px;
+            color: #0d333f;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .navbar-brand i {
+            color: #2ca01c; /* QuickBooks Green-ish */
+        }
+        .btn-outline-login {
+            border: 2px solid #0d333f;
+            color: #0d333f;
+            font-weight: 600;
+            border-radius: 20px;
+            padding: 6px 20px;
+        }
+        .btn-outline-login:hover {
+            background-color: #0d333f;
+            color: #fff;
+        }
+
+        /* Hero Section */
+        .hero-section {
+            background-color: #000;
+            background-image: url('https://quickbooks.intuit.com/oidam/intuit/sbseg/en_us/quickbooks-online/web/image/fusion-gradient-background-desktop-2x.jpg'); /* Use a similar gradient or the one from the example if accessible, fallback to color */
+            background-size: cover;
+            background-position: center;
+            min-height: 100vh; /* Full height including nav area effect */
+            display: flex;
+            align-items: center;
+            padding: 60px 0;
+            position: relative;
+            margin-top: -76px; /* Pull up behind nav if nav was transparent, but nav is white here. Let's just have it separate. */
+            margin-top: 0;
+        }
+
+        /* Fallback gradient if image fails */
+        .hero-section {
+            background: linear-gradient(135deg, #0d333f 0%, #103661 100%);
+        }
+
+        .hero-text h1 {
+            font-size: 3rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+        .hero-text h1 span {
+            background: linear-gradient(89deg, #236CFF -10.76%, #23DEFF 29.73%, #53FB79 95.86%);
+            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text;
+        }
+        .hero-text p {
+            font-size: 1.25rem;
+            color: #ffffff;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        .check-list {
+            list-style: none;
+            padding: 0;
+            color: white;
+            font-size: 1rem;
+        }
+        .check-list li {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+        }
+        .check-list li i {
+            color: #5bef76;
+            margin-right: 15px;
+            font-size: 1.2rem;
+        }
+
+        /* Registration Card */
+        .register-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            padding: 40px;
+        }
+        .register-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .register-header h3 {
+            font-weight: 700;
+            color: #0d333f;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #393a3d;
+            font-size: 0.9rem;
+        }
+        .form-control {
+            border-radius: 6px;
+            padding: 10px 15px;
+            border: 1px solid #c3ced5;
+            background-color: #fff;
+        }
+        .form-control:focus {
+            border-color: #2ca01c;
+            box-shadow: 0 0 0 0.25rem rgba(44, 160, 28, 0.25);
+        }
+        .btn-register {
+            background-color: #2ca01c; /* QuickBooks Green */
+            color: #fff;
+            font-weight: 700;
+            border: none;
+            border-radius: 6px;
+            padding: 12px;
+            width: 100%;
+            font-size: 1.1rem;
+            margin-top: 20px;
+            transition: background-color 0.3s;
+        }
+        .btn-register:hover {
+            background-color: #1a7a10;
+            color: #fff;
+        }
+        .terms-text {
+            font-size: 0.8rem;
+            color: #6b6c72;
+            text-align: center;
+            margin-top: 20px;
+        }
+        .terms-text a {
+            color: #0077c5;
+            text-decoration: none;
+        }
+
+        /* Responsive */
+        @media (max-width: 991px) {
+            .hero-section {
+                text-align: center;
+                padding: 40px 0;
+            }
+            .hero-text {
+                margin-bottom: 40px;
+            }
+            .check-list {
+                display: inline-block;
+                text-align: left;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container-fluid login-container">
-        <div class="row h-100">
-            <!-- Left Side: Branding -->
-            <div class="col-md-7 bg-primary-custom branding-section d-none d-md-flex">
-                <div class="text-center">
-                    <div class="brand-icon mx-auto text-primary fs-1">
-                        <i class="fas fa-calculator"></i>
-                        <span class="position-absolute top-0 end-0 p-2 text-success fs-4">$</span>
-                    </div>
-                    <h1 class="fw-bold mb-2">Suwin Accounting</h1>
-                    <p class="fs-5 text-light opacity-75">Professional Accounting Solution</p>
 
-                    <div class="mt-5 text-start d-inline-block feature-list">
-                        <div><i class="fas fa-check"></i> Multi-Company Support</div>
-                        <div><i class="fas fa-check"></i> Secure Data Isolation</div>
-                        <div><i class="fas fa-check"></i> Integrated Reporting</div>
-                        <div><i class="fas fa-check"></i> Audit Trails</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Right Side: Registration Form -->
-            <div class="col-md-5 login-form-section py-5">
-                <div class="w-75">
-                    <div class="mb-4 text-center">
-                        <h2 class="fw-light text-primary-custom mb-2">Create Account</h2>
-                        <p class="text-muted">Register your company</p>
-                    </div>
-
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }} mb-4" role="alert">
-                                    {{ message }}
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
-                    <form action="{{ url_for('register') }}" method="POST" id="registerForm">
-                        <div class="mb-3">
-                            <label for="company_name" class="form-label fw-bold">Company Name</label>
-                            <input type="text" class="form-control form-control-lg bg-light" id="company_name" name="company_name" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="email" class="form-label fw-bold">Email</label>
-                            <input type="email" class="form-control form-control-lg bg-light" id="email" name="email" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="username" class="form-label fw-bold">Admin Username</label>
-                            <input type="text" class="form-control form-control-lg bg-light" id="username" name="username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="password" class="form-label fw-bold">Password</label>
-                            <input type="password" class="form-control form-control-lg bg-light" id="password" name="password" required>
-                        </div>
-                        <div class="mb-4">
-                            <label for="confirm_password" class="form-label fw-bold">Confirm Password</label>
-                            <input type="password" class="form-control form-control-lg bg-light" id="confirm_password" required>
-                            <div class="invalid-feedback">Passwords do not match.</div>
-                        </div>
-                        <div class="d-grid gap-2 mb-4">
-                            <button type="submit" class="btn btn-login btn-lg btn-loading">Register Company</button>
-                        </div>
-                        <div class="text-center">
-                            <a href="{{ url_for('login') }}" class="text-decoration-none">Already have an account? Login here</a>
-                        </div>
-                    </form>
-                </div>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-pie fa-lg"></i>
+                Suwin Accounting
+            </a>
+            <div class="ms-auto">
+                <a href="{{ url_for('login') }}" class="btn btn-outline-login">Sign In</a>
             </div>
         </div>
-    </div>
+    </nav>
+
+    <!-- Hero Section with Registration Form -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="row align-items-center">
+
+                <!-- Left Column: Value Proposition -->
+                <div class="col-lg-6 hero-text">
+                    <h1><span>Automation where it counts.</span><br>Human when it matters.</h1>
+                    <p>Save time and unlock growth with integrated business tools, all in one place.</p>
+
+                    <ul class="check-list">
+                        <li><i class="fas fa-check-circle"></i> Create & send professional invoices</li>
+                        <li><i class="fas fa-check-circle"></i> Track income, expenses, and profit</li>
+                        <li><i class="fas fa-check-circle"></i> Manage multiple currencies & inventory</li>
+                        <li><i class="fas fa-check-circle"></i> Secure data protection & backup</li>
+                    </ul>
+                </div>
+
+                <!-- Right Column: Registration Form -->
+                <div class="col-lg-5 offset-lg-1">
+                    <div class="register-card">
+                        <div class="register-header">
+                            <h3>Start your free trial</h3>
+                            <p class="text-muted">No credit card required</p>
+                        </div>
+
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} mb-3" role="alert">
+                                        {{ message }}
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form action="{{ url_for('register') }}" method="POST" id="registerForm">
+                            <div class="mb-3">
+                                <label for="company_name" class="form-label">Company Name</label>
+                                <input type="text" class="form-control" id="company_name" name="company_name" placeholder="Business Name" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email Address</label>
+                                <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" placeholder="Create a username" required>
+                            </div>
+
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="password" class="form-label">Password</label>
+                                    <input type="password" class="form-control" id="password" name="password" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="confirm_password" class="form-label">Confirm</label>
+                                    <input type="password" class="form-control" id="confirm_password" required>
+                                </div>
+                            </div>
+                            <div class="invalid-feedback d-block" id="passwordError" style="display:none !important;">Passwords do not match.</div>
+
+                            <button type="submit" class="btn btn-register btn-loading">Register</button>
+
+                            <p class="terms-text">
+                                By clicking Register, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Statement</a>.
+                            </p>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         document.getElementById('registerForm').addEventListener('submit', function(event) {
             var pwd = document.getElementById('password').value;
             var cpwd = document.getElementById('confirm_password').value;
+            var err = document.getElementById('passwordError');
+
             if (pwd !== cpwd) {
                 event.preventDefault();
                 document.getElementById('confirm_password').classList.add('is-invalid');
+                err.style.setProperty('display', 'block', 'important');
             } else {
                 document.getElementById('confirm_password').classList.remove('is-invalid');
-                // Spinner logic (assuming base.js logic or similar)
+                err.style.setProperty('display', 'none', 'important');
+
+                // Spinner logic
                 var btn = this.querySelector('.btn-loading');
                 if(btn) {
                     var originalText = btn.innerHTML;
                     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-                    btn.disabled = true;
-                    // Re-submit programmatically to bypass prevented event?
-                    // No, preventing only on error. If valid, it submits.
-                    // But disabled button prevents submit.
-                    // Instead of disable, just change text. The form submits.
+                    // We don't disable to ensure form submits, or we assume browser handles it.
+                    // Actually, disable prevents double submission, form should still submit if event propagation continues.
+                    // But in plain JS, disable immediately after click might stop submit if not carefully handled.
+                    // Bootstrap usually handles this if using standard classes, but here we just show spinner.
                 }
             }
         });
