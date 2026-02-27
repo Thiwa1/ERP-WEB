@@ -1,3 +1,4 @@
+import tests.mock_env
 import unittest
 from app import parse_float
 
