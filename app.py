@@ -243,6 +243,7 @@ def register():
 
 # Context Processor for Currency & Theme
 @app.context_processor
+def inject_currency():
 def inject_globals():
     globals_dict = {}
 
@@ -274,15 +275,6 @@ def currency_filter(value):
 
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
-
-        # Get symbol from session or DB?
-        # Since filters don't easily access context processors, we can just return the number
-        # and let the template use {{ company_currency }} {{ value|currency }}
-        # OR we fetch it here (less efficient)
-        # OR we rely on the user to put the symbol in the template.
-
-        # Better approach: Just format the number here.
-        # The symbol is injected via context processor.
         return formatted
     except (ValueError, TypeError):
         return "0.00"
