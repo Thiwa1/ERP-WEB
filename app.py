@@ -6829,19 +6829,26 @@ def evaluate_quotations():
         # Quality Score: (Actual / Max)
         s_qual = qual / max_qual if max_qual > 0 else 0
 
-        # Apply Weights based on Priority
-        if priority == 'speed':
-            # Speed is King: Speed 60%, Price 20%, Quality 20%
-            final_score = (s_days * 0.6) + (s_price * 0.2) + (s_qual * 0.2)
-            reason = "Fastest delivery within constraints"
-        elif priority == 'quality':
-            # Quality Focus: Quality 60%, Price 20%, Speed 20%
-            final_score = (s_qual * 0.6) + (s_price * 0.2) + (s_days * 0.2)
-            reason = "Best quality rating"
-        else: # Default Price
-            # Price Focus: Price 60%, Speed 20%, Quality 20%
-            final_score = (s_price * 0.6) + (s_days * 0.2) + (s_qual * 0.2)
-            reason = "Best price"
+        # Define Weights and Reasons based on Priority
+        # Format: (Price Weight, Days Weight, Quality Weight, Reason)
+        # s_price (min/actual), s_days (min/actual), s_qual (actual/max)
+        strategies = {
+            'speed':   (0.2, 0.6, 0.2, "Fastest delivery within constraints"),
+            'quality': (0.2, 0.2, 0.6, "Best quality rating"),
+            'price':   (0.6, 0.2, 0.2, "Best price")
+        }
+
+        # Get weights or default to 'price'
+        w_price, w_days, w_qual, reason = strategies.get(priority, strategies['price'])
+
+        # Calculate Score
+        # Note: s_price and s_days logic was: Best/Actual (so higher is better, max 1)
+        # s_qual logic was: Actual/Best (so higher is better, max 1)
+        # However, the previous logic for s_qual in quality priority used s_qual * 0.6.
+        # But for price/speed priority it also used s_qual * 0.2.
+        # The key difference was which variable got the 0.6 weight.
+
+        final_score = (s_price * w_price) + (s_days * w_days) + (s_qual * w_qual)
 
         s['score'] = round(final_score * 100, 1)
         scored.append(s)
