@@ -12,6 +12,7 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import migrations
 import secrets
 
 app = Flask(__name__)
@@ -6807,6 +6808,8 @@ def submit_pos_sale():
 
 def run_schema_migrations():
     """Checks and updates database schema for new features."""
+    conn = db.get_connection()
+    migrations.run_migrations(conn)
     try:
         conn = db.get_connection()
         if not conn: return
