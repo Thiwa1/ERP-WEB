@@ -6675,29 +6675,45 @@ def submit_pos_sale():
         total_cost_value = 0
 
         # 3. Process Cart Items
+        pos_sales_params = []
+        inventory_params = []
+        action_timestamp = datetime.now()
+
         for item in cart:
             total_sale_value += item['total']
             total_cost_value += (item['cost'] * item['qty'])
 
-            # Insert into pos_sales_invoice_01
-            cursor.execute("""
+            # Prepare pos_sales_invoice_01 params
+            pos_sales_params.append((
+                item['code'], item['name'], item['unit'],
+                item['price_market'], item['price_special'], item['price_loyalty'],
+                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+                current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            ))
+
+            # Prepare Inventory Movement OUT params
+            inventory_params.append((
+                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+                current_user, jv_no, settings.get('location')
+            ))
+
+        # Batch Insert into pos_sales_invoice_01
+        if pos_sales_params:
+            cursor.executemany("""
                 INSERT INTO pos_sales_invoice_01 (
                     ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
                     Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
                     RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
                     CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
-            """, (
-                item['code'], item['name'], item['unit'],
-                item['price_market'], item['price_special'], item['price_loyalty'],
-                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
-                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
-            ))
+            """, pos_sales_params)
 
-            # Inventory Movement OUT
-            cursor.execute("""
+        # Batch Insert into inventory_recod
+        if inventory_params:
+            cursor.executemany("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_action_date,
                     inventory_recod_moument_in, inventory_recod_movment_out,
@@ -6705,6 +6721,7 @@ def submit_pos_sale():
                     inventory_recod_account, inventory_recod_user_id, JV_No,
                     inventory_recod_location
                 ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+            """, inventory_params)
             """, (
                 item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
                 current_user_pk, jv_no, settings.get('location')
