@@ -3733,6 +3733,10 @@ def bank_payment_submit():
         cursor.execute("INSERT INTO bank_book_voucher_no (bank_book_voucher_link, bank_book_voucher_no, bank_book_chq_no) VALUES (%s, %s, %s)",
                        (bank_account, new_voucher, cheque_no))
 
+        # 2a. Generate Master Voucher Number (Global Sequence)
+        cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
+        master_voucher_no = cursor.lastrowid
+
         # 3. Create Journal Voucher (JV)
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
                        ('JV FROM PAYMENT', narration, status))
@@ -3784,12 +3788,13 @@ def bank_payment_submit():
                 INSERT INTO bank_book_recod (
                     bank_book__accont_name, bank_book__recode_cr, bank_book__naration,
                     bank_book__suplier_oustanding_id, bank_book__suplier_name, jv_numbers_jv_id,
-                    bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (bank_account, net_item_amount, narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date))
+                    bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date,
+                    master_voucher_no
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (bank_account, net_item_amount, narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date, master_voucher_no))
 
         conn.commit()
-        flash(f'Payment processed successfully. Voucher No: {new_voucher}', 'success')
+        flash(f'Payment processed successfully. Voucher No: {new_voucher}, Master Voucher: {master_voucher_no}', 'success')
 
     except Exception as e:
         conn.rollback()
@@ -7352,6 +7357,25 @@ def run_schema_migrations():
             # I'll default to '0' (Disabled) so they can turn it on when ready.
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
 
+        # 10. Master Payment Voucher Sequence
+        cursor.execute("SHOW TABLES LIKE 'master_payment_voucher_no'")
+        if not cursor.fetchone():
+            print("Migrating: Creating master_payment_voucher_no table")
+            cursor.execute("""
+                CREATE TABLE master_payment_voucher_no (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    voucher_no BIGINT NOT NULL,
+                    create_date DATE
+                )
+            """)
+            cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
+
+        # 11. Add Master Voucher Column to Bank Book Record
+        cursor.execute("SHOW COLUMNS FROM bank_book_recod")
+        bbr_cols = [row[0] for row in cursor.fetchall()]
+        if 'master_voucher_no' not in bbr_cols:
+            print("Migrating: Adding master_voucher_no to bank_book_recod")
+            cursor.execute("ALTER TABLE bank_book_recod ADD COLUMN master_voucher_no BIGINT DEFAULT 0")
         # Default Theme Setting
         cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
         if not cursor.fetchone():
