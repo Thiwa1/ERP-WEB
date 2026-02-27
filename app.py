@@ -76,6 +76,81 @@ def parse_float(value):
     except (ValueError, TypeError):
         return 0.0
 
+def parse_csv_file(file_storage, required_columns=None):
+    """
+    Parses a file-like object (e.g., Flask FileStorage) into a list of dictionaries.
+    Handles multiple encodings and optional column validation.
+
+    Args:
+        file_storage: A Flask FileStorage object or similar with a .stream attribute or read() method.
+        required_columns: A list of strings representing column headers that must be present.
+
+    Returns:
+        A list of dictionaries representing the CSV rows.
+
+    Raises:
+        ValueError: If decoding fails or required columns are missing.
+    """
+    try:
+        # Read file bytes. If it's a FileStorage, use .stream.read() or .read()
+        if hasattr(file_storage, 'stream'):
+            file_bytes = file_storage.stream.read()
+        elif hasattr(file_storage, 'read'):
+            file_bytes = file_storage.read()
+        else:
+            raise ValueError("Invalid file object")
+
+        # If file_bytes is empty, decoded_str will be empty, and csv.DictReader might not return headers
+        # We need to handle this.
+        if not file_bytes:
+             if required_columns:
+                 raise ValueError("File is empty, missing required columns: " + ", ".join(required_columns))
+             return []
+
+        decoded_str = None
+        # Try multiple encodings
+        for encoding in ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']:
+            try:
+                decoded_str = file_bytes.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if decoded_str is None:
+            raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
+
+        stream = io.StringIO(decoded_str, newline=None)
+        csv_input = csv.DictReader(stream)
+
+        # Validate Headers
+        if required_columns:
+            # csv.DictReader reads headers on access to fieldnames or iteration
+            headers = csv_input.fieldnames
+            if not headers:
+                 # Should have been caught by empty check unless file is only newlines?
+                 raise ValueError("Missing required columns: " + ", ".join(required_columns))
+
+            # Use strip() on headers for comparison?
+            clean_headers = [h.strip() for h in headers if h]
+            missing = [col for col in required_columns if col not in clean_headers]
+            if missing:
+                raise ValueError(f"Missing required columns: {', '.join(missing)}")
+
+        rows = []
+        for row in csv_input:
+            # Clean keys/values
+            clean_row = {k.strip(): (v.strip() if v else '') for k, v in row.items() if k}
+            if not clean_row: continue # Skip empty rows
+
+            rows.append(clean_row)
+
+        return rows
+
+    except Exception as e:
+        # Re-raise ValueError directly, or wrap other exceptions
+        if isinstance(e, ValueError): raise e
+        raise ValueError(f"CSV Parsing Error: {str(e)}")
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -1447,30 +1522,13 @@ def bulk_upload_gl():
                 return redirect(url_for('bulk_upload_gl'))
 
             try:
-                # Parse CSV
-                file_bytes = file.stream.read()
-                decoded_str = None
-
-                # Try multiple encodings
-                for encoding in ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']:
-                    try:
-                        decoded_str = file_bytes.decode(encoding)
-                        break
-                    except UnicodeDecodeError:
-                        continue
-
-                if decoded_str is None:
-                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
-
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
+                # Use helper to parse and validate
+                raw_rows = parse_csv_file(file, required_columns=['Account Name'])
 
                 rows = []
-                for row in csv_input:
-                    # Clean keys/values
-                    clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
-                    if not clean_row.get('Account Name'): continue
-                    rows.append(clean_row)
+                for row in raw_rows:
+                    if not row.get('Account Name'): continue
+                    rows.append(row)
 
                 # Fetch Existing Data for Validation/Dropdowns
                 existing_accounts = {a['account_name']: a for a in db.execute_query("SELECT account_name, account_basment FROM new_account_table")}
@@ -1624,22 +1682,10 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
-                file_bytes = file.stream.read()
-                decoded_str = None
-
-                # Try multiple encodings
-                for encoding in ['utf-8', 'utf-8-sig', 'latin1', 'cp1252', 'utf-16']:
-                    try:
-                        decoded_str = file_bytes.decode(encoding)
-                        break
-                    except UnicodeDecodeError:
-                        continue
-
-                if decoded_str is None:
-                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
-
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
+                # Use helper to parse and validate
+                # Note: `bulk_upload_tb` logic iterates rows differently (using row.get('Debit'))
+                # Our helper returns list of dicts.
+                parsed_rows = parse_csv_file(file, required_columns=['Account Name', 'Debit', 'Credit'])
 
                 rows = []
                 missing_accounts = []
@@ -1647,7 +1693,7 @@ def bulk_upload_tb():
                 # Fetch existing accounts
                 existing = {a['account_name'] for a in db.execute_query("SELECT account_name FROM new_account_table")}
 
-                for row in csv_input:
+                for row in parsed_rows:
                     name = row.get('Account Name', '').strip()
                     dr = parse_float(row.get('Debit', 0) or 0)
                     cr = parse_float(row.get('Credit', 0) or 0)
