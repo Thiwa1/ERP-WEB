@@ -12,8 +12,20 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import logging
 
 app = Flask(__name__)
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
 app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
@@ -101,7 +113,7 @@ def check_permission(perm_name):
         if res and res[0].get(perm_name) == 1:
             return True
     except Exception as e:
-        print(f"Permission check error: {e}")
+        logging.error(f"Permission check error: {e}")
         return False
     return False
 
@@ -305,7 +317,7 @@ def add_customer():
                 flash('Customer added successfully!', 'success')
             except Exception as e:
                 conn.rollback()
-                print(f"Transaction failed: {e}")
+                logging.error(f"Transaction failed: {e}")
                 flash(f'Error adding customer: {str(e)}', 'danger')
             finally:
                 cursor.close()
@@ -2185,7 +2197,7 @@ def cash_payment_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Cash Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -2683,7 +2695,7 @@ def update_user_rights():
         ), commit=True)
         return {'success': True}
     except Exception as e:
-        print(f"Rights Update Error: {e}")
+        logging.error(f"Rights Update Error: {e}")
         return {'error': str(e)}, 500
 
 # --- Job Management ---
@@ -3312,7 +3324,7 @@ def bank_payment_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Cash Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -3529,7 +3541,7 @@ def direct_purchasing_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Error submitting payment: {str(e)}', 'danger')
-        print(f"Direct Payment Error: {e}")
+        logging.error(f"Direct Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -5124,7 +5136,7 @@ def submit_customer_receipt():
     except Exception as e:
         conn.rollback()
         flash(f'Error processing receipt: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Receipt Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -6492,7 +6504,7 @@ def submit_pos_sale():
 
     except Exception as e:
         conn.rollback()
-        print(e)
+        logging.error(f"POS Error: {e}")
         return {'error': str(e)}, 500
     finally:
         cursor.close()
@@ -6509,7 +6521,7 @@ def run_schema_migrations():
         try:
             cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         except Exception as e:
-            print(f"Error creating migrations table: {e}")
+            logging.error(f"Error creating migrations table: {e}")
 
         # Helper to check/record migration
         def is_migration_applied(name):
@@ -6524,7 +6536,7 @@ def run_schema_migrations():
                 cursor.execute("INSERT INTO migrations (migration_name) VALUES (%s)", (name,))
                 conn.commit()
             except Exception as e:
-                print(f"Error recording migration {name}: {e}")
+                logging.error(f"Error recording migration {name}: {e}")
 
         # 1. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
@@ -6536,13 +6548,13 @@ def run_schema_migrations():
 
         for col in new_columns:
             if col not in columns:
-                print(f"Migrating: Adding {col} to User_Rights")
+                logging.info(f"Migrating: Adding {col} to User_Rights")
                 cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
 
         # 2. Currency Table
         cursor.execute("SHOW TABLES LIKE 'currency_table'")
         if not cursor.fetchone():
-            print("Migrating: Creating currency_table")
+            logging.info("Migrating: Creating currency_table")
             cursor.execute("""
                 CREATE TABLE currency_table (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6563,22 +6575,22 @@ def run_schema_migrations():
                 # Wrap in try-except to handle "Duplicate column" if manually added.
                 cursor.execute("ALTER TABLE new_account_table ADD COLUMN currency_code VARCHAR(10) DEFAULT 'LKR'")
                 record_migration('add_currency_code_to_new_account')
-                print("Migrated: add_currency_code_to_new_account")
+                logging.info("Migrated: add_currency_code_to_new_account")
             except Exception as e:
                 if "Duplicate column" in str(e) or "1060" in str(e):
                     record_migration('add_currency_code_to_new_account')
                 else:
-                    print(f"Migration failed: {e}")
+                    logging.error(f"Migration failed: {e}")
 
         # 4. Inventory Items Columns (UOM)
         cursor.execute("SHOW COLUMNS FROM inventoy_items")
         inv_columns = [row[0] for row in cursor.fetchall()]
         if 'uom_secondary' not in inv_columns:
-            print("Migrating: Adding uom_secondary to inventoy_items")
+            logging.info("Migrating: Adding uom_secondary to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_secondary VARCHAR(45) NULL")
 
         if 'uom_conversion_rate' not in inv_columns:
-            print("Migrating: Adding uom_conversion_rate to inventoy_items")
+            logging.info("Migrating: Adding uom_conversion_rate to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_conversion_rate DOUBLE DEFAULT 1")
 
         # 5. Suppliers Table Columns (TIN, NIC)
@@ -6586,24 +6598,24 @@ def run_schema_migrations():
         sup_columns = [row[0] for row in cursor.fetchall()]
 
         if 'suppliers_TIN' not in sup_columns:
-            print("Migrating: Adding suppliers_TIN to suppliers")
+            logging.info("Migrating: Adding suppliers_TIN to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_TIN VARCHAR(50) NULL")
 
         if 'suppliers_NIC' not in sup_columns:
-            print("Migrating: Adding suppliers_NIC to suppliers")
+            logging.info("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
 
         # 5b. Company Table (VAT Registered)
         cursor.execute("SHOW COLUMNS FROM company")
         comp_columns = [row[0] for row in cursor.fetchall()]
         if 'vat_registered' not in comp_columns:
-            print("Migrating: Adding vat_registered to company")
+            logging.info("Migrating: Adding vat_registered to company")
             cursor.execute("ALTER TABLE company ADD COLUMN vat_registered TINYINT DEFAULT 0")
 
         # 6. Tax Rates Table
         cursor.execute("SHOW TABLES LIKE 'tax_rates'")
         if not cursor.fetchone():
-            print("Migrating: Creating tax_rates table")
+            logging.info("Migrating: Creating tax_rates table")
             cursor.execute("""
                 CREATE TABLE tax_rates (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6621,7 +6633,7 @@ def run_schema_migrations():
         # 7. Cheque Print Settings Table
         cursor.execute("SHOW TABLES LIKE 'cheque_print_settings'")
         if not cursor.fetchone():
-            print("Migrating: Creating cheque_print_settings table")
+            logging.info("Migrating: Creating cheque_print_settings table")
             cursor.execute("""
                 CREATE TABLE cheque_print_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6653,7 +6665,7 @@ def run_schema_migrations():
         # 8. Proforma Invoice Tables
         cursor.execute("SHOW TABLES LIKE 'proforma_invoice_header'")
         if not cursor.fetchone():
-            print("Migrating: Creating proforma_invoice_header table")
+            logging.info("Migrating: Creating proforma_invoice_header table")
             cursor.execute("""
                 CREATE TABLE proforma_invoice_header (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6672,7 +6684,7 @@ def run_schema_migrations():
 
         cursor.execute("SHOW TABLES LIKE 'proforma_invoice_details'")
         if not cursor.fetchone():
-            print("Migrating: Creating proforma_invoice_details table")
+            logging.info("Migrating: Creating proforma_invoice_details table")
             cursor.execute("""
                 CREATE TABLE proforma_invoice_details (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6694,7 +6706,7 @@ def run_schema_migrations():
         cursor.execute("SHOW COLUMNS FROM OP_NO_Table")
         op_cols = [row[0] for row in cursor.fetchall()]
         if 'status' not in op_cols:
-            print("Migrating: Adding status to OP_NO_Table")
+            logging.info("Migrating: Adding status to OP_NO_Table")
             cursor.execute("ALTER TABLE OP_NO_Table ADD COLUMN status TINYINT DEFAULT 1")
             # Default 1 (Posted) for existing data to avoid breaking current flow
 
@@ -6702,13 +6714,13 @@ def run_schema_migrations():
         cursor.execute("SHOW COLUMNS FROM jv_numbers")
         jv_cols = [row[0] for row in cursor.fetchall()]
         if 'status' not in jv_cols:
-            print("Migrating: Adding status to jv_numbers")
+            logging.info("Migrating: Adding status to jv_numbers")
             cursor.execute("ALTER TABLE jv_numbers ADD COLUMN status TINYINT DEFAULT 1")
 
         # System Settings Table (for toggles)
         cursor.execute("SHOW TABLES LIKE 'system_settings'")
         if not cursor.fetchone():
-            print("Migrating: Creating system_settings table")
+            logging.info("Migrating: Creating system_settings table")
             cursor.execute("""
                 CREATE TABLE system_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6731,7 +6743,7 @@ def run_schema_migrations():
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f"Schema Migration Error: {e}")
+        logging.error(f"Schema Migration Error: {e}")
 
 def ensure_default_accounts():
     """Ensures essential General Ledger accounts exist."""
@@ -6754,7 +6766,7 @@ def ensure_default_accounts():
             res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
 
             if not res:
-                print(f"Creating default account: {name}")
+                logging.info(f"Creating default account: {name}")
                 # Determine basement
                 basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
 
@@ -6773,7 +6785,7 @@ def ensure_default_accounts():
                     date.today(), current_user, basement
                 ), commit=True)
     except Exception as e:
-        print(f"Error ensuring default accounts: {e}")
+        logging.error(f"Error ensuring default accounts: {e}")
 
 # --- Quotation Evaluation ---
 @app.route('/quotation_evaluation', methods=['GET'])
@@ -7252,20 +7264,20 @@ def create_default_user():
         # Check connection first
         conn = db.get_connection()
         if not conn:
-            print("WARNING: Database connection failed. Cannot create default user.")
+            logging.warning("WARNING: Database connection failed. Cannot create default user.")
             return
 
         # Check for existing users
         result = db.execute_query("SELECT COUNT(*) as count FROM Login_Table")
         if result and result[0]['count'] == 0:
-            print("No users found. Creating default admin user...")
+            logging.info("No users found. Creating default admin user...")
             query = """
                 INSERT INTO Login_Table (User_Name, Password, User_Code, User_Active, Mobile_No, Email)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
             # Using 'admin' / '123'
             db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
-            print("Default user created: admin / 123")
+            logging.info("Default user created: admin / 123")
 
             # Create Default Rights for Admin
             last_id_res = db.execute_query("SELECT id FROM Login_Table WHERE User_Name = 'admin'")
@@ -7277,9 +7289,9 @@ def create_default_user():
                 """, (uid,), commit=True)
 
         else:
-            print("Users exist in database. Skipping default user creation.")
+            logging.info("Users exist in database. Skipping default user creation.")
     except Exception as e:
-        print(f"Error creating default user: {e}")
+        logging.error(f"Error creating default user: {e}")
 
 def ensure_default_categories():
     """Ensures default Balance Sheet and P&L categories exist."""
@@ -7304,7 +7316,7 @@ def ensure_default_categories():
                 try:
                     cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
-                    print(f"Error inserting BS category {name}: {e}")
+                    logging.error(f"Error inserting BS category {name}: {e}")
 
         # P&L Categories
         pl_cats = [
@@ -7326,7 +7338,7 @@ def ensure_default_categories():
                 try:
                     cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
-                    print(f"Error inserting PL category {name}: {e}")
+                    logging.error(f"Error inserting PL category {name}: {e}")
 
         # CF Categories
         cf_cats = [
@@ -7339,15 +7351,15 @@ def ensure_default_categories():
                  try:
                      cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
                  except Exception as e:
-                     print(f"Error inserting CF category {name}: {e}")
+                     logging.error(f"Error inserting CF category {name}: {e}")
 
         conn.commit()
         cursor.close()
         conn.close()
-        print("Default categories checked/created.")
+        logging.info("Default categories checked/created.")
 
     except Exception as e:
-        print(f"Error ensuring default categories: {e}")
+        logging.error(f"Error ensuring default categories: {e}")
 
 # --- System Backup ---
 @app.route('/system_backup')
@@ -7570,7 +7582,7 @@ def calculate_depreciation():
 
         except Exception as e:
             conn.rollback()
-            print(f"Depreciation Error: {e}")
+            logging.error(f"Depreciation Error: {e}")
             return {'error': str(e)}, 500
         finally:
             cursor.close()
@@ -7989,7 +8001,7 @@ def submit_invoice():
         except Exception as e:
             conn.rollback()
             flash(f'Transaction failed: {str(e)}', 'danger')
-            print(f"Invoice Error: {e}")
+            logging.error(f"Invoice Error: {e}")
         finally:
             cursor.close()
             conn.close()
@@ -8236,18 +8248,18 @@ def create_db_if_missing():
         cursor = conn_root.cursor()
 
         db_name = db_config.get('database', 'Book_keeping')
-        print(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+        logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
         conn_root.commit()
         cursor.close()
         conn_root.close()
-        print(f"Database '{db_name}' checked/created.")
+        logging.info(f"Database '{db_name}' checked/created.")
     except Exception as e:
-        print(f"Warning: Could not check/create database: {e}")
+        logging.warning(f"Warning: Could not check/create database: {e}")
 
 def execute_sql_file(cursor, filepath):
     """Parses and executes a MySQL dump file with DELIMITER support."""
-    print(f"Executing SQL file: {filepath}")
+    logging.info(f"Executing SQL file: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         # Read lines to handle DELIMITER command which is line-based
         lines = f.readlines()
@@ -8291,7 +8303,7 @@ def execute_sql_file(cursor, filepath):
                     # Ignore "Table already exists" or similar non-critical if robust
                     # But for initial schema, we usually want to know.
                     # Warning: USE command might fail if user doesn't have perm, but we are inside DB context usually
-                    print(f"SQL Execution Warning: {e}\nStatement partial: {sql_to_run[:100]}...")
+                    logging.warning(f"SQL Execution Warning: {e}\nStatement partial: {sql_to_run[:100]}...")
 
             statement = ""
 
@@ -8308,29 +8320,29 @@ def import_initial_schema():
             conn.close()
             return # Schema likely exists
 
-        print("Login_Table missing. Attempting to import initial schema...")
+        logging.info("Login_Table missing. Attempting to import initial schema...")
 
         if os.path.exists('database_schema.sql'):
             try:
                 execute_sql_file(cursor, 'database_schema.sql')
-                print("Schema imported successfully.")
+                logging.info("Schema imported successfully.")
 
                 if os.path.exists('fixed_assets.sql'):
                     execute_sql_file(cursor, 'fixed_assets.sql')
-                    print("Fixed Assets schema imported.")
+                    logging.info("Fixed Assets schema imported.")
 
                 conn.commit()
             except Exception as ex:
-                print(f"Failed to execute SQL file: {ex}")
+                logging.error(f"Failed to execute SQL file: {ex}")
                 conn.rollback()
         else:
-            print("database_schema.sql not found.")
+            logging.warning("database_schema.sql not found.")
 
         cursor.close()
         conn.close()
 
     except Exception as e:
-        print(f"Error importing initial schema: {e}")
+        logging.error(f"Error importing initial schema: {e}")
 
 # Ensure initialization runs once regardless of startup method
 app_initialized = False
