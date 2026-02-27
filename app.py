@@ -7379,19 +7379,34 @@ def system_backup():
         if db_config['password']:
             cmd.insert(1, f"-p{db_config['password']}")
 
-        # Run command
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = process.communicate()
+        # Stream the output directly to the client
+        def generate():
+            try:
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
-        if process.returncode != 0:
-            flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
-            return redirect(url_for('index'))
+                # Stream stdout
+                while True:
+                    output = process.stdout.read(4096)  # Read in chunks
+                    if output == b'' and process.poll() is not None:
+                        break
+                    if output:
+                        yield output
 
-        # Return as file download
-        response = make_response(output)
-        response.headers['Content-Type'] = 'application/sql'
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        return response
+                # Check for errors after streaming
+                if process.returncode != 0:
+                    error = process.stderr.read()
+                    print(f"Backup process failed: {error.decode('utf-8', errors='ignore')}")
+                    # Note: We can't flash here as response has already started
+            except Exception as e:
+                print(f"Backup generation error: {e}")
+
+        return Response(
+            stream_with_context(generate()),
+            headers={
+                'Content-Disposition': f'attachment; filename={filename}',
+                'Content-Type': 'application/sql'
+            }
+        )
 
     except Exception as e:
         flash(f'Backup error: {str(e)}', 'danger')
