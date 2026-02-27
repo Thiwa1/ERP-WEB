@@ -674,19 +674,21 @@ def grn():
                     """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
 
                 # D. Inventory Records
-                for item in items:
-                    query_ir = """
-                        INSERT INTO inventory_recod (
-                            inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                            inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
-                            inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
-                            inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
-                        ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
-                    """
-                    cursor.execute(query_ir, (
+                query_ir = """
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
+                        inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
+                """
+                ir_params = [
+                    (
                         item['name'], item['code'], item['unit'], item['cost'], item['qty'],
                         invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
-                    ))
+                    ) for item in items
+                ]
+                cursor.executemany(query_ir, ir_params)
 
                 conn.commit()
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
