@@ -506,6 +506,31 @@ def login():
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
+            stored_password = user['Password']
+
+            # 1. Check Hash
+            from werkzeug.security import check_password_hash, generate_password_hash
+            is_valid = False
+            is_legacy = False
+
+            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
+                if check_password_hash(stored_password, password):
+                    is_valid = True
+            elif stored_password == password:
+                # 2. Fallback to Plain Text (Legacy)
+                is_valid = True
+                is_legacy = True
+
+            if is_valid:
+                # Update hash if legacy
+                if is_legacy:
+                    try:
+                        new_hash = generate_password_hash(password)
+                        db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
+                        print(f"Migrated user {username} to password hash.")
+                    except Exception as e:
+                        print(f"Error migrating password for {username}: {e}")
+
             stored_password = user.get('Password', '')
             verified = False
             migrated = False
@@ -2958,6 +2983,7 @@ def add_new_user():
         conn.start_transaction()
 
         # Hash Password
+        from werkzeug.security import generate_password_hash
         pw_hash = generate_password_hash(password)
 
         # Insert User
@@ -3017,6 +3043,25 @@ def update_user_details():
         return redirect(url_for('admin_users'))
 
     try:
+        # If password provided, hash it. Else keep existing.
+        if password:
+            from werkzeug.security import generate_password_hash
+            pw_hash = generate_password_hash(password)
+            query = """
+                UPDATE Login_Table
+                SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """
+            params = (username, pw_hash, mobile, email, active, user_id)
+        else:
+            query = """
+                UPDATE Login_Table
+                SET User_Name = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """
+            params = (username, mobile, email, active, user_id)
+
+        db.execute_query(query, params, commit=True)
         # Check if password needs update (if provided)
         # Note: Frontend currently sends password field. If it's intended to be updated only when changed, logic should be handled.
         # However, the provided form logic in `admin_panel.html` (not visible here but implied) likely sends value.
@@ -6690,6 +6735,9 @@ def add_pos_user():
             flash('Username already exists', 'danger')
             return redirect(url_for('pos_settings'))
 
+        from werkzeug.security import generate_password_hash
+        pw_hash = generate_password_hash(password)
+
         pw_hash = generate_password_hash(password)
         db.execute_query("""
             INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
@@ -6719,6 +6767,36 @@ def pos_api_login():
 
     # Verify against pose_setting_table
     users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+
+    if users:
+        settings = users[0]
+        stored_password = settings['Password']
+
+        # Check Hash or Plain Text
+        from werkzeug.security import check_password_hash, generate_password_hash
+        is_valid = False
+        is_legacy = False
+
+        if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
+            if check_password_hash(stored_password, password):
+                is_valid = True
+        elif stored_password == password:
+            is_valid = True
+            is_legacy = True
+
+        if not is_valid:
+            return {'success': False, 'error': 'Invalid Credentials'}
+
+        # Update if legacy
+        if is_legacy:
+            try:
+                new_hash = generate_password_hash(password)
+                db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
+            except Exception as e:
+                print(f"Error migrating POS password: {e}")
+
+        return {
+            'success': True,
 
     if users:
         settings = users[0]
@@ -6999,7 +7077,32 @@ def run_schema_migrations():
             except Exception as e:
                 logging.error(f"Error recording migration {name}: {e}")
 
-        # 1. User_Rights Columns
+        # 1. Password Hashing Migration (Modify VARCHAR Length)
+        # Login_Table
+        cursor.execute("SHOW COLUMNS FROM Login_Table LIKE 'Password'")
+        res = cursor.fetchone()
+        if res:
+            # res structure depends on driver, usually tuple
+            # Field, Type, Null, Key, Default, Extra
+            # Type is index 1
+            col_type = res[1]
+            # Check if it is varchar(45) or similar short length
+            if b'varchar(45)' in col_type.lower() or 'varchar(45)' in col_type.lower():
+                print("Migrating: Extending Login_Table Password column to 255 chars")
+                cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
+
+        # pose_setting_table
+        cursor.execute("SHOW TABLES LIKE 'pose_setting_table'")
+        if cursor.fetchone():
+            cursor.execute("SHOW COLUMNS FROM pose_setting_table LIKE 'Password'")
+            res_pos = cursor.fetchone()
+            if res_pos:
+                col_type_pos = res_pos[1]
+                if b'varchar(45)' in col_type_pos.lower() or 'varchar(45)' in col_type_pos.lower():
+                    print("Migrating: Extending pose_setting_table Password column to 255 chars")
+                    cursor.execute("ALTER TABLE pose_setting_table MODIFY COLUMN Password VARCHAR(255)")
+
+        # 1b. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
         columns = [row[0] for row in cursor.fetchall()]
 
@@ -7775,6 +7878,9 @@ def create_default_user():
                 INSERT INTO Login_Table (User_Name, Password, User_Code, User_Active, Mobile_No, Email)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
+            # Using 'admin' / '123' (Hashed)
+            from werkzeug.security import generate_password_hash
+            pw_hash = generate_password_hash('123')
             # Using 'admin' / '123'
             db.execute_query(query, ('admin', pw_hash, 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
             print("Default user created: admin / 123")
