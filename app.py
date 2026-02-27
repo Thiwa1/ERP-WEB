@@ -13,6 +13,10 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 import logging
 import shutil
 import re
@@ -77,13 +81,19 @@ THEMES = {
 }
 
 # Database Configuration
+# Credentials should be set in .env file or environment variables for security.
 db_config = {
+    'user': os.environ.get('DB_USER'),
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
     'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
 }
+
+# Ensure critical database configuration is present
+if not db_config['user']:
+    print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
 MASTER_DB_NAME = 'Book_keeping_Master'

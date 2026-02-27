@@ -299,6 +299,18 @@ def main():
             """, (vat_registered,))
 
         conn.commit()
+
+        # Create .env file
+        print("\nCreating .env file...")
+        with open('.env', 'w') as f:
+            f.write("# Database Configuration\n")
+            f.write(f"DB_HOST={root_host}\n")
+            f.write(f"DB_USER={app_user}\n")
+            f.write(f"DB_PASSWORD={app_pass}\n")
+            f.write(f"DB_NAME={app_db_name}\n\n")
+            f.write("# Security\n")
+            f.write("SECRET_KEY=hardcoded_secret_key_for_development_only\n")
+
         print("\n=== Setup Complete! ===")
         print(f"You can now run the app and login with:")
         print(f"User: admin")
