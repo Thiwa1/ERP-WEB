@@ -56,7 +56,7 @@ THEMES = {
 # Database Configuration
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD', ''),
+    'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
     'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
