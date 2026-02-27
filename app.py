@@ -1302,8 +1302,13 @@ def delete_cash_flow_category():
 @has_permission('Access_Accounting')
 def chart_of_accounts():
     accounts = db.execute_query("SELECT * FROM new_account_table WHERE account_active = 1")
-    pl_count = len([a for a in accounts if a['account_name_of_catogory_PL']])
-    bs_count = len([a for a in accounts if a['account_name_of_catogory_Balace_sheet']])
+    pl_count = 0
+    bs_count = 0
+    for a in accounts:
+        if a['account_name_of_catogory_PL']:
+            pl_count += 1
+        if a['account_name_of_catogory_Balace_sheet']:
+            bs_count += 1
     return render_template('chart_of_accounts.html', accounts=accounts, total_accounts=len(accounts), pl_count=pl_count, bs_count=bs_count)
 
 # --- Add New Account ---
