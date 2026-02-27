@@ -93,14 +93,17 @@ def check_permission(perm_name):
     if not user_pk: return False
 
     try:
-        # Check if column exists first to avoid errors during migration or if checking invalid perm
-        # But simpler to just try-except.
-        # Note: We assume schema is migrated.
-        query = f"SELECT {perm_name} FROM User_Rights WHERE Link_To_Loging_Tabke = %s"
+        # Fetch all rights for the user to handle potentially missing columns gracefully
+        # This prevents SQL errors if schema isn't fully migrated or perm_name is invalid
+        query = "SELECT * FROM User_Rights WHERE Link_To_Loging_Tabke = %s"
         res = db.execute_query(query, (user_pk,))
+
+        # Check if permission exists in the row and is enabled
         if res and res[0].get(perm_name) == 1:
             return True
+
     except Exception as e:
+        # Log error but return False (Deny by default)
         print(f"Permission check error: {e}")
         return False
     return False
