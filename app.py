@@ -33,8 +33,6 @@ db = Database(db_config)
 # Context Processor for Currency
 @app.context_processor
 def inject_currency():
-    # Cache lookup could be implemented here for performance
-    # For now, fetching single row is fast enough
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
         currency = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
@@ -51,15 +49,6 @@ def currency_filter(value):
 
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
-
-        # Get symbol from session or DB?
-        # Since filters don't easily access context processors, we can just return the number
-        # and let the template use {{ company_currency }} {{ value|currency }}
-        # OR we fetch it here (less efficient)
-        # OR we rely on the user to put the symbol in the template.
-
-        # Better approach: Just format the number here.
-        # The symbol is injected via context processor.
         return formatted
     except (ValueError, TypeError):
         return "0.00"
