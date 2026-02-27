@@ -37,6 +37,30 @@ class Database:
             cursor.close()
             conn.close()
 
+    def execute_batch(self, query, params_list):
+        """
+        Executes a single query with multiple parameter sets as a transaction using executemany.
+        query: SQL query string
+        params_list: list of tuples containing parameters for each execution
+        """
+        conn = self.get_connection()
+        if not conn:
+            return False
+
+        cursor = conn.cursor()
+        try:
+            conn.start_transaction()
+            cursor.executemany(query, params_list)
+            conn.commit()
+            return True
+        except mysql.connector.Error as err:
+            print(f"Batch Execution Error: {err}")
+            conn.rollback()
+            raise err
+        finally:
+            cursor.close()
+            conn.close()
+
     def execute_transaction(self, queries):
         """
         Executes a list of queries as a transaction.
