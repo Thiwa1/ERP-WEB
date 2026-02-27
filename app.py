@@ -38,6 +38,7 @@ logging.basicConfig(
 
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
     # Generate a random key if environment variable is not set
