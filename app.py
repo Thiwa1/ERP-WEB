@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from database import Database
 from datetime import datetime, date
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 import csv
 import io
 import json
@@ -369,6 +370,7 @@ def login():
             flash('Please enter both username and password.', 'danger')
             return redirect(url_for('login'))
 
+        # Check credentials
         # 1. Try Login via Master DB (Multi-Tenant)
         try:
             # Query Master DB for user and tenant DB
@@ -418,10 +420,36 @@ def login():
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
-            if user['Password'] == password:
+            stored_password = user.get('Password', '')
+            verified = False
+            migrated = False
+
+            # 1. Try Hash Verification
+            try:
+                if check_password_hash(stored_password, password):
+                    verified = True
+            except:
+                # stored_password might not be a valid hash format (e.g. plain text)
+                pass
+
+            # 2. Fallback to Plain Text (Legacy Support & Migration)
+            if not verified:
+                if stored_password == password:
+                    verified = True
+                    # Upgrade to Hash
+                    try:
+                        new_hash = generate_password_hash(password)
+                        db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
+                        migrated = True
+                    except Exception as e:
+                        print(f"Error migrating password for user {user['id']}: {e}")
+
+            if verified:
                 session['user_id'] = user['User_Code']
                 session['user_pk'] = user['id']
                 session['username'] = username
+                if migrated:
+                    flash('Login successful. Your password security has been upgraded.', 'success')
                 return redirect(url_for('index'))
             else:
                 flash('Incorrect password.', 'danger')
@@ -2872,11 +2900,14 @@ def add_new_user():
         cursor = conn.cursor()
         conn.start_transaction()
 
+        # Hash Password
+        pw_hash = generate_password_hash(password)
+
         # Insert User
         cursor.execute("""
             INSERT INTO Login_Table (User_Name, Password, Mobile_No, Email, User_Active)
             VALUES (%s, %s, %s, %s, 1)
-        """, (username, password, mobile, email))
+        """, (username, pw_hash, mobile, email))
         user_id = cursor.lastrowid
 
         # Generate User Code (ID + 50000)
@@ -2929,11 +2960,27 @@ def update_user_details():
         return redirect(url_for('admin_users'))
 
     try:
-        db.execute_query("""
-            UPDATE Login_Table
-            SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
-            WHERE id = %s
-        """, (username, password, mobile, email, active, user_id), commit=True)
+        # Check if password needs update (if provided)
+        # Note: Frontend currently sends password field. If it's intended to be updated only when changed, logic should be handled.
+        # However, the provided form logic in `admin_panel.html` (not visible here but implied) likely sends value.
+        # If the password field is populated, we assume it's a new password.
+        # If we want to support "leave blank to keep existing", we need to check if password is empty.
+        # Assuming typical admin panel behavior: empty = no change.
+
+        if password:
+            pw_hash = generate_password_hash(password)
+            db.execute_query("""
+                UPDATE Login_Table
+                SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """, (username, pw_hash, mobile, email, active, user_id), commit=True)
+        else:
+            db.execute_query("""
+                UPDATE Login_Table
+                SET User_Name = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """, (username, mobile, email, active, user_id), commit=True)
+
         flash('User details updated successfully', 'success')
     except Exception as e:
         flash(f'Error updating user: {str(e)}', 'danger')
@@ -6565,10 +6612,11 @@ def add_pos_user():
             flash('Username already exists', 'danger')
             return redirect(url_for('pos_settings'))
 
+        pw_hash = generate_password_hash(password)
         db.execute_query("""
             INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
             VALUES (0, %s, %s, %s)
-        """, (username, password, mobile), commit=True)
+        """, (username, pw_hash, mobile), commit=True)
 
         flash(f'New Cashier {username} registered successfully', 'success')
 
@@ -6591,14 +6639,34 @@ def pos_api_login():
     username = data.get('username')
     password = data.get('password')
 
-    # Verify against pose_setting_table or Login_Table
-    # C# code checks pose_setting_table for specific POS users
-    user = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s AND Password = %s", (username, password))
+    # Verify against pose_setting_table
+    users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
 
-    if user:
-        settings = user[0]
-        return {
-            'success': True,
+    if users:
+        settings = users[0]
+        stored_password = settings.get('Password', '')
+        verified = False
+
+        # 1. Try Hash
+        try:
+            if check_password_hash(stored_password, password):
+                verified = True
+        except:
+            pass
+
+        # 2. Fallback to Plain Text & Migrate
+        if not verified:
+            if stored_password == password:
+                verified = True
+                try:
+                    new_hash = generate_password_hash(password)
+                    db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
+                except Exception as e:
+                    print(f"Error migrating POS user {settings['Id']}: {e}")
+
+        if verified:
+            return {
+                'success': True,
             'settings': {
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
@@ -6865,6 +6933,28 @@ def run_schema_migrations():
             if col not in columns:
                 logging.info(f"Migrating: Adding {col} to User_Rights")
                 cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+
+        # 1b. Password Column Expansion
+        # Login_Table
+        cursor.execute("SHOW COLUMNS FROM Login_Table LIKE 'Password'")
+        res = cursor.fetchone()
+        if res:
+            # res format: ('Password', 'varchar(45)', ...)
+            col_type = res[1].lower()
+            if 'varchar(45)' in col_type:
+                print("Migrating: Expanding Password column in Login_Table to VARCHAR(255)")
+                cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
+
+        # Pose_Setting_Table
+        cursor.execute("SHOW TABLES LIKE 'pose_setting_table'")
+        if cursor.fetchone():
+            cursor.execute("SHOW COLUMNS FROM pose_setting_table LIKE 'Password'")
+            res = cursor.fetchone()
+            if res:
+                col_type = res[1].lower()
+                if 'varchar(45)' in col_type:
+                    print("Migrating: Expanding Password column in pose_setting_table to VARCHAR(255)")
+                    cursor.execute("ALTER TABLE pose_setting_table MODIFY COLUMN Password VARCHAR(255)")
 
         # 2. Currency Table
         cursor.execute("SHOW TABLES LIKE 'currency_table'")
@@ -7599,12 +7689,17 @@ def create_default_user():
         # Check for existing users
         result = db.execute_query("SELECT COUNT(*) as count FROM Login_Table")
         if result and result[0]['count'] == 0:
+            print("No users found. Creating default admin user...")
+            # Hash default password
+            pw_hash = generate_password_hash('123')
             logging.info("No users found. Creating default admin user...")
             query = """
                 INSERT INTO Login_Table (User_Name, Password, User_Code, User_Active, Mobile_No, Email)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
             # Using 'admin' / '123'
+            db.execute_query(query, ('admin', pw_hash, 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
+            print("Default user created: admin / 123")
             db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
             logging.info("Default user created: admin / 123")
 
