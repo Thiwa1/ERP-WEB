@@ -12,6 +12,7 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import tempfile
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -7364,34 +7365,51 @@ def system_backup():
 
         filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
 
-        # Command construction
-        # mysqldump -u root -h localhost Book_keeping > filename
-        # Since we are in python, we can pipe output to string or file.
+        # Create temporary defaults file to store credentials securely
+        # Using tempfile with strict permissions
+        defaults_file = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+        try:
+            # Set permissions to 600 (owner read/write only) BEFORE writing data
+            os.chmod(defaults_file.name, 0o600)
 
-        cmd = [
-            'mysqldump',
-            '-u', db_config['user'],
-            '-h', db_config['host'],
-            db_config['database']
-        ]
+            # Write credentials
+            defaults_file.write('[client]\n')
+            defaults_file.write(f"user={db_config['user']}\n")
+            if db_config['password']:
+                defaults_file.write(f"password={db_config['password']}\n")
+            defaults_file.write(f"host={db_config['host']}\n")
+            defaults_file.flush()
+            defaults_file.close()
 
-        # If password exists (it is empty in config, but good practice to handle)
-        if db_config['password']:
-            cmd.insert(1, f"-p{db_config['password']}")
+            # Command construction
+            # mysqldump --defaults-extra-file=... -- database > filename
+            # Since we are in python, we can pipe output to string or file.
 
-        # Run command
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        output, error = process.communicate()
+            cmd = [
+                'mysqldump',
+                f'--defaults-extra-file={defaults_file.name}',
+                '--', # End of options
+                db_config['database']
+            ]
 
-        if process.returncode != 0:
-            flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
-            return redirect(url_for('index'))
+            # Run command
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            output, error = process.communicate()
 
-        # Return as file download
-        response = make_response(output)
-        response.headers['Content-Type'] = 'application/sql'
-        response.headers['Content-Disposition'] = f'attachment; filename={filename}'
-        return response
+            if process.returncode != 0:
+                flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
+                return redirect(url_for('index'))
+
+            # Return as file download
+            response = make_response(output)
+            response.headers['Content-Type'] = 'application/sql'
+            response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+            return response
+
+        finally:
+            # Secure cleanup
+            if os.path.exists(defaults_file.name):
+                os.remove(defaults_file.name)
 
     except Exception as e:
         flash(f'Backup error: {str(e)}', 'danger')
