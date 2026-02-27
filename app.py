@@ -12,11 +12,12 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import secrets
 
 app = Flask(__name__)
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
-app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.config['SECRET_KEY'] = app.secret_key
 
 # Database Configuration
