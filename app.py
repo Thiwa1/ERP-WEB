@@ -7787,6 +7787,143 @@ def api_get_item_prices(item_id):
     price_list = [p['inventory_price_selling'] for p in prices]
     return json.dumps(price_list)
 
+def calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat):
+    total_sales = 0
+    total_cost = 0
+
+    # Inventory Items
+    for item in inv_items:
+        qty = parse_float(item.get('qty', 0))
+        price = parse_float(item.get('price', 0))
+        cost = parse_float(item.get('cost', 0))
+        total_sales += qty * price
+        total_cost += qty * cost
+
+    # Non-Inventory Items
+    for item in non_inv_items:
+        qty = parse_float(item.get('qty', 0))
+        price = parse_float(item.get('price', 0))
+        total_sales += qty * price
+
+    vat_amount = 0
+    grand_total = total_sales
+    if apply_vat:
+        vat_amount = (total_sales * vat_rate) / 100
+        grand_total += vat_amount
+
+    return {
+        'total_sales': total_sales,
+        'total_cost': total_cost,
+        'vat_amount': vat_amount,
+        'grand_total': grand_total
+    }
+
+def generate_invoice_number(cursor):
+    cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
+    inv_id_seq = cursor.lastrowid
+    return f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+
+def create_invoice_jv(cursor, current_user, narration):
+    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                   (str(current_user), narration))
+    return cursor.lastrowid
+
+def create_outstanding_record(cursor, invoice_no, inv_date, grand_total, due_date, cust_name, jv_no, vat_rate):
+    cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (cust_name,))
+    res = cursor.fetchone()
+    cust_id = res[0] if res else 0
+
+    cursor.execute("""
+        INSERT INTO Invoice_Oustanding (
+            invoice_number, invoice_date, invoice_total_oustanding,
+            invoice_oustanding_Patment, invoice_final_date,
+            invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
+        ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
+    """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
+    return cursor.lastrowid
+
+def process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, invoice_date, customer_name, items, is_inventory):
+    for item in items:
+        # Warranty Logic
+        if is_inventory:
+            cursor.execute("""
+                SELECT yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name = %s LIMIT 1
+            """, (item['name'],))
+            # Logic for warranty calculation could be added here if needed
+
+        cursor.execute("""
+            INSERT INTO Invoice_Recode (
+                Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
+                User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
+                recode_date
+            ) VALUES (%s, %s, %s, %s, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
+        """, (
+            item['name'], item['qty'], item['price'], 1 if is_inventory else 0, jv_no, current_user,
+            customer_name, outstanding_id, item['unit'], datetime.now()
+        ))
+
+        if is_inventory:
+            cursor.execute("""
+                INSERT INTO inventory_recod (
+                    inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                    inventory_recod_unit_price, inventory_recod_movment_out,
+                    inventory_recod_account, inventory_recod_user_id,
+                    inventory_recod_user_recod_date, inventory_recod_location,
+                    inventory_recod_action_date, inventory_recodcol_memo, JV_No,
+                    inventory_recod_link_invoice, inventory_recod_suplier_iv_no
+                ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
+            """, (
+                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
+                current_user, datetime.now(), location, invoice_date, jv_no, outstanding_id, invoice_no
+            ))
+
+def post_invoice_gl_entries(cursor, current_user, jv_no, invoice_date, job_no, totals):
+    job_no_val = job_no if job_no else None
+
+    # DR Account Receivable (Total + VAT)
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv, entry_job_number
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, ('Account Receivable', totals['grand_total'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+    # CR Income (Sales)
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_CR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv, entry_job_number
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, ('Sales', totals['total_sales'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+    # CR VAT (If any)
+    if totals['vat_amount'] > 0:
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_job_number
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('VAT Control', totals['vat_amount'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+    # Cost of Goods Sold (If inventory items exist)
+    if totals['total_cost'] > 0:
+            # DR COGS
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_job_number
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('Cost Of Goods Sold', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
+        # CR Inventory
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_job_number
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('Inventory', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+
 @app.route('/invoice_creating/submit', methods=['POST'])
 @login_required
 def submit_invoice():
@@ -7816,172 +7953,24 @@ def submit_invoice():
         conn.start_transaction()
 
         try:
-            # 1. Generate Invoice No (Credit_Invoice_No table)
-            cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
-            inv_id_seq = cursor.lastrowid
-            invoice_no = f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+            # 1. Generate Invoice No
+            invoice_no = generate_invoice_number(cursor)
 
             # 2. Create JV Header
-            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
-                           (str(current_user), "Credit Sales"))
-            jv_no = cursor.lastrowid
+            jv_no = create_invoice_jv(cursor, current_user, "Credit Sales")
 
             # 3. Calculate Totals
-            total_sales = 0
-            total_cost = 0
-
-            # Inventory Items
-            for item in inv_items:
-                qty = parse_float(item.get('qty', 0))
-                price = parse_float(item.get('price', 0))
-                cost = parse_float(item.get('cost', 0))
-                total_sales += qty * price
-                total_cost += qty * cost
-
-            # Non-Inventory Items
-            for item in non_inv_items:
-                qty = parse_float(item.get('qty', 0))
-                price = parse_float(item.get('price', 0))
-                total_sales += qty * price
-                # Non-inventory might not have tracked cost or it's service
-
-            vat_amount = 0
-            grand_total = total_sales
-            if apply_vat:
-                vat_amount = (total_sales * vat_rate) / 100
-                grand_total += vat_amount
+            totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
 
             # 4. Insert Outstanding Record
-            # Get Customer ID
-            cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (customer_name,))
-            res = cursor.fetchone()
-            cust_id = res[0] if res else 0
-
-            cursor.execute("""
-                INSERT INTO Invoice_Oustanding (
-                    invoice_number, invoice_date, invoice_total_oustanding,
-                    invoice_oustanding_Patment, invoice_final_date,
-                    invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
-                ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-            """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
-            outstanding_id = cursor.lastrowid
+            outstanding_id = create_outstanding_record(cursor, invoice_no, inv_date, totals['grand_total'], due_date, customer_name, jv_no, vat_rate)
 
             # 5. Insert Invoice Records (Details) & Update Inventory
-
-            # Inventory Items
-            for item in inv_items:
-                # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
-                # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
-                # Schema: Invoice_Recode
-
-                # Warranty Logic
-                # Fetch warranty period for item
-                w_end_date = None
-                cursor.execute("""
-                    SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                    WHERE name = %s LIMIT 1
-                """, (item['name'],))
-                w_res = cursor.fetchone()
-                if w_res:
-                    try:
-                        years, months, days = w_res
-                        # Simple add (using relativedelta logic approx)
-                        # Or simple days calc
-                        # Assuming date_ is days.
-                        # WPF logic: tries to parse constructed string? No, it adds span to current date.
-                        # Actually WPF code `string dateString = $"{yeas}-{monthT}-{dayT}";` suggests it sets a specific END date?
-                        # No, warranty usually is period. Let's assume it adds to today.
-                        # WPF code has complex logic parsing a date string from integers.
-                        # If the DB stores "1 Year", it might store yeas_=1.
-                        # Let's assume standard warranty addition for now.
-                        pass
-                    except:
-                        pass
-
-                cursor.execute("""
-                    INSERT INTO Invoice_Recode (
-                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                        recode_date
-                    ) VALUES (%s, %s, %s, 1, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-                """, (
-                    item['name'], item['qty'], item['price'], jv_no, current_user,
-                    customer_name, outstanding_id, item['unit'], datetime.now()
-                ))
-
-                # Update Inventory Record (OUT)
-                cursor.execute("""
-                    INSERT INTO inventory_recod (
-                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_movment_out,
-                        inventory_recod_account, inventory_recod_user_id,
-                        inventory_recod_user_recod_date, inventory_recod_location,
-                        inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                        inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                    ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-                """, (
-                    item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                    current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
-                ))
-
-            # Non-Inventory Items
-            for item in non_inv_items:
-                 cursor.execute("""
-                    INSERT INTO Invoice_Recode (
-                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                        recode_date
-                    ) VALUES (%s, %s, %s, 0, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-                """, (
-                    item['name'], item['qty'], item['price'], jv_no, current_user,
-                    customer_name, outstanding_id, item['unit'], datetime.now()
-                ))
+            process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, inv_date, customer_name, inv_items, is_inventory=True)
+            process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, inv_date, customer_name, non_inv_items, is_inventory=False)
 
             # 6. GL Entries
-            job_no_val = job_no if job_no else None
-
-            # DR Account Receivable (Total + VAT)
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-            # CR Income (Sales)
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-            # CR VAT (If any)
-            if vat_amount > 0:
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-            # Cost of Goods Sold (If inventory items exist)
-            if total_cost > 0:
-                 # DR COGS
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-                # CR Inventory
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+            post_invoice_gl_entries(cursor, current_user, jv_no, inv_date, job_no, totals)
 
             conn.commit()
             flash(f'Invoice {invoice_no} created successfully.', 'success')
