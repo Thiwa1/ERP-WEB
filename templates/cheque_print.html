@@ -94,8 +94,7 @@
         </div>
 
         <div class="element words">
-            *** {{ payment.amount }} Only ***
-            {# Note: Real word conversion requires python library not easily installed here. #}
+            *** {{ payment.amount | amount_in_words }} Only ***
         </div>
 
         <div class="element digits">

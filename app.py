@@ -12,6 +12,7 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+from num2words import num2words
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -63,6 +64,32 @@ def currency_filter(value):
         return formatted
     except (ValueError, TypeError):
         return "0.00"
+
+@app.template_filter('amount_in_words')
+def amount_in_words(amount):
+    """Converts a numeric amount to words (Rupees and Cents)."""
+    try:
+        amount = float(amount)
+        if amount == 0:
+            return "Zero Rupees Only"
+
+        # num2words supports USD which formats as "dollars" and "cents"
+        # We will use that and replace the currency names
+        words = num2words(amount, to='currency', currency='USD', lang='en')
+
+        # Replace currency names with local context (LKR)
+        # Handle singular/plural variations just in case, though usually 'dollars' covers it
+        # num2words output example: "one hundred dollars, fifty cents"
+
+        words = words.replace('dollars', 'Rupees')
+        words = words.replace('dollar', 'Rupee')
+        words = words.replace('cents', 'Cents')
+        words = words.replace('cent', 'Cent')
+
+        # Capitalize for Cheque format (Title Case looks better)
+        return words.title()
+    except Exception as e:
+        return f"Error converting amount: {e}"
 
 def parse_float(value):
     """Safely parses a string or number into a float, handling commas and None."""
