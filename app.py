@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from database import Database
 from datetime import datetime, date
 from functools import wraps
+from jinja2 import pass_context
 import csv
 import io
 import json
@@ -44,7 +45,8 @@ def inject_currency():
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
-def currency_filter(value):
+@pass_context
+def currency_filter(context, value, symbol=True):
     try:
         if value is None:
             value = 0
@@ -52,14 +54,13 @@ def currency_filter(value):
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
 
-        # Get symbol from session or DB?
-        # Since filters don't easily access context processors, we can just return the number
-        # and let the template use {{ company_currency }} {{ value|currency }}
-        # OR we fetch it here (less efficient)
-        # OR we rely on the user to put the symbol in the template.
+        if not symbol:
+            return formatted
 
-        # Better approach: Just format the number here.
-        # The symbol is injected via context processor.
+        # Get symbol from context
+        curr_symbol = context.get('company_currency', '')
+        if curr_symbol:
+            return f"{curr_symbol} {formatted}"
         return formatted
     except (ValueError, TypeError):
         return "0.00"

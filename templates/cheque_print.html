@@ -99,7 +99,7 @@
         </div>
 
         <div class="element digits">
-            **{{ "{:,.2f}".format(payment.amount) }}**
+            **{{ payment.amount|currency(symbol=False) }}**
         </div>
 
         {% if settings.is_cross_cheque %}
