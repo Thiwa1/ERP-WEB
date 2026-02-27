@@ -12,6 +12,9 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import shutil
+import re
+import os
 
 app = Flask(__name__)
 # Set a secret key for session management.
@@ -7349,6 +7352,37 @@ def ensure_default_categories():
     except Exception as e:
         print(f"Error ensuring default categories: {e}")
 
+def validate_db_config(config):
+    """
+    Validates database configuration to prevent command injection.
+    Only allows alphanumeric characters, underscores, and hyphens in sensitive fields.
+    Does not allow arguments starting with dash to prevent argument injection.
+    """
+    # Alphanumeric, underscore, hyphen.
+    # Host might contain dots (IP/domain) and colons (IPv6/port although mysql cli uses -P for port).
+    # MySQL CLI host (-h) expects hostname or IP.
+    # Database and User usually don't have dots but to be safe we can stick to strict for them.
+
+    strict_pattern = re.compile(r'^[a-zA-Z0-9_-]+$')
+    host_pattern = re.compile(r'^[a-zA-Z0-9_.-]+$') # Allow dots for host
+
+    # Fields to validate (user, host, database)
+    # Password is treated differently (passed via env)
+
+    for field in ['user', 'database']:
+        value = config.get(field, '')
+        if not value: continue
+        if not isinstance(value, str) or value.startswith('-') or not strict_pattern.match(value):
+            return False
+
+    # Validate Host specifically
+    host = config.get('host', '')
+    if host:
+        if not isinstance(host, str) or host.startswith('-') or not host_pattern.match(host):
+            return False
+
+    return True
+
 # --- System Backup ---
 @app.route('/system_backup')
 @login_required
@@ -7356,18 +7390,26 @@ def system_backup():
     # Only allow admin or specific users? For now, login_required is minimal.
     # Ideally should be restricted.
 
-    # Database config is in db_config
-    try:
-        # Use mysqldump
-        # Note: This requires mysqldump to be installed and accessible in the environment.
-        # It also assumes password is empty as per config 'password': ''
+    # Validate Config
+    if not validate_db_config(db_config):
+        flash('Invalid database configuration', 'danger')
+        return redirect(url_for('index'))
 
+    # Check for mysqldump
+    if not shutil.which('mysqldump'):
+        flash('mysqldump not found', 'danger')
+        return redirect(url_for('index'))
+
+    try:
         filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
 
-        # Command construction
-        # mysqldump -u root -h localhost Book_keeping > filename
-        # Since we are in python, we can pipe output to string or file.
+        # Pass password via environment variable for security
+        env = os.environ.copy()
+        if db_config['password']:
+            env['MYSQL_PWD'] = db_config['password']
 
+        # Construct command using list to avoid shell injection
+        # Note: We already validated inputs above
         cmd = [
             'mysqldump',
             '-u', db_config['user'],
@@ -7375,16 +7417,18 @@ def system_backup():
             db_config['database']
         ]
 
-        # If password exists (it is empty in config, but good practice to handle)
-        if db_config['password']:
-            cmd.insert(1, f"-p{db_config['password']}")
-
-        # Run command
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Use run instead of Popen for better management
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env
+        )
         output, error = process.communicate()
 
         if process.returncode != 0:
-            flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
+            err_msg = error.decode("utf-8") if error else "Unknown Error"
+            flash(f'Backup failed: {err_msg}', 'danger')
             return redirect(url_for('index'))
 
         # Return as file download
