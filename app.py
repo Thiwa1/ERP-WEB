@@ -732,30 +732,25 @@ def add_customer():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
 
-            conn = db.get_connection()
-            cursor = conn.cursor()
             try:
-                conn.start_transaction()
-                cursor.execute(query_supplier, params_supplier)
-                cursor.execute(query_sub_account, (
-                    0, supplier_name, "Account Receivable",
-                    current_user, current_date, 1, 0
-                ))
-                last_sub_id = cursor.lastrowid
-                new_sub_code = last_sub_id + 10001
-                cursor.execute(
-                    "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                    (new_sub_code, last_sub_id)
-                )
-                conn.commit()
+                with db.transaction_cursor() as cursor:
+                    cursor.execute(query_supplier, params_supplier)
+                    cursor.execute(query_sub_account, (
+                        0, supplier_name, "Account Receivable",
+                        current_user, current_date, 1, 0
+                    ))
+                    last_sub_id = cursor.lastrowid
+                    new_sub_code = last_sub_id + 10001
+                    cursor.execute(
+                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                        (new_sub_code, last_sub_id)
+                    )
                 flash('Customer added successfully!', 'success')
             except Exception as e:
+                print(f"Transaction failed: {e}")
                 conn.rollback()
                 logging.error(f"Transaction failed: {e}")
                 flash(f'Error adding customer: {str(e)}', 'danger')
-            finally:
-                cursor.close()
-                conn.close()
 
             return redirect(url_for('add_customer'))
 
@@ -832,29 +827,22 @@ def add_supplier():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
             """
 
-            conn = db.get_connection()
-            cursor = conn.cursor()
             try:
-                conn.start_transaction()
-                cursor.execute(query_supplier, params_supplier)
-                cursor.execute(query_sub_account, (
-                    0, supplier_name, "Account Payable",
-                    current_user, current_date, 1, 0
-                ))
-                last_sub_id = cursor.lastrowid
-                new_sub_code = last_sub_id + 10001
-                cursor.execute(
-                    "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                    (new_sub_code, last_sub_id)
-                )
-                conn.commit()
+                with db.transaction_cursor() as cursor:
+                    cursor.execute(query_supplier, params_supplier)
+                    cursor.execute(query_sub_account, (
+                        0, supplier_name, "Account Payable",
+                        current_user, current_date, 1, 0
+                    ))
+                    last_sub_id = cursor.lastrowid
+                    new_sub_code = last_sub_id + 10001
+                    cursor.execute(
+                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                        (new_sub_code, last_sub_id)
+                    )
                 flash('Supplier added successfully!', 'success')
             except Exception as e:
-                conn.rollback()
                 flash(f'Error adding supplier: {str(e)}', 'danger')
-            finally:
-                cursor.close()
-                conn.close()
 
             return redirect(url_for('add_supplier'))
 
@@ -980,15 +968,33 @@ def add_inventory_item():
                 flash('Name, Code, and Unit are required.', 'danger')
                 return redirect(url_for('add_inventory_item'))
 
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            conn.start_transaction()
-
             try:
                 current_user = get_current_user_id()
                 current_user_pk = get_current_user_pk()
                 today_date = date.today()
 
+                with db.transaction_cursor() as cursor:
+                    # 3. Insert Item
+                    query_item = """
+                        INSERT INTO inventoy_items (
+                            id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
+                            inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
+                            inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
+                        ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                    """
+                    cursor.execute(query_item, (
+                        name, code, supplier_code, batch_code, img_data,
+                        current_user, today_date, unit, main_cat, sub_cat, min_qty
+                    ))
+                    item_id = cursor.lastrowid
+
+                    # 4. Insert Price
+                    query_price = """
+                        INSERT INTO inventory_price_recod (
+                            id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
+                        ) VALUES (0, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
                 # 3. Insert Item
                 query_item = """
                     INSERT INTO inventoy_items (
@@ -1016,15 +1022,10 @@ def add_inventory_item():
                 """
                 cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
 
-                conn.commit()
                 flash('Inventory Item created successfully!', 'success')
 
             except Exception as e:
-                conn.rollback()
                 flash(f'Database Error: {str(e)}', 'danger')
-            finally:
-                cursor.close()
-                conn.close()
 
         except Exception as e:
             flash(f'System Error: {str(e)}', 'danger')
@@ -1073,6 +1074,33 @@ def grn():
             supplier_code = sup_res[0]['supplier_code']
             supplier_id = sup_res[0]['sup_id']
 
+            try:
+                current_user = get_current_user_id()
+                jv_no = None
+
+                with db.transaction_cursor() as cursor:
+                    # A. Generate JV Number
+                    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
+                    jv_no = cursor.lastrowid
+
+                    # B. Insert Invoice Record
+                    query_inv = """
+                        INSERT INTO suppliers_invoice_data (
+                            suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                            suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
+                            suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                    """
+                    cursor.execute(query_inv, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, jv_no, vat_rate))
+
+                    # C. Journal Entries
+                    # C1. Credit Account Payable (Grand Total)
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                            entry_naration, entry_create_user, entry_jv, entry_job_number
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
             # 3. Create Transaction using Service Layer
             try:
                 current_user = get_current_user_id()
@@ -1125,13 +1153,37 @@ def grn():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
-                # C3. Debit VAT Control (if applicable)
-                if vat_amount > 0:
+                    # C2. Debit Inventory (Total Value)
                     cursor.execute("""
                         INSERT INTO entry_details (
                             account_name, enty_values_DR, entry_effective_date, entry_create_date,
                             entry_naration, entry_create_user, entry_jv, entry_job_number
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+
+                    # C3. Debit VAT Control (if applicable)
+                    if vat_amount > 0:
+                        cursor.execute("""
+                            INSERT INTO entry_details (
+                                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                                entry_naration, entry_create_user, entry_jv, entry_job_number
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+
+                    # D. Inventory Records
+                    for item in items:
+                        query_ir = """
+                            INSERT INTO inventory_recod (
+                                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                                inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                                inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
+                                inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
+                            ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query_ir, (
+                            item['name'], item['code'], item['unit'], item['cost'], item['qty'],
+                            invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
+                        ))
                     """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
                 # D. Inventory Records
@@ -1149,7 +1201,6 @@ def grn():
                         invoice_no, current_user_pk, date.today(), location, jv_no, invoice_date, jv_no
                     ))
 
-                conn.commit()
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
                 return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name, date=invoice_date, invoice_no=invoice_no, location=location, items=items, total_value=total_value, vat_amount=vat_amount, grand_total=grand_total)
 

@@ -1,5 +1,6 @@
 import mysql.connector
 from datetime import datetime
+from contextlib import contextmanager
 
 class Database:
     def __init__(self, config):
@@ -91,6 +92,29 @@ class Database:
             print(f"Transaction Error: {err}")
             conn.rollback()
             raise err
+        finally:
+            cursor.close()
+            conn.close()
+
+    @contextmanager
+    def transaction_cursor(self):
+        """
+        Context manager for database transactions.
+        Yields a cursor.
+        Commits on success, rolls back on exception.
+        """
+        conn = self.get_connection()
+        if not conn:
+            raise Exception("Failed to connect to database")
+
+        cursor = conn.cursor()
+        try:
+            conn.start_transaction()
+            yield cursor
+            conn.commit()
+        except Exception as e:
+            conn.rollback()
+            raise e
         finally:
             cursor.close()
             conn.close()
