@@ -2510,70 +2510,70 @@ def delete_cash_payment_invoice():
 @app.route('/voucher/print/<string:voucher_type>/<int:jv_no>')
 @login_required
 def print_voucher(voucher_type, jv_no):
-    voucher = None
-    title = "PAYMENT VOUCHER"
+    voucher_configs = {
+        'cash': {
+            'title': "CASH PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': 'c.cash_book_recode_suplier_name',
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date', 'c.cash_book_recode_suplier_name',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        },
+        'bank': {
+            'title': "BANK PAYMENT VOUCHER",
+            'table': 'bank_book_recod b',
+            'columns': {
+                'voucher_no': 'b.bank_book_recod_voucher_no',
+                'date': 'b.Bank_Payment_Date',
+                'paid_to': 'b.bank_book__suplier_name',
+                'paid_from': 'b.bank_book__accont_name',
+                'narration': 'b.bank_book__naration',
+                'amount': 'SUM(b.bank_book_book_recode_dr)',
+                'user_id': 'b.Bank_User_Id',
+                'cheque_no': 'b.bank_book_chque_no'
+            },
+            'where': 'b.jv_numbers_jv_id = %s',
+            'group_by': ['b.bank_book_recod_voucher_no', 'b.Bank_Payment_Date', 'b.bank_book__suplier_name',
+                         'b.bank_book__accont_name', 'b.bank_book__naration', 'b.Bank_User_Id', 'b.bank_book_chque_no']
+        },
+        'direct': {
+            'title': "DIRECT PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': "'Direct Purchase'",
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        }
+    }
 
-    if voucher_type == 'cash':
-        title = "CASH PAYMENT VOUCHER"
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                c.cash_book_recode_suplier_name as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    config = voucher_configs.get(voucher_type)
+    if not config:
+        return "Invalid Voucher Type", 404
 
-    elif voucher_type == 'bank':
-        title = "BANK PAYMENT VOUCHER"
-        query = """
-            SELECT
-                b.bank_book_recod_voucher_no as voucher_no,
-                b.Bank_Payment_Date as date,
-                b.bank_book__suplier_name as paid_to,
-                b.bank_book__accont_name as paid_from,
-                b.bank_book__naration as narration,
-                SUM(b.bank_book_book_recode_dr) as amount,
-                b.Bank_User_Id as user_id,
-                b.bank_book_chque_no as cheque_no
-            FROM bank_book_recod b
-            WHERE b.jv_numbers_jv_id = %s
-            GROUP BY b.bank_book_recod_voucher_no, b.Bank_Payment_Date, b.bank_book__suplier_name,
-                     b.bank_book__accont_name, b.bank_book__naration, b.Bank_User_Id, b.bank_book_chque_no
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    columns_str = ", ".join([f"{v} as {k}" for k, v in config['columns'].items()])
+    group_by_str = ", ".join(config['group_by'])
+    query = f"SELECT {columns_str} FROM {config['table']} WHERE {config['where']} GROUP BY {group_by_str}"
 
-    elif voucher_type == 'direct':
-        title = "DIRECT PAYMENT VOUCHER"
-        # Similar to cash but maybe different layout or filtering
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                'Direct Purchase' as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
-
-    if not voucher:
+    res = db.execute_query(query, (jv_no,))
+    if not res:
         return "Voucher Not Found", 404
+    voucher = res[0]
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
@@ -2582,7 +2582,7 @@ def print_voucher(voucher_type, jv_no):
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
                            company=company,
-                           title=title)
+                           title=config['title'])
 
 @app.route('/service_entry/print/<int:jv_no>')
 @login_required
