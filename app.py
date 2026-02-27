@@ -15,35 +15,260 @@ import mysql.connector
 import shutil
 import re
 import os
+import migrations
+import secrets
 
 app = Flask(__name__)
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
-app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    # Generate a random key if environment variable is not set
+    # This ensures sessions are secure but will invalidate on restart if not set in ENV
+    app.secret_key = secrets.token_hex(32)
+
 app.config['SECRET_KEY'] = app.secret_key
+
+# Theme Configuration
+THEMES = {
+    'default': {
+        'name': 'Professional (Default)',
+        'primary': '#0f172a',
+        'secondary': '#1e293b',
+        'accent': '#2563eb'
+    },
+    'ocean': {
+        'name': 'Ocean Blue',
+        'primary': '#003366',
+        'secondary': '#004080',
+        'accent': '#0073e6'
+    },
+    'forest': {
+        'name': 'Forest Green',
+        'primary': '#143d14',
+        'secondary': '#1f5c1f',
+        'accent': '#2eb82e'
+    },
+    'ruby': {
+        'name': 'Ruby Red',
+        'primary': '#4d0000',
+        'secondary': '#800000',
+        'accent': '#e60000'
+    },
+    'midnight': {
+        'name': 'Midnight Dark',
+        'primary': '#000000',
+        'secondary': '#1a1a1a',
+        'accent': '#ffcc00'
+    }
+}
 
 # Database Configuration
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD', ''),
+    'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
     'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
 }
 
 db = Database(db_config)
+MASTER_DB_NAME = 'Book_keeping_Master'
 
-# Context Processor for Currency
+def get_session_db_name():
+    return session.get('tenant_db')
+
+db.set_db_name_getter(get_session_db_name)
+
+# Master DB Connection (Dedicated)
+master_db_config = db_config.copy()
+master_db_config['database'] = MASTER_DB_NAME
+master_db = Database(master_db_config)
+
+def setup_master_db():
+    """Ensure the Master DB and its tables exist."""
+    try:
+        # Connect without DB to create Master DB if needed
+        temp_config = db_config.copy()
+        if 'database' in temp_config:
+            del temp_config['database']
+
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+        cursor.close()
+        conn.close()
+
+        # Now create tables in Master DB
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_name VARCHAR(255) NOT NULL UNIQUE,
+                db_name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                tenant_id INT,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            )
+        """)
+        print("Master DB setup complete.")
+    except Exception as e:
+        print(f"Error setting up Master DB: {e}")
+
+def parse_and_execute_sql(cursor, content):
+    """Parses SQL content with DELIMITER support and executes it."""
+    delimiter = ';'
+    statement = ""
+
+    lines = content.split('\n')
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.upper().startswith('DELIMITER '):
+            delimiter = stripped.split()[1]
+            continue
+
+        if stripped.startswith('--') or stripped.startswith('#'):
+            continue
+
+        if not statement and not stripped:
+            continue
+
+        statement += line + "\n"
+
+        if statement.strip().endswith(delimiter):
+            sql_to_run = statement.strip()
+            if sql_to_run.endswith(delimiter):
+                 sql_to_run = sql_to_run[:-len(delimiter)]
+
+            if sql_to_run.strip():
+                try:
+                    cursor.execute(sql_to_run)
+                    while cursor.nextset(): pass
+                except Exception as e:
+                    print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+            statement = ""
+
+def create_tenant_db(company_name, username, password, email):
+    """Creates a new tenant DB, runs schema, and registers in Master DB."""
+    import re
+
+    safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
+    db_name = f"bk_{safe_name}"
+
+    existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
+    if existing_user: return False, "Username already exists."
+
+    existing_tenant = master_db.execute_query("SELECT id FROM tenants WHERE company_name = %s", (company_name,))
+    if existing_tenant: return False, "Company already registered."
+
+    try:
+        # Create DB
+        temp_config = db_config.copy()
+        if 'database' in temp_config: del temp_config['database']
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.close()
+        conn.close()
+
+        # Connect to New DB
+        t_config = db_config.copy()
+        t_config['database'] = db_name
+        t_conn = mysql.connector.connect(**t_config)
+        t_cursor = t_conn.cursor()
+
+        # Execute Schema
+        if os.path.exists('database_schema.sql'):
+            with open('database_schema.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        if os.path.exists('fixed_assets.sql'):
+            with open('fixed_assets.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        t_conn.commit()
+        t_conn.close()
+
+        # Insert Admin User
+        t_db_conf = db_config.copy()
+        t_db_conf['database'] = db_name
+        t_db = Database(t_db_conf)
+
+        t_db.execute_query("""
+            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
+            VALUES (%s, %s, %s, '1001', 1)
+        """, (username, password, email))
+
+        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,))
+
+        # Insert into Master
+        master_db.execute_query("INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)", (company_name, db_name))
+        tenant_id_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (db_name,))
+        tenant_id = tenant_id_res[0]['id']
+
+        master_db.execute_query("""
+            INSERT INTO users (username, password, email, tenant_id)
+            VALUES (%s, %s, %s, %s)
+        """, (username, password, email, tenant_id))
+
+        return True, "Registration successful."
+
+    except Exception as e:
+        print(f"Registration Error: {e}")
+        return False, str(e)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        company_name = request.form['company_name']
+        username = request.form['username']
+        password = request.form['password']
+        email = request.form['email']
+
+        success, message = create_tenant_db(company_name, username, password, email)
+        if success:
+            flash(message, 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(message, 'danger')
+
+    return render_template('register.html')
+
+# Context Processor for Currency & Theme
 @app.context_processor
 def inject_currency():
-    # Cache lookup could be implemented here for performance
-    # For now, fetching single row is fast enough
+def inject_globals():
+    globals_dict = {}
+
+    # Currency
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
-        currency = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
+        globals_dict['company_currency'] = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
     except:
-        currency = 'LKR'
-    return dict(company_currency=currency)
+        globals_dict['company_currency'] = 'LKR'
+
+    # Theme
+    try:
+        res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+        theme_key = res[0]['setting_value'] if res else 'default'
+        globals_dict['current_theme'] = THEMES.get(theme_key, THEMES['default'])
+        globals_dict['theme_key'] = theme_key
+    except:
+        globals_dict['current_theme'] = THEMES['default']
+        globals_dict['theme_key'] = 'default'
+
+    return globals_dict
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
@@ -54,15 +279,6 @@ def currency_filter(value):
 
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
-
-        # Get symbol from session or DB?
-        # Since filters don't easily access context processors, we can just return the number
-        # and let the template use {{ company_currency }} {{ value|currency }}
-        # OR we fetch it here (less efficient)
-        # OR we rely on the user to put the symbol in the template.
-
-        # Better approach: Just format the number here.
-        # The symbol is injected via context processor.
         return formatted
     except (ValueError, TypeError):
         return "0.00"
@@ -89,6 +305,13 @@ def login_required(f):
 
 def get_current_user_id():
     return session.get('user_id', 0)
+
+def get_current_user_pk():
+    try:
+        pk = session.get('user_pk', 0)
+        return int(pk)
+    except (ValueError, TypeError):
+        return 0
 
 def check_permission(perm_name):
     """Checks if current user has specific permission."""
@@ -132,14 +355,52 @@ def login():
             flash('Please enter both username and password.', 'danger')
             return redirect(url_for('login'))
 
-        # Check credentials
-        # Note: In production, passwords should be hashed.
-        # The provided C# code compares plain text, so we replicate that.
+        # 1. Try Login via Master DB (Multi-Tenant)
+        try:
+            # Query Master DB for user and tenant DB
+            master_user_res = master_db.execute_query("""
+                SELECT u.username, u.password, t.db_name
+                FROM users u
+                JOIN tenants t ON u.tenant_id = t.id
+                WHERE u.username = %s
+            """, (username,))
+
+            if master_user_res:
+                master_user = master_user_res[0]
+                if master_user['password'] == password:
+                    # Login Successful on Master
+                    session['tenant_db'] = master_user['db_name']
+                    session['username'] = username
+
+                    # Fetch User Details from Tenant DB (for permissions/FKs)
+                    # Note: db instance now points to tenant_db via session
+                    tenant_user_res = db.execute_query("SELECT id, User_Code FROM Login_Table WHERE User_Name = %s", (username,))
+
+                    if tenant_user_res:
+                        tenant_user = tenant_user_res[0]
+                        session['user_id'] = tenant_user['User_Code']
+                        session['user_pk'] = tenant_user['id']
+                        return redirect(url_for('index'))
+                    else:
+                        flash('User record missing in tenant database.', 'danger')
+                        session.pop('tenant_db', None)
+                        return redirect(url_for('login'))
+                else:
+                    flash('Incorrect password.', 'danger')
+                    return redirect(url_for('login'))
+        except Exception as e:
+            print(f"Master Login Error: {e}")
+            # Fallthrough to legacy
+
+        # 2. Fallback to Legacy Login (Default DB)
+        # Ensure clean session regarding tenant
+        session.pop('tenant_db', None)
+
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
 
         if users is None:
-            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed. Please check your database configuration."
+            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed."
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
@@ -259,6 +520,7 @@ def add_customer():
                 return redirect(url_for('add_customer'))
 
             current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
             query_supplier = """
@@ -276,8 +538,8 @@ def add_customer():
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
                 parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user,
-                current_user, current_date,
+                current_date, current_user_pk,
+                current_user_pk, current_date,
                 email, vat_no, salutation,
                 0, 1 # Is_Suplier=0, Is_Customer=1
             )
@@ -358,6 +620,7 @@ def add_supplier():
                 return redirect(url_for('add_supplier'))
 
             current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
             query_supplier = """
@@ -375,8 +638,8 @@ def add_supplier():
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
                 parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user,
-                current_user, current_date,
+                current_date, current_user_pk,
+                current_user_pk, current_date,
                 email, vat_no, salutation,
                 1, 0, tin, nic
             )
@@ -542,6 +805,7 @@ def add_inventory_item():
 
             try:
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today_date = date.today()
 
                 # 3. Insert Item
@@ -554,7 +818,7 @@ def add_inventory_item():
                 """
                 cursor.execute(query_item, (
                     name, code, supplier_code, batch_code, img_data,
-                    current_user, today_date, unit, main_cat, sub_cat, min_qty
+                    current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
                 ))
                 item_id = cursor.lastrowid
 
@@ -635,6 +899,7 @@ def grn():
 
             try:
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
 
                 # A. Generate JV Number
                 cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
@@ -657,7 +922,7 @@ def grn():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+                """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
                 # C2. Debit Inventory (Total Value)
                 cursor.execute("""
@@ -665,7 +930,7 @@ def grn():
                         account_name, enty_values_DR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+                """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
                 # C3. Debit VAT Control (if applicable)
                 if vat_amount > 0:
@@ -674,7 +939,7 @@ def grn():
                             account_name, enty_values_DR, entry_effective_date, entry_create_date,
                             entry_naration, entry_create_user, entry_jv, entry_job_number
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
+                    """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
                 # D. Inventory Records
                 for item in items:
@@ -688,7 +953,7 @@ def grn():
                     """
                     cursor.execute(query_ir, (
                         item['name'], item['code'], item['unit'], item['cost'], item['qty'],
-                        invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
+                        invoice_no, current_user_pk, date.today(), location, jv_no, invoice_date, jv_no
                     ))
 
                 conn.commit()
@@ -920,6 +1185,7 @@ def balance_sheet_category():
         level = request.form.get('holding_level')
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         current_date = date.today()
 
         if not name or not level:
@@ -934,7 +1200,7 @@ def balance_sheet_category():
                     (id, name_of_category, holding_position, create_date_time, create_user_code)
                     VALUES (0, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
                 flash('Category created successfully', 'success')
             else:
                 # Update
@@ -944,7 +1210,7 @@ def balance_sheet_category():
                         create_date_time = %s, create_user_code = %s
                     WHERE id = %s
                 """
-                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
                 flash('Category updated successfully', 'success')
 
         except Exception as e:
@@ -985,6 +1251,7 @@ def pl_category():
         level = request.form.get('holding_level')
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         current_date = date.today()
 
         if not name or not level:
@@ -999,7 +1266,7 @@ def pl_category():
                     (id, name_of_category, holding_position, create_date_time, create_user_code)
                     VALUES (0, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
                 flash('P&L Category created successfully', 'success')
             else:
                 # Update
@@ -1009,7 +1276,7 @@ def pl_category():
                         create_date_time = %s, create_user_code = %s
                     WHERE id = %s
                 """
-                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
                 flash('P&L Category updated successfully', 'success')
 
         except Exception as e:
@@ -1145,6 +1412,7 @@ def create_bank_account():
             return redirect(url_for('create_bank_account'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         today_date = date.today()
 
         conn = db.get_connection()
@@ -1173,7 +1441,7 @@ def create_bank_account():
             cursor.execute("""
                 INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                 VALUES (%s, %s, %s, %s)
-            """, (acc_no, bank_name, today_date, current_user))
+            """, (acc_no, bank_name, today_date, current_user_pk))
 
             conn.commit()
             flash('New bank account created', 'success')
@@ -1202,6 +1470,7 @@ def create_cash_account():
             return redirect(url_for('create_cash_account'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         today_date = date.today()
 
         conn = db.get_connection()
@@ -1232,7 +1501,7 @@ def create_cash_account():
             cursor.execute("""
                 INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
                 VALUES (%s, %s, %s, 0)
-            """, (acc_name, today_date, current_user))
+            """, (acc_name, today_date, current_user_pk))
 
             conn.commit()
             flash('New cash account created', 'success')
@@ -1255,8 +1524,8 @@ def create_cash_account():
 def control_panel():
     # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
-        # Warranty
-        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form:
+        # Warranty & Settings
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form:
             # Warranty Logic
             warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
             count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
@@ -1274,6 +1543,15 @@ def control_panel():
             else:
                 db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'enable_approval_workflow'", (str(approval_enabled),), commit=True)
 
+            # Theme Logic
+            new_theme = request.form.get('system_theme')
+            if new_theme and new_theme in THEMES:
+                check_theme = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+                if not check_theme:
+                    db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', %s, 'Active System Theme')", (new_theme,), commit=True)
+                else:
+                    db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'system_theme'", (new_theme,), commit=True)
+
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
 
@@ -1287,6 +1565,9 @@ def control_panel():
     approval_enabled = False
     if res_app and res_app[0]['setting_value'] == '1':
         approval_enabled = True
+
+    res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+    current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -1311,6 +1592,8 @@ def control_panel():
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
                            approval_enabled=approval_enabled,
+                           current_theme_key=current_theme_key,
+                           themes=THEMES,
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
@@ -1419,12 +1702,13 @@ def approval_action():
     action = request.form.get('action') # 'approve' or 'reject'
 
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
     new_status = 1 if action == 'approve' else 2
 
     try:
         if source == 'po':
             db.execute_query("UPDATE OP_NO_Table SET status = %s, Aprove_By = %s, Aproed_Date = %s WHERE id = %s",
-                             (new_status, current_user, date.today(), item_id), commit=True)
+                             (new_status, current_user_pk, date.today(), item_id), commit=True)
 
         elif source == 'jv':
             db.execute_query("UPDATE jv_numbers SET status = %s WHERE jv_id = %s",
@@ -1500,6 +1784,7 @@ def bulk_upload_gl():
                 conn.start_transaction()
 
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today = date.today()
 
                 # Iterate through form lists
@@ -1589,7 +1874,7 @@ def bulk_upload_gl():
                                     cursor.execute("""
                                         INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                                         VALUES (%s, %s, %s, %s)
-                                    """, (name, name, today, current_user))
+                                    """, (name, name, today, current_user_pk))
                             elif 'cash' in acc_name_lower:
                                 # Check if exists in cash_book
                                 cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
@@ -1597,7 +1882,7 @@ def bulk_upload_gl():
                                     cursor.execute("""
                                         INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
                                         VALUES (%s, %s, %s, 0)
-                                    """, (name, today, current_user))
+                                    """, (name, today, current_user_pk))
 
                     count += 1
 
@@ -1711,6 +1996,7 @@ def bulk_upload_tb():
                 conn.start_transaction()
 
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today = date.today()
 
                 # Create JV
@@ -1730,7 +2016,7 @@ def bulk_upload_tb():
                             entry_effective_date, entry_create_date, entry_naration,
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
-                    """, (names[i], dr, cr, opening_date, today, current_user, jv_no))
+                    """, (names[i], dr, cr, opening_date, today, current_user_pk, jv_no))
                     count += 1
 
                 conn.commit()
@@ -2099,6 +2385,7 @@ def cash_payment_submit():
         cursor = conn.cursor()
         conn.start_transaction()
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         # 1. Generate Voucher Number
         cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
@@ -2110,7 +2397,7 @@ def cash_payment_submit():
                        (cash_account, new_voucher))
 
         # 2. Create Journal Voucher (JV)
-        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FORM PAYMENT', narration))
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM PAYMENT', narration))
         jv_no = cursor.lastrowid
 
         # Get Sub Account Code
@@ -2126,7 +2413,7 @@ def cash_payment_submit():
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_sub_account_code
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user_pk, jv_no, sub_ac_code))
 
         # B. Credit Cash (Net Amount = Total - WHT)
         net_payment = total_payment - wht_amount
@@ -2135,7 +2422,7 @@ def cash_payment_submit():
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (cash_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
+        """, (cash_account, net_payment, payment_date, date.today(), narration, current_user_pk, jv_no))
 
         # C. Credit WHT Payable (If any)
         if wht_amount > 0:
@@ -2144,7 +2431,7 @@ def cash_payment_submit():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
 
         # 4. Process Individual Payments (Update Outstanding)
         for p in payments:
@@ -2179,7 +2466,7 @@ def cash_payment_submit():
             """, (
                 net_item_amount, cash_account, narration,
                 p['id'], supplier_name, jv_no,
-                p['id'], new_voucher, current_user, payment_date
+                p['id'], new_voucher, current_user_pk, payment_date
             ))
 
         conn.commit()
@@ -2226,70 +2513,70 @@ def delete_cash_payment_invoice():
 @app.route('/voucher/print/<string:voucher_type>/<int:jv_no>')
 @login_required
 def print_voucher(voucher_type, jv_no):
-    voucher = None
-    title = "PAYMENT VOUCHER"
+    voucher_configs = {
+        'cash': {
+            'title': "CASH PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': 'c.cash_book_recode_suplier_name',
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date', 'c.cash_book_recode_suplier_name',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        },
+        'bank': {
+            'title': "BANK PAYMENT VOUCHER",
+            'table': 'bank_book_recod b',
+            'columns': {
+                'voucher_no': 'b.bank_book_recod_voucher_no',
+                'date': 'b.Bank_Payment_Date',
+                'paid_to': 'b.bank_book__suplier_name',
+                'paid_from': 'b.bank_book__accont_name',
+                'narration': 'b.bank_book__naration',
+                'amount': 'SUM(b.bank_book_book_recode_dr)',
+                'user_id': 'b.Bank_User_Id',
+                'cheque_no': 'b.bank_book_chque_no'
+            },
+            'where': 'b.jv_numbers_jv_id = %s',
+            'group_by': ['b.bank_book_recod_voucher_no', 'b.Bank_Payment_Date', 'b.bank_book__suplier_name',
+                         'b.bank_book__accont_name', 'b.bank_book__naration', 'b.Bank_User_Id', 'b.bank_book_chque_no']
+        },
+        'direct': {
+            'title': "DIRECT PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': "'Direct Purchase'",
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        }
+    }
 
-    if voucher_type == 'cash':
-        title = "CASH PAYMENT VOUCHER"
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                c.cash_book_recode_suplier_name as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    config = voucher_configs.get(voucher_type)
+    if not config:
+        return "Invalid Voucher Type", 404
 
-    elif voucher_type == 'bank':
-        title = "BANK PAYMENT VOUCHER"
-        query = """
-            SELECT
-                b.bank_book_recod_voucher_no as voucher_no,
-                b.Bank_Payment_Date as date,
-                b.bank_book__suplier_name as paid_to,
-                b.bank_book__accont_name as paid_from,
-                b.bank_book__naration as narration,
-                SUM(b.bank_book_book_recode_dr) as amount,
-                b.Bank_User_Id as user_id,
-                b.bank_book_chque_no as cheque_no
-            FROM bank_book_recod b
-            WHERE b.jv_numbers_jv_id = %s
-            GROUP BY b.bank_book_recod_voucher_no, b.Bank_Payment_Date, b.bank_book__suplier_name,
-                     b.bank_book__accont_name, b.bank_book__naration, b.Bank_User_Id, b.bank_book_chque_no
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    columns_str = ", ".join([f"{v} as {k}" for k, v in config['columns'].items()])
+    group_by_str = ", ".join(config['group_by'])
+    query = f"SELECT {columns_str} FROM {config['table']} WHERE {config['where']} GROUP BY {group_by_str}"
 
-    elif voucher_type == 'direct':
-        title = "DIRECT PAYMENT VOUCHER"
-        # Similar to cash but maybe different layout or filtering
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                'Direct Purchase' as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
-
-    if not voucher:
+    res = db.execute_query(query, (jv_no,))
+    if not res:
         return "Voucher Not Found", 404
+    voucher = res[0]
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
@@ -2298,7 +2585,7 @@ def print_voucher(voucher_type, jv_no):
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
                            company=company,
-                           title=title)
+                           title=config['title'])
 
 @app.route('/service_entry/print/<int:jv_no>')
 @login_required
@@ -2377,6 +2664,7 @@ def save_purchase_order():
             return redirect(url_for('purchase_orders'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -2403,7 +2691,7 @@ def save_purchase_order():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0)
             """
             cursor.execute(query_header, (
-                po_number, current_user, date.today(), sup_id, supplier,
+                po_number, current_user_pk, date.today(), sup_id, supplier,
                 comments, delivery_date, location, vat_rate
             ))
             po_id = cursor.lastrowid
@@ -2493,13 +2781,14 @@ def list_purchase_orders():
 def approve_purchase_order():
     po_id = request.form.get('id')
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
 
     if po_id:
         db.execute_query("""
             UPDATE OP_NO_Table
             SET Save_Post = 1, Aprove_By = %s, Aproed_Date = %s
             WHERE id = %s
-        """, (current_user, date.today(), po_id), commit=True)
+        """, (current_user_pk, date.today(), po_id), commit=True)
         return {'success': True}
     return {'error': 'No ID provided'}, 400
 
@@ -4351,7 +4640,8 @@ def sales_summary_cashier():
 @login_required
 @has_permission('Access_Reversals')
 def pos_reversal():
-    current_cashier_id = get_current_user_id()
+    # Use PK (INT) for RecodeUserId filtering
+    current_cashier_id = session.get('user_pk')
     current_date = date.today().strftime('%Y-%m-%d')
 
     # 1. Fetch Sales History (Grouped by JV)
@@ -6367,6 +6657,7 @@ def submit_pos_sale():
     if not cart: return {'error': 'Cart is empty'}, 400
 
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
     today_date = date.today()
 
     try:
@@ -6388,29 +6679,45 @@ def submit_pos_sale():
         total_cost_value = 0
 
         # 3. Process Cart Items
+        pos_sales_params = []
+        inventory_params = []
+        action_timestamp = datetime.now()
+
         for item in cart:
             total_sale_value += item['total']
             total_cost_value += (item['cost'] * item['qty'])
 
-            # Insert into pos_sales_invoice_01
-            cursor.execute("""
+            # Prepare pos_sales_invoice_01 params
+            pos_sales_params.append((
+                item['code'], item['name'], item['unit'],
+                item['price_market'], item['price_special'], item['price_loyalty'],
+                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+                current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            ))
+
+            # Prepare Inventory Movement OUT params
+            inventory_params.append((
+                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+                current_user, jv_no, settings.get('location')
+            ))
+
+        # Batch Insert into pos_sales_invoice_01
+        if pos_sales_params:
+            cursor.executemany("""
                 INSERT INTO pos_sales_invoice_01 (
                     ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
                     Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
                     RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
                     CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
-            """, (
-                item['code'], item['name'], item['unit'],
-                item['price_market'], item['price_special'], item['price_loyalty'],
-                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-                current_user, settings.get('location'), datetime.now(), item['qty'], item['cost'],
-                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
-            ))
+            """, pos_sales_params)
 
-            # Inventory Movement OUT
-            cursor.execute("""
+        # Batch Insert into inventory_recod
+        if inventory_params:
+            cursor.executemany("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_action_date,
                     inventory_recod_moument_in, inventory_recod_movment_out,
@@ -6418,9 +6725,10 @@ def submit_pos_sale():
                     inventory_recod_account, inventory_recod_user_id, JV_No,
                     inventory_recod_location
                 ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+            """, inventory_params)
             """, (
                 item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-                current_user, jv_no, settings.get('location')
+                current_user_pk, jv_no, settings.get('location')
             ))
 
         # 4. GL Entries
@@ -6431,7 +6739,7 @@ def submit_pos_sale():
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Calculate VAT if enabled
         vat_enabled = settings.get('vat_enable') == 1
@@ -6461,7 +6769,7 @@ def submit_pos_sale():
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Credit VAT Control (If VAT > 0)
         if vat_amount > 0:
@@ -6470,7 +6778,7 @@ def submit_pos_sale():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user, jv_no))
+            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Cost of Goods Sold (DR COGS, CR Inventory)
         if total_cost_value > 0:
@@ -6480,7 +6788,7 @@ def submit_pos_sale():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
+            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
 
             # Credit Inventory
             cursor.execute("""
@@ -6488,7 +6796,7 @@ def submit_pos_sale():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
+            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
 
         conn.commit()
         return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
@@ -6503,6 +6811,8 @@ def submit_pos_sale():
 
 def run_schema_migrations():
     """Checks and updates database schema for new features."""
+    conn = db.get_connection()
+    migrations.run_migrations(conn)
     try:
         conn = db.get_connection()
         if not conn: return
@@ -6730,6 +7040,11 @@ def run_schema_migrations():
             # I'll default to '0' (Disabled) so they can turn it on when ready.
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
 
+        # Default Theme Setting
+        cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', 'default', 'Active System Theme')")
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -6832,19 +7147,26 @@ def evaluate_quotations():
         # Quality Score: (Actual / Max)
         s_qual = qual / max_qual if max_qual > 0 else 0
 
-        # Apply Weights based on Priority
-        if priority == 'speed':
-            # Speed is King: Speed 60%, Price 20%, Quality 20%
-            final_score = (s_days * 0.6) + (s_price * 0.2) + (s_qual * 0.2)
-            reason = "Fastest delivery within constraints"
-        elif priority == 'quality':
-            # Quality Focus: Quality 60%, Price 20%, Speed 20%
-            final_score = (s_qual * 0.6) + (s_price * 0.2) + (s_days * 0.2)
-            reason = "Best quality rating"
-        else: # Default Price
-            # Price Focus: Price 60%, Speed 20%, Quality 20%
-            final_score = (s_price * 0.6) + (s_days * 0.2) + (s_qual * 0.2)
-            reason = "Best price"
+        # Define Weights and Reasons based on Priority
+        # Format: (Price Weight, Days Weight, Quality Weight, Reason)
+        # s_price (min/actual), s_days (min/actual), s_qual (actual/max)
+        strategies = {
+            'speed':   (0.2, 0.6, 0.2, "Fastest delivery within constraints"),
+            'quality': (0.2, 0.2, 0.6, "Best quality rating"),
+            'price':   (0.6, 0.2, 0.2, "Best price")
+        }
+
+        # Get weights or default to 'price'
+        w_price, w_days, w_qual, reason = strategies.get(priority, strategies['price'])
+
+        # Calculate Score
+        # Note: s_price and s_days logic was: Best/Actual (so higher is better, max 1)
+        # s_qual logic was: Actual/Best (so higher is better, max 1)
+        # However, the previous logic for s_qual in quality priority used s_qual * 0.6.
+        # But for price/speed priority it also used s_qual * 0.2.
+        # The key difference was which variable got the 0.6 weight.
+
+        final_score = (s_price * w_price) + (s_days * w_days) + (s_qual * w_qual)
 
         s['score'] = round(final_score * 100, 1)
         scored.append(s)
@@ -6877,6 +7199,7 @@ def proforma_invoice():
             return redirect(url_for('proforma_invoice'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         try:
             conn = db.get_connection()
@@ -6899,7 +7222,7 @@ def proforma_invoice():
                     pi_number, customer_name, pi_date, expiry_date,
                     subtotal, vat_amount, grand_total, narration, created_by
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (pi_no, cust_name, pi_date, exp_date, subtotal, vat_amount, grand_total, narration, current_user))
+            """, (pi_no, cust_name, pi_date, exp_date, subtotal, vat_amount, grand_total, narration, current_user_pk))
             pi_id = cursor.lastrowid
 
             # Insert Details
@@ -7085,6 +7408,7 @@ def save_journal_entry():
             return redirect(url_for('journal_entry'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7505,6 +7829,7 @@ def calculate_depreciation():
         dep_date = date(year, month, last_day)
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor(dictionary=True)
@@ -7599,7 +7924,7 @@ def calculate_depreciation():
                         account_name, enty_values_DR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
 
                 # CR Acc Dep
                 cursor.execute("""
@@ -7607,7 +7932,7 @@ def calculate_depreciation():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
 
             conn.commit()
             return {'success': True, 'processed': processed_count, 'jv_id': jv_id}
@@ -7727,6 +8052,7 @@ def submit_inventory_transfer():
             return redirect(url_for('inventory_transfer'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7757,7 +8083,7 @@ def submit_inventory_transfer():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user, datetime.now().date(), from_loc,
+                    tf_note, current_user_pk, datetime.now().date(), from_loc,
                     transfer_date, narration, jv_no
                 ))
 
@@ -7772,7 +8098,7 @@ def submit_inventory_transfer():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user, datetime.now().date(), to_loc,
+                    tf_note, current_user_pk, datetime.now().date(), to_loc,
                     transfer_date, narration, jv_no
                 ))
 
@@ -7854,6 +8180,7 @@ def submit_invoice():
             return redirect(url_for('invoice_creating'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7965,7 +8292,7 @@ def submit_invoice():
                     ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
                 """, (
                     item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                    current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
+                    current_user_pk, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
                 ))
 
             # Non-Inventory Items
@@ -7990,7 +8317,7 @@ def submit_invoice():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # CR Income (Sales)
             cursor.execute("""
@@ -7998,7 +8325,7 @@ def submit_invoice():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # CR VAT (If any)
             if vat_amount > 0:
@@ -8007,7 +8334,7 @@ def submit_invoice():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # Cost of Goods Sold (If inventory items exist)
             if total_cost > 0:
@@ -8017,7 +8344,7 @@ def submit_invoice():
                         account_name, enty_values_DR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
                 # CR Inventory
                 cursor.execute("""
@@ -8025,7 +8352,7 @@ def submit_invoice():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             conn.commit()
             flash(f'Invoice {invoice_no} created successfully.', 'success')
@@ -8125,7 +8452,7 @@ def submit_production_issue():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), source_loc,
+                    f"TF-Prod-{jv_no}", current_user_pk, datetime.now().date(), source_loc,
                     date_val, narration, jv_no
                 ))
 
@@ -8136,7 +8463,7 @@ def submit_production_issue():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (dr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, (dr_account, total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # Cr Inventory Control Account
             cursor.execute("""
@@ -8144,7 +8471,7 @@ def submit_production_issue():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             conn.commit()
             flash(f'Production Issue recorded successfully. JV: {jv_no}', 'success')
@@ -8184,6 +8511,7 @@ def submit_production_receive():
             return redirect(url_for('inventory_production'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -8218,7 +8546,7 @@ def submit_production_receive():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), target_loc,
+                    f"TF-Prod-{jv_no}", current_user_pk, datetime.now().date(), target_loc,
                     date_val, narration, jv_no
                 ))
 
@@ -8229,7 +8557,7 @@ def submit_production_receive():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # Cr User Selected Account (Expense/WIP)
             cursor.execute("""
@@ -8237,7 +8565,7 @@ def submit_production_receive():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (cr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, (cr_account, total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # 4. Log to inventory_productions (from WPF Manufacturing_Inventory logic)
             cursor.execute("""
@@ -8376,6 +8704,45 @@ def import_initial_schema():
     except Exception as e:
         print(f"Error importing initial schema: {e}")
 
+@app.route('/sales_summary_customer', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def sales_summary_customer():
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+
+    query = """
+        SELECT
+            c.customer_code,
+            c.customer_name,
+            COUNT(io.Id) as invoice_count,
+            SUM(io.invoice_total_oustanding) as total_sales,
+            SUM(io.invoice_oustanding_Patment) as total_paid,
+            SUM(io.invoice_total_oustanding - io.invoice_oustanding_Patment) as balance_due
+        FROM Invoice_Oustanding io
+        JOIN customer c ON io.invoice_buinding_Customer = c.id
+        WHERE io.invoice_date BETWEEN %s AND %s
+        AND io.oustanding_delete = 0
+        GROUP BY c.id, c.customer_code, c.customer_name
+        ORDER BY total_sales DESC
+    """
+
+    rows = db.execute_query(query, (from_date, to_date))
+
+    # Calculate Grand Totals
+    totals = {
+        'sales': sum(float(r['total_sales'] or 0) for r in rows),
+        'paid': sum(float(r['total_paid'] or 0) for r in rows),
+        'balance': sum(float(r['balance_due'] or 0) for r in rows),
+        'count': sum(int(r['invoice_count'] or 0) for r in rows)
+    }
+
+    return render_template('sales_summary_customer.html',
+                           rows=rows,
+                           totals=totals,
+                           from_date=from_date,
+                           to_date=to_date)
+
 # Ensure initialization runs once regardless of startup method
 app_initialized = False
 
@@ -8384,6 +8751,7 @@ def initialize_app():
     global app_initialized
     if not app_initialized:
         create_db_if_missing()
+        setup_master_db()
         import_initial_schema()
         run_schema_migrations()
         ensure_default_categories()
