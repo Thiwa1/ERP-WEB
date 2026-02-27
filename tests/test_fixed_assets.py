@@ -118,6 +118,64 @@ class TestFixedAssets(unittest.TestCase):
                              found = True
                              break
                  self.assertTrue(found, "Depreciation calculation failed or not inserted")
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        self.mock_db.get_connection.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Initialize ID counter
+        self.last_row_id = 999
+        mock_cursor.lastrowid = 0
+
+        self.mock_db.execute_query.return_value = [{'Access_Accounting': 1}]
+
+        asset = {
+            'id': 10,
+            'asset_class': 'Computer',
+            'description': 'Laptop',
+            'serial_no': 'SN123',
+            'status': 'Active',
+            'purchasing_date': date(2023, 1, 1),
+            'cost_value': 1200.0,
+            'depreciable_life_months': 24,
+            'expense_account_id': 2,
+            'accumulated_dep_account_id': 3,
+            'quantity': 1,
+            'brand_name': 'Dell',
+            'location': 'Office'
+        }
+
+        def side_effect(*args, **kwargs):
+            query = args[0]
+            if "INSERT" in query.upper():
+                self.last_row_id += 1
+                mock_cursor.lastrowid = self.last_row_id
+
+            if "SELECT * FROM fixed_assets_register" in query:
+                mock_cursor.fetchall.return_value = [asset]
+            elif "SELECT id FROM asset_depreciation_history" in query:
+                mock_cursor.fetchone.return_value = None
+            elif "SELECT SUM(amount)" in query:
+                mock_cursor.fetchone.return_value = {'total': 0}
+            elif "SELECT account_name FROM new_account_table" in query:
+                mock_cursor.fetchone.return_value = {'account_name': 'Test Account'}
+
+        mock_cursor.execute.side_effect = side_effect
+
+        response = self.client.post('/fixed_assets/calculate_depreciation', data={'month': '2023-02'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'success', response.data)
+
+        found = False
+        for call in mock_cursor.execute.call_args_list:
+            query = call[0][0]
+            if "INSERT INTO asset_depreciation_history" in query:
+                params = call[0][1]
+                if params[2] == 50.0:
+                    found = True
+                    break
+        self.assertTrue(found, "Depreciation calculation failed or not inserted")
 
     def test_get_data(self):
         assets = [{
