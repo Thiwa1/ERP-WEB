@@ -13,6 +13,7 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import services
 from num2words import num2words
 from dotenv import load_dotenv
 
@@ -1072,13 +1073,25 @@ def grn():
             supplier_code = sup_res[0]['supplier_code']
             supplier_id = sup_res[0]['sup_id']
 
-            # 3. Create Transaction
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            conn.start_transaction()
-
+            # 3. Create Transaction using Service Layer
             try:
                 current_user = get_current_user_id()
+                supplier_info = {'code': supplier_code, 'id': supplier_id}
+                invoice_info = {
+                    'no': invoice_no,
+                    'date': invoice_date,
+                    'due_date': due_date,
+                    'narration': narration,
+                    'job_no': job_no,
+                    'location': location,
+                    'total_value': total_value,
+                    'vat_rate': vat_rate,
+                    'vat_amount': vat_amount,
+                    'grand_total': grand_total
+                }
+
+                jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
+
                 current_user_pk = get_current_user_pk()
 
                 # A. Generate JV Number
@@ -1141,12 +1154,8 @@ def grn():
                 return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name, date=invoice_date, invoice_no=invoice_no, location=location, items=items, total_value=total_value, vat_amount=vat_amount, grand_total=grand_total)
 
             except Exception as e:
-                conn.rollback()
                 flash(f'Transaction failed: {str(e)}', 'danger')
                 return redirect(url_for('grn'))
-            finally:
-                cursor.close()
-                conn.close()
 
         except Exception as e:
             flash(f'Error processing GRN: {str(e)}', 'danger')
