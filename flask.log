@@ -1,4 +1,10 @@
- * Serving Flask app 'app'
- * Debug mode: on
-Address already in use
-Port 5000 is in use by another program. Either identify and stop that program, or start the server with a different port.
+ * Serving Flask app 'app.py'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [27/Feb/2026 08:17:51] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [27/Feb/2026 08:17:52] "[32mPOST /login HTTP/1.1[0m" 302 -
+127.0.0.1 - - [27/Feb/2026 08:17:52] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [27/Feb/2026 08:17:52] "[32mGET /admin/users HTTP/1.1[0m" 302 -
+127.0.0.1 - - [27/Feb/2026 08:17:52] "GET /login HTTP/1.1" 200 -
