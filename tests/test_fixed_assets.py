@@ -60,7 +60,10 @@ class TestFixedAssets(unittest.TestCase):
         mock_cursor = MagicMock()
         self.mock_db.get_connection.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
-        mock_cursor.lastrowid = 999 # Fix serialization
+
+        # Initialize ID counter
+        self.last_row_id = 999
+        mock_cursor.lastrowid = 0
 
         self.mock_db.execute_query.return_value = [{'Access_Accounting': 1}]
 
@@ -82,6 +85,10 @@ class TestFixedAssets(unittest.TestCase):
 
         def side_effect(*args, **kwargs):
             query = args[0]
+            if "INSERT" in query.upper():
+                self.last_row_id += 1
+                mock_cursor.lastrowid = self.last_row_id
+
             if "SELECT * FROM fixed_assets_register" in query:
                 mock_cursor.fetchall.return_value = [asset]
             elif "SELECT id FROM asset_depreciation_history" in query:
