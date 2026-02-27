@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from database import Database
 from datetime import datetime, date
 from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
 import csv
 import io
 import json
@@ -13,35 +14,286 @@ import random # For mocking exchange rate
 import subprocess
 import mysql.connector
 import services
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+import logging
+import shutil
+import re
+import os
+import migrations
+import secrets
 
 app = Flask(__name__)
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler("app.log"),
+        logging.StreamHandler()
+    ]
+)
+
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
-app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+app.secret_key = os.environ.get('SECRET_KEY')
+if not app.secret_key:
+    # Generate a random key if environment variable is not set
+    # This ensures sessions are secure but will invalidate on restart if not set in ENV
+    app.secret_key = secrets.token_hex(32)
+
 app.config['SECRET_KEY'] = app.secret_key
 
+# Theme Configuration
+THEMES = {
+    'default': {
+        'name': 'Professional (Default)',
+        'primary': '#0f172a',
+        'secondary': '#1e293b',
+        'accent': '#2563eb'
+    },
+    'ocean': {
+        'name': 'Ocean Blue',
+        'primary': '#003366',
+        'secondary': '#004080',
+        'accent': '#0073e6'
+    },
+    'forest': {
+        'name': 'Forest Green',
+        'primary': '#143d14',
+        'secondary': '#1f5c1f',
+        'accent': '#2eb82e'
+    },
+    'ruby': {
+        'name': 'Ruby Red',
+        'primary': '#4d0000',
+        'secondary': '#800000',
+        'accent': '#e60000'
+    },
+    'midnight': {
+        'name': 'Midnight Dark',
+        'primary': '#000000',
+        'secondary': '#1a1a1a',
+        'accent': '#ffcc00'
+    }
+}
+
 # Database Configuration
+# Credentials should be set in .env file or environment variables for security.
 db_config = {
+    'user': os.environ.get('DB_USER'),
     'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD', ''),
+    'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
     'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
 }
 
-db = Database(db_config)
+# Ensure critical database configuration is present
+if not db_config['user']:
+    print("Warning: DB_USER not set in environment variables.")
 
-# Context Processor for Currency
+db = Database(db_config)
+MASTER_DB_NAME = 'Book_keeping_Master'
+
+def get_session_db_name():
+    return session.get('tenant_db')
+
+db.set_db_name_getter(get_session_db_name)
+
+# Master DB Connection (Dedicated)
+master_db_config = db_config.copy()
+master_db_config['database'] = MASTER_DB_NAME
+master_db = Database(master_db_config)
+
+def setup_master_db():
+    """Ensure the Master DB and its tables exist."""
+    try:
+        # Connect without DB to create Master DB if needed
+        temp_config = db_config.copy()
+        if 'database' in temp_config:
+            del temp_config['database']
+
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+        cursor.close()
+        conn.close()
+
+        # Now create tables in Master DB
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_name VARCHAR(255) NOT NULL UNIQUE,
+                db_name VARCHAR(255) NOT NULL UNIQUE,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                username VARCHAR(255) NOT NULL UNIQUE,
+                password VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                tenant_id INT,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            )
+        """)
+        print("Master DB setup complete.")
+    except Exception as e:
+        print(f"Error setting up Master DB: {e}")
+
+def parse_and_execute_sql(cursor, content):
+    """Parses SQL content with DELIMITER support and executes it."""
+    delimiter = ';'
+    statement = ""
+
+    lines = content.split('\n')
+    for line in lines:
+        stripped = line.strip()
+
+        if stripped.upper().startswith('DELIMITER '):
+            delimiter = stripped.split()[1]
+            continue
+
+        if stripped.startswith('--') or stripped.startswith('#'):
+            continue
+
+        if not statement and not stripped:
+            continue
+
+        statement += line + "\n"
+
+        if statement.strip().endswith(delimiter):
+            sql_to_run = statement.strip()
+            if sql_to_run.endswith(delimiter):
+                 sql_to_run = sql_to_run[:-len(delimiter)]
+
+            if sql_to_run.strip():
+                try:
+                    cursor.execute(sql_to_run)
+                    while cursor.nextset(): pass
+                except Exception as e:
+                    print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+            statement = ""
+
+def create_tenant_db(company_name, username, password, email):
+    """Creates a new tenant DB, runs schema, and registers in Master DB."""
+    import re
+
+    safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
+    db_name = f"bk_{safe_name}"
+
+    existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
+    if existing_user: return False, "Username already exists."
+
+    existing_tenant = master_db.execute_query("SELECT id FROM tenants WHERE company_name = %s", (company_name,))
+    if existing_tenant: return False, "Company already registered."
+
+    try:
+        # Create DB
+        temp_config = db_config.copy()
+        if 'database' in temp_config: del temp_config['database']
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.close()
+        conn.close()
+
+        # Connect to New DB
+        t_config = db_config.copy()
+        t_config['database'] = db_name
+        t_conn = mysql.connector.connect(**t_config)
+        t_cursor = t_conn.cursor()
+
+        # Execute Schema
+        if os.path.exists('database_schema.sql'):
+            with open('database_schema.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        if os.path.exists('fixed_assets.sql'):
+            with open('fixed_assets.sql', 'r') as f:
+                content = f.read().replace('Book_keeping', db_name)
+                parse_and_execute_sql(t_cursor, content)
+
+        t_conn.commit()
+        t_conn.close()
+
+        # Insert Admin User
+        t_db_conf = db_config.copy()
+        t_db_conf['database'] = db_name
+        t_db = Database(t_db_conf)
+
+        t_db.execute_query("""
+            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
+            VALUES (%s, %s, %s, '1001', 1)
+        """, (username, password, email))
+
+        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,))
+
+        # Insert into Master
+        master_db.execute_query("INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)", (company_name, db_name))
+        tenant_id_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (db_name,))
+        tenant_id = tenant_id_res[0]['id']
+
+        master_db.execute_query("""
+            INSERT INTO users (username, password, email, tenant_id)
+            VALUES (%s, %s, %s, %s)
+        """, (username, password, email, tenant_id))
+
+        return True, "Registration successful."
+
+    except Exception as e:
+        print(f"Registration Error: {e}")
+        return False, str(e)
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        company_name = request.form['company_name']
+        username = request.form['username']
+        password = request.form['password']
+        email = request.form['email']
+
+        success, message = create_tenant_db(company_name, username, password, email)
+        if success:
+            flash(message, 'success')
+            return redirect(url_for('login'))
+        else:
+            flash(message, 'danger')
+
+    return render_template('register.html')
+
+# Context Processor for Currency & Theme
 @app.context_processor
 def inject_currency():
-    # Cache lookup could be implemented here for performance
-    # For now, fetching single row is fast enough
+def inject_globals():
+    globals_dict = {}
+
+    # Currency
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
-        currency = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
+        globals_dict['company_currency'] = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
     except:
-        currency = 'LKR'
-    return dict(company_currency=currency)
+        globals_dict['company_currency'] = 'LKR'
+
+    # Theme
+    try:
+        res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+        theme_key = res[0]['setting_value'] if res else 'default'
+        globals_dict['current_theme'] = THEMES.get(theme_key, THEMES['default'])
+        globals_dict['theme_key'] = theme_key
+    except:
+        globals_dict['current_theme'] = THEMES['default']
+        globals_dict['theme_key'] = 'default'
+
+    return globals_dict
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
@@ -52,15 +304,6 @@ def currency_filter(value):
 
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
-
-        # Get symbol from session or DB?
-        # Since filters don't easily access context processors, we can just return the number
-        # and let the template use {{ company_currency }} {{ value|currency }}
-        # OR we fetch it here (less efficient)
-        # OR we rely on the user to put the symbol in the template.
-
-        # Better approach: Just format the number here.
-        # The symbol is injected via context processor.
         return formatted
     except (ValueError, TypeError):
         return "0.00"
@@ -77,6 +320,81 @@ def parse_float(value):
     except (ValueError, TypeError):
         return 0.0
 
+def parse_csv_file(file_storage, required_columns=None):
+    """
+    Parses a file-like object (e.g., Flask FileStorage) into a list of dictionaries.
+    Handles multiple encodings and optional column validation.
+
+    Args:
+        file_storage: A Flask FileStorage object or similar with a .stream attribute or read() method.
+        required_columns: A list of strings representing column headers that must be present.
+
+    Returns:
+        A list of dictionaries representing the CSV rows.
+
+    Raises:
+        ValueError: If decoding fails or required columns are missing.
+    """
+    try:
+        # Read file bytes. If it's a FileStorage, use .stream.read() or .read()
+        if hasattr(file_storage, 'stream'):
+            file_bytes = file_storage.stream.read()
+        elif hasattr(file_storage, 'read'):
+            file_bytes = file_storage.read()
+        else:
+            raise ValueError("Invalid file object")
+
+        # If file_bytes is empty, decoded_str will be empty, and csv.DictReader might not return headers
+        # We need to handle this.
+        if not file_bytes:
+             if required_columns:
+                 raise ValueError("File is empty, missing required columns: " + ", ".join(required_columns))
+             return []
+
+        decoded_str = None
+        # Try multiple encodings
+        for encoding in ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']:
+            try:
+                decoded_str = file_bytes.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if decoded_str is None:
+            raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
+
+        stream = io.StringIO(decoded_str, newline=None)
+        csv_input = csv.DictReader(stream)
+
+        # Validate Headers
+        if required_columns:
+            # csv.DictReader reads headers on access to fieldnames or iteration
+            headers = csv_input.fieldnames
+            if not headers:
+                 # Should have been caught by empty check unless file is only newlines?
+                 raise ValueError("Missing required columns: " + ", ".join(required_columns))
+
+            # Use strip() on headers for comparison?
+            clean_headers = [h.strip() for h in headers if h]
+            missing = [col for col in required_columns if col not in clean_headers]
+            if missing:
+                raise ValueError(f"Missing required columns: {', '.join(missing)}")
+
+        rows = []
+        for row in csv_input:
+            # Clean keys/values
+            clean_row = {k.strip(): (v.strip() if v else '') for k, v in row.items() if k}
+            if not clean_row: continue # Skip empty rows
+
+            rows.append(clean_row)
+
+        return rows
+
+    except Exception as e:
+        # Re-raise ValueError directly, or wrap other exceptions
+        if isinstance(e, ValueError): raise e
+        raise ValueError(f"CSV Parsing Error: {str(e)}")
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -88,21 +406,30 @@ def login_required(f):
 def get_current_user_id():
     return session.get('user_id', 0)
 
+def get_current_user_pk():
+    try:
+        pk = session.get('user_pk', 0)
+        return int(pk)
+    except (ValueError, TypeError):
+        return 0
+
 def check_permission(perm_name):
     """Checks if current user has specific permission."""
     user_pk = session.get('user_pk')
     if not user_pk: return False
 
     try:
-        # Check if column exists first to avoid errors during migration or if checking invalid perm
-        # But simpler to just try-except.
-        # Note: We assume schema is migrated.
-        query = f"SELECT {perm_name} FROM User_Rights WHERE Link_To_Loging_Tabke = %s"
+        # Fetch all rights for the user to handle potentially missing columns gracefully
+        # This prevents SQL errors if schema isn't fully migrated or perm_name is invalid
+        query = "SELECT * FROM User_Rights WHERE Link_To_Loging_Tabke = %s"
         res = db.execute_query(query, (user_pk,))
+
+        # Check if permission exists in the row and is enabled
         if res and res[0].get(perm_name) == 1:
             return True
+
     except Exception as e:
-        print(f"Permission check error: {e}")
+        logging.error(f"Permission check error: {e}")
         return False
     return False
 
@@ -131,20 +458,85 @@ def login():
             return redirect(url_for('login'))
 
         # Check credentials
-        # Note: In production, passwords should be hashed.
-        # The provided C# code compares plain text, so we replicate that.
+        # 1. Try Login via Master DB (Multi-Tenant)
+        try:
+            # Query Master DB for user and tenant DB
+            master_user_res = master_db.execute_query("""
+                SELECT u.username, u.password, t.db_name
+                FROM users u
+                JOIN tenants t ON u.tenant_id = t.id
+                WHERE u.username = %s
+            """, (username,))
+
+            if master_user_res:
+                master_user = master_user_res[0]
+                if master_user['password'] == password:
+                    # Login Successful on Master
+                    session['tenant_db'] = master_user['db_name']
+                    session['username'] = username
+
+                    # Fetch User Details from Tenant DB (for permissions/FKs)
+                    # Note: db instance now points to tenant_db via session
+                    tenant_user_res = db.execute_query("SELECT id, User_Code FROM Login_Table WHERE User_Name = %s", (username,))
+
+                    if tenant_user_res:
+                        tenant_user = tenant_user_res[0]
+                        session['user_id'] = tenant_user['User_Code']
+                        session['user_pk'] = tenant_user['id']
+                        return redirect(url_for('index'))
+                    else:
+                        flash('User record missing in tenant database.', 'danger')
+                        session.pop('tenant_db', None)
+                        return redirect(url_for('login'))
+                else:
+                    flash('Incorrect password.', 'danger')
+                    return redirect(url_for('login'))
+        except Exception as e:
+            print(f"Master Login Error: {e}")
+            # Fallthrough to legacy
+
+        # 2. Fallback to Legacy Login (Default DB)
+        # Ensure clean session regarding tenant
+        session.pop('tenant_db', None)
+
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
 
         if users is None:
-            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed. Please check your database configuration."
+            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed."
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
-            if user['Password'] == password:
+            stored_password = user.get('Password', '')
+            verified = False
+            migrated = False
+
+            # 1. Try Hash Verification
+            try:
+                if check_password_hash(stored_password, password):
+                    verified = True
+            except:
+                # stored_password might not be a valid hash format (e.g. plain text)
+                pass
+
+            # 2. Fallback to Plain Text (Legacy Support & Migration)
+            if not verified:
+                if stored_password == password:
+                    verified = True
+                    # Upgrade to Hash
+                    try:
+                        new_hash = generate_password_hash(password)
+                        db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
+                        migrated = True
+                    except Exception as e:
+                        print(f"Error migrating password for user {user['id']}: {e}")
+
+            if verified:
                 session['user_id'] = user['User_Code']
                 session['user_pk'] = user['id']
                 session['username'] = username
+                if migrated:
+                    flash('Login successful. Your password security has been upgraded.', 'success')
                 return redirect(url_for('index'))
             else:
                 flash('Incorrect password.', 'danger')
@@ -257,6 +649,7 @@ def add_customer():
                 return redirect(url_for('add_customer'))
 
             current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
             query_supplier = """
@@ -274,8 +667,8 @@ def add_customer():
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
                 parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user,
-                current_user, current_date,
+                current_date, current_user_pk,
+                current_user_pk, current_date,
                 email, vat_no, salutation,
                 0, 1 # Is_Suplier=0, Is_Customer=1
             )
@@ -306,7 +699,7 @@ def add_customer():
                 flash('Customer added successfully!', 'success')
             except Exception as e:
                 conn.rollback()
-                print(f"Transaction failed: {e}")
+                logging.error(f"Transaction failed: {e}")
                 flash(f'Error adding customer: {str(e)}', 'danger')
             finally:
                 cursor.close()
@@ -356,6 +749,7 @@ def add_supplier():
                 return redirect(url_for('add_supplier'))
 
             current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
             query_supplier = """
@@ -373,8 +767,8 @@ def add_supplier():
                 0, supplier_name, supplier_code,
                 address_no, address_line_1, address_line_2, address_line_3,
                 parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user,
-                current_user, current_date,
+                current_date, current_user_pk,
+                current_user_pk, current_date,
                 email, vat_no, salutation,
                 1, 0, tin, nic
             )
@@ -540,6 +934,7 @@ def add_inventory_item():
 
             try:
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today_date = date.today()
 
                 # 3. Insert Item
@@ -552,7 +947,7 @@ def add_inventory_item():
                 """
                 cursor.execute(query_item, (
                     name, code, supplier_code, batch_code, img_data,
-                    current_user, today_date, unit, main_cat, sub_cat, min_qty
+                    current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
                 ))
                 item_id = cursor.lastrowid
 
@@ -645,6 +1040,64 @@ def grn():
 
                 jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
 
+                current_user_pk = get_current_user_pk()
+
+                # A. Generate JV Number
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
+                jv_no = cursor.lastrowid
+
+                # B. Insert Invoice Record
+                query_inv = """
+                    INSERT INTO suppliers_invoice_data (
+                        suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                        suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
+                        suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                """
+                cursor.execute(query_inv, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, jv_no, vat_rate))
+
+                # C. Journal Entries
+                # C1. Credit Account Payable (Grand Total)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
+
+                # C2. Debit Inventory (Total Value)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
+
+                # C3. Debit VAT Control (if applicable)
+                if vat_amount > 0:
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                            entry_naration, entry_create_user, entry_jv, entry_job_number
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
+
+                # D. Inventory Records
+                for item in items:
+                    query_ir = """
+                        INSERT INTO inventory_recod (
+                            inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                            inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                            inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
+                            inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
+                        ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query_ir, (
+                        item['name'], item['code'], item['unit'], item['cost'], item['qty'],
+                        invoice_no, current_user_pk, date.today(), location, jv_no, invoice_date, jv_no
+                    ))
+
+                conn.commit()
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
                 return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name, date=invoice_date, invoice_no=invoice_no, location=location, items=items, total_value=total_value, vat_amount=vat_amount, grand_total=grand_total)
 
@@ -869,6 +1322,7 @@ def balance_sheet_category():
         level = request.form.get('holding_level')
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         current_date = date.today()
 
         if not name or not level:
@@ -883,7 +1337,7 @@ def balance_sheet_category():
                     (id, name_of_category, holding_position, create_date_time, create_user_code)
                     VALUES (0, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
                 flash('Category created successfully', 'success')
             else:
                 # Update
@@ -893,7 +1347,7 @@ def balance_sheet_category():
                         create_date_time = %s, create_user_code = %s
                     WHERE id = %s
                 """
-                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
                 flash('Category updated successfully', 'success')
 
         except Exception as e:
@@ -934,6 +1388,7 @@ def pl_category():
         level = request.form.get('holding_level')
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         current_date = date.today()
 
         if not name or not level:
@@ -948,7 +1403,7 @@ def pl_category():
                     (id, name_of_category, holding_position, create_date_time, create_user_code)
                     VALUES (0, %s, %s, %s, %s)
                 """
-                db.execute_query(query, (name, level, current_date, current_user), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
                 flash('P&L Category created successfully', 'success')
             else:
                 # Update
@@ -958,7 +1413,7 @@ def pl_category():
                         create_date_time = %s, create_user_code = %s
                     WHERE id = %s
                 """
-                db.execute_query(query, (name, level, current_date, current_user, category_id), commit=True)
+                db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
                 flash('P&L Category updated successfully', 'success')
 
         except Exception as e:
@@ -1094,6 +1549,7 @@ def create_bank_account():
             return redirect(url_for('create_bank_account'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         today_date = date.today()
 
         conn = db.get_connection()
@@ -1122,7 +1578,7 @@ def create_bank_account():
             cursor.execute("""
                 INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                 VALUES (%s, %s, %s, %s)
-            """, (acc_no, bank_name, today_date, current_user))
+            """, (acc_no, bank_name, today_date, current_user_pk))
 
             conn.commit()
             flash('New bank account created', 'success')
@@ -1151,6 +1607,7 @@ def create_cash_account():
             return redirect(url_for('create_cash_account'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
         today_date = date.today()
 
         conn = db.get_connection()
@@ -1181,7 +1638,7 @@ def create_cash_account():
             cursor.execute("""
                 INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
                 VALUES (%s, %s, %s, 0)
-            """, (acc_name, today_date, current_user))
+            """, (acc_name, today_date, current_user_pk))
 
             conn.commit()
             flash('New cash account created', 'success')
@@ -1204,8 +1661,8 @@ def create_cash_account():
 def control_panel():
     # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
-        # Warranty
-        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form:
+        # Warranty & Settings
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form:
             # Warranty Logic
             warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
             count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
@@ -1223,6 +1680,15 @@ def control_panel():
             else:
                 db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'enable_approval_workflow'", (str(approval_enabled),), commit=True)
 
+            # Theme Logic
+            new_theme = request.form.get('system_theme')
+            if new_theme and new_theme in THEMES:
+                check_theme = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+                if not check_theme:
+                    db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', %s, 'Active System Theme')", (new_theme,), commit=True)
+                else:
+                    db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'system_theme'", (new_theme,), commit=True)
+
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
 
@@ -1236,6 +1702,9 @@ def control_panel():
     approval_enabled = False
     if res_app and res_app[0]['setting_value'] == '1':
         approval_enabled = True
+
+    res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+    current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -1260,6 +1729,8 @@ def control_panel():
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
                            approval_enabled=approval_enabled,
+                           current_theme_key=current_theme_key,
+                           themes=THEMES,
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
@@ -1368,12 +1839,13 @@ def approval_action():
     action = request.form.get('action') # 'approve' or 'reject'
 
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
     new_status = 1 if action == 'approve' else 2
 
     try:
         if source == 'po':
             db.execute_query("UPDATE OP_NO_Table SET status = %s, Aprove_By = %s, Aproed_Date = %s WHERE id = %s",
-                             (new_status, current_user, date.today(), item_id), commit=True)
+                             (new_status, current_user_pk, date.today(), item_id), commit=True)
 
         elif source == 'jv':
             db.execute_query("UPDATE jv_numbers SET status = %s WHERE jv_id = %s",
@@ -1399,30 +1871,13 @@ def bulk_upload_gl():
                 return redirect(url_for('bulk_upload_gl'))
 
             try:
-                # Parse CSV
-                file_bytes = file.stream.read()
-                decoded_str = None
-
-                # Try multiple encodings
-                for encoding in ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']:
-                    try:
-                        decoded_str = file_bytes.decode(encoding)
-                        break
-                    except UnicodeDecodeError:
-                        continue
-
-                if decoded_str is None:
-                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
-
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
+                # Use helper to parse and validate
+                raw_rows = parse_csv_file(file, required_columns=['Account Name'])
 
                 rows = []
-                for row in csv_input:
-                    # Clean keys/values
-                    clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
-                    if not clean_row.get('Account Name'): continue
-                    rows.append(clean_row)
+                for row in raw_rows:
+                    if not row.get('Account Name'): continue
+                    rows.append(row)
 
                 # Fetch Existing Data for Validation/Dropdowns
                 existing_accounts = {a['account_name']: a for a in db.execute_query("SELECT account_name, account_basment FROM new_account_table")}
@@ -1449,6 +1904,7 @@ def bulk_upload_gl():
                 conn.start_transaction()
 
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today = date.today()
 
                 # Iterate through form lists
@@ -1538,7 +1994,7 @@ def bulk_upload_gl():
                                     cursor.execute("""
                                         INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
                                         VALUES (%s, %s, %s, %s)
-                                    """, (name, name, today, current_user))
+                                    """, (name, name, today, current_user_pk))
                             elif 'cash' in acc_name_lower:
                                 # Check if exists in cash_book
                                 cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
@@ -1546,7 +2002,7 @@ def bulk_upload_gl():
                                     cursor.execute("""
                                         INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
                                         VALUES (%s, %s, %s, 0)
-                                    """, (name, today, current_user))
+                                    """, (name, today, current_user_pk))
 
                     count += 1
 
@@ -1576,22 +2032,10 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
-                file_bytes = file.stream.read()
-                decoded_str = None
-
-                # Try multiple encodings
-                for encoding in ['utf-8', 'utf-8-sig', 'latin1', 'cp1252', 'utf-16']:
-                    try:
-                        decoded_str = file_bytes.decode(encoding)
-                        break
-                    except UnicodeDecodeError:
-                        continue
-
-                if decoded_str is None:
-                    raise ValueError("Unable to determine file encoding (tried utf-8, latin1, cp1252, utf-16)")
-
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
+                # Use helper to parse and validate
+                # Note: `bulk_upload_tb` logic iterates rows differently (using row.get('Debit'))
+                # Our helper returns list of dicts.
+                parsed_rows = parse_csv_file(file, required_columns=['Account Name', 'Debit', 'Credit'])
 
                 rows = []
                 missing_accounts = []
@@ -1599,7 +2043,7 @@ def bulk_upload_tb():
                 # Fetch existing accounts
                 existing = {a['account_name'] for a in db.execute_query("SELECT account_name FROM new_account_table")}
 
-                for row in csv_input:
+                for row in parsed_rows:
                     name = row.get('Account Name', '').strip()
                     dr = parse_float(row.get('Debit', 0) or 0)
                     cr = parse_float(row.get('Credit', 0) or 0)
@@ -1660,6 +2104,7 @@ def bulk_upload_tb():
                 conn.start_transaction()
 
                 current_user = get_current_user_id()
+                current_user_pk = get_current_user_pk()
                 today = date.today()
 
                 # Create JV
@@ -1679,7 +2124,7 @@ def bulk_upload_tb():
                             entry_effective_date, entry_create_date, entry_naration,
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
-                    """, (names[i], dr, cr, opening_date, today, current_user, jv_no))
+                    """, (names[i], dr, cr, opening_date, today, current_user_pk, jv_no))
                     count += 1
 
                 conn.commit()
@@ -2048,6 +2493,7 @@ def cash_payment_submit():
         cursor = conn.cursor()
         conn.start_transaction()
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         # 1. Generate Voucher Number
         cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
@@ -2059,7 +2505,7 @@ def cash_payment_submit():
                        (cash_account, new_voucher))
 
         # 2. Create Journal Voucher (JV)
-        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FORM PAYMENT', narration))
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM PAYMENT', narration))
         jv_no = cursor.lastrowid
 
         # Get Sub Account Code
@@ -2075,7 +2521,7 @@ def cash_payment_submit():
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_sub_account_code
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user_pk, jv_no, sub_ac_code))
 
         # B. Credit Cash (Net Amount = Total - WHT)
         net_payment = total_payment - wht_amount
@@ -2084,7 +2530,7 @@ def cash_payment_submit():
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (cash_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
+        """, (cash_account, net_payment, payment_date, date.today(), narration, current_user_pk, jv_no))
 
         # C. Credit WHT Payable (If any)
         if wht_amount > 0:
@@ -2093,7 +2539,7 @@ def cash_payment_submit():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
 
         # 4. Process Individual Payments (Update Outstanding)
         for p in payments:
@@ -2128,7 +2574,7 @@ def cash_payment_submit():
             """, (
                 net_item_amount, cash_account, narration,
                 p['id'], supplier_name, jv_no,
-                p['id'], new_voucher, current_user, payment_date
+                p['id'], new_voucher, current_user_pk, payment_date
             ))
 
         conn.commit()
@@ -2137,7 +2583,7 @@ def cash_payment_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Cash Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -2175,70 +2621,70 @@ def delete_cash_payment_invoice():
 @app.route('/voucher/print/<string:voucher_type>/<int:jv_no>')
 @login_required
 def print_voucher(voucher_type, jv_no):
-    voucher = None
-    title = "PAYMENT VOUCHER"
+    voucher_configs = {
+        'cash': {
+            'title': "CASH PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': 'c.cash_book_recode_suplier_name',
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date', 'c.cash_book_recode_suplier_name',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        },
+        'bank': {
+            'title': "BANK PAYMENT VOUCHER",
+            'table': 'bank_book_recod b',
+            'columns': {
+                'voucher_no': 'b.bank_book_recod_voucher_no',
+                'date': 'b.Bank_Payment_Date',
+                'paid_to': 'b.bank_book__suplier_name',
+                'paid_from': 'b.bank_book__accont_name',
+                'narration': 'b.bank_book__naration',
+                'amount': 'SUM(b.bank_book_book_recode_dr)',
+                'user_id': 'b.Bank_User_Id',
+                'cheque_no': 'b.bank_book_chque_no'
+            },
+            'where': 'b.jv_numbers_jv_id = %s',
+            'group_by': ['b.bank_book_recod_voucher_no', 'b.Bank_Payment_Date', 'b.bank_book__suplier_name',
+                         'b.bank_book__accont_name', 'b.bank_book__naration', 'b.Bank_User_Id', 'b.bank_book_chque_no']
+        },
+        'direct': {
+            'title': "DIRECT PAYMENT VOUCHER",
+            'table': 'cash_book_recode c',
+            'columns': {
+                'voucher_no': 'c.cash_book_recod_voucher_no',
+                'date': 'c.Payment_Date',
+                'paid_to': "'Direct Purchase'",
+                'paid_from': 'c.cash_book_recode_accont_name',
+                'narration': 'c.cash_book_recode_naration',
+                'amount': 'SUM(c.cash_book_recode_dr)',
+                'user_id': 'c.User_Enter'
+            },
+            'where': 'c.jv_numbers_jv_id = %s',
+            'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date',
+                         'c.cash_book_recode_accont_name', 'c.cash_book_recode_naration', 'c.User_Enter']
+        }
+    }
 
-    if voucher_type == 'cash':
-        title = "CASH PAYMENT VOUCHER"
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                c.cash_book_recode_suplier_name as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date, c.cash_book_recode_suplier_name,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    config = voucher_configs.get(voucher_type)
+    if not config:
+        return "Invalid Voucher Type", 404
 
-    elif voucher_type == 'bank':
-        title = "BANK PAYMENT VOUCHER"
-        query = """
-            SELECT
-                b.bank_book_recod_voucher_no as voucher_no,
-                b.Bank_Payment_Date as date,
-                b.bank_book__suplier_name as paid_to,
-                b.bank_book__accont_name as paid_from,
-                b.bank_book__naration as narration,
-                SUM(b.bank_book_book_recode_dr) as amount,
-                b.Bank_User_Id as user_id,
-                b.bank_book_chque_no as cheque_no
-            FROM bank_book_recod b
-            WHERE b.jv_numbers_jv_id = %s
-            GROUP BY b.bank_book_recod_voucher_no, b.Bank_Payment_Date, b.bank_book__suplier_name,
-                     b.bank_book__accont_name, b.bank_book__naration, b.Bank_User_Id, b.bank_book_chque_no
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
+    columns_str = ", ".join([f"{v} as {k}" for k, v in config['columns'].items()])
+    group_by_str = ", ".join(config['group_by'])
+    query = f"SELECT {columns_str} FROM {config['table']} WHERE {config['where']} GROUP BY {group_by_str}"
 
-    elif voucher_type == 'direct':
-        title = "DIRECT PAYMENT VOUCHER"
-        # Similar to cash but maybe different layout or filtering
-        query = """
-            SELECT
-                c.cash_book_recod_voucher_no as voucher_no,
-                c.Payment_Date as date,
-                'Direct Purchase' as paid_to,
-                c.cash_book_recode_accont_name as paid_from,
-                c.cash_book_recode_naration as narration,
-                SUM(c.cash_book_recode_dr) as amount,
-                c.User_Enter as user_id
-            FROM cash_book_recode c
-            WHERE c.jv_numbers_jv_id = %s
-            GROUP BY c.cash_book_recod_voucher_no, c.Payment_Date,
-                     c.cash_book_recode_accont_name, c.cash_book_recode_naration, c.User_Enter
-        """
-        res = db.execute_query(query, (jv_no,))
-        if res: voucher = res[0]
-
-    if not voucher:
+    res = db.execute_query(query, (jv_no,))
+    if not res:
         return "Voucher Not Found", 404
+    voucher = res[0]
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
@@ -2247,7 +2693,7 @@ def print_voucher(voucher_type, jv_no):
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
                            company=company,
-                           title=title)
+                           title=config['title'])
 
 @app.route('/service_entry/print/<int:jv_no>')
 @login_required
@@ -2326,6 +2772,7 @@ def save_purchase_order():
             return redirect(url_for('purchase_orders'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -2352,7 +2799,7 @@ def save_purchase_order():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0)
             """
             cursor.execute(query_header, (
-                po_number, current_user, date.today(), sup_id, supplier,
+                po_number, current_user_pk, date.today(), sup_id, supplier,
                 comments, delivery_date, location, vat_rate
             ))
             po_id = cursor.lastrowid
@@ -2442,13 +2889,14 @@ def list_purchase_orders():
 def approve_purchase_order():
     po_id = request.form.get('id')
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
 
     if po_id:
         db.execute_query("""
             UPDATE OP_NO_Table
             SET Save_Post = 1, Aprove_By = %s, Aproed_Date = %s
             WHERE id = %s
-        """, (current_user, date.today(), po_id), commit=True)
+        """, (current_user_pk, date.today(), po_id), commit=True)
         return {'success': True}
     return {'error': 'No ID provided'}, 400
 
@@ -2518,11 +2966,14 @@ def add_new_user():
         cursor = conn.cursor()
         conn.start_transaction()
 
+        # Hash Password
+        pw_hash = generate_password_hash(password)
+
         # Insert User
         cursor.execute("""
             INSERT INTO Login_Table (User_Name, Password, Mobile_No, Email, User_Active)
             VALUES (%s, %s, %s, %s, 1)
-        """, (username, password, mobile, email))
+        """, (username, pw_hash, mobile, email))
         user_id = cursor.lastrowid
 
         # Generate User Code (ID + 50000)
@@ -2575,11 +3026,27 @@ def update_user_details():
         return redirect(url_for('admin_users'))
 
     try:
-        db.execute_query("""
-            UPDATE Login_Table
-            SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
-            WHERE id = %s
-        """, (username, password, mobile, email, active, user_id), commit=True)
+        # Check if password needs update (if provided)
+        # Note: Frontend currently sends password field. If it's intended to be updated only when changed, logic should be handled.
+        # However, the provided form logic in `admin_panel.html` (not visible here but implied) likely sends value.
+        # If the password field is populated, we assume it's a new password.
+        # If we want to support "leave blank to keep existing", we need to check if password is empty.
+        # Assuming typical admin panel behavior: empty = no change.
+
+        if password:
+            pw_hash = generate_password_hash(password)
+            db.execute_query("""
+                UPDATE Login_Table
+                SET User_Name = %s, Password = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """, (username, pw_hash, mobile, email, active, user_id), commit=True)
+        else:
+            db.execute_query("""
+                UPDATE Login_Table
+                SET User_Name = %s, Mobile_No = %s, Email = %s, User_Active = %s
+                WHERE id = %s
+            """, (username, mobile, email, active, user_id), commit=True)
+
         flash('User details updated successfully', 'success')
     except Exception as e:
         flash(f'Error updating user: {str(e)}', 'danger')
@@ -2635,7 +3102,7 @@ def update_user_rights():
         ), commit=True)
         return {'success': True}
     except Exception as e:
-        print(f"Rights Update Error: {e}")
+        logging.error(f"Rights Update Error: {e}")
         return {'error': str(e)}, 500
 
 # --- Job Management ---
@@ -3264,7 +3731,7 @@ def bank_payment_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Cash Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -3481,7 +3948,7 @@ def direct_purchasing_submit():
     except Exception as e:
         conn.rollback()
         flash(f'Error submitting payment: {str(e)}', 'danger')
-        print(f"Direct Payment Error: {e}")
+        logging.error(f"Direct Payment Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -4300,7 +4767,8 @@ def sales_summary_cashier():
 @login_required
 @has_permission('Access_Reversals')
 def pos_reversal():
-    current_cashier_id = get_current_user_id()
+    # Use PK (INT) for RecodeUserId filtering
+    current_cashier_id = session.get('user_pk')
     current_date = date.today().strftime('%Y-%m-%d')
 
     # 1. Fetch Sales History (Grouped by JV)
@@ -5076,7 +5544,7 @@ def submit_customer_receipt():
     except Exception as e:
         conn.rollback()
         flash(f'Error processing receipt: {str(e)}', 'danger')
-        print(e)
+        logging.error(f"Receipt Error: {e}")
     finally:
         cursor.close()
         conn.close()
@@ -5137,32 +5605,53 @@ def profit_loss():
                 'values': [0.0] * len(periods)
             }
 
-        # 2. Iterate Periods and Fill Data
-        for idx, p in enumerate(periods):
-            # Query sum of DR and CR for this period
-            # Income = CR - DR, Expense = DR - CR
-            query = """
-                SELECT
-                    account_name,
-                    SUM(enty_values_DR) as dr,
-                    SUM(enty_values_CR) as cr
-                FROM entry_details
-                WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
-                GROUP BY account_name
-            """
-            cursor.execute(query, (p['start'], p['end']))
-            rows = cursor.fetchall()
+        # 2. Optimized Data Fetching (Single Query)
+        # Construct dynamic SQL to pivot data by period
+        if not periods:
+            # Should be handled above, but as a safe guard to avoid min() error
+            return render_template('profit_loss.html', periods=[], report_data={}, default_start='', default_end='')
 
-            for r in rows:
-                name = r['account_name']
-                if name in acc_map:
-                    dr = float(r['dr'] or 0)
-                    cr = float(r['cr'] or 0)
+        select_clause = ["account_name"]
+        params = []
 
-                    is_income = acc_map[name]['meta']['account_income'] == 1
+        # We need overall date range to limit scan
+        # Note: If periods are disjoint or complex, BETWEEN min AND max is safe but might scan extra.
+        # Given they are usually monthly columns, min(start) and max(end) covers it.
+        overall_start = min(p['start'] for p in periods)
+        overall_end = max(p['end'] for p in periods)
+
+        for i, p in enumerate(periods):
+            # For each period, sum DR and CR if date falls in range
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
+            params.extend([p['start'], p['end'], p['start'], p['end']])
+
+        # Add overall range params
+        params.extend([overall_start, overall_end])
+
+        query = f"""
+            SELECT {', '.join(select_clause)}
+            FROM entry_details
+            WHERE entry_effective_date BETWEEN %s AND %s
+            AND entry_deleted = 0
+            GROUP BY account_name
+        """
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        for r in rows:
+            name = r['account_name']
+            if name in acc_map:
+                is_income = acc_map[name]['meta']['account_income'] == 1
+
+                # Iterate periods to extract values
+                for i in range(len(periods)):
+                    dr = float(r.get(f'dr_{i}', 0) or 0)
+                    cr = float(r.get(f'cr_{i}', 0) or 0)
+
                     val = (cr - dr) if is_income else (dr - cr)
-
-                    acc_map[name]['values'][idx] = val
+                    acc_map[name]['values'][i] = val
 
     finally:
         cursor.close()
@@ -6210,10 +6699,11 @@ def add_pos_user():
             flash('Username already exists', 'danger')
             return redirect(url_for('pos_settings'))
 
+        pw_hash = generate_password_hash(password)
         db.execute_query("""
             INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
             VALUES (0, %s, %s, %s)
-        """, (username, password, mobile), commit=True)
+        """, (username, pw_hash, mobile), commit=True)
 
         flash(f'New Cashier {username} registered successfully', 'success')
 
@@ -6236,14 +6726,34 @@ def pos_api_login():
     username = data.get('username')
     password = data.get('password')
 
-    # Verify against pose_setting_table or Login_Table
-    # C# code checks pose_setting_table for specific POS users
-    user = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s AND Password = %s", (username, password))
+    # Verify against pose_setting_table
+    users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
 
-    if user:
-        settings = user[0]
-        return {
-            'success': True,
+    if users:
+        settings = users[0]
+        stored_password = settings.get('Password', '')
+        verified = False
+
+        # 1. Try Hash
+        try:
+            if check_password_hash(stored_password, password):
+                verified = True
+        except:
+            pass
+
+        # 2. Fallback to Plain Text & Migrate
+        if not verified:
+            if stored_password == password:
+                verified = True
+                try:
+                    new_hash = generate_password_hash(password)
+                    db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
+                except Exception as e:
+                    print(f"Error migrating POS user {settings['Id']}: {e}")
+
+        if verified:
+            return {
+                'success': True,
             'settings': {
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
@@ -6316,6 +6826,7 @@ def submit_pos_sale():
     if not cart: return {'error': 'Cart is empty'}, 400
 
     current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
     today_date = date.today()
 
     try:
@@ -6337,29 +6848,45 @@ def submit_pos_sale():
         total_cost_value = 0
 
         # 3. Process Cart Items
+        pos_sales_params = []
+        inventory_params = []
+        action_timestamp = datetime.now()
+
         for item in cart:
             total_sale_value += item['total']
             total_cost_value += (item['cost'] * item['qty'])
 
-            # Insert into pos_sales_invoice_01
-            cursor.execute("""
+            # Prepare pos_sales_invoice_01 params
+            pos_sales_params.append((
+                item['code'], item['name'], item['unit'],
+                item['price_market'], item['price_special'], item['price_loyalty'],
+                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+                current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            ))
+
+            # Prepare Inventory Movement OUT params
+            inventory_params.append((
+                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+                current_user, jv_no, settings.get('location')
+            ))
+
+        # Batch Insert into pos_sales_invoice_01
+        if pos_sales_params:
+            cursor.executemany("""
                 INSERT INTO pos_sales_invoice_01 (
                     ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
                     Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
                     RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
                     CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
-            """, (
-                item['code'], item['name'], item['unit'],
-                item['price_market'], item['price_special'], item['price_loyalty'],
-                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-                current_user, settings.get('location'), datetime.now(), item['qty'], item['cost'],
-                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
-            ))
+            """, pos_sales_params)
 
-            # Inventory Movement OUT
-            cursor.execute("""
+        # Batch Insert into inventory_recod
+        if inventory_params:
+            cursor.executemany("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_action_date,
                     inventory_recod_moument_in, inventory_recod_movment_out,
@@ -6367,9 +6894,10 @@ def submit_pos_sale():
                     inventory_recod_account, inventory_recod_user_id, JV_No,
                     inventory_recod_location
                 ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+            """, inventory_params)
             """, (
                 item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-                current_user, jv_no, settings.get('location')
+                current_user_pk, jv_no, settings.get('location')
             ))
 
         # 4. GL Entries
@@ -6380,7 +6908,7 @@ def submit_pos_sale():
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Calculate VAT if enabled
         vat_enabled = settings.get('vat_enable') == 1
@@ -6410,7 +6938,7 @@ def submit_pos_sale():
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user, jv_no))
+        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Credit VAT Control (If VAT > 0)
         if vat_amount > 0:
@@ -6419,7 +6947,7 @@ def submit_pos_sale():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user, jv_no))
+            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
 
         # Cost of Goods Sold (DR COGS, CR Inventory)
         if total_cost_value > 0:
@@ -6429,7 +6957,7 @@ def submit_pos_sale():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
+            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
 
             # Credit Inventory
             cursor.execute("""
@@ -6437,14 +6965,14 @@ def submit_pos_sale():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user, jv_no))
+            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
 
         conn.commit()
         return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
 
     except Exception as e:
         conn.rollback()
-        print(e)
+        logging.error(f"POS Error: {e}")
         return {'error': str(e)}, 500
     finally:
         cursor.close()
@@ -6452,6 +6980,8 @@ def submit_pos_sale():
 
 def run_schema_migrations():
     """Checks and updates database schema for new features."""
+    conn = db.get_connection()
+    migrations.run_migrations(conn)
     try:
         conn = db.get_connection()
         if not conn: return
@@ -6461,7 +6991,7 @@ def run_schema_migrations():
         try:
             cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         except Exception as e:
-            print(f"Error creating migrations table: {e}")
+            logging.error(f"Error creating migrations table: {e}")
 
         # Helper to check/record migration
         def is_migration_applied(name):
@@ -6476,7 +7006,7 @@ def run_schema_migrations():
                 cursor.execute("INSERT INTO migrations (migration_name) VALUES (%s)", (name,))
                 conn.commit()
             except Exception as e:
-                print(f"Error recording migration {name}: {e}")
+                logging.error(f"Error recording migration {name}: {e}")
 
         # 1. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
@@ -6488,13 +7018,35 @@ def run_schema_migrations():
 
         for col in new_columns:
             if col not in columns:
-                print(f"Migrating: Adding {col} to User_Rights")
+                logging.info(f"Migrating: Adding {col} to User_Rights")
                 cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+
+        # 1b. Password Column Expansion
+        # Login_Table
+        cursor.execute("SHOW COLUMNS FROM Login_Table LIKE 'Password'")
+        res = cursor.fetchone()
+        if res:
+            # res format: ('Password', 'varchar(45)', ...)
+            col_type = res[1].lower()
+            if 'varchar(45)' in col_type:
+                print("Migrating: Expanding Password column in Login_Table to VARCHAR(255)")
+                cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
+
+        # Pose_Setting_Table
+        cursor.execute("SHOW TABLES LIKE 'pose_setting_table'")
+        if cursor.fetchone():
+            cursor.execute("SHOW COLUMNS FROM pose_setting_table LIKE 'Password'")
+            res = cursor.fetchone()
+            if res:
+                col_type = res[1].lower()
+                if 'varchar(45)' in col_type:
+                    print("Migrating: Expanding Password column in pose_setting_table to VARCHAR(255)")
+                    cursor.execute("ALTER TABLE pose_setting_table MODIFY COLUMN Password VARCHAR(255)")
 
         # 2. Currency Table
         cursor.execute("SHOW TABLES LIKE 'currency_table'")
         if not cursor.fetchone():
-            print("Migrating: Creating currency_table")
+            logging.info("Migrating: Creating currency_table")
             cursor.execute("""
                 CREATE TABLE currency_table (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6515,22 +7067,22 @@ def run_schema_migrations():
                 # Wrap in try-except to handle "Duplicate column" if manually added.
                 cursor.execute("ALTER TABLE new_account_table ADD COLUMN currency_code VARCHAR(10) DEFAULT 'LKR'")
                 record_migration('add_currency_code_to_new_account')
-                print("Migrated: add_currency_code_to_new_account")
+                logging.info("Migrated: add_currency_code_to_new_account")
             except Exception as e:
                 if "Duplicate column" in str(e) or "1060" in str(e):
                     record_migration('add_currency_code_to_new_account')
                 else:
-                    print(f"Migration failed: {e}")
+                    logging.error(f"Migration failed: {e}")
 
         # 4. Inventory Items Columns (UOM)
         cursor.execute("SHOW COLUMNS FROM inventoy_items")
         inv_columns = [row[0] for row in cursor.fetchall()]
         if 'uom_secondary' not in inv_columns:
-            print("Migrating: Adding uom_secondary to inventoy_items")
+            logging.info("Migrating: Adding uom_secondary to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_secondary VARCHAR(45) NULL")
 
         if 'uom_conversion_rate' not in inv_columns:
-            print("Migrating: Adding uom_conversion_rate to inventoy_items")
+            logging.info("Migrating: Adding uom_conversion_rate to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_conversion_rate DOUBLE DEFAULT 1")
 
         # 5. Suppliers Table Columns (TIN, NIC)
@@ -6538,24 +7090,24 @@ def run_schema_migrations():
         sup_columns = [row[0] for row in cursor.fetchall()]
 
         if 'suppliers_TIN' not in sup_columns:
-            print("Migrating: Adding suppliers_TIN to suppliers")
+            logging.info("Migrating: Adding suppliers_TIN to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_TIN VARCHAR(50) NULL")
 
         if 'suppliers_NIC' not in sup_columns:
-            print("Migrating: Adding suppliers_NIC to suppliers")
+            logging.info("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
 
         # 5b. Company Table (VAT Registered)
         cursor.execute("SHOW COLUMNS FROM company")
         comp_columns = [row[0] for row in cursor.fetchall()]
         if 'vat_registered' not in comp_columns:
-            print("Migrating: Adding vat_registered to company")
+            logging.info("Migrating: Adding vat_registered to company")
             cursor.execute("ALTER TABLE company ADD COLUMN vat_registered TINYINT DEFAULT 0")
 
         # 6. Tax Rates Table
         cursor.execute("SHOW TABLES LIKE 'tax_rates'")
         if not cursor.fetchone():
-            print("Migrating: Creating tax_rates table")
+            logging.info("Migrating: Creating tax_rates table")
             cursor.execute("""
                 CREATE TABLE tax_rates (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6573,7 +7125,7 @@ def run_schema_migrations():
         # 7. Cheque Print Settings Table
         cursor.execute("SHOW TABLES LIKE 'cheque_print_settings'")
         if not cursor.fetchone():
-            print("Migrating: Creating cheque_print_settings table")
+            logging.info("Migrating: Creating cheque_print_settings table")
             cursor.execute("""
                 CREATE TABLE cheque_print_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6605,7 +7157,7 @@ def run_schema_migrations():
         # 8. Proforma Invoice Tables
         cursor.execute("SHOW TABLES LIKE 'proforma_invoice_header'")
         if not cursor.fetchone():
-            print("Migrating: Creating proforma_invoice_header table")
+            logging.info("Migrating: Creating proforma_invoice_header table")
             cursor.execute("""
                 CREATE TABLE proforma_invoice_header (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6624,7 +7176,7 @@ def run_schema_migrations():
 
         cursor.execute("SHOW TABLES LIKE 'proforma_invoice_details'")
         if not cursor.fetchone():
-            print("Migrating: Creating proforma_invoice_details table")
+            logging.info("Migrating: Creating proforma_invoice_details table")
             cursor.execute("""
                 CREATE TABLE proforma_invoice_details (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6646,7 +7198,7 @@ def run_schema_migrations():
         cursor.execute("SHOW COLUMNS FROM OP_NO_Table")
         op_cols = [row[0] for row in cursor.fetchall()]
         if 'status' not in op_cols:
-            print("Migrating: Adding status to OP_NO_Table")
+            logging.info("Migrating: Adding status to OP_NO_Table")
             cursor.execute("ALTER TABLE OP_NO_Table ADD COLUMN status TINYINT DEFAULT 1")
             # Default 1 (Posted) for existing data to avoid breaking current flow
 
@@ -6654,13 +7206,13 @@ def run_schema_migrations():
         cursor.execute("SHOW COLUMNS FROM jv_numbers")
         jv_cols = [row[0] for row in cursor.fetchall()]
         if 'status' not in jv_cols:
-            print("Migrating: Adding status to jv_numbers")
+            logging.info("Migrating: Adding status to jv_numbers")
             cursor.execute("ALTER TABLE jv_numbers ADD COLUMN status TINYINT DEFAULT 1")
 
         # System Settings Table (for toggles)
         cursor.execute("SHOW TABLES LIKE 'system_settings'")
         if not cursor.fetchone():
-            print("Migrating: Creating system_settings table")
+            logging.info("Migrating: Creating system_settings table")
             cursor.execute("""
                 CREATE TABLE system_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -6679,11 +7231,16 @@ def run_schema_migrations():
             # I'll default to '0' (Disabled) so they can turn it on when ready.
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
 
+        # Default Theme Setting
+        cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('system_theme', 'default', 'Active System Theme')")
+
         conn.commit()
         cursor.close()
         conn.close()
     except Exception as e:
-        print(f"Schema Migration Error: {e}")
+        logging.error(f"Schema Migration Error: {e}")
 
 def ensure_default_accounts():
     """Ensures essential General Ledger accounts exist."""
@@ -6706,7 +7263,7 @@ def ensure_default_accounts():
             res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
 
             if not res:
-                print(f"Creating default account: {name}")
+                logging.info(f"Creating default account: {name}")
                 # Determine basement
                 basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
 
@@ -6725,7 +7282,7 @@ def ensure_default_accounts():
                     date.today(), current_user, basement
                 ), commit=True)
     except Exception as e:
-        print(f"Error ensuring default accounts: {e}")
+        logging.error(f"Error ensuring default accounts: {e}")
 
 # --- Quotation Evaluation ---
 @app.route('/quotation_evaluation', methods=['GET'])
@@ -6781,19 +7338,26 @@ def evaluate_quotations():
         # Quality Score: (Actual / Max)
         s_qual = qual / max_qual if max_qual > 0 else 0
 
-        # Apply Weights based on Priority
-        if priority == 'speed':
-            # Speed is King: Speed 60%, Price 20%, Quality 20%
-            final_score = (s_days * 0.6) + (s_price * 0.2) + (s_qual * 0.2)
-            reason = "Fastest delivery within constraints"
-        elif priority == 'quality':
-            # Quality Focus: Quality 60%, Price 20%, Speed 20%
-            final_score = (s_qual * 0.6) + (s_price * 0.2) + (s_days * 0.2)
-            reason = "Best quality rating"
-        else: # Default Price
-            # Price Focus: Price 60%, Speed 20%, Quality 20%
-            final_score = (s_price * 0.6) + (s_days * 0.2) + (s_qual * 0.2)
-            reason = "Best price"
+        # Define Weights and Reasons based on Priority
+        # Format: (Price Weight, Days Weight, Quality Weight, Reason)
+        # s_price (min/actual), s_days (min/actual), s_qual (actual/max)
+        strategies = {
+            'speed':   (0.2, 0.6, 0.2, "Fastest delivery within constraints"),
+            'quality': (0.2, 0.2, 0.6, "Best quality rating"),
+            'price':   (0.6, 0.2, 0.2, "Best price")
+        }
+
+        # Get weights or default to 'price'
+        w_price, w_days, w_qual, reason = strategies.get(priority, strategies['price'])
+
+        # Calculate Score
+        # Note: s_price and s_days logic was: Best/Actual (so higher is better, max 1)
+        # s_qual logic was: Actual/Best (so higher is better, max 1)
+        # However, the previous logic for s_qual in quality priority used s_qual * 0.6.
+        # But for price/speed priority it also used s_qual * 0.2.
+        # The key difference was which variable got the 0.6 weight.
+
+        final_score = (s_price * w_price) + (s_days * w_days) + (s_qual * w_qual)
 
         s['score'] = round(final_score * 100, 1)
         scored.append(s)
@@ -6826,6 +7390,7 @@ def proforma_invoice():
             return redirect(url_for('proforma_invoice'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         try:
             conn = db.get_connection()
@@ -6848,7 +7413,7 @@ def proforma_invoice():
                     pi_number, customer_name, pi_date, expiry_date,
                     subtotal, vat_amount, grand_total, narration, created_by
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (pi_no, cust_name, pi_date, exp_date, subtotal, vat_amount, grand_total, narration, current_user))
+            """, (pi_no, cust_name, pi_date, exp_date, subtotal, vat_amount, grand_total, narration, current_user_pk))
             pi_id = cursor.lastrowid
 
             # Insert Details
@@ -7034,6 +7599,7 @@ def save_journal_entry():
             return redirect(url_for('journal_entry'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7204,20 +7770,25 @@ def create_default_user():
         # Check connection first
         conn = db.get_connection()
         if not conn:
-            print("WARNING: Database connection failed. Cannot create default user.")
+            logging.warning("WARNING: Database connection failed. Cannot create default user.")
             return
 
         # Check for existing users
         result = db.execute_query("SELECT COUNT(*) as count FROM Login_Table")
         if result and result[0]['count'] == 0:
             print("No users found. Creating default admin user...")
+            # Hash default password
+            pw_hash = generate_password_hash('123')
+            logging.info("No users found. Creating default admin user...")
             query = """
                 INSERT INTO Login_Table (User_Name, Password, User_Code, User_Active, Mobile_No, Email)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
             # Using 'admin' / '123'
-            db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
+            db.execute_query(query, ('admin', pw_hash, 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
             print("Default user created: admin / 123")
+            db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
+            logging.info("Default user created: admin / 123")
 
             # Create Default Rights for Admin
             last_id_res = db.execute_query("SELECT id FROM Login_Table WHERE User_Name = 'admin'")
@@ -7229,9 +7800,9 @@ def create_default_user():
                 """, (uid,), commit=True)
 
         else:
-            print("Users exist in database. Skipping default user creation.")
+            logging.info("Users exist in database. Skipping default user creation.")
     except Exception as e:
-        print(f"Error creating default user: {e}")
+        logging.error(f"Error creating default user: {e}")
 
 def ensure_default_categories():
     """Ensures default Balance Sheet and P&L categories exist."""
@@ -7256,7 +7827,7 @@ def ensure_default_categories():
                 try:
                     cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
-                    print(f"Error inserting BS category {name}: {e}")
+                    logging.error(f"Error inserting BS category {name}: {e}")
 
         # P&L Categories
         pl_cats = [
@@ -7278,7 +7849,7 @@ def ensure_default_categories():
                 try:
                     cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
-                    print(f"Error inserting PL category {name}: {e}")
+                    logging.error(f"Error inserting PL category {name}: {e}")
 
         # CF Categories
         cf_cats = [
@@ -7291,15 +7862,46 @@ def ensure_default_categories():
                  try:
                      cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
                  except Exception as e:
-                     print(f"Error inserting CF category {name}: {e}")
+                     logging.error(f"Error inserting CF category {name}: {e}")
 
         conn.commit()
         cursor.close()
         conn.close()
-        print("Default categories checked/created.")
+        logging.info("Default categories checked/created.")
 
     except Exception as e:
-        print(f"Error ensuring default categories: {e}")
+        logging.error(f"Error ensuring default categories: {e}")
+
+def validate_db_config(config):
+    """
+    Validates database configuration to prevent command injection.
+    Only allows alphanumeric characters, underscores, and hyphens in sensitive fields.
+    Does not allow arguments starting with dash to prevent argument injection.
+    """
+    # Alphanumeric, underscore, hyphen.
+    # Host might contain dots (IP/domain) and colons (IPv6/port although mysql cli uses -P for port).
+    # MySQL CLI host (-h) expects hostname or IP.
+    # Database and User usually don't have dots but to be safe we can stick to strict for them.
+
+    strict_pattern = re.compile(r'^[a-zA-Z0-9_-]+$')
+    host_pattern = re.compile(r'^[a-zA-Z0-9_.-]+$') # Allow dots for host
+
+    # Fields to validate (user, host, database)
+    # Password is treated differently (passed via env)
+
+    for field in ['user', 'database']:
+        value = config.get(field, '')
+        if not value: continue
+        if not isinstance(value, str) or value.startswith('-') or not strict_pattern.match(value):
+            return False
+
+    # Validate Host specifically
+    host = config.get('host', '')
+    if host:
+        if not isinstance(host, str) or host.startswith('-') or not host_pattern.match(host):
+            return False
+
+    return True
 
 # --- System Backup ---
 @app.route('/system_backup')
@@ -7308,18 +7910,26 @@ def system_backup():
     # Only allow admin or specific users? For now, login_required is minimal.
     # Ideally should be restricted.
 
-    # Database config is in db_config
-    try:
-        # Use mysqldump
-        # Note: This requires mysqldump to be installed and accessible in the environment.
-        # It also assumes password is empty as per config 'password': ''
+    # Validate Config
+    if not validate_db_config(db_config):
+        flash('Invalid database configuration', 'danger')
+        return redirect(url_for('index'))
 
+    # Check for mysqldump
+    if not shutil.which('mysqldump'):
+        flash('mysqldump not found', 'danger')
+        return redirect(url_for('index'))
+
+    try:
         filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
 
-        # Command construction
-        # mysqldump -u root -h localhost Book_keeping > filename
-        # Since we are in python, we can pipe output to string or file.
+        # Pass password via environment variable for security
+        env = os.environ.copy()
+        if db_config['password']:
+            env['MYSQL_PWD'] = db_config['password']
 
+        # Construct command using list to avoid shell injection
+        # Note: We already validated inputs above
         cmd = [
             'mysqldump',
             '-u', db_config['user'],
@@ -7327,16 +7937,18 @@ def system_backup():
             db_config['database']
         ]
 
-        # If password exists (it is empty in config, but good practice to handle)
-        if db_config['password']:
-            cmd.insert(1, f"-p{db_config['password']}")
-
-        # Run command
-        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # Use run instead of Popen for better management
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=env
+        )
         output, error = process.communicate()
 
         if process.returncode != 0:
-            flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
+            err_msg = error.decode("utf-8") if error else "Unknown Error"
+            flash(f'Backup failed: {err_msg}', 'danger')
             return redirect(url_for('index'))
 
         # Return as file download
@@ -7413,6 +8025,7 @@ def calculate_depreciation():
         dep_date = date(year, month, last_day)
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor(dictionary=True)
@@ -7434,13 +8047,16 @@ def calculate_depreciation():
             total_cr = 0
             entries = []
 
+            # Pre-fetch existing depreciations for this month
+            cursor.execute("""
+                SELECT asset_id FROM asset_depreciation_history
+                WHERE YEAR(depreciation_date) = %s AND MONTH(depreciation_date) = %s
+            """, (year, month))
+            depreciated_assets = {row['asset_id'] for row in cursor.fetchall()}
+
             for asset in assets:
                 # Check if already depreciated for this month
-                cursor.execute("""
-                    SELECT id FROM asset_depreciation_history
-                    WHERE asset_id = %s AND YEAR(depreciation_date) = %s AND MONTH(depreciation_date) = %s
-                """, (asset['id'], year, month))
-                if cursor.fetchone():
+                if asset['id'] in depreciated_assets:
                     continue # Skip if already done
 
                 # Check purchase date
@@ -7507,7 +8123,7 @@ def calculate_depreciation():
                         account_name, enty_values_DR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
 
                 # CR Acc Dep
                 cursor.execute("""
@@ -7515,14 +8131,14 @@ def calculate_depreciation():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user, jv_id))
+                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
 
             conn.commit()
             return {'success': True, 'processed': processed_count, 'jv_id': jv_id}
 
         except Exception as e:
             conn.rollback()
-            print(f"Depreciation Error: {e}")
+            logging.error(f"Depreciation Error: {e}")
             return {'error': str(e)}, 500
         finally:
             cursor.close()
@@ -7635,6 +8251,7 @@ def submit_inventory_transfer():
             return redirect(url_for('inventory_transfer'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7665,7 +8282,7 @@ def submit_inventory_transfer():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user, datetime.now().date(), from_loc,
+                    tf_note, current_user_pk, datetime.now().date(), from_loc,
                     transfer_date, narration, jv_no
                 ))
 
@@ -7680,7 +8297,7 @@ def submit_inventory_transfer():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user, datetime.now().date(), to_loc,
+                    tf_note, current_user_pk, datetime.now().date(), to_loc,
                     transfer_date, narration, jv_no
                 ))
 
@@ -7762,6 +8379,7 @@ def submit_invoice():
             return redirect(url_for('invoice_creating'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -7873,7 +8491,7 @@ def submit_invoice():
                     ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
                 """, (
                     item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                    current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
+                    current_user_pk, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
                 ))
 
             # Non-Inventory Items
@@ -7898,7 +8516,7 @@ def submit_invoice():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # CR Income (Sales)
             cursor.execute("""
@@ -7906,7 +8524,7 @@ def submit_invoice():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # CR VAT (If any)
             if vat_amount > 0:
@@ -7915,7 +8533,7 @@ def submit_invoice():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # Cost of Goods Sold (If inventory items exist)
             if total_cost > 0:
@@ -7925,7 +8543,7 @@ def submit_invoice():
                         account_name, enty_values_DR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
                 # CR Inventory
                 cursor.execute("""
@@ -7933,7 +8551,7 @@ def submit_invoice():
                         account_name, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv, entry_job_number
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             conn.commit()
             flash(f'Invoice {invoice_no} created successfully.', 'success')
@@ -7941,7 +8559,7 @@ def submit_invoice():
         except Exception as e:
             conn.rollback()
             flash(f'Transaction failed: {str(e)}', 'danger')
-            print(f"Invoice Error: {e}")
+            logging.error(f"Invoice Error: {e}")
         finally:
             cursor.close()
             conn.close()
@@ -8033,7 +8651,7 @@ def submit_production_issue():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), source_loc,
+                    f"TF-Prod-{jv_no}", current_user_pk, datetime.now().date(), source_loc,
                     date_val, narration, jv_no
                 ))
 
@@ -8044,7 +8662,7 @@ def submit_production_issue():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (dr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, (dr_account, total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # Cr Inventory Control Account
             cursor.execute("""
@@ -8052,7 +8670,7 @@ def submit_production_issue():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             conn.commit()
             flash(f'Production Issue recorded successfully. JV: {jv_no}', 'success')
@@ -8092,6 +8710,7 @@ def submit_production_receive():
             return redirect(url_for('inventory_production'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -8126,7 +8745,7 @@ def submit_production_receive():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
-                    f"TF-Prod-{jv_no}", current_user, datetime.now().date(), target_loc,
+                    f"TF-Prod-{jv_no}", current_user_pk, datetime.now().date(), target_loc,
                     date_val, narration, jv_no
                 ))
 
@@ -8137,7 +8756,7 @@ def submit_production_receive():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # Cr User Selected Account (Expense/WIP)
             cursor.execute("""
@@ -8145,7 +8764,7 @@ def submit_production_receive():
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (cr_account, total_value, date_val, datetime.now().date(), narration, current_user, jv_no, job_no if job_no else None))
+            """, (cr_account, total_value, date_val, datetime.now().date(), narration, current_user_pk, jv_no, job_no if job_no else None))
 
             # 4. Log to inventory_productions (from WPF Manufacturing_Inventory logic)
             cursor.execute("""
@@ -8188,18 +8807,18 @@ def create_db_if_missing():
         cursor = conn_root.cursor()
 
         db_name = db_config.get('database', 'Book_keeping')
-        print(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+        logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
         cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
         conn_root.commit()
         cursor.close()
         conn_root.close()
-        print(f"Database '{db_name}' checked/created.")
+        logging.info(f"Database '{db_name}' checked/created.")
     except Exception as e:
-        print(f"Warning: Could not check/create database: {e}")
+        logging.warning(f"Warning: Could not check/create database: {e}")
 
 def execute_sql_file(cursor, filepath):
     """Parses and executes a MySQL dump file with DELIMITER support."""
-    print(f"Executing SQL file: {filepath}")
+    logging.info(f"Executing SQL file: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         # Read lines to handle DELIMITER command which is line-based
         lines = f.readlines()
@@ -8243,7 +8862,7 @@ def execute_sql_file(cursor, filepath):
                     # Ignore "Table already exists" or similar non-critical if robust
                     # But for initial schema, we usually want to know.
                     # Warning: USE command might fail if user doesn't have perm, but we are inside DB context usually
-                    print(f"SQL Execution Warning: {e}\nStatement partial: {sql_to_run[:100]}...")
+                    logging.warning(f"SQL Execution Warning: {e}\nStatement partial: {sql_to_run[:100]}...")
 
             statement = ""
 
@@ -8260,29 +8879,68 @@ def import_initial_schema():
             conn.close()
             return # Schema likely exists
 
-        print("Login_Table missing. Attempting to import initial schema...")
+        logging.info("Login_Table missing. Attempting to import initial schema...")
 
         if os.path.exists('database_schema.sql'):
             try:
                 execute_sql_file(cursor, 'database_schema.sql')
-                print("Schema imported successfully.")
+                logging.info("Schema imported successfully.")
 
                 if os.path.exists('fixed_assets.sql'):
                     execute_sql_file(cursor, 'fixed_assets.sql')
-                    print("Fixed Assets schema imported.")
+                    logging.info("Fixed Assets schema imported.")
 
                 conn.commit()
             except Exception as ex:
-                print(f"Failed to execute SQL file: {ex}")
+                logging.error(f"Failed to execute SQL file: {ex}")
                 conn.rollback()
         else:
-            print("database_schema.sql not found.")
+            logging.warning("database_schema.sql not found.")
 
         cursor.close()
         conn.close()
 
     except Exception as e:
-        print(f"Error importing initial schema: {e}")
+        logging.error(f"Error importing initial schema: {e}")
+
+@app.route('/sales_summary_customer', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def sales_summary_customer():
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+
+    query = """
+        SELECT
+            c.customer_code,
+            c.customer_name,
+            COUNT(io.Id) as invoice_count,
+            SUM(io.invoice_total_oustanding) as total_sales,
+            SUM(io.invoice_oustanding_Patment) as total_paid,
+            SUM(io.invoice_total_oustanding - io.invoice_oustanding_Patment) as balance_due
+        FROM Invoice_Oustanding io
+        JOIN customer c ON io.invoice_buinding_Customer = c.id
+        WHERE io.invoice_date BETWEEN %s AND %s
+        AND io.oustanding_delete = 0
+        GROUP BY c.id, c.customer_code, c.customer_name
+        ORDER BY total_sales DESC
+    """
+
+    rows = db.execute_query(query, (from_date, to_date))
+
+    # Calculate Grand Totals
+    totals = {
+        'sales': sum(float(r['total_sales'] or 0) for r in rows),
+        'paid': sum(float(r['total_paid'] or 0) for r in rows),
+        'balance': sum(float(r['balance_due'] or 0) for r in rows),
+        'count': sum(int(r['invoice_count'] or 0) for r in rows)
+    }
+
+    return render_template('sales_summary_customer.html',
+                           rows=rows,
+                           totals=totals,
+                           from_date=from_date,
+                           to_date=to_date)
 
 # Ensure initialization runs once regardless of startup method
 app_initialized = False
@@ -8292,6 +8950,7 @@ def initialize_app():
     global app_initialized
     if not app_initialized:
         create_db_if_missing()
+        setup_master_db()
         import_initial_schema()
         run_schema_migrations()
         ensure_default_categories()
