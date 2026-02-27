@@ -5549,32 +5549,53 @@ def profit_loss():
                 'values': [0.0] * len(periods)
             }
 
-        # 2. Iterate Periods and Fill Data
-        for idx, p in enumerate(periods):
-            # Query sum of DR and CR for this period
-            # Income = CR - DR, Expense = DR - CR
-            query = """
-                SELECT
-                    account_name,
-                    SUM(enty_values_DR) as dr,
-                    SUM(enty_values_CR) as cr
-                FROM entry_details
-                WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
-                GROUP BY account_name
-            """
-            cursor.execute(query, (p['start'], p['end']))
-            rows = cursor.fetchall()
+        # 2. Optimized Data Fetching (Single Query)
+        # Construct dynamic SQL to pivot data by period
+        if not periods:
+            # Should be handled above, but as a safe guard to avoid min() error
+            return render_template('profit_loss.html', periods=[], report_data={}, default_start='', default_end='')
 
-            for r in rows:
-                name = r['account_name']
-                if name in acc_map:
-                    dr = float(r['dr'] or 0)
-                    cr = float(r['cr'] or 0)
+        select_clause = ["account_name"]
+        params = []
 
-                    is_income = acc_map[name]['meta']['account_income'] == 1
+        # We need overall date range to limit scan
+        # Note: If periods are disjoint or complex, BETWEEN min AND max is safe but might scan extra.
+        # Given they are usually monthly columns, min(start) and max(end) covers it.
+        overall_start = min(p['start'] for p in periods)
+        overall_end = max(p['end'] for p in periods)
+
+        for i, p in enumerate(periods):
+            # For each period, sum DR and CR if date falls in range
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
+            params.extend([p['start'], p['end'], p['start'], p['end']])
+
+        # Add overall range params
+        params.extend([overall_start, overall_end])
+
+        query = f"""
+            SELECT {', '.join(select_clause)}
+            FROM entry_details
+            WHERE entry_effective_date BETWEEN %s AND %s
+            AND entry_deleted = 0
+            GROUP BY account_name
+        """
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        for r in rows:
+            name = r['account_name']
+            if name in acc_map:
+                is_income = acc_map[name]['meta']['account_income'] == 1
+
+                # Iterate periods to extract values
+                for i in range(len(periods)):
+                    dr = float(r.get(f'dr_{i}', 0) or 0)
+                    cr = float(r.get(f'cr_{i}', 0) or 0)
+
                     val = (cr - dr) if is_income else (dr - cr)
-
-                    acc_map[name]['values'][idx] = val
+                    acc_map[name]['values'][i] = val
 
     finally:
         cursor.close()
