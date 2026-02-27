@@ -12,8 +12,13 @@ import knowledge_base
 import random # For mocking exchange rate
 import subprocess
 import mysql.connector
+import urllib.request
 
 app = Flask(__name__)
+
+# Global cache for exchange rates
+exchange_rate_cache = {}
+CACHE_DURATION = 3600  # 1 hour
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
 app.secret_key = os.environ.get('SECRET_KEY', 'hardcoded_secret_key_for_development_only')
@@ -7000,10 +7005,43 @@ def get_exchange_rate():
     if from_curr == to_curr:
         return {'rate': 1.0}
 
-    # Mocking Logic (Since no internet)
-    # In real world: requests.get(f"https://api.exchangerate-api.com/v4/latest/{from_curr}")
-    # Here we mock USD -> LKR around 300, others 1
+    # Check cache first
+    cache_key = f"{from_curr}_{to_curr}"
+    current_time = time.time()
 
+    if cache_key in exchange_rate_cache:
+        cached_data = exchange_rate_cache[cache_key]
+        if current_time - cached_data['timestamp'] < CACHE_DURATION:
+            return {'rate': cached_data['rate']}
+
+    try:
+        # Use urllib instead of requests to avoid external dependency if not installed
+        url = f"https://api.exchangerate-api.com/v4/latest/{from_curr}"
+        with urllib.request.urlopen(url) as response:
+            data = json.loads(response.read().decode())
+            rate = data.get('rates', {}).get(to_curr)
+
+            if rate is not None:
+                # Update cache
+                exchange_rate_cache[cache_key] = {
+                    'rate': float(rate),
+                    'timestamp': current_time
+                }
+
+                # Also cache the reverse if possible (1/rate)
+                exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
+                    'rate': 1.0 / float(rate),
+                    'timestamp': current_time
+                }
+
+                return {'rate': float(rate)}
+
+    except Exception as e:
+        print(f"Exchange Rate API Error: {e}")
+        # Fallback to hardcoded/mock values on error (e.g. no internet)
+        pass
+
+    # Fallback / Mocking Logic
     rate = 1.0
     if from_curr == 'USD' and to_curr == 'LKR':
         rate = 300.0 + random.uniform(-5, 5) # Fluctuation
@@ -7012,8 +7050,7 @@ def get_exchange_rate():
     elif from_curr == 'EUR' and to_curr == 'LKR':
         rate = 330.0
 
-    # Format to 4 decimal places
-    return {'rate': round(rate, 4)}
+    return {'rate': rate}
 
 # --- Journal Entry Management ---
 @app.route('/journal_entry', methods=['GET'])
