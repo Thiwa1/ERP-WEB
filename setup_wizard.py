@@ -1,6 +1,7 @@
 import mysql.connector
 import os
 import sys
+import subprocess
 from datetime import date
 
 def get_input(prompt, default=None, is_password=False):
@@ -82,23 +83,38 @@ def main():
 
         # Write temporary credentials config for migration
         # Actually, running via mysql client is better for the schema dump
-        cmd = f"mysql -h {root_host} -u {root_user} -p'{root_password}' {app_db_name} < database_schema.sql"
-        if not root_password:
-             cmd = f"mysql -h {root_host} -u {root_user} {app_db_name} < database_schema.sql"
-
         print("Running Schema Import via System Shell...")
-        ret = os.system(cmd)
-        if ret != 0:
-            print("Schema import failed. Please check your MySQL client configuration.")
+        try:
+            cmd = ['mysql', '-h', root_host, '-u', root_user]
+            if root_password:
+                cmd.append(f'-p{root_password}')
+            cmd.append(app_db_name)
+
+            with open('database_schema.sql', 'r') as f:
+                ret = subprocess.run(cmd, stdin=f)
+
+            if ret.returncode != 0:
+                 print("Schema import failed. Please check your MySQL client configuration.")
+                 return
+
+        except Exception as e:
+            print(f"Error running schema import: {e}")
             return
+
 
         # Run Fixed Assets Schema if exists
         if os.path.exists('fixed_assets.sql'):
             print("Importing Fixed Assets Schema...")
-            cmd_fa = f"mysql -h {root_host} -u {root_user} -p'{root_password}' {app_db_name} < fixed_assets.sql"
-            if not root_password:
-                 cmd_fa = f"mysql -h {root_host} -u {root_user} {app_db_name} < fixed_assets.sql"
-            os.system(cmd_fa)
+            try:
+                cmd_fa = ['mysql', '-h', root_host, '-u', root_user]
+                if root_password:
+                    cmd_fa.append(f'-p{root_password}')
+                cmd_fa.append(app_db_name)
+
+                with open('fixed_assets.sql', 'r') as f:
+                    subprocess.run(cmd_fa, stdin=f)
+            except Exception as e:
+                print(f"Error running fixed assets schema import: {e}")
 
         # Reconnect to seed data
         conn = mysql.connector.connect(
@@ -283,6 +299,18 @@ def main():
             """, (vat_registered,))
 
         conn.commit()
+
+        # Create .env file
+        print("\nCreating .env file...")
+        with open('.env', 'w') as f:
+            f.write("# Database Configuration\n")
+            f.write(f"DB_HOST={root_host}\n")
+            f.write(f"DB_USER={app_user}\n")
+            f.write(f"DB_PASSWORD={app_pass}\n")
+            f.write(f"DB_NAME={app_db_name}\n\n")
+            f.write("# Security\n")
+            f.write("SECRET_KEY=hardcoded_secret_key_for_development_only\n")
+
         print("\n=== Setup Complete! ===")
         print(f"You can now run the app and login with:")
         print(f"User: admin")
