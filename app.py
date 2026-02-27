@@ -7482,13 +7482,16 @@ def calculate_depreciation():
             total_cr = 0
             entries = []
 
+            # Pre-fetch existing depreciations for this month
+            cursor.execute("""
+                SELECT asset_id FROM asset_depreciation_history
+                WHERE YEAR(depreciation_date) = %s AND MONTH(depreciation_date) = %s
+            """, (year, month))
+            depreciated_assets = {row['asset_id'] for row in cursor.fetchall()}
+
             for asset in assets:
                 # Check if already depreciated for this month
-                cursor.execute("""
-                    SELECT id FROM asset_depreciation_history
-                    WHERE asset_id = %s AND YEAR(depreciation_date) = %s AND MONTH(depreciation_date) = %s
-                """, (asset['id'], year, month))
-                if cursor.fetchone():
+                if asset['id'] in depreciated_assets:
                     continue # Skip if already done
 
                 # Check purchase date
