@@ -15,7 +15,6 @@
             position: relative;
             width: {{ settings.paper_width_mm }}mm;
             height: {{ settings.paper_height_mm }}mm;
-            /* background-color: #eee; Remove in prod, useful for debug */
         }
 
         .element {
@@ -94,8 +93,7 @@
         </div>
 
         <div class="element words">
-            *** {{ payment.amount }} Only ***
-            {# Note: Real word conversion requires python library not easily installed here. #}
+            *** {{ payment.amount | amount_in_words }} Only ***
         </div>
 
         <div class="element digits">
