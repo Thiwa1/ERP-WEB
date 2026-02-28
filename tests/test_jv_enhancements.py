@@ -1,3 +1,5 @@
+# Add mock setup first
+from tests import mock_setup
 import unittest
 from unittest.mock import MagicMock, patch
 import app as app_module
@@ -25,6 +27,9 @@ class TestJVEnhancements(unittest.TestCase):
             sess['user_pk'] = 1
             sess['username'] = 'admin'
 
+        app.config['TESTING'] = True
+        # Mock Session
+        app_module.session = {'user_id': 'ADM001', 'user_pk': 1, 'username': 'admin'}
         self.mock_db = MagicMock()
         app_module.db = self.mock_db
 
@@ -41,6 +46,13 @@ class TestJVEnhancements(unittest.TestCase):
             data = json.loads(response.data)
             self.assertEqual(len(data), 2)
             self.assertEqual(data[0]['name'], 'Sub A')
+        with patch('app.request') as mock_request:
+            mock_request.args = {'account_name': 'TestAccount'}
+            with patch('app.check_permission', return_value=True):
+                 res = app_module.api_get_sub_accounts()
+                 data = json.loads(res)
+                 self.assertEqual(len(data), 2)
+                 self.assertEqual(data[0]['name'], 'Sub A')
 
     def test_jv_print_route(self):
         # Mock Header
@@ -58,6 +70,10 @@ class TestJVEnhancements(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             # Check for RENDERED_TEMPLATE because that's what our MockFlask returns
             self.assertIn(b'RENDERED_TEMPLATE', response.data)
+        with patch('app.render_template', return_value="Template Rendered"):
+            with patch('app.check_permission', return_value=True):
+                 res = app_module.print_journal_voucher(1)
+                 self.assertEqual(res, "Template Rendered")
 
 if __name__ == '__main__':
     unittest.main()

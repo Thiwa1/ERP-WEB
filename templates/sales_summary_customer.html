@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-chart-line me-2"></i> SALES SUMMARY - CUSTOMER WISE</h4>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">From Date</label>
+                    <input type="date" class="form-control" name="from_date" value="{{ from_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold">To Date</label>
+                    <input type="date" class="form-control" name="to_date" value="{{ to_date }}">
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100 fw-bold"><i class="fas fa-filter me-2"></i> FILTER</button>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-success w-100 fw-bold" onclick="window.print()"><i class="fas fa-print me-2"></i> PRINT</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4 g-3">
+        <div class="col-md-3">
+            <div class="card border-primary h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted fw-bold">TOTAL SALES</h6>
+                    <h3 class="text-primary fw-bold">{{ "{:,.2f}".format(totals.sales) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-success h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted fw-bold">TOTAL RECEIVED</h6>
+                    <h3 class="text-success fw-bold">{{ "{:,.2f}".format(totals.paid) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-danger h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted fw-bold">BALANCE DUE</h6>
+                    <h3 class="text-danger fw-bold">{{ "{:,.2f}".format(totals.balance) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-secondary h-100 shadow-sm">
+                <div class="card-body text-center">
+                    <h6 class="text-muted fw-bold">INVOICES</h6>
+                    <h3 class="text-secondary fw-bold">{{ totals.count }}</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-bordered table-hover mb-0 align-middle">
+                <thead class="table-light text-center fw-bold">
+                    <tr>
+                        <th style="width: 15%">Customer Code</th>
+                        <th style="width: 35%">Customer Name</th>
+                        <th style="width: 10%">Invoices</th>
+                        <th style="width: 15%">Total Sales</th>
+                        <th style="width: 15%">Paid Amount</th>
+                        <th style="width: 10%">Balance</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    <tr>
+                        <td class="text-center">{{ row.customer_code }}</td>
+                        <td class="fw-bold">{{ row.customer_name }}</td>
+                        <td class="text-center">{{ row.invoice_count }}</td>
+                        <td class="text-end text-primary fw-bold">{{ "{:,.2f}".format(row.total_sales) }}</td>
+                        <td class="text-end text-success">{{ "{:,.2f}".format(row.total_paid) }}</td>
+                        <td class="text-end text-danger fw-bold">{{ "{:,.2f}".format(row.balance_due) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center py-4 text-muted fw-bold">No sales records found for this period.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold text-end">
+                    <tr>
+                        <td colspan="3">GRAND TOTAL</td>
+                        <td class="text-primary">{{ "{:,.2f}".format(totals.sales) }}</td>
+                        <td class="text-success">{{ "{:,.2f}".format(totals.paid) }}</td>
+                        <td class="text-danger">{{ "{:,.2f}".format(totals.balance) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+</div>
+
+<style>
+    @media print {
+        body { background: white; }
+        .no-print, form, button { display: none !important; }
+        .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+        .text-white { color: black !important; }
+        .bg-secondary { background: none !important; }
+        /* A4 adjustments */
+    }
+</style>
+{% endblock %}

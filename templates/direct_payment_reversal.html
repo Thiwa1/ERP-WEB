@@ -33,7 +33,7 @@
                                     <td>{{ row.Date }}</td>
                                     <td>{{ row.Account }}</td>
                                     <td class="text-truncate" style="max-width: 200px;">{{ row.Narration }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Amount) }}</td>
+                                    <td class="text-end fw-bold">{{ row.Amount|currency }}</td>
                                     <td>
                                         <button class="btn btn-sm btn-outline-info" onclick="event.stopPropagation(); selectPayment('{{ row.JV }}', this.closest('tr'))">Select</button>
                                     </td>
