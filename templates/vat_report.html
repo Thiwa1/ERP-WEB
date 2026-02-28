@@ -100,15 +100,15 @@
                                 <tbody>
                                     <tr>
                                         <td>Total Output Tax (Sales)</td>
-                                        <td class="text-end text-success fw-bold">{{ "{:,.2f}".format(summary.total_output_vat) }}</td>
+                                        <td class="text-end text-success fw-bold">{{ summary.total_output_vat|currency }}</td>
                                     </tr>
                                     <tr>
                                         <td>Total Input Tax (Purchases)</td>
-                                        <td class="text-end text-danger fw-bold">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                        <td class="text-end text-danger fw-bold">{{ summary.total_input_vat|currency }}</td>
                                     </tr>
                                     <tr class="table-primary border-top border-3">
                                         <td class="fw-bold">Net VAT Payable / (Refundable)</td>
-                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(summary.net_vat) }}</td>
+                                        <td class="text-end fw-bold">{{ summary.net_vat|currency }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -149,14 +149,14 @@
                                     <td class="text-center">{{ row.tin or '-' }}</td>
                                     <td>{{ row.purchaser }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="6" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_output_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_output_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_output_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_output_vat|currency }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -197,15 +197,15 @@
                                     <td class="text-center">{{ row.tin or '-' }}</td>
                                     <td>{{ row.supplier }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
-                                    <td class="text-end text-muted">{{ "{:,.2f}".format(row.disallowed_vat or 0) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
+                                    <td class="text-end text-muted">{{ (row.disallowed_vat or 0)|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="6" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_input_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_input_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_input_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_input_vat|currency }}</td>
                                     <td class="text-end">-</td>
                                 </tr>
                             </tbody>
@@ -247,15 +247,15 @@
                                     <td class="text-center">{{ row.cusdec_serial_id }}</td>
                                     <td class="text-center">{{ row.cusdec_reg_date }}</td>
                                     <td class="text-center">{{ row.cusdec_office_id }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                    <td class="text-end">{{ row.vat_deferred|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat_upfront|currency }}</td>
+                                    <td class="text-end">{{ row.disallowed|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="6" class="text-end">TOTAL</td>
                                     <td class="text-end">-</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched03_vat|currency }}</td>
                                     <td class="text-end">-</td>
                                 </tr>
                             </tbody>
@@ -303,8 +303,8 @@
                                     </td>
                                     <td class="text-center">{{ row.note_date }}</td>
                                     <td class="text-center">{{ row.note_no }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
                                     <td class="text-center">
                                         {% if row.issued_by_me %}
                                         <i class="bi bi-check-circle-fill text-success"></i>
@@ -316,8 +316,8 @@
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="7" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched04_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched04_vat|currency }}</td>
                                     <td></td>
                                 </tr>
                             </tbody>
@@ -362,17 +362,17 @@
                                     <td class="text-center">{{ row.brc or '-' }}</td>
                                     <td class="text-center">{{ row.tax_file or '-' }}</td>
                                     <td>{{ row.supplier }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_liable) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_non_liable) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.deemed_credit) }}</td>
-                                    <td class="text-end text-muted">{{ "{:,.2f}".format(row.disallowed or 0) }}</td>
+                                    <td class="text-end">{{ row.cost_liable|currency }}</td>
+                                    <td class="text-end">{{ row.cost_non_liable|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.deemed_credit|currency }}</td>
+                                    <td class="text-end text-muted">{{ (row.disallowed or 0)|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="7" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_liable) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_non_liable) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_credit) }}</td>
+                                    <td class="text-end">{{ summary.total_sched05_liable|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched05_non_liable|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched05_credit|currency }}</td>
                                     <td>-</td>
                                 </tr>
                             </tbody>
@@ -413,10 +413,10 @@
                                     <td class="text-center">{{ row.invoice_no }}</td>
                                     <td class="text-center">{{ row.date }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.fc_value) }}</td>
+                                    <td class="text-end">{{ row.fc_value|currency(symbol=False) }}</td>
                                     <td class="text-center">{{ row.currency }}</td>
                                     <td class="text-end">{{ "{:,.4f}".format(row.rate) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.lkr_value) }}</td>
+                                    <td class="text-end fw-bold">{{ row.lkr_value|currency }}</td>
                                     <td class="text-center">{{ row.nrfc_account or '-' }}</td>
                                     <td class="text-center">{{ row.payment_date or '-' }}</td>
                                 </tr>
@@ -461,14 +461,14 @@
                                     <td class="text-center">{{ row.tin or '-' }}</td>
                                     <td>{{ row.purchaser }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="7" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched01_amd_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched01_amd_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched01_amd_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched01_amd_vat|currency }}</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -511,15 +511,15 @@
                                     <td class="text-center">{{ row.tin or '-' }}</td>
                                     <td>{{ row.supplier }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
-                                    <td class="text-end text-muted">{{ "{:,.2f}".format(row.disallowed_vat or 0) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
+                                    <td class="text-end text-muted">{{ (row.disallowed_vat or 0)|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="7" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched02_amd_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched02_amd_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched02_amd_vat|currency }}</td>
                                     <td>-</td>
                                 </tr>
                             </tbody>
@@ -563,15 +563,15 @@
                                     <td class="text-center">{{ row.cusdec_serial_id }}</td>
                                     <td class="text-center">{{ row.cusdec_reg_date }}</td>
                                     <td class="text-center">{{ row.cusdec_office_id }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.vat_deferred) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat_upfront) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                    <td class="text-end">{{ row.vat_deferred|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat_upfront|currency }}</td>
+                                    <td class="text-end">{{ row.disallowed|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="7" class="text-end">TOTAL</td>
                                     <td class="text-end">-</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched03_amd_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched03_amd_vat|currency }}</td>
                                     <td class="text-end">-</td>
                                 </tr>
                             </tbody>
@@ -611,8 +611,8 @@
                                     </td>
                                     <td class="text-center">{{ row.date }}</td>
                                     <td class="text-center">{{ row.note_no }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.value) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.vat) }}</td>
+                                    <td class="text-end">{{ row.value|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.vat|currency }}</td>
                                     <td class="text-center">
                                         {% if row.issued_by_me %}
                                         <i class="bi bi-check-circle-fill text-success"></i>
@@ -624,8 +624,8 @@
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="3" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_value) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched04_amd_vat) }}</td>
+                                    <td class="text-end">{{ summary.total_sched04_amd_value|currency }}</td>
+                                    <td class="text-end">{{ summary.total_sched04_amd_vat|currency }}</td>
                                     <td></td>
                                 </tr>
                             </tbody>
@@ -672,15 +672,15 @@
                                     <td class="text-center">{{ row.brc }}</td>
                                     <td class="text-center">{{ row.tax_file }}</td>
                                     <td>{{ row.supplier }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_liable) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.cost_non_liable) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.deemed_credit) }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.disallowed) }}</td>
+                                    <td class="text-end">{{ row.cost_liable|currency }}</td>
+                                    <td class="text-end">{{ row.cost_non_liable|currency }}</td>
+                                    <td class="text-end fw-bold">{{ row.deemed_credit|currency }}</td>
+                                    <td class="text-end">{{ row.disallowed|currency }}</td>
                                 </tr>
                                 {% endfor %}
                                 <tr class="fw-bold table-light">
                                     <td colspan="10" class="text-end">TOTAL</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(summary.total_sched05_amd_credit) }}</td>
+                                    <td class="text-end">{{ summary.total_sched05_amd_credit|currency }}</td>
                                     <td>-</td>
                                 </tr>
                             </tbody>
@@ -724,7 +724,7 @@
                                     <td class="text-center">{{ row.office_id }}</td>
                                     <td class="text-center">{{ row.serial_id }}</td>
                                     <td class="text-end">{{ row.mass }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.value) }}</td>
+                                    <td class="text-end fw-bold">{{ row.value|currency }}</td>
                                     <td class="text-center">{{ row.nrfc }}</td>
                                     <td class="text-center">{{ row.payment_date }}</td>
                                 </tr>
@@ -769,10 +769,10 @@
                                     <td class="text-center">{{ row.invoice_no }}</td>
                                     <td class="text-center">{{ row.date }}</td>
                                     <td>{{ row.description }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(row.fc_value) }}</td>
+                                    <td class="text-end">{{ row.fc_value|currency(symbol=False) }}</td>
                                     <td class="text-center">{{ row.currency }}</td>
                                     <td class="text-end">{{ "{:,.4f}".format(row.rate) }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(row.lkr_value) }}</td>
+                                    <td class="text-end fw-bold">{{ row.lkr_value|currency }}</td>
                                     <td class="text-center">{{ row.nrfc_account }}</td>
                                     <td class="text-center">{{ row.payment_date }}</td>
                                 </tr>
@@ -803,18 +803,18 @@
                                     <tr>
                                         <td>Net VAT Payable / (Refundable) per Return</td>
                                         <td class="text-muted small">Schedules (Summary)</td>
-                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.schedule_net) }}</td>
+                                        <td class="text-end fw-bold">{{ reconciliation.schedule_net|currency }}</td>
                                     </tr>
                                     <tr>
                                         <td>VAT Control Account Movement (Period)</td>
                                         <td class="text-muted small">General Ledger (Net CR)</td>
-                                        <td class="text-end fw-bold text-primary">{{ "{:,.2f}".format(reconciliation.gl_movement) }}</td>
+                                        <td class="text-end fw-bold text-primary">{{ reconciliation.gl_movement|currency }}</td>
                                     </tr>
                                     <tr class="table-secondary">
                                         <td class="fw-bold">Difference (Unreconciled)</td>
                                         <td></td>
                                         <td class="text-end fw-bold {{ 'text-danger' if reconciliation.difference != 0 else 'text-success' }}">
-                                            {{ "{:,.2f}".format(reconciliation.difference) }}
+                                            {{ reconciliation.difference|currency }}
                                         </td>
                                     </tr>
                                     <tr class="border-top border-3">
@@ -823,7 +823,7 @@
                                     <tr>
                                         <td>VAT Control Account Closing Balance</td>
                                         <td class="text-muted small">As at {{ to_date }}</td>
-                                        <td class="text-end fw-bold">{{ "{:,.2f}".format(reconciliation.gl_balance) }}</td>
+                                        <td class="text-end fw-bold">{{ reconciliation.gl_balance|currency }}</td>
                                     </tr>
                                 </tbody>
                             </table>

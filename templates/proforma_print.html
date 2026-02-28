@@ -110,8 +110,8 @@
                         {% endif %}
                     </td>
                     <td class="text-center">{{ item.qty }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.unit_price) }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.total) }}</td>
+                    <td class="text-end">{{ item.unit_price|currency }}</td>
+                    <td class="text-end">{{ item.total|currency }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -123,17 +123,17 @@
                 <table class="w-100">
                     <tr class="total-row">
                         <td class="text-end label">Subtotal</td>
-                        <td class="text-end">{{ "{:,.2f}".format(header.subtotal) }}</td>
+                        <td class="text-end">{{ header.subtotal|currency }}</td>
                     </tr>
                     {% if header.vat_amount > 0 %}
                     <tr class="total-row">
                         <td class="text-end label">VAT</td>
-                        <td class="text-end">{{ "{:,.2f}".format(header.vat_amount) }}</td>
+                        <td class="text-end">{{ header.vat_amount|currency }}</td>
                     </tr>
                     {% endif %}
                     <tr class="total-row grand-total">
-                        <td class="text-end">Total ({{ company.company_curency }})</td>
-                        <td class="text-end">{{ "{:,.2f}".format(header.grand_total) }}</td>
+                        <td class="text-end">Total</td>
+                        <td class="text-end">{{ header.grand_total|currency }}</td>
                     </tr>
                 </table>
             </div>

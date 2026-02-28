@@ -36,14 +36,14 @@
                             {% for acc in accounts %}
                             <tr>
                                 <td>{{ acc.name }}</td>
-                                <td class="text-end">{{ company_currency }} {{ acc.balance|currency }}</td>
+                                <td class="text-end">{{ acc.balance|currency }}</td>
                             </tr>
                             {% endfor %}
                         </table>
                     {% endfor %}
                     <div class="alert alert-info mt-3 d-flex justify-content-between">
                         <strong>TOTAL ASSETS</strong>
-                        <strong>{{ company_currency }} {{ totals.assets|currency }}</strong>
+                        <strong>{{ totals.assets|currency }}</strong>
                     </div>
                 </div>
 
@@ -56,12 +56,12 @@
                         {% for acc in report_data.equity %}
                         <tr>
                             <td>{{ acc.name }}</td>
-                            <td class="text-end">{{ company_currency }} {{ acc.balance|currency }}</td>
+                            <td class="text-end">{{ acc.balance|currency }}</td>
                         </tr>
                         {% endfor %}
                         <tr>
                             <td>Retained Earnings</td>
-                            <td class="text-end">{{ company_currency }} {{ totals.retained_earnings|currency }}</td>
+                            <td class="text-end">{{ totals.retained_earnings|currency }}</td>
                         </tr>
                     </table>
 
@@ -72,7 +72,7 @@
                             {% for acc in accounts %}
                             <tr>
                                 <td>{{ acc.name }}</td>
-                                <td class="text-end">{{ company_currency }} {{ acc.balance|currency }}</td>
+                                <td class="text-end">{{ acc.balance|currency }}</td>
                             </tr>
                             {% endfor %}
                         </table>
@@ -80,7 +80,7 @@
 
                     <div class="alert alert-info mt-3 d-flex justify-content-between">
                         <strong>TOTAL EQUITY & LIABILITIES</strong>
-                        <strong>{{ company_currency }} {{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</strong>
+                        <strong>{{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</strong>
                     </div>
                 </div>
             </div>
