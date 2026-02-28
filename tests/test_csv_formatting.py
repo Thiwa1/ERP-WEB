@@ -1,3 +1,5 @@
+# Add mock setup first
+from tests import mock_setup
 import unittest
 from app import parse_float
 
