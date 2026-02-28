@@ -1,3 +1,4 @@
+import tests.mock_env
 # Add mock setup first
 from tests import mock_setup
 import unittest
