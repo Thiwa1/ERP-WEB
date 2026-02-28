@@ -94,8 +94,8 @@
                         -
                     {% endif %}
                 </td>
-                <td class="text-end">{{ "{:,.2f}".format(row.enty_values_DR or 0) }}</td>
-                <td class="text-end">{{ "{:,.2f}".format(row.enty_values_CR or 0) }}</td>
+                <td class="text-end">{{ (row.enty_values_DR or 0)|currency(symbol=False) }}</td>
+                <td class="text-end">{{ (row.enty_values_CR or 0)|currency(symbol=False) }}</td>
                 <td class="small text-muted">{{ row.entry_naration }}</td>
             </tr>
             {% endfor %}
@@ -103,8 +103,8 @@
         <tfoot>
             <tr class="bg-light fw-bold">
                 <td colspan="2" class="text-end">TOTALS</td>
-                <td class="text-end">{{ "{:,.2f}".format(vars.total_dr) }}</td>
-                <td class="text-end">{{ "{:,.2f}".format(vars.total_cr) }}</td>
+                <td class="text-end">{{ vars.total_dr|currency(symbol=False) }}</td>
+                <td class="text-end">{{ vars.total_cr|currency(symbol=False) }}</td>
                 <td></td>
             </tr>
         </tfoot>

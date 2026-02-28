@@ -61,7 +61,7 @@
                                     </td>
                                     <td>{{ item.entry_effective_date }}</td>
                                     <td>{{ item.entry_naration }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(item.enty_values_DR) }}</td>
+                                    <td class="text-end">{{ item.enty_values_DR|currency }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -92,7 +92,7 @@
                                     </td>
                                     <td>{{ item.entry_effective_date }}</td>
                                     <td>{{ item.entry_naration }}</td>
-                                    <td class="text-end">{{ "{:,.2f}".format(item.enty_values_CR) }}</td>
+                                    <td class="text-end">{{ item.enty_values_CR|currency }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -107,11 +107,11 @@
                 <div class="row text-center">
                     <div class="col-md-3">
                         <small class="text-muted">Opening Balance</small><br>
-                        <strong>{{ "{:,.2f}".format(opening_balance) }}</strong>
+                        <strong>{{ opening_balance|currency }}</strong>
                     </div>
                     <div class="col-md-3">
                         <small class="text-muted">Book Balance ({{ rec_date }})</small><br>
-                        <strong>{{ "{:,.2f}".format(book_balance) }}</strong>
+                        <strong>{{ book_balance|currency }}</strong>
                     </div>
                     <div class="col-md-6">
                         <button type="submit" class="btn btn-primary w-100 btn-lg">Process Reconciliation</button>

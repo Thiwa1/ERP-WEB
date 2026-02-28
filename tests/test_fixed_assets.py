@@ -1,4 +1,6 @@
 import tests.mock_env
+# Add mock setup first
+from tests import mock_setup
 import unittest
 from unittest.mock import MagicMock, patch
 import app as app_module
@@ -83,11 +85,126 @@ class TestFixedAssets(unittest.TestCase):
         self.mock_request.form = MagicMock()
         self.mock_request.form.get.side_effect = lambda k, d=None: '2023-02' if k == 'month' else d
 
+        app.config['TESTING'] = True
+        # Remove usage of test_client
+        # self.client = app.test_client()
+
+        # Mock Session
+        app_module.session = {'user_id': 'ADM001', 'user_pk': 1, 'username': 'admin'}
+
+        # Mock DB
+        self.mock_db = MagicMock()
+        app_module.db = self.mock_db
+
+    def test_add_asset(self):
+        # Direct Call Approach
+        with patch('app.request') as mock_request:
+            mock_request.method = 'POST'
+            mock_request.form = MagicMock()
+            mock_request.form.get.side_effect = lambda k, d=None: {
+                'asset_class': 'Computer',
+                'description': 'Laptop',
+                'brand_name': 'Dell',
+                'quantity': '1',
+                'serial_no': 'SN123',
+                'location': 'Office',
+                'cost_value': '1200',
+                'purchasing_date': '2023-01-01',
+                'depreciable_life_months': '24',
+                'asset_account_id': '1',
+                'expense_account_id': '2',
+                'accumulated_dep_account_id': '3'
+            }.get(k, d)
+
+            mock_request.files = {}
+
+            def side_effect(query, params=None, commit=False):
+                if "SELECT Access_Accounting FROM User_Rights" in query:
+                    return [{'Access_Accounting': 1}]
+                return None
+            self.mock_db.execute_query.side_effect = side_effect
+
+            with patch('app.check_permission', return_value=True):
+                 with patch('app.flash') as mock_flash:
+                    with patch('app.redirect') as mock_redirect:
+                         app_module.add_fixed_asset()
+                         mock_flash.assert_called_with('Asset added successfully', 'success')
+
+                         found = False
+                         for call in self.mock_db.execute_query.call_args_list:
+                             query = call[0][0]
+                             if "INSERT INTO fixed_assets_register" in query:
+                                 params = call[0][1]
+                                 if params[0] == 'Computer' and params[6] == 1200.0:
+                                     found = True
+                         self.assertTrue(found, "Insert query not called with correct params")
+
+    def test_calculate_depreciation(self):
+        with patch('app.request') as mock_request:
+            mock_request.method = 'POST'
+            mock_request.form = MagicMock()
+            mock_request.form.get.side_effect = lambda k, d=None: {'month': '2023-02'}.get(k, d)
+
+            mock_conn = MagicMock()
+            mock_cursor = MagicMock()
+            self.mock_db.get_connection.return_value = mock_conn
+            mock_conn.cursor.return_value = mock_cursor
+            mock_cursor.lastrowid = 999
+
+            # DB Side Effects
+            asset = {
+                'id': 10,
+                'asset_class': 'Computer',
+                'description': 'Laptop',
+                'serial_no': 'SN123',
+                'status': 'Active',
+                'purchasing_date': date(2023, 1, 1),
+                'cost_value': 1200.0,
+                'depreciable_life_months': 24,
+                'expense_account_id': 2,
+                'accumulated_dep_account_id': 3,
+                'quantity': 1,
+                'brand_name': 'Dell',
+                'location': 'Office'
+            }
+
+            def side_effect(*args, **kwargs):
+                query = args[0]
+                if "SELECT * FROM fixed_assets_register" in query:
+                    mock_cursor.fetchall.return_value = [asset]
+                elif "SELECT id FROM asset_depreciation_history" in query:
+                    mock_cursor.fetchone.return_value = None
+                elif "SELECT SUM(amount)" in query:
+                    mock_cursor.fetchone.return_value = {'total': 0}
+                elif "SELECT account_name FROM new_account_table" in query:
+                    mock_cursor.fetchone.return_value = {'account_name': 'Test Account'}
+
+            mock_cursor.execute.side_effect = side_effect
+
+            with patch('app.check_permission', return_value=True):
+                 res = app_module.calculate_depreciation()
+                 self.assertEqual(res['success'], True)
+
+                 found = False
+                 for call in mock_cursor.execute.call_args_list:
+                     query = call[0][0]
+                     if "INSERT INTO asset_depreciation_history" in query:
+                         params = call[0][1]
+                         if params[2] == 50.0:
+                             found = True
+                             break
+                 self.assertTrue(found, "Depreciation calculation failed or not inserted")
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
         self.mock_db.get_connection.return_value = mock_conn
         mock_conn.cursor.return_value = mock_cursor
         mock_cursor.lastrowid = 999
+
+        # Initialize ID counter
+        self.last_row_id = 999
+        mock_cursor.lastrowid = 0
+
+        self.mock_db.execute_query.return_value = [{'Access_Accounting': 1}]
 
         import datetime
         asset = {
@@ -109,6 +226,11 @@ class TestFixedAssets(unittest.TestCase):
         def cursor_execute_side_effect(query, params=None):
             mock_cursor.fetchall.side_effect = None
             mock_cursor.fetchone.side_effect = None
+        def side_effect(*args, **kwargs):
+            query = args[0]
+            if "INSERT" in query.upper():
+                self.last_row_id += 1
+                mock_cursor.lastrowid = self.last_row_id
 
             if "SELECT * FROM fixed_assets_register" in query:
                 mock_cursor.fetchall.return_value = [asset]
@@ -156,14 +278,17 @@ class TestFixedAssets(unittest.TestCase):
             print("ERROR: json_str is MagicMock. Session:", self.mock_session.get('user_id'), "Perm Check:", self.mock_perm())
 
         json_data = json.loads(json_str)
+        with patch('app.check_permission', return_value=True):
+            json_res = app_module.fixed_assets_data()
+            json_data = json.loads(json_res)
 
-        self.assertIn('2023-Jan', json_data['month_headers'])
-        self.assertIn('2023-Feb', json_data['month_headers'])
+            self.assertIn('2023-Jan', json_data['month_headers'])
+            self.assertIn('2023-Feb', json_data['month_headers'])
 
-        row = json_data['data'][0]
-        self.assertEqual(row['2023-Jan'], 100.0)
-        self.assertEqual(row['total_dep'], 200.0)
-        self.assertEqual(row['nbv'], 800.0)
+            row = json_data['data'][0]
+            self.assertEqual(row['2023-Jan'], 100.0)
+            self.assertEqual(row['total_dep'], 200.0)
+            self.assertEqual(row['nbv'], 800.0)
 
 if __name__ == '__main__':
     unittest.main()

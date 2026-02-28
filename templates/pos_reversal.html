@@ -33,7 +33,7 @@
                                 <tr onclick="selectJV('{{ item.jv }}', this)" style="cursor: pointer;">
                                     <td>{{ item.No }}</td>
                                     <td>{{ item.jv }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.2f}".format(item.Total_payment) }}</td>
+                                    <td class="text-end fw-bold">{{ item.Total_payment|currency }}</td>
                                     <td>
                                         <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); selectJV('{{ item.jv }}', this.closest('tr'))">Select</button>
                                         <a href="/pos_receipt/{{ item.jv }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-1" onclick="event.stopPropagation();">Receipt</a>

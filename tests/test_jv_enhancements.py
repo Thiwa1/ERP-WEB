@@ -2,11 +2,39 @@ import tests.mock_env
 import unittest
 from unittest.mock import MagicMock, patch
 import app as app_module
+# Add mock setup first
+from tests import mock_setup
+import unittest
+from unittest.mock import MagicMock, patch
+import app as app_module
+# from app import app # Cannot import app directly as it triggers Flask instantiation which fails without mock in this env
 import json
 
 class TestJVEnhancements(unittest.TestCase):
     def setUp(self):
         app_module.app_initialized = True
+        # We rely on the MockFlask setup from test_add_new_account if running in suite
+        # Or we need to setup mock app here if running standalone.
+        # But `app.test_client()` in `app` module now returns our MockTestClient if sys.modules was patched.
+
+        # If sys.modules['flask'] is patched, app_module.app is MockFlask.
+        self.client = app_module.app.test_client()
+
+        # Setup session using the mock client's way or direct access if known
+        # MockTestClient doesn't fully support 'with client.session_transaction()',
+        # but our MockTestClient implementation DOES return a context manager for session.
+        # However, it accesses `mock_flask.session`.
+
+        # Let's just set the session directly on the mock_flask object if accessible,
+        # or via the context manager if it works.
+        with self.client.session_transaction() as sess:
+            sess['user_id'] = 'ADM001'
+            sess['user_pk'] = 1
+            sess['username'] = 'admin'
+
+        app.config['TESTING'] = True
+        # Mock Session
+        app_module.session = {'user_id': 'ADM001', 'user_pk': 1, 'username': 'admin'}
         self.mock_db = MagicMock()
         app_module.db = self.mock_db
 
@@ -36,6 +64,7 @@ class TestJVEnhancements(unittest.TestCase):
     def test_get_sub_accounts(self):
         self.mock_request.args = {'account_name': 'TestAccount'}
 
+        # Mock sub accounts
         self.mock_db.execute_query.return_value = [
             {'code': 101, 'name': 'Sub A'},
             {'code': 102, 'name': 'Sub B'}
@@ -49,6 +78,19 @@ class TestJVEnhancements(unittest.TestCase):
 
         self.assertEqual(len(data), 2)
         self.assertEqual(data[0]['name'], 'Sub A')
+        with patch('app.check_permission', return_value=True):
+            response = self.client.get('/api/get_sub_accounts?account_name=TestAccount')
+            self.assertEqual(response.status_code, 200)
+            data = json.loads(response.data)
+            self.assertEqual(len(data), 2)
+            self.assertEqual(data[0]['name'], 'Sub A')
+        with patch('app.request') as mock_request:
+            mock_request.args = {'account_name': 'TestAccount'}
+            with patch('app.check_permission', return_value=True):
+                 res = app_module.api_get_sub_accounts()
+                 data = json.loads(res)
+                 self.assertEqual(len(data), 2)
+                 self.assertEqual(data[0]['name'], 'Sub A')
 
     def test_jv_print_route(self):
         def side_effect(query, params=None):
@@ -69,6 +111,15 @@ class TestJVEnhancements(unittest.TestCase):
         self.assertEqual(args[0], 'jv_print.html')
         self.assertEqual(kwargs['header']['jv_user_code'], 'JV001')
         self.assertEqual(kwargs['company']['company_name'], 'Test Co')
+        with patch('app.check_permission', return_value=True):
+            response = self.client.get('/journal_entry/print/1')
+            self.assertEqual(response.status_code, 200)
+            # Check for RENDERED_TEMPLATE because that's what our MockFlask returns
+            self.assertIn(b'RENDERED_TEMPLATE', response.data)
+        with patch('app.render_template', return_value="Template Rendered"):
+            with patch('app.check_permission', return_value=True):
+                 res = app_module.print_journal_voucher(1)
+                 self.assertEqual(res, "Template Rendered")
 
 if __name__ == '__main__':
     unittest.main()
