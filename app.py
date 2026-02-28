@@ -1983,6 +1983,176 @@ def approval_action():
 
     return redirect(url_for('approvals'))
 
+# --- Bulk Upload Helpers ---
+def parse_csv_file(file_storage):
+    """
+    Reads a FileStorage object (CSV), attempts various encodings,
+    and returns the decoded string content.
+    """
+    if not file_storage or file_storage.filename == '':
+        raise ValueError("No file provided")
+
+    try:
+        file_bytes = file_storage.stream.read()
+        decoded_str = None
+
+        # prioritized list of encodings
+        encodings = ['utf-8-sig', 'utf-16', 'utf-8', 'cp1252', 'latin1']
+
+        for encoding in encodings:
+            try:
+                decoded_str = file_bytes.decode(encoding)
+                break
+            except UnicodeDecodeError:
+                continue
+
+        if decoded_str is None:
+            raise ValueError(f"Unable to determine file encoding (tried {', '.join(encodings)})")
+
+        return decoded_str
+
+    except Exception as e:
+        raise ValueError(f"Error reading file: {str(e)}")
+
+def parse_gl_upload_data(file_storage):
+    """
+    Parses the GL Upload CSV file and returns a list of dictionaries representing the rows.
+    """
+    try:
+        csv_content = parse_csv_file(file_storage)
+        stream = io.StringIO(csv_content, newline=None)
+        csv_input = csv.DictReader(stream)
+
+        rows = []
+        for row in csv_input:
+            # Clean keys/values
+            clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
+            if not clean_row.get('Account Name'): continue
+            rows.append(clean_row)
+
+        return rows
+    except Exception as e:
+        raise ValueError(f"Error parsing CSV data: {str(e)}")
+
+def save_bulk_gl_accounts(form_data, current_user):
+    """
+    Handles the database insertion logic for bulk GL account upload.
+    Returns the count of successfully processed accounts.
+    """
+    conn = db.get_connection()
+    cursor = conn.cursor()
+    conn.start_transaction()
+
+    try:
+        today = date.today()
+
+        # Iterate through form lists
+        names = form_data.getlist('account_name[]')
+        types = form_data.getlist('account_type[]')
+        cats = form_data.getlist('category[]') # "Name,Pos|Type" e.g. "Current Assets,3|BS"
+        cfs = form_data.getlist('cf_category[]')
+        actions = form_data.getlist('action[]')
+
+        count = 0
+        for i in range(len(names)):
+            if actions[i] == 'skip': continue
+
+            name = names[i]
+            acc_type = types[i] # Asset, Liability, Equity, Income, Expense
+            cat_val = cats[i] # "CategoryName,Position|BS" or "|PL"
+            cf = cfs[i]
+
+            # Parse Category
+            cat_name = None
+            cat_pos = None
+            is_bs = False
+            is_pl = False
+
+            if cat_val:
+                parts = cat_val.split('|')
+                if len(parts) == 2:
+                    cat_data, cat_type = parts
+                    cat_name, cat_pos = cat_data.split(',')
+                    if cat_type == 'BS': is_bs = True
+                    elif cat_type == 'PL': is_pl = True
+
+            # Flags
+            is_inc = 1 if acc_type == 'Income' else 0
+            is_exp = 1 if acc_type == 'Expense' else 0
+            is_ast = 1 if acc_type == 'Asset' else 0
+            is_lia = 1 if acc_type == 'Liability' else 0
+            is_equ = 1 if acc_type == 'Equity' else 0
+
+            basement = 'DR' if is_ast or is_exp else 'CR'
+
+            # Insert or Update
+            # Check existence
+            cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
+            exists = cursor.fetchone()
+
+            if exists:
+                # Update
+                cursor.execute("""
+                    UPDATE new_account_table SET
+                        account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                        account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                        account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                        cf_catogory=%s, account_basment=%s
+                    WHERE id=%s
+                """, (
+                    cat_pos if is_pl else None, cat_pos if is_bs else None,
+                    cat_name if is_pl else None, cat_name if is_bs else None,
+                    is_inc, is_exp, is_ast, is_lia, is_equ,
+                    cf, basement, exists[0]
+                ))
+            else:
+                # Insert
+                cursor.execute("""
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                        account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                        cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                """, (
+                    name, cat_pos if is_pl else None, cat_pos if is_bs else None,
+                    cat_name if is_pl else None, cat_name if is_bs else None,
+                    is_inc, is_exp, is_ast, is_lia, is_equ,
+                    cf, today, current_user, basement
+                ))
+
+                # Auto-create Bank/Cash Book entries if applicable
+                if is_ast:
+                    acc_name_lower = name.lower()
+                    if 'bank' in acc_name_lower:
+                        # Check if exists in bank_book
+                        cursor.execute("SELECT bank_id FROM bank_book WHERE bank_bookcol_account_number = %s", (name,))
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                                VALUES (%s, %s, %s, %s)
+                            """, (name, name, today, current_user))
+                    elif 'cash' in acc_name_lower:
+                        # Check if exists in cash_book
+                        cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
+                        if not cursor.fetchone():
+                            cursor.execute("""
+                                INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                                VALUES (%s, %s, %s, 0)
+                            """, (name, today, current_user))
+
+            count += 1
+
+        conn.commit()
+        return count
+
+    except Exception as e:
+        conn.rollback()
+        raise e
+    finally:
+        cursor.close()
+        conn.close()
+
 # --- Bulk Upload Module ---
 @app.route('/bulk_upload_gl', methods=['GET', 'POST'])
 @login_required
@@ -1997,6 +2167,7 @@ def bulk_upload_gl():
                 return redirect(url_for('bulk_upload_gl'))
 
             try:
+                rows = parse_gl_upload_data(file)
                 # Use helper to parse and validate
                 raw_rows = parse_csv_file(file, required_columns=['Account Name'])
 
@@ -2025,11 +2196,8 @@ def bulk_upload_gl():
         # Step 3: Save Data
         elif 'save_data' in request.form:
             try:
-                conn = db.get_connection()
-                cursor = conn.cursor()
-                conn.start_transaction()
-
                 current_user = get_current_user_id()
+                count = save_bulk_gl_accounts(request.form, current_user)
                 current_user_pk = get_current_user_pk()
                 today = date.today()
 
@@ -2195,12 +2363,8 @@ def bulk_upload_gl():
                 return redirect(url_for('chart_of_accounts'))
 
             except Exception as e:
-                conn.rollback()
                 flash(f'Transaction failed: {str(e)}', 'danger')
                 return redirect(url_for('bulk_upload_gl'))
-            finally:
-                cursor.close()
-                conn.close()
 
     return render_template('bulk_upload_gl.html')
 
@@ -2216,6 +2380,9 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
+                decoded_str = parse_csv_file(file)
+                stream = io.StringIO(decoded_str, newline=None)
+                csv_input = csv.DictReader(stream)
                 # Use helper to parse and validate
                 # Note: `bulk_upload_tb` logic iterates rows differently (using row.get('Debit'))
                 # Our helper returns list of dicts.
