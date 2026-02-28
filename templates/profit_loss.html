@@ -97,7 +97,7 @@
                             <tr>
                                 <td class="ps-5 border-start border-4 border-success">{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
-                                <td class="text-end">{{ "{:,.2f}".format(val) }}</td>
+                                <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
                             </tr>
                             {% endfor %}
@@ -108,7 +108,7 @@
                         <tr class="fw-bold bg-warning bg-opacity-10 border-top border-bottom border-warning">
                             <td class="text-end pe-3">TOTAL INCOME</td>
                             {% for val in report_data.total_income %}
-                            <td class="text-end text-success">{{ "{:,.2f}".format(val) }}</td>
+                            <td class="text-end text-success">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
@@ -125,7 +125,7 @@
                             <tr>
                                 <td class="ps-5 border-start border-4 border-danger">{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
-                                <td class="text-end">{{ "{:,.2f}".format(val) }}</td>
+                                <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
                             </tr>
                             {% endfor %}
@@ -135,7 +135,7 @@
                         <tr class="fw-bold bg-warning bg-opacity-10 border-top border-bottom border-warning">
                             <td class="text-end pe-3">TOTAL EXPENSES</td>
                             {% for val in report_data.total_expense %}
-                            <td class="text-end text-danger">{{ "{:,.2f}".format(val) }}</td>
+                            <td class="text-end text-danger">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
@@ -144,7 +144,7 @@
                             <td class="fw-bold fs-5 text-end pe-3">NET PROFIT / (LOSS)</td>
                             {% for val in report_data.net_profit %}
                             <td class="text-end fw-bold fs-5 {{ 'text-success' if val >= 0 else 'text-danger' }}">
-                                {{ "{:,.2f}".format(val) }}
+                                {{ val|currency }}
                             </td>
                             {% endfor %}
                         </tr>

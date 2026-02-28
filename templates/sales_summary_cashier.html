@@ -96,8 +96,8 @@
                                     </span>
                                 </td>
                                 <td class="text-end">{{ "{:,.2f}".format(row.QuntirySale) }}</td>
-                                <td class="text-end font-monospace">{{ "{:,.2f}".format(row.UnitPrice) }}</td>
-                                <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Total_Value) }}</td>
+                                <td class="text-end font-monospace">{{ row.UnitPrice|currency }}</td>
+                                <td class="text-end fw-bold">{{ row.Total_Value|currency }}</td>
                                 <td>{{ row.AcctionDate }}</td> <!-- Formatting handled by backend or string representation -->
                                 <td>{{ row.AcctionDate }}</td> <!-- Simplified display -->
                             </tr>
@@ -127,7 +127,7 @@
                         <i class="fas fa-money-bill-wave text-success me-2"></i>
                         <h6 class="card-title text-uppercase text-muted mb-0" style="font-size: 0.8rem;">CASH SALES</h6>
                     </div>
-                    <h4 class="fw-bold text-success mb-0">{{ "{:,.2f}".format(summary.cash) }}</h4>
+                    <h4 class="fw-bold text-success mb-0">{{ summary.cash|currency }}</h4>
                 </div>
             </div>
         </div>
@@ -139,7 +139,7 @@
                         <i class="fas fa-credit-card text-warning me-2" style="color: #f39c12 !important;"></i>
                         <h6 class="card-title text-uppercase text-muted mb-0" style="font-size: 0.8rem;">CARD SALES</h6>
                     </div>
-                    <h4 class="fw-bold mb-0" style="color: #f39c12;">{{ "{:,.2f}".format(summary.card) }}</h4>
+                    <h4 class="fw-bold mb-0" style="color: #f39c12;">{{ summary.card|currency }}</h4>
                 </div>
             </div>
         </div>
@@ -151,7 +151,7 @@
                         <i class="fas fa-coins text-primary me-2"></i>
                         <h6 class="card-title text-uppercase text-muted mb-0" style="font-size: 0.8rem;">TOTAL SALES</h6>
                     </div>
-                    <h4 class="fw-bold text-primary mb-0">{{ "{:,.2f}".format(summary.total) }}</h4>
+                    <h4 class="fw-bold text-primary mb-0">{{ summary.total|currency }}</h4>
                 </div>
             </div>
         </div>
