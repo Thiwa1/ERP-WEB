@@ -2,6 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from database import Database
 from datetime import datetime, date
 from functools import wraps
+from jinja2 import pass_context
 from werkzeug.security import generate_password_hash, check_password_hash
 import csv
 import io
@@ -306,13 +307,22 @@ def inject_globals():
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
-def currency_filter(value):
+@pass_context
+def currency_filter(context, value, symbol=True):
     try:
         if value is None:
             value = 0
 
         # Format: 1,234.56
         formatted = "{:,.2f}".format(float(value))
+
+        if not symbol:
+            return formatted
+
+        # Get symbol from context
+        curr_symbol = context.get('company_currency', '')
+        if curr_symbol:
+            return f"{curr_symbol} {formatted}"
         return formatted
     except (ValueError, TypeError):
         return "0.00"
