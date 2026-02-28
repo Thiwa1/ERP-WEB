@@ -200,6 +200,45 @@ class TestBulkUpload(unittest.TestCase):
             mock_conn = MagicMock()
             self.mock_db.get_connection.return_value = mock_conn
 
+            data = {
+                'save_tb': '1',
+                'account_name[]': ['Acc1', 'Acc2'],
+                'dr[]': ['100', '0'],
+                'cr[]': ['0', '100'], # Balanced
+                'opening_date': '2023-01-01'
+            }
+
+            response = self.client.post('/bulk_upload_tb', data=data, follow_redirects=True)
+
+            # Should succeed and redirect to trial_balance
+            self.assertIn(b'TB Uploaded successfully', response.data)
+
+            # Verify DB calls
+            # Check if date was used in executemany
+            found_date = False
+
+            # Check executemany call
+            if mock_cursor.executemany.called:
+                for call in mock_cursor.executemany.call_args_list:
+                    args = call[0]
+                    if "INSERT INTO entry_details" in args[0]:
+                        params_list = args[1]
+                        # Check first item in list
+                        if params_list and params_list[0][3] == '2023-01-01':
+                            found_date = True
+
+            # Fallback check for execute if optimization reverted (for backward compat if needed, but we expect executemany)
+            if not found_date and mock_cursor.execute.called:
+                 for call in mock_cursor.execute.call_args_list:
+                    args = call[0]
+                    if "INSERT INTO entry_details" in args[0]:
+                        params = args[1]
+                        if params[3] == '2023-01-01':
+                            found_date = True
+
+            self.assertTrue(found_date, "Should use provided opening date")
+            # Verify executemany was used for optimization
+            self.assertTrue(mock_cursor.executemany.called, "Should use executemany for batch insertion")
             app_module.bulk_upload_tb()
 
             if self.mock_flash.call_args:

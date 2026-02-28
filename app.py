@@ -2279,18 +2279,24 @@ def bulk_upload_tb():
                                ('OB-UPLOAD', 'Opening Balance Upload'))
                 jv_no = cursor.lastrowid
 
+                entries_to_insert = []
                 count = 0
                 for i in range(len(names)):
                     dr = parse_float(drs[i] or 0)
                     cr = parse_float(crs[i] or 0)
                     if dr == 0 and cr == 0: continue
 
-                    cursor.execute("""
+                    entries_to_insert.append((names[i], dr, cr, opening_date, today, current_user, jv_no))
+                    count += 1
+
+                if entries_to_insert:
+                    cursor.executemany("""
                         INSERT INTO entry_details (
                             account_name, enty_values_DR, enty_values_CR,
                             entry_effective_date, entry_create_date, entry_naration,
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
+                    """, entries_to_insert)
                     """, (names[i], dr, cr, opening_date, today, current_user_pk, jv_no))
                     count += 1
 
