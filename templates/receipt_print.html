@@ -89,7 +89,7 @@
             <div class="row">
                 <div class="col-12 fs-5 mt-2 p-2 bg-light border">
                     <span class="label">Amount:</span>
-                    <strong>{{ company.company_curency }} {{ "{:,.2f}".format(receipt.amount) }}</strong>
+                    <strong>{{ receipt.amount|currency }}</strong>
                 </div>
             </div>
         </div>
@@ -109,12 +109,12 @@
                     {% for inv in invoices %}
                     <tr>
                         <td>{{ inv.invoice_number }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(inv.amount_paid) }}</td>
+                        <td class="text-end">{{ inv.amount_paid|currency }}</td>
                     </tr>
                     {% endfor %}
                     <tr>
                         <td class="fw-bold text-end">Total</td>
-                        <td class="fw-bold text-end border-top">{{ "{:,.2f}".format(receipt.amount) }}</td>
+                        <td class="fw-bold text-end border-top">{{ receipt.amount|currency }}</td>
                     </tr>
                 </tbody>
             </table>
