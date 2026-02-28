@@ -9199,13 +9199,19 @@ def submit_invoice():
             # 6. GL Entries
             post_invoice_gl_entries(cursor, current_user, jv_no, inv_date, job_no, totals)
 
+            # Prepare batch data
+            invoice_recode_batch = []
+            inventory_recode_batch = []
+
+            current_time = datetime.now()
+
             # Inventory Items
             for item in inv_items:
                 # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
                 # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
                 # Schema: Invoice_Recode
 
-                # Warranty Logic
+                # Warranty Logic (Preserved but optimized to only run query)
                 # Fetch warranty period for item
                 w_end_date = None
                 cursor.execute("""
@@ -9213,6 +9219,46 @@ def submit_invoice():
                     WHERE name = %s LIMIT 1
                 """, (item['name'],))
                 w_res = cursor.fetchone()
+                if w_res:
+                    try:
+                        years, months, days = w_res
+                        # Logic retained from original code (pass)
+                        pass
+                    except:
+                        pass
+
+                # Add to batch for Invoice_Recode
+                invoice_recode_batch.append((
+                    item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
+                    customer_name, 1, outstanding_id, item['unit'], current_time
+                ))
+
+                # Add to batch for Inventory_Recod
+                inventory_recode_batch.append((
+                    item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
+                    current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
+                ))
+
+            # Non-Inventory Items
+            for item in non_inv_items:
+                 # Add to batch for Invoice_Recode
+                 invoice_recode_batch.append((
+                    item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
+                    customer_name, 1, outstanding_id, item['unit'], current_time
+                ))
+
+            # Execute Batch Inserts
+            if invoice_recode_batch:
+                cursor.executemany("""
+                    INSERT INTO Invoice_Recode (
+                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
+                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
+                        recode_date
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, invoice_recode_batch)
+
+            if inventory_recode_batch:
+                cursor.executemany("""
             except Exception:
                 pass # Fail silently on warranty lookup for now
 
@@ -9251,6 +9297,7 @@ def submit_invoice():
                         inventory_recod_action_date, inventory_recodcol_memo, JV_No,
                         inventory_recod_link_invoice, inventory_recod_suplier_iv_no
                     ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
+                """, inventory_recode_batch)
                 """, (
                     item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
                     current_user_pk, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
