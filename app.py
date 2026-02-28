@@ -8614,12 +8614,20 @@ def submit_inventory_transfer():
 
             tf_note = f"TF-Note{jv_no}"
 
+            batch_data = []
+            today_date = datetime.now().date()
+
             for i in range(len(item_names)):
                 qty = float(qtys[i])
                 cost = float(item_costs[i] or 0)
 
                 if qty <= 0: continue
 
+                # 2. Record OUT from Source (moument_in = 0, movment_out = qty)
+                batch_data.append((
+                    item_names[i], item_codes[i], item_units[i], cost,
+                    0, qty, # in, out
+                    tf_note, current_user, today_date, from_loc,
                 # 2. Record OUT from Source
                 cursor.execute("""
                     INSERT INTO inventory_recod (
@@ -8635,14 +8643,25 @@ def submit_inventory_transfer():
                     transfer_date, narration, jv_no
                 ))
 
-                # 3. Record IN to Destination
-                cursor.execute("""
+                # 3. Record IN to Destination (moument_in = qty, movment_out = 0)
+                batch_data.append((
+                    item_names[i], item_codes[i], item_units[i], cost,
+                    qty, 0, # in, out
+                    tf_note, current_user, today_date, to_loc,
+                    transfer_date, narration, jv_no
+                ))
+
+            if batch_data:
+                query = """
                     INSERT INTO inventory_recod (
                         inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_moument_in,
+                        inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
                         inventory_recod_suplier_iv_no, inventory_recod_user_id,
                         inventory_recod_user_recod_date, inventory_recod_location,
                         inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                cursor.executemany(query, batch_data)
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     item_names[i], item_codes[i], item_units[i], cost, qty,
