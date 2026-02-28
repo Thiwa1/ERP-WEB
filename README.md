@@ -47,19 +47,21 @@ mysql -u root -p < fixed_assets.sql
 ```
 
 ### 5. Configuration
-Open `app.py` and update the `db_config` dictionary at the top of the file to match your MySQL credentials.
+Set the following environment variables to configure your database connection:
 
-```python
-db_config = {
-    'user': 'root',      # Your MySQL Username
-    'password': '',      # Your MySQL Password
-    'host': 'localhost',
-    'database': 'Book_keeping',
-    'raise_on_warnings': True
-}
+**Windows (PowerShell):**
+```powershell
+$env:DB_USER="root"
+$env:DB_PASSWORD="your_password"
 ```
 
-*Note: For production, consider using environment variables for sensitive data.*
+**Linux/Mac:**
+```bash
+export DB_USER="root"
+export DB_PASSWORD="your_password"
+```
+
+Optional variables: `DB_HOST` (default: localhost), `DB_NAME` (default: Book_keeping).
 
 ### 6. Run the Application
 Start the Flask development server.
