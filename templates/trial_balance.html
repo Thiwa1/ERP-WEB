@@ -54,16 +54,16 @@
                     <tr>
                         <td>{{ row['AccountName'] }}</td>
                         <td>{{ row['Basement'] }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(row['Debit']|float) }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(row['Credit']|float) }}</td>
+                        <td class="text-end">{{ row['Debit']|float|currency }}</td>
+                        <td class="text-end">{{ row['Credit']|float|currency }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
                 <tfoot class="table-group-divider fw-bold bg-light">
                     <tr>
                         <td colspan="2" class="text-end text-uppercase" style="color: var(--primary-color);">Total</td>
-                        <td class="text-end" style="color: var(--primary-color);">{{ "{:,.2f}".format(total_dr) }}</td>
-                        <td class="text-end" style="color: var(--primary-color);">{{ "{:,.2f}".format(total_cr) }}</td>
+                        <td class="text-end" style="color: var(--primary-color);">{{ total_dr|currency }}</td>
+                        <td class="text-end" style="color: var(--primary-color);">{{ total_cr|currency }}</td>
                     </tr>
                 </tfoot>
             </table>
