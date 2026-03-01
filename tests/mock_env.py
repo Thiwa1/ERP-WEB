@@ -106,3 +106,31 @@ sys.modules['werkzeug'] = mock_werkzeug
 sys.modules['werkzeug.security'] = mock_werkzeug
 
 print("Mocks initialized for flask and mysql.connector")
+import sys
+from unittest.mock import MagicMock
+
+if 'jinja2' not in sys.modules:
+    mock_jinja = MagicMock()
+    mock_jinja.pass_context = lambda f: f
+    sys.modules['jinja2'] = mock_jinja
+
+if 'werkzeug.security' not in sys.modules:
+    mock_wz = MagicMock()
+    mock_wz.generate_password_hash = lambda x: f"hashed_{x}"
+    mock_wz.check_password_hash = lambda h, p: h == f"hashed_{p}"
+    sys.modules['werkzeug.security'] = mock_wz
+if 'num2words' not in sys.modules:
+    mock_n2w = MagicMock()
+    mock_n2w.num2words = lambda n, **kwargs: str(n)
+    sys.modules['num2words'] = mock_n2w
+
+if 'flask_wtf' not in sys.modules:
+    mock_flask_wtf = MagicMock()
+    sys.modules['flask_wtf'] = mock_flask_wtf
+    mock_csrf = MagicMock()
+    mock_flask_wtf.csrf = mock_csrf
+    mock_csrf.CSRFProtect = MagicMock()
+
+if 'dotenv' not in sys.modules:
+    mock_dotenv = MagicMock()
+    sys.modules['dotenv'] = mock_dotenv

@@ -3,68 +3,75 @@ from unittest.mock import MagicMock, patch
 import sys
 import os
 
-# Add project root to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Mock database module before importing app
-sys.modules['database'] = MagicMock()
-from database import Database
+try:
+    import tests.mock_env
+except ImportError:
+    pass
 
-# Mock the database instance in app
-# We need to import app now
-from app import app, login
+sys.modules['database'] = MagicMock()
 
 class TestPasswordSecurity(unittest.TestCase):
     def setUp(self):
-        app.config['TESTING'] = True
-        app.config['WTF_CSRF_ENABLED'] = False
-        self.client = app.test_client()
-        self.app_context = app.app_context()
-        self.app_context.push()
+        import app
+        self.app = app
+        self.app.app.config['TESTING'] = True
+        self.app.app.config['WTF_CSRF_ENABLED'] = False
 
-    def tearDown(self):
-        self.app_context.pop()
+        self.app.master_db = MagicMock()
+        self.app.master_db.execute_query.return_value = [] # Force fallback to legacy login
+        self.app.db = MagicMock()
 
-    @patch('app.db')
-    def test_vulnerable_plain_text_login(self, mock_db):
-        """
-        Verify the current vulnerability: A plain text password allows login.
-        """
-        # Mock database response for user lookup
-        # Simulate a user with plain text password 'secret'
+        import flask
+        flask.flash = MagicMock()
+
+    def test_legacy_plain_text_login_migrates(self):
         mock_user = {
             'id': 1,
             'User_Code': 'USR001',
             'Password': 'secret',
             'User_Name': 'admin'
         }
+        self.app.db.execute_query.return_value = [mock_user]
+        self.app.db.last_error = None
 
-        # When execute_query is called, return the mock user
-        mock_db.execute_query.return_value = [mock_user]
-        mock_db.last_error = None
+        import flask
+        flask.request.method = 'POST'
+        flask.request.form = {'username': 'admin', 'password': 'secret'}
 
-        # Attempt login with the plain text password
-        response = self.client.post('/login', data={
-            'username': 'admin',
-            'password': 'secret'
-        }, follow_redirects=True)
+        self.app.session = {}
 
-        # Check if login succeeded (redirects to index or shows success)
-        # In the vulnerable code, this should SUCCEED
-        # A successful login redirects to index
+        response = self.app.login()
 
-        # We can check if session has user_id or if we are on index page
-        # But mocking session inside client test is tricky without checking final URL or content
-        # If login fails, it flashes 'Incorrect password.' or 'User not found.'
+        update_calls = [c for c in self.app.db.execute_query.call_args_list if len(c[0]) > 0 and "UPDATE Login_Table SET Password = %s" in c[0][0]]
+        self.assertTrue(len(update_calls) > 0, "Expected password migration UPDATE query to be called for legacy password.")
+        self.assertEqual(self.app.session.get('username'), 'admin')
 
-        response_text = response.data.decode('utf-8')
+    def test_secure_hashed_password_login(self):
+        from werkzeug.security import generate_password_hash
+        hashed_pw = generate_password_hash('secure_password')
 
-        # If vulnerable, we expect NOT to see "Incorrect password"
-        self.assertNotIn("Incorrect password.", response_text)
-        self.assertNotIn("User not found.", response_text)
+        mock_user = {
+            'id': 1,
+            'User_Code': 'USR001',
+            'Password': hashed_pw,
+            'User_Name': 'admin'
+        }
+        self.app.db.execute_query.return_value = [mock_user]
+        self.app.db.last_error = None
 
-        # And we expect to be redirected to index (status code 200 after follow_redirects)
-        self.assertEqual(response.status_code, 200)
+        import flask
+        flask.request.method = 'POST'
+        flask.request.form = {'username': 'admin', 'password': 'secure_password'}
+
+        self.app.session = {}
+
+        response = self.app.login()
+
+        update_calls = [c for c in self.app.db.execute_query.call_args_list if len(c[0]) > 0 and "UPDATE Login_Table SET Password = %s" in c[0][0]]
+        self.assertEqual(len(update_calls), 0, "No migration should occur for already hashed passwords.")
+        self.assertEqual(self.app.session.get('username'), 'admin')
 
 if __name__ == '__main__':
     unittest.main()
