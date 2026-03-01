@@ -282,7 +282,6 @@ def register():
 
 # Context Processor for Currency & Theme
 @app.context_processor
-def inject_currency():
 def inject_globals():
     globals_dict = {}
 
@@ -554,38 +553,18 @@ def login():
             user = users[0]
             stored_password = user['Password']
 
-            # 1. Check Hash
-            from werkzeug.security import check_password_hash, generate_password_hash
-            is_valid = False
-            is_legacy = False
-
-            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                if check_password_hash(stored_password, password):
-                    is_valid = True
-            elif stored_password == password:
-                # 2. Fallback to Plain Text (Legacy)
-                is_valid = True
-                is_legacy = True
-
-            if is_valid:
-                # Update hash if legacy
-                if is_legacy:
-                    try:
-                        new_hash = generate_password_hash(password)
-                        db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
-                        print(f"Migrated user {username} to password hash.")
-                    except Exception as e:
-                        print(f"Error migrating password for {username}: {e}")
-
-            stored_password = user.get('Password', '')
             verified = False
             migrated = False
 
             # 1. Try Hash Verification
+            from werkzeug.security import check_password_hash, generate_password_hash
             try:
-                if check_password_hash(stored_password, password):
-                    verified = True
-            except:
+                if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                    if check_password_hash(stored_password, password):
+                        verified = True
+                else:
+                    raise ValueError("Not a valid hash")
+            except Exception:
                 # stored_password might not be a valid hash format (e.g. plain text)
                 pass
 
@@ -1092,33 +1071,6 @@ def grn():
             supplier_code = sup_res[0]['supplier_code']
             supplier_id = sup_res[0]['sup_id']
 
-            try:
-                current_user = get_current_user_id()
-                jv_no = None
-
-                with db.transaction_cursor() as cursor:
-                    # A. Generate JV Number
-                    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
-                    jv_no = cursor.lastrowid
-
-                    # B. Insert Invoice Record
-                    query_inv = """
-                        INSERT INTO suppliers_invoice_data (
-                            suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
-                            suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
-                            suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
-                    """
-                    cursor.execute(query_inv, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, jv_no, vat_rate))
-
-                    # C. Journal Entries
-                    # C1. Credit Account Payable (Grand Total)
-                    cursor.execute("""
-                        INSERT INTO entry_details (
-                            account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                            entry_naration, entry_create_user, entry_jv, entry_job_number
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
             # 3. Create Transaction using Service Layer
             try:
                 current_user = get_current_user_id()
@@ -1139,90 +1091,6 @@ def grn():
                 jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
 
                 current_user_pk = get_current_user_pk()
-
-                # A. Generate JV Number
-                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM GRN', narration))
-                jv_no = cursor.lastrowid
-
-                # B. Insert Invoice Record
-                query_inv = """
-                    INSERT INTO suppliers_invoice_data (
-                        suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
-                        suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
-                        suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
-                """
-                cursor.execute(query_inv, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, jv_no, vat_rate))
-
-                # C. Journal Entries
-                # C1. Credit Account Payable (Grand Total)
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Account Payable', grand_total, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
-
-                # C2. Debit Inventory (Total Value)
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
-
-                    # C2. Debit Inventory (Total Value)
-                    cursor.execute("""
-                        INSERT INTO entry_details (
-                            account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                            entry_naration, entry_create_user, entry_jv, entry_job_number
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                    """, ('Inventory', total_value, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
-
-                    # C3. Debit VAT Control (if applicable)
-                    if vat_amount > 0:
-                        cursor.execute("""
-                            INSERT INTO entry_details (
-                                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                                entry_naration, entry_create_user, entry_jv, entry_job_number
-                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                        """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user, jv_no, job_no if job_no else None))
-
-                    # D. Inventory Records
-                    for item in items:
-                        query_ir = """
-                            INSERT INTO inventory_recod (
-                                inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                                inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
-                                inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
-                                inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
-                            ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
-                        """
-                        cursor.execute(query_ir, (
-                            item['name'], item['code'], item['unit'], item['cost'], item['qty'],
-                            invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
-                        ))
-                    """, ('VAT Control', vat_amount, invoice_date, date.today(), narration, current_user_pk, jv_no, job_no if job_no else None))
-
-                # D. Inventory Records
-                query_ir = """
-                    INSERT INTO inventory_recod (
-                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
-                        inventory_recod_suplier_iv_no, inventory_recod_user_id, inventory_recod_user_recod_date,
-                        inventory_recod_location, inventory_recod_link_invoice, inventory_recod_action_date, JV_No
-                    ) VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s, %s)
-                """
-                ir_params = [
-                    (
-                        item['name'], item['code'], item['unit'], item['cost'], item['qty'],
-                        invoice_no, current_user, date.today(), location, jv_no, invoice_date, jv_no
-                    ) for item in items
-                ]
-                cursor.executemany(query_ir, ir_params)
-                        invoice_no, current_user_pk, date.today(), location, jv_no, invoice_date, jv_no
-                    ))
-
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
                 return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name, date=invoice_date, invoice_no=invoice_no, location=location, items=items, total_value=total_value, vat_amount=vat_amount, grand_total=grand_total)
 
@@ -2485,8 +2353,6 @@ def bulk_upload_tb():
                             entry_create_user, entry_jv
                         ) VALUES (%s, %s, %s, %s, %s, 'Opening Balance', %s, %s)
                     """, entries_to_insert)
-                    """, (names[i], dr, cr, opening_date, today, current_user_pk, jv_no))
-                    count += 1
 
                 conn.commit()
                 flash(f'TB Uploaded successfully. {count} entries posted to JV {jv_no}', 'success')
@@ -6253,8 +6119,6 @@ def add_pos_user():
 
         from werkzeug.security import generate_password_hash
         pw_hash = generate_password_hash(password)
-
-        pw_hash = generate_password_hash(password)
         db.execute_query("""
             INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
             VALUES (0, %s, %s, %s)
@@ -6288,8 +6152,6 @@ def pos_api_login():
         settings = users[0]
         stored_password = settings['Password']
 
-        # Check Hash or Plain Text
-        from werkzeug.security import check_password_hash, generate_password_hash
         is_valid = False
         is_legacy = False
 
@@ -6312,7 +6174,8 @@ def pos_api_login():
                 print(f"Error migrating POS password: {e}")
 
         return {
-            'success': True,
+            'success': True
+        }
 
     if users:
         settings = users[0]
@@ -6480,10 +6343,6 @@ def submit_pos_sale():
                     inventory_recod_location
                 ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
             """, inventory_params)
-            """, (
-                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-                current_user_pk, jv_no, settings.get('location')
-            ))
 
         # 4. GL Entries
         # Debit Cash/Bank
@@ -7439,6 +7298,7 @@ def create_default_user():
         if result and result[0]['count'] == 0:
             print("No users found. Creating default admin user...")
             # Hash default password
+            from werkzeug.security import generate_password_hash
             pw_hash = generate_password_hash('123')
             logging.info("No users found. Creating default admin user...")
             query = """
@@ -7446,12 +7306,7 @@ def create_default_user():
                 VALUES (%s, %s, %s, %s, %s, %s)
             """
             # Using 'admin' / '123' (Hashed)
-            from werkzeug.security import generate_password_hash
-            pw_hash = generate_password_hash('123')
-            # Using 'admin' / '123'
             db.execute_query(query, ('admin', pw_hash, 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
-            print("Default user created: admin / 123")
-            db.execute_query(query, ('admin', '123', 'ADM001', 1, '0000000000', 'admin@example.com'), commit=True)
             logging.info("Default user created: admin / 123")
 
             # Create Default Rights for Admin
@@ -7627,66 +7482,6 @@ def system_backup():
             response.headers['Content-Type'] = 'application/sql'
             response.headers['Content-Disposition'] = f'attachment; filename={filename}'
             return response
-        # Pass password via environment variable for security
-        env = os.environ.copy()
-        if db_config['password']:
-            env['MYSQL_PWD'] = db_config['password']
-
-        # Construct command using list to avoid shell injection
-        # Note: We already validated inputs above
-        cmd = [
-            'mysqldump',
-            '-u', db_config['user'],
-            '-h', db_config['host'],
-            db_config['database']
-        ]
-
-        # If password exists (it is empty in config, but good practice to handle)
-        if db_config['password']:
-            cmd.insert(1, f"-p{db_config['password']}")
-
-        # Stream the output directly to the client
-        def generate():
-            try:
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-                # Stream stdout
-                while True:
-                    output = process.stdout.read(4096)  # Read in chunks
-                    if output == b'' and process.poll() is not None:
-                        break
-                    if output:
-                        yield output
-
-                # Check for errors after streaming
-                if process.returncode != 0:
-                    error = process.stderr.read()
-                    print(f"Backup process failed: {error.decode('utf-8', errors='ignore')}")
-                    # Note: We can't flash here as response has already started
-            except Exception as e:
-                print(f"Backup generation error: {e}")
-
-        return Response(
-            stream_with_context(generate()),
-            headers={
-                'Content-Disposition': f'attachment; filename={filename}',
-                'Content-Type': 'application/sql'
-            }
-        )
-        # Use run instead of Popen for better management
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env=env
-        )
-        output, error = process.communicate()
-
-        if process.returncode != 0:
-            err_msg = error.decode("utf-8") if error else "Unknown Error"
-            flash(f'Backup failed: {err_msg}', 'danger')
-            return redirect(url_for('index'))
-
         finally:
             # Secure cleanup
             if os.path.exists(defaults_file.name):
@@ -8014,18 +7809,6 @@ def submit_inventory_transfer():
                     item_names[i], item_codes[i], item_units[i], cost,
                     0, qty, # in, out
                     tf_note, current_user, today_date, from_loc,
-                # 2. Record OUT from Source
-                cursor.execute("""
-                    INSERT INTO inventory_recod (
-                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_movment_out,
-                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
-                        inventory_recod_user_recod_date, inventory_recod_location,
-                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user_pk, datetime.now().date(), from_loc,
                     transfer_date, narration, jv_no
                 ))
 
@@ -8048,12 +7831,6 @@ def submit_inventory_transfer():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 cursor.executemany(query, batch_data)
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    item_names[i], item_codes[i], item_units[i], cost, qty,
-                    tf_note, current_user_pk, datetime.now().date(), to_loc,
-                    transfer_date, narration, jv_no
-                ))
 
             conn.commit()
             flash(f'Transfer successful. Tracking Ref: {tf_note}', 'success')
@@ -8279,8 +8056,7 @@ def submit_invoice():
         return redirect(url_for('invoice_creating'))
 
     current_user = get_current_user_id()
-        current_user = get_current_user_id()
-        current_user_pk = get_current_user_pk()
+    current_user_pk = get_current_user_pk()
 
     # 2. Database Transaction
     conn = db.get_connection()
@@ -8344,78 +8120,53 @@ def submit_invoice():
 
         # 7. Insert Invoice Records (Details) & Update Inventory
 
+        # Prepare batch data
+        invoice_recode_batch = []
+        inventory_recode_batch = []
+
+        current_time = datetime.now()
+
         # Inventory Items
         for item in inv_items:
-            # Warranty Logic (Placeholder as per previous code)
+            # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
+            # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
+            # Schema: Invoice_Recode
+
+            # Warranty Logic (Preserved but optimized to only run query)
+            # Fetch warranty period for item
             w_end_date = None
-            try:
-        try:
-            # 1. Generate Invoice No
-            invoice_no = generate_invoice_number(cursor)
+            cursor.execute("""
+                SELECT yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name = %s LIMIT 1
+            """, (item['name'],))
+            w_res = cursor.fetchone()
+            if w_res:
+                try:
+                    years, months, days = w_res
+                    # Logic retained from original code (pass)
+                    pass
+                except:
+                    pass
 
-            # 2. Create JV Header
-            jv_no = create_invoice_jv(cursor, current_user, "Credit Sales")
+            # Add to batch for Invoice_Recode
+            invoice_recode_batch.append((
+                item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
+                customer_name, 1, outstanding_id, item['unit'], current_time
+            ))
 
-            # 3. Calculate Totals
-            totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
+            # Add to batch for Inventory_Recod
+            inventory_recode_batch.append((
+                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
+                current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
+            ))
 
-            # 4. Insert Outstanding Record
-            outstanding_id = create_outstanding_record(cursor, invoice_no, inv_date, totals['grand_total'], due_date, customer_name, jv_no, vat_rate)
-
-            # 5. Insert Invoice Records (Details) & Update Inventory
-            process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, inv_date, customer_name, inv_items, is_inventory=True)
-            process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, inv_date, customer_name, non_inv_items, is_inventory=False)
-
-            # 6. GL Entries
-            post_invoice_gl_entries(cursor, current_user, jv_no, inv_date, job_no, totals)
-
-            # Prepare batch data
-            invoice_recode_batch = []
-            inventory_recode_batch = []
-
-            current_time = datetime.now()
-
-            # Inventory Items
-            for item in inv_items:
-                # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
-                # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
-                # Schema: Invoice_Recode
-
-                # Warranty Logic (Preserved but optimized to only run query)
-                # Fetch warranty period for item
-                w_end_date = None
-                cursor.execute("""
-                    SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                    WHERE name = %s LIMIT 1
-                """, (item['name'],))
-                w_res = cursor.fetchone()
-                if w_res:
-                    try:
-                        years, months, days = w_res
-                        # Logic retained from original code (pass)
-                        pass
-                    except:
-                        pass
-
-                # Add to batch for Invoice_Recode
-                invoice_recode_batch.append((
-                    item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
-                    customer_name, 1, outstanding_id, item['unit'], current_time
-                ))
-
-                # Add to batch for Inventory_Recod
-                inventory_recode_batch.append((
-                    item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                    current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
-                ))
-
-            # Non-Inventory Items
-            for item in non_inv_items:
-                 # Add to batch for Invoice_Recode
-                 invoice_recode_batch.append((
-                    item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
-                    customer_name, 1, outstanding_id, item['unit'], current_time
-                ))
+        # Non-Inventory Items
+        for item in non_inv_items:
+             # Add to batch for Invoice_Recode
+            invoice_recode_batch.append((
+                item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
+                customer_name, 1, outstanding_id, item['unit'], current_time
+            ))
 
             # Execute Batch Inserts
             if invoice_recode_batch:
@@ -8429,36 +8180,6 @@ def submit_invoice():
 
             if inventory_recode_batch:
                 cursor.executemany("""
-            except Exception:
-                pass # Fail silently on warranty lookup for now
-
-            cursor.execute("""
-                INSERT INTO Invoice_Recode (
-                    Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                    User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                    recode_date
-                ) VALUES (%s, %s, %s, 1, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-            """, (
-                item['name'], item['qty'], item['price'], jv_no, current_user,
-                customer_name, outstanding_id, item['unit'], datetime.now()
-            ))
-
-            # Update Inventory Record (OUT)
-            cursor.execute("""
-                INSERT INTO inventory_recod (
-                    inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                    inventory_recod_unit_price, inventory_recod_movment_out,
-                    inventory_recod_account, inventory_recod_user_id,
-                    inventory_recod_user_recod_date, inventory_recod_location,
-                    inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                    inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-            """, (
-                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                current_user, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
-            ))
-                # Update Inventory Record (OUT)
-                cursor.execute("""
                     INSERT INTO inventory_recod (
                         inventoy_name, inventoy_code, inventory_recod_mesrmet,
                         inventory_recod_unit_price, inventory_recod_movment_out,
@@ -8468,23 +8189,6 @@ def submit_invoice():
                         inventory_recod_link_invoice, inventory_recod_suplier_iv_no
                     ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
                 """, inventory_recode_batch)
-                """, (
-                    item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                    current_user_pk, datetime.now(), location, inv_date, jv_no, outstanding_id, invoice_no
-                ))
-
-        # Non-Inventory Items
-        for item in non_inv_items:
-             cursor.execute("""
-                INSERT INTO Invoice_Recode (
-                    Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                    User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                    recode_date
-                ) VALUES (%s, %s, %s, 0, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-            """, (
-                item['name'], item['qty'], item['price'], jv_no, current_user,
-                customer_name, outstanding_id, item['unit'], datetime.now()
-            ))
 
         # 8. GL Entries
         job_no_val = job_no if job_no else None
@@ -8523,7 +8227,6 @@ def submit_invoice():
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-            """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
 
             # CR Inventory
             cursor.execute("""
@@ -8535,45 +8238,6 @@ def submit_invoice():
 
         conn.commit()
         flash(f'Invoice {invoice_no} created successfully.', 'success')
-            """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
-
-            # CR VAT (If any)
-            if vat_amount > 0:
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
-
-            # Cost of Goods Sold (If inventory items exist)
-            if total_cost > 0:
-                 # DR COGS
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
-
-                # CR Inventory
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv, entry_job_number
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user_pk, jv_no, job_no_val))
-
-            conn.commit()
-            flash(f'Invoice {invoice_no} created successfully.', 'success')
-
-        except Exception as e:
-            conn.rollback()
-            flash(f'Transaction failed: {str(e)}', 'danger')
-            logging.error(f"Invoice Error: {e}")
-        finally:
-            cursor.close()
-            conn.close()
 
     except Exception as e:
         conn.rollback()
