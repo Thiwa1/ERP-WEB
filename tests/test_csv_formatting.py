@@ -10,6 +10,8 @@ class TestCSVFormatting(unittest.TestCase):
         self.assertEqual(parse_float(100), 100.0)
         self.assertEqual(parse_float(None), 0.0)
         self.assertEqual(parse_float(""), 0.0)
+        self.assertEqual(parse_float(True), 1.0)
+        self.assertEqual(parse_float(False), 0.0)
 
     def test_parse_float_formatting(self):
         self.assertEqual(parse_float("1,234.56"), 1234.56)
