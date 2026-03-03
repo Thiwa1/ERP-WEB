@@ -3,30 +3,14 @@ import unittest
 from unittest.mock import MagicMock, patch
 import sys
 
+# Import mock_env to properly mock dependencies like jinja2
+import tests.mock_env
+
 # 1. Mock 'flask' and 'mysql.connector' BEFORE importing app
-mock_flask = MagicMock()
-mock_mysql = MagicMock()
-mock_mysql_connector = MagicMock()
+mock_flask = sys.modules['flask']
+mock_mysql = sys.modules['mysql']
 
-# Configure Flask Mock
-mock_app = MagicMock()
-mock_flask.Flask.return_value = mock_app
-
-# Request Mock (Global Stub)
-request_stub = MagicMock()
-mock_flask.request = request_stub
-
-# Other mocks
-mock_flask.session = {}
-mock_flask.url_for = MagicMock(return_value='/url')
-mock_flask.redirect = MagicMock(return_value='redirected')
-mock_flask.flash = MagicMock()
-mock_flask.render_template = MagicMock()
-mock_flask.make_response = MagicMock()
-
-sys.modules['flask'] = mock_flask
-sys.modules['mysql'] = mock_mysql
-sys.modules['mysql.connector'] = mock_mysql_connector
+mock_app = mock_flask.Flask()
 
 # 2. Import app
 import app as app_module
@@ -57,19 +41,7 @@ import app as app_module
 # So `cash_payment_submit` BECOMES a MagicMock because `app.route` mock replaced it!
 
 # FIX: `mock_app.route` should behave like a pass-through decorator.
-# We need to configure `mock_app.route` to return a decorator that returns the function.
-
-def route_side_effect(*args, **kwargs):
-    def decorator(f):
-        return f
-    return decorator
-
-mock_app.route.side_effect = route_side_effect
-
-# Re-import app to apply the fix to decorators
-# We need to reload because `app.py` ran once and defined functions as mocks.
-import importlib
-importlib.reload(app_module)
+# This is already handled by `tests/mock_env.py` which correctly mocks Flask.Flask().route.
 
 class TestCashPaymentSubmit(unittest.TestCase):
     def setUp(self):
