@@ -85,3 +85,25 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-01 14:25:12,335 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-01 14:25:12,354 - root - ERROR - Cash Payment Error: DB Error
 2026-03-01 14:25:12,573 - root - ERROR - POS Error: DB Fail
+2026-03-03 08:31:59,003 - root - INFO - Creating default account: Account Payable
+2026-03-03 08:31:59,003 - root - INFO - Creating default account: Account Receivable
+2026-03-03 08:31:59,004 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 08:31:59,004 - root - INFO - Creating default account: Sales
+2026-03-03 08:31:59,004 - root - INFO - Creating default account: Inventory
+2026-03-03 08:31:59,004 - root - INFO - Creating default account: VAT Control
+2026-03-03 08:31:59,004 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 08:31:59,016 - root - INFO - Default categories checked/created.
+2026-03-03 08:31:59,026 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 08:31:59,045 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 08:31:59,237 - root - ERROR - POS Error: DB Fail
+2026-03-03 08:40:07,630 - root - INFO - Creating default account: Account Payable
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: Account Receivable
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: Sales
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: Inventory
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: VAT Control
+2026-03-03 08:40:07,631 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 08:40:07,638 - root - INFO - Default categories checked/created.
+2026-03-03 08:40:07,645 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 08:40:07,662 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 08:40:07,835 - root - ERROR - POS Error: DB Fail

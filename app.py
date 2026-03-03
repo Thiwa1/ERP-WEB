@@ -7646,22 +7646,20 @@ def calculate_depreciation():
             # Aggregate Entries by Account to reduce lines?
             # Or insert per asset? Per asset is better for audit trail in narration
 
+            insert_tuples = []
             for e in entries:
-                # DR Expense
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['dr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
+                # DR Tuple
+                insert_tuples.append((e['dr_acc'], e['amount'], 0, dep_date, date.today(), e['narration'], current_user_pk, jv_id))
+                # CR Tuple
+                insert_tuples.append((e['cr_acc'], 0, e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
 
-                # CR Acc Dep
-                cursor.execute("""
+            if insert_tuples:
+                cursor.executemany("""
                     INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date,
                         entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, (e['cr_acc'], e['amount'], dep_date, date.today(), e['narration'], current_user_pk, jv_id))
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, insert_tuples)
 
             conn.commit()
             return {'success': True, 'processed': processed_count, 'jv_id': jv_id}
