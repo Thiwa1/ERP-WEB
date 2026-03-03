@@ -583,7 +583,7 @@ def login():
                         db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
                         migrated = True
                     except Exception as e:
-                        print(f"Error migrating password for user {user['id']}: {e}")
+                        logging.error(f"Error migrating password for user {user['id']}")
 
             if verified:
                 session['user_id'] = user['User_Code']
@@ -6196,7 +6196,7 @@ def pos_api_login():
                     new_hash = generate_password_hash(password)
                     db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
                 except Exception as e:
-                    print(f"Error migrating POS user {settings['Id']}: {e}")
+                    logging.error(f"Error migrating POS user {settings['Id']}")
 
         if verified:
             return {
