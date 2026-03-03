@@ -4,11 +4,18 @@ import sys
 import subprocess
 from datetime import date
 
+import getpass
+
 def get_input(prompt, default=None, is_password=False):
     if default:
-        user_input = input(f"{prompt} [{default}]: ")
+        prompt_text = f"{prompt} [{default}]: "
     else:
-        user_input = input(f"{prompt}: ")
+        prompt_text = f"{prompt}: "
+
+    if is_password:
+        user_input = getpass.getpass(prompt_text)
+    else:
+        user_input = input(prompt_text)
 
     if not user_input and default:
         return default
