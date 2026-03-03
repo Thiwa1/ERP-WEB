@@ -74,7 +74,10 @@ class TestCashPaymentSubmit(unittest.TestCase):
         req_mock.method = 'POST'
 
         self.mock_cursor.fetchone.side_effect = [
-            (100,), (5001,), (1000,)
+            (100,), (5001,)
+        ]
+        self.mock_cursor.fetchall.return_value = [
+            ('123', 1000.0)
         ]
         self.mock_cursor.lastrowid = 2023
 
@@ -92,6 +95,7 @@ class TestCashPaymentSubmit(unittest.TestCase):
             "INSERT INTO cash_voucher_no (id, cash_voucher_link, cash_voucher_number) VALUES (0, %s, %s)",
             ('Petty Cash', 101)
         )
+        self.mock_cursor.executemany.assert_called()
         self.mock_conn.commit.assert_called()
         flashed = [c[0][0] for c in mock_flask.flash.call_args_list]
         self.assertTrue(any("Cash Payment processed successfully" in msg for msg in flashed))
