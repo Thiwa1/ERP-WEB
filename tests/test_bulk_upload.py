@@ -22,6 +22,8 @@ sys.modules['database'] = MagicMock()
 
 import app as app_module
 
+class TestBulkUpload(unittest.TestCase):
+    def setUp(self):
 # from flask import Flask # Handled by sys.modules mock in test_add_new_account
 
 class TestBulkUpload(unittest.TestCase):
@@ -182,7 +184,6 @@ class TestBulkUpload(unittest.TestCase):
 
     def test_bulk_upload_tally_check_pass(self):
         with patch('app.check_permission', return_value=True):
-            pass
 # Mock app import or use mock_setup
 # Since app.py imports Flask, we must use mock_setup FIRST.
 # `from flask import Flask` inside test_bulk_upload will use the mocked Flask.
