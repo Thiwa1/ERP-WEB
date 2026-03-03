@@ -6150,46 +6150,21 @@ def pos_api_login():
 
     if users:
         settings = users[0]
-        stored_password = settings['Password']
-
-        is_valid = False
-        is_legacy = False
-
-        if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-            if check_password_hash(stored_password, password):
-                is_valid = True
-        elif stored_password == password:
-            is_valid = True
-            is_legacy = True
-
-        if not is_valid:
-            return {'success': False, 'error': 'Invalid Credentials'}
-
-        # Update if legacy
-        if is_legacy:
-            try:
-                new_hash = generate_password_hash(password)
-                db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
-            except Exception as e:
-                print(f"Error migrating POS password: {e}")
-
-        return {
-            'success': True
-        }
-
-    if users:
-        settings = users[0]
         stored_password = settings.get('Password', '')
         verified = False
 
-        # 1. Try Hash
+        # 1. Try Hash Verification
         try:
-            if check_password_hash(stored_password, password):
-                verified = True
-        except:
+            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
+                if check_password_hash(stored_password, password):
+                    verified = True
+            else:
+                raise ValueError("Not a valid hash")
+        except ValueError:
+            # stored_password might not be a valid hash format (e.g. plain text)
             pass
 
-        # 2. Fallback to Plain Text & Migrate
+        # 2. Fallback to Plain Text (Legacy Support & Migration)
         if not verified:
             if stored_password == password:
                 verified = True
@@ -6202,18 +6177,19 @@ def pos_api_login():
         if verified:
             return {
                 'success': True,
-            'settings': {
-                'location': settings['Select_Inventry_Location'],
-                'card_ac': settings['Card_Control_AC'],
-                'cash_ac': settings['Cash_Account'],
-                'market_price': settings['Sales_with_market_price'],
-                'special_price': settings['Sales_with_Special_price'],
-                'loyalty_price': settings['Loyalty_Price'],
-                'vat_enable': settings['VAT_Enable'],
-                'footer': settings['Footer_Message'],
-                'top': settings['Top_Message']
+                'settings': {
+                    'location': settings['Select_Inventry_Location'],
+                    'card_ac': settings['Card_Control_AC'],
+                    'cash_ac': settings['Cash_Account'],
+                    'market_price': settings['Sales_with_market_price'],
+                    'special_price': settings['Sales_with_Special_price'],
+                    'loyalty_price': settings['Loyalty_Price'],
+                    'vat_enable': settings['VAT_Enable'],
+                    'footer': settings['Footer_Message'],
+                    'top': settings['Top_Message']
+                }
             }
-        }
+
     return {'success': False, 'error': 'Invalid POS Credentials'}
 
 @app.route('/api/pos/items', methods=['GET'])
