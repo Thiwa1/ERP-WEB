@@ -2619,7 +2619,7 @@ def company_profile():
         try:
             # If it's already base64 bytes
             company['company_log'] = company['company_log'].decode('utf-8')
-        except:
+        except UnicodeDecodeError:
             # If it's raw image bytes, encode it
             import base64
             company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
