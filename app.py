@@ -1,4 +1,3 @@
-import typing
 import flask
 from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
 from database import Database
@@ -17,6 +16,7 @@ import random # For mocking exchange rate
 import subprocess
 import mysql.connector
 import urllib.request
+import typing
 from dataclasses import dataclass
 
 app = flask.Flask(__name__)
@@ -114,7 +114,11 @@ db = Database(db_config)
 MASTER_DB_NAME = 'Book_keeping_Master'
 
 def get_session_db_name():
-    return session.get('tenant_db')
+    """Returns the correct database name based on session."""
+    # If standard user
+    if 'db_name' in session:
+        return session['db_name']
+    return db_config['database']
 
 db.set_db_name_getter(get_session_db_name)
 
@@ -6903,12 +6907,12 @@ def proforma_invoice():
             pi_id = cursor.lastrowid
 
             # Insert Details
-            for i in items:
-                cursor.execute("""
+            if items:
+                cursor.executemany("""
                     INSERT INTO proforma_invoice_details (
                         pi_id, item_name, description, qty, unit_price, total
                     ) VALUES (%s, %s, %s, %s, %s, %s)
-                """, (pi_id, i['name'], i.get('desc', ''), i['qty'], i['price'], i['total']))
+                """, [(pi_id, i['name'], i.get('desc', ''), i['qty'], i['price'], i['total']) for i in items])
 
             conn.commit()
             flash(f'Proforma Invoice {pi_no} created', 'success')
@@ -7915,9 +7919,9 @@ def calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat):
     }
 
 def generate_invoice_number(cursor):
-    cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
-    inv_id_seq = cursor.lastrowid
-    return f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+    cursor.execute("SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_no, 5) AS UNSIGNED)), 0) FROM customer_outstanding")
+    max_inv = cursor.fetchone()[0]
+    return f"INV-{max_inv + 1:05d}"
 
 def create_invoice_jv(cursor, current_user, narration):
     cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",

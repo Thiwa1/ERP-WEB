@@ -22,9 +22,6 @@ sys.modules['database'] = MagicMock()
 
 import app as app_module
 
-class TestBulkUpload(unittest.TestCase):
-    def setUp(self):
-# from flask import Flask # Handled by sys.modules mock in test_add_new_account
 
 class TestBulkUpload(unittest.TestCase):
     def setUp(self):
@@ -181,22 +178,6 @@ class TestBulkUpload(unittest.TestCase):
 
             # In the mock client, flash messages are returned in response.data for simple assertions
             self.assertIn(b'Totals do not match!', response.data)
-
-    def test_bulk_upload_tally_check_pass(self):
-        with patch('app.check_permission', return_value=True):
-# Mock app import or use mock_setup
-# Since app.py imports Flask, we must use mock_setup FIRST.
-# `from flask import Flask` inside test_bulk_upload will use the mocked Flask.
-
-class TestBulkUpload(unittest.TestCase):
-    def setUp(self):
-        # Use app_module.app directly since we mocked Flask
-        self.app = app_module.app
-        self.app.config = {'TESTING': True, 'SECRET_KEY': 'test'}
-
-        # Test client from MockFlask might not work as expected for routing
-        # We should invoke functions directly with mocked request
-        pass
 
     def test_bulk_upload_tally_check_fail(self):
         with patch('app.request') as mock_request:

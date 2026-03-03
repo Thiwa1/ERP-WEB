@@ -213,5 +213,33 @@ class TestInvoiceCreation(unittest.TestCase):
         self.assertIn('danger', args)
         self.assertIn("Transaction failed", args[0])
 
+    def test_generate_invoice_number(self):
+        # Mock cursor.fetchone to return a known max invoice number
+        self.mock_cursor.fetchone.return_value = [42]
+
+        # Call the function
+        result = app.generate_invoice_number(self.mock_cursor)
+
+        # Verify query
+        expected_query = "SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_no, 5) AS UNSIGNED)), 0) FROM customer_outstanding"
+        self.mock_cursor.execute.assert_called_once_with(expected_query)
+
+        # Verify result
+        self.assertEqual(result, "INV-00043")
+
+    def test_generate_invoice_number_empty_db(self):
+        # Mock cursor.fetchone to return 0 when db is empty
+        self.mock_cursor.fetchone.return_value = [0]
+
+        # Call the function
+        result = app.generate_invoice_number(self.mock_cursor)
+
+        # Verify query
+        expected_query = "SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_no, 5) AS UNSIGNED)), 0) FROM customer_outstanding"
+        self.mock_cursor.execute.assert_called_once_with(expected_query)
+
+        # Verify result for first invoice
+        self.assertEqual(result, "INV-00001")
+
 if __name__ == '__main__':
     unittest.main()
