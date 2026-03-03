@@ -1,3 +1,4 @@
+import tests.mock_env
 import unittest
 from unittest.mock import MagicMock, patch
 import sys
@@ -112,7 +113,7 @@ class TestBackupSafety(unittest.TestCase):
                 # After fix: Should NOT call Popen
 
                 mock_popen.assert_not_called()
-                # app_module.flash.assert_called_with('Invalid database configuration', 'danger')
+                app_module.flash.assert_called_with('Invalid database configuration', 'danger')
 
     @patch('shutil.which')
     def test_backup_missing_mysqldump(self, mock_which):
@@ -124,9 +125,9 @@ class TestBackupSafety(unittest.TestCase):
                 app_module.system_backup()
 
                 # This assertion checks for the specific error message we plan to add.
-                # app_module.flash.assert_called()
-                # args, _ = app_module.flash.call_args
-                # self.assertIn('mysqldump not found', args[0])
+                app_module.flash.assert_called()
+                args, _ = app_module.flash.call_args
+                self.assertIn('mysqldump not found', args[0])
                 mock_popen.assert_not_called()
 
 if __name__ == '__main__':
