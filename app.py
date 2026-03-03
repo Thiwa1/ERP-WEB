@@ -2774,28 +2774,37 @@ def cash_payment_submit():
             """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
 
         # 4. Process Individual Payments (Update Outstanding)
-        for p in payments:
-            # Update Invoice Outstanding using Stored Procedure (vender_settele)
-            # Parameters: curent_value (outstanding), settelment_value (new payment), id
-            # Note: The payment amount here is the GROSS settlement amount, so AP reduces by full amount.
-            cursor.execute("SELECT suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
-            res = cursor.fetchone()
-            current_outstanding = parse_float(res[0] or 0)
+        if payments:
+            inv_ids = [p['id'] for p in payments]
+            format_strings = ','.join(['%s'] * len(inv_ids))
+            cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", tuple(inv_ids))
 
-            # Call Stored Procedure
-            cursor.execute("CALL vender_settele(%s, %s, %s)", (current_outstanding, p['amount'], p['id']))
+            outstanding_map = {}
+            for row in cursor.fetchall():
+                outstanding_map[str(row[0])] = parse_float(row[1] or 0)
 
-            # Insert Cash Book Record (Net Payment?)
-            # Usually Cash Book reflects actual cash movement.
-            # So if we pay 900 (1000 inv - 100 tax), cash book should show 900.
-            # But we are iterating payments.
-            # If we split proportionately: Net_Item = Item_Gross * (Net_Total / Gross_Total)
+            call_params = []
+            insert_params = []
 
-            net_item_amount = p['amount']
-            if total_payment > 0:
-                net_item_amount = p['amount'] * (net_payment / total_payment)
+            for p in payments:
+                current_outstanding = outstanding_map.get(str(p['id']), 0.0)
+                call_params.append((current_outstanding, p['amount'], p['id']))
 
-            cursor.execute("""
+                net_item_amount = p['amount']
+                if total_payment > 0:
+                    net_item_amount = p['amount'] * (net_payment / total_payment)
+
+                insert_params.append((
+                    net_item_amount, cash_account, narration,
+                    p['id'], supplier_name, jv_no,
+                    p['id'], new_voucher, current_user_pk, payment_date
+                ))
+
+            # Batch execute Stored Procedure calls
+            cursor.executemany("CALL vender_settele(%s, %s, %s)", call_params)
+
+            # Batch insert Cash Book Records
+            cursor.executemany("""
                 INSERT INTO cash_book_recode (
                     cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
                     cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
@@ -2803,11 +2812,7 @@ def cash_payment_submit():
                     cash_book_po_no, cash_book_suplier_oustanding_id,
                     cash_book_recod_voucher_no, User_Enter, Payment_Date
                 ) VALUES (0, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """, (
-                net_item_amount, cash_account, narration,
-                p['id'], supplier_name, jv_no,
-                p['id'], new_voucher, current_user_pk, payment_date
-            ))
+            """, insert_params)
 
         conn.commit()
         flash(f'Cash Payment processed successfully. Voucher No: {new_voucher}', 'success')
