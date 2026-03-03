@@ -64,5 +64,25 @@ class TestMigrations(unittest.TestCase):
         mock_migrate_rights.assert_called_with(self.mock_cursor)
         mock_migrate_currency.assert_called_with(self.mock_cursor)
 
+    def test_record_migration(self):
+        # We assume no migrations have been applied initially so that the
+        # migrations run and record_migration is subsequently called.
+        self.mock_cursor.fetchone.return_value = None
+
+        migrations.run_migrations(self.mock_conn)
+
+        # Collect all SQL queries executed by the cursor
+        executed_queries = [call[0][0] for call in self.mock_cursor.execute.call_args_list]
+
+        # Verify that record_migration inserted the migration record.
+        # We check that the INSERT INTO statement for the migrations table was executed.
+        has_insert = any(
+            "INSERT INTO _migrations (migration_name) VALUES (%s)" in query or
+            "INSERT INTO migrations (migration_name) VALUES (%s)" in query
+            for query in executed_queries
+        )
+        self.assertTrue(has_insert, "record_migration should execute an INSERT statement")
+
+
 if __name__ == '__main__':
     unittest.main()
