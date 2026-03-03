@@ -10,7 +10,7 @@ import tests.mock_env
 mock_flask = sys.modules['flask']
 mock_mysql = sys.modules['mysql']
 
-mock_app = mock_flask.Flask()
+mock_app = mock_flask.Flask("mock")
 
 # 2. Import app
 import app as app_module
