@@ -6905,12 +6905,12 @@ def proforma_invoice():
             pi_id = cursor.lastrowid
 
             # Insert Details
-            for i in items:
-                cursor.execute("""
+            if items:
+                cursor.executemany("""
                     INSERT INTO proforma_invoice_details (
                         pi_id, item_name, description, qty, unit_price, total
                     ) VALUES (%s, %s, %s, %s, %s, %s)
-                """, (pi_id, i['name'], i.get('desc', ''), i['qty'], i['price'], i['total']))
+                """, [(pi_id, i['name'], i.get('desc', ''), i['qty'], i['price'], i['total']) for i in items])
 
             conn.commit()
             flash(f'Proforma Invoice {pi_no} created', 'success')
