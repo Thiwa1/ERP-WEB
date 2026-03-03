@@ -6,6 +6,8 @@ import os
 # Add root directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+import tests.mock_env
+
 # Mock libraries that might not be present
 sys.modules['flask'] = MagicMock()
 sys.modules['mysql'] = MagicMock()
@@ -48,6 +50,9 @@ sys.modules['database'] = mock_database_module
 # Now import the functions to test
 import app
 
+class MockContext(dict):
+    pass
+
 class TestCurrencyLogic(unittest.TestCase):
     def setUp(self):
         # Reset DB mock for each test
@@ -57,30 +62,40 @@ class TestCurrencyLogic(unittest.TestCase):
         # Mock DB to raise exception or return empty to test default
         app.db.execute_query.side_effect = Exception("DB Error")
 
-        result = app.inject_currency()
-        self.assertEqual(result, {'company_currency': 'LKR'})
+        result = app.inject_globals()
+        self.assertEqual(result.get('company_currency'), 'LKR')
 
     def test_inject_currency_success(self):
         # Mock DB to return a currency
         app.db.execute_query.return_value = [{'company_curency': 'USD'}]
         app.db.execute_query.side_effect = None
 
-        result = app.inject_currency()
-        self.assertEqual(result, {'company_currency': 'USD'})
+        result = app.inject_globals()
+        self.assertEqual(result.get('company_currency'), 'USD')
 
     def test_currency_filter_basic(self):
-        self.assertEqual(app.currency_filter(1234.56), "1,234.56")
-        self.assertEqual(app.currency_filter(1000), "1,000.00")
-        self.assertEqual(app.currency_filter(0), "0.00")
+        ctx = MockContext()
+        self.assertEqual(app.currency_filter(ctx, 1234.56), "1,234.56")
+        self.assertEqual(app.currency_filter(ctx, 1000), "1,000.00")
+        self.assertEqual(app.currency_filter(ctx, 0), "0.00")
 
     def test_currency_filter_string(self):
-        self.assertEqual(app.currency_filter("1234.56"), "1,234.56")
+        ctx = MockContext()
+        self.assertEqual(app.currency_filter(ctx, "1234.56"), "1,234.56")
 
     def test_currency_filter_none(self):
-        self.assertEqual(app.currency_filter(None), "0.00")
+        ctx = MockContext()
+        self.assertEqual(app.currency_filter(ctx, None), "0.00")
 
     def test_currency_filter_invalid(self):
-        self.assertEqual(app.currency_filter("invalid"), "0.00")
+        ctx = MockContext()
+        self.assertEqual(app.currency_filter(ctx, "invalid"), "0.00")
+
+    def test_currency_filter_unformattable(self):
+        ctx = MockContext()
+        # Test an unformattable object such as a list or a dict
+        self.assertEqual(app.currency_filter(ctx, []), "0.00")
+        self.assertEqual(app.currency_filter(ctx, {}), "0.00")
 
 if __name__ == '__main__':
     unittest.main()
