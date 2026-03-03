@@ -100,42 +100,17 @@ class TestVATReportGenerator(unittest.TestCase):
 import sys
 from unittest.mock import MagicMock, ANY
 
-# Mock dependencies before importing app
-sys.modules['flask'] = MagicMock()
-sys.modules['mysql'] = MagicMock()
-sys.modules['mysql.connector'] = MagicMock()
-
+# Setup standard mocking using mock_env
+import tests.mock_env
 import unittest
 from unittest.mock import patch
 import app as app_module
 from datetime import date
 
-# Configure app mock
-mock_flask_class = MagicMock()
-mock_app_instance = MagicMock()
-
-def route_side_effect(*args, **kwargs):
-    def decorator(f):
-        return f
-    return decorator
-
-mock_app_instance.route.side_effect = route_side_effect
-mock_flask_class.return_value = mock_app_instance
-sys.modules['flask'].Flask = mock_flask_class
-
-# Reload app to apply mock
-if 'app' in sys.modules:
-    del sys.modules['app']
+# Setup custom mocks on top of the generic mock_env
+import tests.mock_env
 import app as app_module
-
-# Configure globals
-app_module.render_template = MagicMock(return_value="Rendered Template")
-app_module.request = MagicMock()
-mock_session_store = {}
-app_module.session = mock_session_store
-app_module.redirect = MagicMock()
-app_module.url_for = MagicMock()
-app_module.flash = MagicMock()
+app_module.render_template.return_value = "Rendered Template"
 
 class TestVatReport(unittest.TestCase):
     def setUp(self):
@@ -143,17 +118,21 @@ class TestVatReport(unittest.TestCase):
         app_module.db = self.mock_db
         app_module.app_initialized = True
 
-        mock_session_store.clear()
-        mock_session_store['user_id'] = 'ADM001'
-        mock_session_store['user_pk'] = 1
-        mock_session_store['username'] = 'admin'
+        # Use patch.dict instead of modifying the global MagicMock directly for session variables
+        self.session_patcher = patch.dict('app.session', {'user_id': 'ADM001', 'user_pk': 1, 'username': 'admin'})
+        self.session_patcher.start()
 
         # Reset mocks
         app_module.render_template.reset_mock()
 
+    def tearDown(self):
+        self.session_patcher.stop()
+
     def test_vat_not_registered(self):
         """Test response when company is not VAT registered."""
         def side_effect(query, params=None, commit=False):
+            if "SELECT * FROM User_Rights" in query:
+                return [{'Access_Reports': 1}]
             if "SELECT Access_Reports FROM User_Rights" in query:
                 return [{'Access_Reports': 1}]
             if "SELECT vat_registered FROM company" in query:
@@ -162,12 +141,13 @@ class TestVatReport(unittest.TestCase):
 
         self.mock_db.execute_query.side_effect = side_effect
 
-        response = app_module.vat_report()
+        with app_module.app.test_request_context('/vat_report'):
+            response = app_module.vat_report()
 
-        self.assertEqual(response, "Rendered Template")
-        args, kwargs = app_module.render_template.call_args
-        self.assertEqual(args[0], 'vat_report.html')
-        self.assertEqual(kwargs['vat_enabled'], False)
+            self.assertEqual(response, "Rendered Template")
+            args, kwargs = app_module.render_template.call_args
+            self.assertEqual(args[0], 'vat_report.html')
+            self.assertEqual(kwargs['vat_enabled'], False)
 
     def test_vat_report_happy_path(self):
         """Test successful VAT report generation with mocked data."""
@@ -208,7 +188,8 @@ class TestVatReport(unittest.TestCase):
                     'supplier': 'Test Supplier',
                     'tin': '987654321',
                     'total': 590.0,
-                    'rate': 18.0
+                    'rate': 18.0,
+                    'suppliers_invoice_JV': 100
                 }]
 
             # Schedule 04 - Reversals (Credit/Debit Notes)
@@ -226,6 +207,8 @@ class TestVatReport(unittest.TestCase):
 
             # --- Simple/Metadata Queries ---
 
+            if "SELECT * FROM User_Rights" in q_norm:
+                return [{'Access_Reports': 1}]
             if "SELECT Access_Reports FROM User_Rights" in q_norm:
                 return [{'Access_Reports': 1}]
             if "SELECT vat_registered FROM company" in q_norm:
@@ -247,12 +230,13 @@ class TestVatReport(unittest.TestCase):
 
         self.mock_db.execute_query.side_effect = side_effect
 
-        response = app_module.vat_report()
+        with app_module.app.test_request_context('/vat_report'):
+            response = app_module.vat_report()
 
-        self.assertEqual(response, "Rendered Template")
-        args, kwargs = app_module.render_template.call_args
-        self.assertEqual(args[0], 'vat_report.html')
-        self.assertEqual(kwargs['vat_enabled'], True)
+            self.assertEqual(response, "Rendered Template")
+            args, kwargs = app_module.render_template.call_args
+            self.assertEqual(args[0], 'vat_report.html')
+            self.assertEqual(kwargs['vat_enabled'], True)
 
         summary = kwargs['summary']
         # Output: 1000 + 1000 = 2000 Base. VAT: 180 + 180 = 360.
