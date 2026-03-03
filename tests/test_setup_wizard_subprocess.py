@@ -15,6 +15,12 @@ import setup_wizard
 
 class TestSetupWizardSubprocess(unittest.TestCase):
 
+    @patch('builtins.open', new_callable=mock_open, read_data="MOCK SCHEMA CONTENT")
+    def test_read_schema_file(self, mock_file):
+        content = setup_wizard.read_schema_file('test_schema.sql')
+        self.assertEqual(content, "MOCK SCHEMA CONTENT")
+        mock_file.assert_called_once_with('test_schema.sql', 'r')
+
     @patch('setup_wizard.input')
     @patch('builtins.print') # Suppress print output globally
     @patch('mysql.connector.connect') # Patch where it is used or defined
