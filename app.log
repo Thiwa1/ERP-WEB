@@ -110,3 +110,27 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 10:08:53,821 - root - ERROR - Cash Payment Error: DB Error
 2026-03-03 10:11:04,415 - root - ERROR - Cash Payment Error: DB Error
 2026-03-03 10:16:43,531 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 10:36:46,919 - root - INFO - Creating default account: Account Payable
+2026-03-03 10:36:46,919 - root - INFO - Creating default account: Account Receivable
+2026-03-03 10:36:46,919 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 10:36:46,920 - root - INFO - Creating default account: Sales
+2026-03-03 10:36:46,920 - root - INFO - Creating default account: Inventory
+2026-03-03 10:36:46,920 - root - INFO - Creating default account: VAT Control
+2026-03-03 10:36:46,920 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 10:36:46,927 - root - INFO - Default categories checked/created.
+2026-03-03 10:37:48,425 - root - INFO - Creating default account: Account Payable
+2026-03-03 10:37:48,425 - root - INFO - Creating default account: Account Receivable
+2026-03-03 10:37:48,425 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 10:37:48,426 - root - INFO - Creating default account: Sales
+2026-03-03 10:37:48,426 - root - INFO - Creating default account: Inventory
+2026-03-03 10:37:48,426 - root - INFO - Creating default account: VAT Control
+2026-03-03 10:37:48,426 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 10:37:48,432 - root - INFO - Default categories checked/created.
+2026-03-03 10:41:15,466 - root - INFO - Creating default account: Account Payable
+2026-03-03 10:41:15,468 - root - INFO - Creating default account: Account Receivable
+2026-03-03 10:41:15,468 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 10:41:15,469 - root - INFO - Creating default account: Sales
+2026-03-03 10:41:15,469 - root - INFO - Creating default account: Inventory
+2026-03-03 10:41:15,469 - root - INFO - Creating default account: VAT Control
+2026-03-03 10:41:15,469 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 10:41:15,476 - root - INFO - Default categories checked/created.
