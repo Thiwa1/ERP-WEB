@@ -618,8 +618,8 @@ def index():
             cursor.execute("SHOW TABLES LIKE 'migrations'")
             if not cursor.fetchone():
                 return redirect(url_for('installing'))
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error checking for migrations table: {e}")
     return render_template('index.html')
 
 @app.route('/installing')
