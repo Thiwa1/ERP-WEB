@@ -5238,48 +5238,70 @@ def bank_payment_reversal():
 @app.route('/bank_payment_reversal/get_details')
 @login_required
 def bank_payment_reversal_details():
-    jv = request.args.get('jv')
-    if not jv: return {'error': 'No JV provided'}, 400
+    jv_param = request.args.get('jv')
+    if not jv_param: return {'error': 'No JV provided'}, 400
+
+    jvs = [j.strip() for j in jv_param.split(',') if j.strip()]
+    if not jvs: return {'error': 'No valid JVs provided'}, 400
+
+    format_strings = ','.join(['%s'] * len(jvs))
+    jv_tuple = tuple(jvs)
 
     # Fetch details text
-    query = """
+    query = f"""
         SELECT
+            jv_numbers_jv_id,
             suppliers_invoice_number as IV_No,
             suppliers_VAT_rate as VAT_Rate,
             cash_book_recode_cr as Paid_Amount
         FROM suppliers_invoice_data
         LEFT JOIN cash_book_recode ON suppliers_invoice_data.s_i_id = cash_book_recode_suplier_oustanding_id
-        WHERE jv_numbers_jv_id = %s
+        WHERE jv_numbers_jv_id IN ({format_strings})
     """
-    inv_rows = db.execute_query(query, (jv,))
+    inv_rows = db.execute_query(query, jv_tuple)
 
-    # Also check Bank Book Record for bank payments specifically (schema variation handling)
-    if not inv_rows:
-       query_bank = """
-           SELECT bank_book__naration, bank_book__recode_cr
-           FROM bank_book_recod
-           WHERE jv_numbers_jv_id = %s
-       """
-       bank_rows = db.execute_query(query_bank, (jv,))
-       text = f"Bank Payment Reversal (JV: {jv})\n" + "-"*30 + "\n"
-       for r in bank_rows:
-           text += f"Narration: {r['bank_book__naration']} | Amount: {r['bank_book__recode_cr']}\n"
-    else:
-        text = f"Journal Voucher {jv} Impact\n" + "-"*30 + "\n"
-        for r in inv_rows:
-            text += f"Inv: {r['IV_No']} | VAT: {r['VAT_Rate']}% | Paid: {r['Paid_Amount']}\n"
+    # Pre-fetch Bank Book Record for bank payments specifically (schema variation handling)
+    query_bank = f"""
+        SELECT jv_numbers_jv_id, bank_book__naration, bank_book__recode_cr
+        FROM bank_book_recod
+        WHERE jv_numbers_jv_id IN ({format_strings})
+    """
+    bank_rows_all = db.execute_query(query_bank, jv_tuple)
 
     # Fetch GL Entries
-    gl_query = "SELECT account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv = %s"
-    gl_rows = db.execute_query(gl_query, (jv,))
+    gl_query = f"SELECT entry_jv, account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv IN ({format_strings})"
+    gl_rows = db.execute_query(gl_query, jv_tuple)
 
-    text += "\nGL Entries:\n"
-    for gl in gl_rows:
-        text += f"{gl['account_name']}: DR {gl['enty_values_DR']} | CR {gl['enty_values_CR']}\n"
+    text = ""
+    for current_jv in jvs:
+        jv_inv_rows = [r for r in inv_rows if str(r.get('jv_numbers_jv_id')) == current_jv]
+
+        if not jv_inv_rows:
+           bank_rows = [r for r in bank_rows_all if str(r.get('jv_numbers_jv_id')) == current_jv]
+           if len(jvs) > 1 and text:
+               text += f"\n"
+           text += f"Bank Payment Reversal (JV: {current_jv})\n" + "-"*30 + "\n"
+           for r in bank_rows:
+               text += f"Narration: {r['bank_book__naration']} | Amount: {r['bank_book__recode_cr']}\n"
+        else:
+            if len(jvs) > 1 and text:
+               text += f"\n"
+            text += f"Journal Voucher {current_jv} Impact\n" + "-"*30 + "\n"
+            for r in jv_inv_rows:
+                text += f"Inv: {r['IV_No']} | VAT: {r['VAT_Rate']}% | Paid: {r['Paid_Amount']}\n"
+
+        jv_gl_rows = [gl for gl in gl_rows if str(gl.get('entry_jv')) == current_jv]
+        if jv_gl_rows:
+            if len(jvs) > 1:
+                text += f"\nGL Entries (JV: {current_jv}):\n"
+            else:
+                text += "\nGL Entries:\n"
+            for gl in jv_gl_rows:
+                text += f"{gl['account_name']}: DR {gl['enty_values_DR']} | CR {gl['enty_values_CR']}\n"
 
     text += "\nDo you need to reverse this entry?"
 
-    return {'details': text}
+    return {'details': text.strip()}
 
 @app.route('/bank_payment_reversal/process', methods=['POST'])
 @login_required
