@@ -33,11 +33,9 @@ class TestBankCashCreation(unittest.TestCase):
         self.patchers.append(p_user)
 
         # FIX: Patch Session to satisfy login_required
-        p_sess = patch('app.session')
+        p_sess = patch.dict('app.session', {'user_id': 1, 'user_pk': 1, 'username': 'admin'})
         self.mock_session = p_sess.start()
         self.patchers.append(p_sess)
-        self.mock_session.__contains__.side_effect = lambda k: k == 'user_id'
-        self.mock_session.get.side_effect = lambda k, d=None: 'admin' if k == 'user_id' else d
 
     def tearDown(self):
         for p in reversed(self.patchers):
