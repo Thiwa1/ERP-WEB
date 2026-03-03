@@ -105,7 +105,11 @@ class TestInvoiceCreation(unittest.TestCase):
         }
 
         # Configure Request
-        mock_flask.request.form = form_data
+        class MockForm(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        mock_flask.request.form = MockForm(form_data)
         mock_flask.request.method = 'POST'
 
         # Configure DB Returns
@@ -143,13 +147,19 @@ class TestInvoiceCreation(unittest.TestCase):
         # Check Outstanding Record
         self.assertTrue(any("INSERT INTO Invoice_Oustanding" in q for q in queries))
 
-        # Check Invoice Records (Details) - Should appear 3 times (2 inv + 1 non-inv)
-        rec_calls = [q for q in queries if "INSERT INTO Invoice_Recode" in q]
-        self.assertEqual(len(rec_calls), 3)
+        # In recent updates, batch inserts (executemany) are used instead of execute for items
+        executemany_calls = self.mock_cursor.executemany.call_args_list
+        em_queries = [c[0][0] for c in executemany_calls]
+
+        # Check Invoice Records (Details) - Should appear in executemany with 3 items (2 inv + 1 non-inv)
+        rec_calls = [q for q in em_queries if "INSERT INTO Invoice_Recode" in q]
+        self.assertEqual(len(rec_calls), 1)
+        self.assertEqual(len(executemany_calls[0][0][1]), 3)
 
         # Check Inventory Movement (Only for Inventory items)
-        inv_mov_calls = [q for q in queries if "INSERT INTO inventory_recod" in q]
-        self.assertEqual(len(inv_mov_calls), 2)
+        inv_mov_calls = [q for q in em_queries if "INSERT INTO inventory_recod" in q]
+        self.assertEqual(len(inv_mov_calls), 1)
+        self.assertEqual(len(executemany_calls[1][0][1]), 2)
 
         # Check GL Entries
         # Sales (Income), Receivables, VAT, COGS, Inventory (Asset)
@@ -170,10 +180,15 @@ class TestInvoiceCreation(unittest.TestCase):
         # Empty items
         form_data = {
             'customer': 'Test Customer',
+            'invoice_date': '2023-10-25',
             'inventory_items_json': '[]',
             'non_inventory_items_json': '[]'
         }
-        mock_flask.request.form = form_data
+        class MockForm(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        mock_flask.request.form = MockForm(form_data)
 
         app.submit_invoice()
 
@@ -190,10 +205,15 @@ class TestInvoiceCreation(unittest.TestCase):
         inv_items = [{'name': 'Item A', 'qty': 1, 'price': 100, 'cost': 80, 'unit': 'Nos', 'code': 'A1'}]
         form_data = {
             'customer': 'Test Customer',
+            'invoice_date': '2023-10-25',
             'inventory_items_json': json.dumps(inv_items),
             'non_inventory_items_json': '[]'
         }
-        mock_flask.request.form = form_data
+        class MockForm(dict):
+            def get(self, key, default=None):
+                return super().get(key, default)
+
+        mock_flask.request.form = MockForm(form_data)
 
         # Mock execute to raise exception on specific query
         def execute_side_effect(query, params=None):
