@@ -10,6 +10,8 @@ mock_app_instance.secret_key = 'test_secret'
 
 # Fix @app.route decorator to return the function
 def route_side_effect(*args, **kwargs):
+    if args and callable(args[0]):
+        return args[0]
     def decorator(f):
         return f
     return decorator
@@ -23,6 +25,8 @@ mock_app_instance.context_processor.side_effect = context_processor_side_effect
 
 # Fix @app.template_filter
 def template_filter_side_effect(*args, **kwargs):
+    if args and callable(args[0]):
+        return args[0]
     def decorator(f):
         return f
     return decorator
