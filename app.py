@@ -112,7 +112,11 @@ db = Database(db_config)
 MASTER_DB_NAME = 'Book_keeping_Master'
 
 def get_session_db_name():
-    return session.get('tenant_db')
+    """Returns the correct database name based on session."""
+    # If standard user
+    if 'db_name' in session:
+        return session['db_name']
+    return db_config['database']
 
 db.set_db_name_getter(get_session_db_name)
 
