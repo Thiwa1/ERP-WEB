@@ -176,14 +176,3 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 17:16:27,649 - root - INFO - Default categories checked/created.
 2026-03-03 17:16:27,659 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 17:16:27,891 - root - ERROR - POS Error: DB Fail
-2026-03-03 18:35:52,639 - root - INFO - Creating default account: Account Payable
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: Account Receivable
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: Cost Of Goods Sold
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: Sales
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: Inventory
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: VAT Control
-2026-03-03 18:35:52,640 - root - INFO - Creating default account: Cash In Hand
-2026-03-03 18:35:52,648 - root - INFO - Default categories checked/created.
-2026-03-03 18:35:52,656 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
-2026-03-03 18:35:52,685 - root - ERROR - Cash Payment Error: DB Error
-2026-03-03 18:35:52,888 - root - ERROR - POS Error: DB Fail
