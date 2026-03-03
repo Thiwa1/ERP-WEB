@@ -8179,7 +8179,8 @@ def submit_invoice():
                     years, months, days = w_res
                     # Logic retained from original code (pass)
                     pass
-                except:
+                except Exception as e:
+                    logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
                     pass
 
             # Add to batch for Invoice_Recode
