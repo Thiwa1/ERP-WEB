@@ -198,5 +198,31 @@ class TestLogin(unittest.TestCase):
         else:
             self.assertIn(b'Connection Refused', response.data)
 
+    def test_logout(self):
+        """Test GET /logout clears session and redirects to login."""
+        # Set up a mock session first
+        if IS_SANDBOX:
+            app.session['user_id'] = 'testuser'
+            app.session['user_pk'] = 1
+        else:
+            with self.client.session_transaction() as sess:
+                sess['user_id'] = 'testuser'
+                sess['user_pk'] = 1
+
+        response = self.client.get('/logout')
+
+        # Check status code (either 302 for real Flask or 200 for our MockClient)
+        if IS_SANDBOX:
+            self.assertEqual(response.status_code, 200)
+            self.assertIn(b'REDIRECT:/login', response.data)
+            self.assertNotIn('user_id', app.session)
+            self.assertNotIn('user_pk', app.session)
+        else:
+            self.assertEqual(response.status_code, 302)
+            self.assertEqual(response.location, '/login')
+            with self.client.session_transaction() as sess:
+                self.assertNotIn('user_id', sess)
+                self.assertNotIn('user_pk', sess)
+
 if __name__ == '__main__':
     unittest.main()

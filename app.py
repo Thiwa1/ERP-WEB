@@ -16,6 +16,8 @@ import random # For mocking exchange rate
 import subprocess
 import mysql.connector
 import urllib.request
+import typing
+from dataclasses import dataclass
 
 app = flask.Flask(__name__)
 
@@ -23,6 +25,23 @@ app = flask.Flask(__name__)
 exchange_rate_cache = {}
 CACHE_DURATION = 3600  # 1 hour
 import tempfile
+
+# Global cache for categories
+_category_cache = {}
+
+def get_cached_categories(db):
+    global _category_cache
+    if not _category_cache:
+        bs = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+        pl = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+        cf = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
+        _category_cache = {'bs_cats': bs, 'pl_cats': pl, 'cf_cats': cf}
+    return _category_cache['bs_cats'], _category_cache['pl_cats'], _category_cache['cf_cats']
+
+def clear_category_cache():
+    global _category_cache
+    _category_cache.clear()
+
 import services
 from num2words import num2words
 from dotenv import load_dotenv
@@ -583,7 +602,7 @@ def login():
                         db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
                         migrated = True
                     except Exception as e:
-                        print(f"Error migrating password for user {user['id']}: {e}")
+                        logging.error(f"Error migrating password for user {user['id']}")
 
             if verified:
                 session['user_id'] = user['User_Code']
@@ -618,8 +637,8 @@ def index():
             cursor.execute("SHOW TABLES LIKE 'migrations'")
             if not cursor.fetchone():
                 return redirect(url_for('installing'))
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error checking for migrations table: {e}")
     return render_template('index.html')
 
 @app.route('/installing')
@@ -764,8 +783,8 @@ def add_customer():
     try:
         salutations_data = db.execute_query("SELECT salutation FROM suplier_suporting_1")
         salutations = [row['salutation'] for row in salutations_data]
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error loading salutations: {e}")
     return render_template('add_customer.html', salutations=salutations)
 
 # --- Add Supplier (New) ---
@@ -856,8 +875,8 @@ def add_supplier():
     try:
         salutations_data = db.execute_query("SELECT salutation FROM suplier_suporting_1")
         salutations = [row['salutation'] for row in salutations_data]
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error loading salutations: {e}")
     return render_template('add_supplier.html', salutations=salutations)
 
 @app.route('/add_salutation', methods=['POST'])
@@ -1154,10 +1173,12 @@ def cash_flow_categories():
             if category_id == 0:
                 # Insert
                 db.execute_query("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, level), commit=True)
+                clear_category_cache()
                 flash('Category added successfully', 'success')
             else:
                 # Update
                 db.execute_query("UPDATE cf_catogory SET catogory_name = %s, hold_level = %s WHERE id = %s", (name, level, category_id), commit=True)
+                clear_category_cache()
                 flash('Category updated successfully', 'success')
         except Exception as e:
             flash(f'Error saving category: {str(e)}', 'danger')
@@ -1180,9 +1201,11 @@ def delete_cash_flow_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM cf_catogory WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         elif single_id:
             db.execute_query("DELETE FROM cf_catogory WHERE id = %s", (single_id,), commit=True)
+            clear_category_cache()
             flash('Category deleted', 'success')
         else:
             flash('No items selected', 'info')
@@ -1299,9 +1322,7 @@ def add_new_account():
         return redirect(url_for('add_new_account'))
 
     # Load Data for Dropdowns
-    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
+    bs_cats, pl_cats, cf_cats = get_cached_categories(db)
     existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
     currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
     if not currencies: # Fallback if table empty
@@ -1341,6 +1362,7 @@ def balance_sheet_category():
                     VALUES (0, %s, %s, %s, %s)
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
+                clear_category_cache()
                 flash('Category created successfully', 'success')
             else:
                 # Update
@@ -1351,6 +1373,7 @@ def balance_sheet_category():
                     WHERE id = %s
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
+                clear_category_cache()
                 flash('Category updated successfully', 'success')
 
         except Exception as e:
@@ -1372,6 +1395,7 @@ def delete_balance_sheet_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM balance_sheet_category WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         except Exception as e:
             flash(f'Error deleting categories: {str(e)}', 'danger')
@@ -1407,6 +1431,7 @@ def pl_category():
                     VALUES (0, %s, %s, %s, %s)
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
+                clear_category_cache()
                 flash('P&L Category created successfully', 'success')
             else:
                 # Update
@@ -1417,6 +1442,7 @@ def pl_category():
                     WHERE id = %s
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
+                clear_category_cache()
                 flash('P&L Category updated successfully', 'success')
 
         except Exception as e:
@@ -1438,6 +1464,7 @@ def delete_pl_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM `p&l_category` WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         except Exception as e:
             flash(f'Error deleting categories: {str(e)}', 'danger')
@@ -1726,8 +1753,7 @@ def control_panel():
     """)
 
     # 5. Fetch Categories for Dropdown
-    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+    bs_cats, pl_cats, _ = get_cached_categories(db)
 
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
@@ -1768,8 +1794,7 @@ def control_panel_update():
             cursor = conn.cursor()
             conn.start_transaction()
 
-            for name, pos, aid in updates:
-                cursor.execute(sql, (name, pos, aid))
+            cursor.executemany(sql, updates)
 
             conn.commit()
             cursor.close()
@@ -2055,9 +2080,7 @@ def bulk_upload_gl():
 
                 # Fetch Existing Data for Validation/Dropdowns
                 existing_accounts = {a['account_name']: a for a in db.execute_query("SELECT account_name, account_basment FROM new_account_table")}
-                bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-                pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-                cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+                bs_cats, pl_cats, cf_cats = get_cached_categories(db)
 
                 return render_template('bulk_upload_review.html',
                                        rows=rows,
@@ -2293,9 +2316,7 @@ def bulk_upload_tb():
                     flash(f'Found {len(missing_accounts)} missing accounts. Please create them first.', 'warning')
 
                     # Fetch categories again for quick create modal
-                    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-                    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-                    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+                    bs_cats, pl_cats, cf_cats = get_cached_categories(db)
 
                     return render_template('bulk_upload_tb_review.html',
                                            rows=rows, total_dr=total_dr, total_cr=total_cr,
@@ -2774,28 +2795,37 @@ def cash_payment_submit():
             """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
 
         # 4. Process Individual Payments (Update Outstanding)
-        for p in payments:
-            # Update Invoice Outstanding using Stored Procedure (vender_settele)
-            # Parameters: curent_value (outstanding), settelment_value (new payment), id
-            # Note: The payment amount here is the GROSS settlement amount, so AP reduces by full amount.
-            cursor.execute("SELECT suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
-            res = cursor.fetchone()
-            current_outstanding = parse_float(res[0] or 0)
+        if payments:
+            inv_ids = [p['id'] for p in payments]
+            format_strings = ','.join(['%s'] * len(inv_ids))
+            cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", tuple(inv_ids))
 
-            # Call Stored Procedure
-            cursor.execute("CALL vender_settele(%s, %s, %s)", (current_outstanding, p['amount'], p['id']))
+            outstanding_map = {}
+            for row in cursor.fetchall():
+                outstanding_map[str(row[0])] = parse_float(row[1] or 0)
 
-            # Insert Cash Book Record (Net Payment?)
-            # Usually Cash Book reflects actual cash movement.
-            # So if we pay 900 (1000 inv - 100 tax), cash book should show 900.
-            # But we are iterating payments.
-            # If we split proportionately: Net_Item = Item_Gross * (Net_Total / Gross_Total)
+            call_params = []
+            insert_params = []
 
-            net_item_amount = p['amount']
-            if total_payment > 0:
-                net_item_amount = p['amount'] * (net_payment / total_payment)
+            for p in payments:
+                current_outstanding = outstanding_map.get(str(p['id']), 0.0)
+                call_params.append((current_outstanding, p['amount'], p['id']))
 
-            cursor.execute("""
+                net_item_amount = p['amount']
+                if total_payment > 0:
+                    net_item_amount = p['amount'] * (net_payment / total_payment)
+
+                insert_params.append((
+                    net_item_amount, cash_account, narration,
+                    p['id'], supplier_name, jv_no,
+                    p['id'], new_voucher, current_user_pk, payment_date
+                ))
+
+            # Batch execute Stored Procedure calls
+            cursor.executemany("CALL vender_settele(%s, %s, %s)", call_params)
+
+            # Batch insert Cash Book Records
+            cursor.executemany("""
                 INSERT INTO cash_book_recode (
                     cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
                     cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
@@ -2803,11 +2833,7 @@ def cash_payment_submit():
                     cash_book_po_no, cash_book_suplier_oustanding_id,
                     cash_book_recod_voucher_no, User_Enter, Payment_Date
                 ) VALUES (0, %s, %s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
-            """, (
-                net_item_amount, cash_account, narration,
-                p['id'], supplier_name, jv_no,
-                p['id'], new_voucher, current_user_pk, payment_date
-            ))
+            """, insert_params)
 
         conn.commit()
         flash(f'Cash Payment processed successfully. Voucher No: {new_voucher}', 'success')
@@ -4243,12 +4269,27 @@ def update_inventory_prices():
     spm_prices = request.form.getlist('spm_prices[]')
     loyalty_prices = request.form.getlist('loyalty_prices[]')
 
-    for i in range(len(item_ids)):
-        # Check if price record exists
-        link_id = item_ids[i]
-        exists = db.execute_query("SELECT id FROM inventory_price_recod WHERE inventory_price_link = %s", (link_id,))
+    if not item_ids:
+        flash('No items to update', 'warning')
+        return redirect(url_for('inventory_price_editing'))
 
-        if exists:
+    # Check existence in bulk
+    placeholders = ', '.join(['%s'] * len(item_ids))
+    query = f"SELECT inventory_price_link FROM inventory_price_recod WHERE inventory_price_link IN ({placeholders})"
+    existing_records = db.execute_query(query, tuple(item_ids))
+
+    existing_links = set()
+    if existing_records:
+        # execute_query with DictionaryCursor returns list of dicts
+        if isinstance(existing_records[0], dict):
+            existing_links = {str(r['inventory_price_link']) for r in existing_records}
+        else:
+            existing_links = {str(r[0]) for r in existing_records}
+
+    for i in range(len(item_ids)):
+        link_id = str(item_ids[i])
+
+        if link_id in existing_links:
             db.execute_query("""
                 UPDATE inventory_price_recod SET
                 inventory_price_selling = %s,
@@ -6196,7 +6237,7 @@ def pos_api_login():
                     new_hash = generate_password_hash(password)
                     db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
                 except Exception as e:
-                    print(f"Error migrating POS user {settings['Id']}: {e}")
+                    logging.error(f"Error migrating POS user {settings['Id']}")
 
         if verified:
             return {
@@ -7386,6 +7427,7 @@ def ensure_default_categories():
         conn.commit()
         cursor.close()
         conn.close()
+        clear_category_cache()
         logging.info("Default categories checked/created.")
 
     except Exception as e:
@@ -7940,29 +7982,42 @@ def create_outstanding_record(cursor, invoice_no, inv_date, grand_total, due_dat
     """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
     return cursor.lastrowid
 
-def process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, invoice_date, customer_name, items, is_inventory):
-    for item in items:
+@dataclass
+class InvoiceItemContext:
+    cursor: typing.Any
+    current_user: str
+    jv_no: str
+    invoice_no: str
+    outstanding_id: int
+    location: str
+    invoice_date: str
+    customer_name: str
+    items: list
+    is_inventory: bool
+
+def process_invoice_items(ctx: InvoiceItemContext):
+    for item in ctx.items:
         # Warranty Logic
-        if is_inventory:
-            cursor.execute("""
+        if ctx.is_inventory:
+            ctx.cursor.execute("""
                 SELECT yeas_, month, date_ FROM inventory_vorenty_period
                 WHERE name = %s LIMIT 1
             """, (item['name'],))
             # Logic for warranty calculation could be added here if needed
 
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
                 recode_date
             ) VALUES (%s, %s, %s, %s, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
         """, (
-            item['name'], item['qty'], item['price'], 1 if is_inventory else 0, jv_no, current_user,
-            customer_name, outstanding_id, item['unit'], datetime.now()
+            item['name'], item['qty'], item['price'], 1 if ctx.is_inventory else 0, ctx.jv_no, ctx.current_user,
+            ctx.customer_name, ctx.outstanding_id, item['unit'], datetime.now()
         ))
 
-        if is_inventory:
-            cursor.execute("""
+        if ctx.is_inventory:
+            ctx.cursor.execute("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_mesrmet,
                     inventory_recod_unit_price, inventory_recod_movment_out,
@@ -7973,7 +8028,7 @@ def process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_i
                 ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
             """, (
                 item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                current_user, datetime.now(), location, invoice_date, jv_no, outstanding_id, invoice_no
+                ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
             ))
 
 def post_invoice_gl_entries(cursor, current_user, jv_no, invoice_date, job_no, totals):
@@ -8143,7 +8198,8 @@ def submit_invoice():
                     years, months, days = w_res
                     # Logic retained from original code (pass)
                     pass
-                except:
+                except Exception as e:
+                    logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
                     pass
 
             # Add to batch for Invoice_Recode
