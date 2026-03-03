@@ -7913,9 +7913,9 @@ def calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat):
     }
 
 def generate_invoice_number(cursor):
-    cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
-    inv_id_seq = cursor.lastrowid
-    return f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+    cursor.execute("SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_no, 5) AS UNSIGNED)), 0) FROM customer_outstanding")
+    max_inv = cursor.fetchone()[0]
+    return f"INV-{max_inv + 1:05d}"
 
 def create_invoice_jv(cursor, current_user, narration):
     cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
