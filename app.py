@@ -1,4 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
+import flask
+from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
 from database import Database
 from datetime import datetime, date
 from functools import wraps
@@ -16,7 +17,7 @@ import subprocess
 import mysql.connector
 import urllib.request
 
-app = Flask(__name__)
+app = flask.Flask(__name__)
 
 # Global cache for exchange rates
 exchange_rate_cache = {}
@@ -35,7 +36,7 @@ import os
 import migrations
 import secrets
 
-app = Flask(__name__)
+app = flask.Flask(__name__)
 
 # Configure Logging
 logging.basicConfig(
