@@ -164,3 +164,5 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 11:11:15,914 - root - INFO - Default categories checked/created.
 2026-03-03 11:11:15,920 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 11:11:16,093 - root - ERROR - POS Error: DB Fail
+2026-03-03 14:41:10,254 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 14:43:02,583 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
