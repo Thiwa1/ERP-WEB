@@ -166,24 +166,3 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 11:11:16,093 - root - ERROR - POS Error: DB Fail
 2026-03-03 14:41:10,254 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 14:43:02,583 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
-2026-03-03 17:37:27,465 - root - INFO - Migrating: Adding Access_Inventory to User_Rights
-2026-03-03 17:37:27,466 - root - INFO - Migrating: Adding Access_POS to User_Rights
-2026-03-03 17:37:27,466 - root - INFO - Migrating: Adding Access_Accounting to User_Rights
-2026-03-03 17:37:27,466 - root - INFO - Migrating: Adding Access_Reports to User_Rights
-2026-03-03 17:37:27,466 - root - INFO - Migrating: Adding Access_Reversals to User_Rights
-2026-03-03 17:37:27,467 - root - INFO - Migrating: Adding uom_secondary to inventoy_items
-2026-03-03 17:37:27,467 - root - INFO - Migrating: Adding uom_conversion_rate to inventoy_items
-2026-03-03 17:37:27,468 - root - INFO - Migrating: Adding suppliers_TIN to suppliers
-2026-03-03 17:37:27,468 - root - INFO - Migrating: Adding suppliers_NIC to suppliers
-2026-03-03 17:37:27,468 - root - INFO - Migrating: Adding vat_registered to company
-2026-03-03 17:37:27,469 - root - INFO - Migrating: Adding status to OP_NO_Table
-2026-03-03 17:37:27,470 - root - INFO - Migrating: Adding status to jv_numbers
-2026-03-03 17:37:27,473 - root - INFO - Default categories checked/created.
-2026-03-03 17:37:27,473 - root - INFO - Users exist in database. Skipping default user creation.
-2026-03-03 17:37:27,473 - root - INFO - Creating default account: Account Payable
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: Account Receivable
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: Cost Of Goods Sold
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: Sales
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: Inventory
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: VAT Control
-2026-03-03 17:37:27,474 - root - INFO - Creating default account: Cash In Hand
