@@ -1794,8 +1794,7 @@ def control_panel_update():
             cursor = conn.cursor()
             conn.start_transaction()
 
-            for name, pos, aid in updates:
-                cursor.execute(sql, (name, pos, aid))
+            cursor.executemany(sql, updates)
 
             conn.commit()
             cursor.close()
