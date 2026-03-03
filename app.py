@@ -272,14 +272,16 @@ def create_tenant_db(company_name, username, password, email):
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,))
 
         # Insert into Master
-        master_db.execute_query("INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)", (company_name, db_name))
-        tenant_id_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (db_name,))
-        tenant_id = tenant_id_res[0]['id']
+        tenant_id = master_db.execute_query(
+            "INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)",
+            (company_name, db_name),
+            commit=True
+        )
 
         master_db.execute_query("""
             INSERT INTO users (username, password, email, tenant_id)
             VALUES (%s, %s, %s, %s)
-        """, (username, password, email, tenant_id))
+        """, (username, password, email, tenant_id), commit=True)
 
         return True, "Registration successful."
 
@@ -626,8 +628,10 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/')
-@login_required
 def index():
+    if 'user_id' not in session:
+        return redirect(url_for('register'))
+
     # Check if critical migration table exists, if not, force install page
     # In production, use a more robust check (e.g. system_settings table)
     try:
