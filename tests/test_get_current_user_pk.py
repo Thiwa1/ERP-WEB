@@ -1,24 +1,38 @@
-import pytest
-import tests.mock_env  # MUST BE FIRST
-from unittest.mock import patch, MagicMock
-from app import get_current_user_pk
+import sys
+import unittest
+from unittest.mock import MagicMock
+import os
 
-@pytest.fixture
-def mock_session():
-    with patch('app.session', new_callable=dict) as mock_sess:
-        yield mock_sess
+os.environ['SECRET_KEY'] = 'test_secret'
 
-def test_get_current_user_pk_success(mock_session):
-    mock_session['user_pk'] = '123'
-    assert get_current_user_pk() == 123
+import tests.mock_env
 
-def test_get_current_user_pk_missing(mock_session):
-    assert get_current_user_pk() == 0
+# 2. Import app
+import app
+app.session = tests.mock_env.mock_flask.session
 
-def test_get_current_user_pk_invalid_type(mock_session):
-    mock_session['user_pk'] = {'invalid': 'type'}
-    assert get_current_user_pk() == 0
+class TestGetCurrentUserPk(unittest.TestCase):
+    def setUp(self):
+        app.session.clear()
 
-def test_get_current_user_pk_value_error(mock_session):
-    mock_session['user_pk'] = 'abc'
-    assert get_current_user_pk() == 0
+    def test_get_current_user_pk_valid_int(self):
+        app.session['user_pk'] = 5
+        self.assertEqual(app.get_current_user_pk(), 5)
+
+    def test_get_current_user_pk_valid_string(self):
+        app.session['user_pk'] = "10"
+        self.assertEqual(app.get_current_user_pk(), 10)
+
+    def test_get_current_user_pk_missing(self):
+        self.assertEqual(app.get_current_user_pk(), 0)
+
+    def test_get_current_user_pk_invalid_string(self):
+        app.session['user_pk'] = "abc"
+        self.assertEqual(app.get_current_user_pk(), 0)
+
+    def test_get_current_user_pk_type_error(self):
+        app.session['user_pk'] = [1, 2, 3] # lists cannot be cast to int, raising TypeError
+        self.assertEqual(app.get_current_user_pk(), 0)
+
+if __name__ == '__main__':
+    unittest.main()
