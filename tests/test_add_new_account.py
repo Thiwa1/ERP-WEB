@@ -73,18 +73,40 @@ class MockTestClient:
         mock_flask.request.files = {}
 
         # Route matching
+        import re
         handler = self.app.routes.get(path)
-        # Try dynamic routes if exact match fails (simple integer matcher)
+        route_kwargs = {}
+
+        # Try dynamic routes if exact match fails
         if not handler:
             for route, func in self.app.routes.items():
-                if '<int:' in route:
-                    # Convert /route/<int:id> -> /route/(\d+) logic simplified
-                    prefix = route.split('<')[0]
-                    if path.startswith(prefix):
-                        # Extract id?
+                if '<' in route:
+                    pattern = route
+
+                    def replacer(match):
+                        inner = match.group(1)
+                        if ':' in inner:
+                            type_, name = inner.split(':', 1)
+                            if type_ == 'int':
+                                return f'(?P<{name}>\\d+)'
+                            elif type_ == 'string':
+                                return f'(?P<{name}>[^/]+)'
+                            else:
+                                return f'(?P<{name}>[^/]+)'
+                        else:
+                            return f'(?P<{inner}>[^/]+)'
+
+                    pattern = re.sub(r'<([^>]+)>', replacer, pattern)
+                    pattern = f"^{pattern}$"
+
+                    match = re.match(pattern, path)
+                    if match:
                         handler = func
-                        # In real flask we pass args, here we ignore for simplicity
-                        # or we mock request.view_args
+                        for k, v in match.groupdict().items():
+                            if f'<int:{k}>' in route:
+                                route_kwargs[k] = int(v)
+                            else:
+                                route_kwargs[k] = v
                         break
                 elif route == path:
                     handler = func
@@ -98,16 +120,19 @@ class MockTestClient:
             # Clear previous flashes
             mock_flask.session['_flashes'] = []
 
-            # Call handler (with args if needed, but here we simplify)
-            # If handler takes args (e.g. jv_no), we need to supply them.
-            # Introspection?
+            # Call handler with correctly extracted arguments
             import inspect
             sig = inspect.signature(handler)
-            if sig.parameters:
-                # Hack: pass '1' for any arg
-                resp = handler(1)
-            else:
-                resp = handler()
+            call_kwargs = {}
+            for param_name in sig.parameters:
+                if param_name in route_kwargs:
+                    call_kwargs[param_name] = route_kwargs[param_name]
+                else:
+                    # Provide a fallback if signature expects an argument not in path,
+                    # though in well-formed routes all non-default args should match path vars.
+                    call_kwargs[param_name] = None
+
+            resp = handler(**call_kwargs)
 
             # Helper to build response data with flash messages appended
             def build_response_data(base_data):
@@ -159,6 +184,21 @@ mock_flask.wraps = lambda f: f
 sys.modules['flask'] = mock_flask
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
+
+# Mock other external dependencies
+mock_jinja2 = MagicMock()
+mock_jinja2.pass_context = lambda f: f
+sys.modules['jinja2'] = mock_jinja2
+
+mock_flask_wtf = MagicMock()
+sys.modules['flask_wtf'] = mock_flask_wtf
+mock_flask_wtf.csrf = MagicMock()
+
+sys.modules['dotenv'] = MagicMock()
+sys.modules['num2words'] = MagicMock()
+sys.modules['werkzeug'] = MagicMock()
+sys.modules['werkzeug.security'] = MagicMock()
+sys.modules['pymysql'] = MagicMock()
 
 # Now import app
 import app as app_module
