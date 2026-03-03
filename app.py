@@ -23,6 +23,23 @@ app = flask.Flask(__name__)
 exchange_rate_cache = {}
 CACHE_DURATION = 3600  # 1 hour
 import tempfile
+
+# Global cache for categories
+_category_cache = {}
+
+def get_cached_categories(db):
+    global _category_cache
+    if not _category_cache:
+        bs = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+        pl = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
+        cf = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
+        _category_cache = {'bs_cats': bs, 'pl_cats': pl, 'cf_cats': cf}
+    return _category_cache['bs_cats'], _category_cache['pl_cats'], _category_cache['cf_cats']
+
+def clear_category_cache():
+    global _category_cache
+    _category_cache.clear()
+
 import services
 from num2words import num2words
 from dotenv import load_dotenv
@@ -1150,10 +1167,12 @@ def cash_flow_categories():
             if category_id == 0:
                 # Insert
                 db.execute_query("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, level), commit=True)
+                clear_category_cache()
                 flash('Category added successfully', 'success')
             else:
                 # Update
                 db.execute_query("UPDATE cf_catogory SET catogory_name = %s, hold_level = %s WHERE id = %s", (name, level, category_id), commit=True)
+                clear_category_cache()
                 flash('Category updated successfully', 'success')
         except Exception as e:
             flash(f'Error saving category: {str(e)}', 'danger')
@@ -1176,9 +1195,11 @@ def delete_cash_flow_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM cf_catogory WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         elif single_id:
             db.execute_query("DELETE FROM cf_catogory WHERE id = %s", (single_id,), commit=True)
+            clear_category_cache()
             flash('Category deleted', 'success')
         else:
             flash('No items selected', 'info')
@@ -1295,9 +1316,7 @@ def add_new_account():
         return redirect(url_for('add_new_account'))
 
     # Load Data for Dropdowns
-    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory ORDER BY hold_level, catogory_name")
+    bs_cats, pl_cats, cf_cats = get_cached_categories(db)
     existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
     currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
     if not currencies: # Fallback if table empty
@@ -1337,6 +1356,7 @@ def balance_sheet_category():
                     VALUES (0, %s, %s, %s, %s)
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
+                clear_category_cache()
                 flash('Category created successfully', 'success')
             else:
                 # Update
@@ -1347,6 +1367,7 @@ def balance_sheet_category():
                     WHERE id = %s
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
+                clear_category_cache()
                 flash('Category updated successfully', 'success')
 
         except Exception as e:
@@ -1368,6 +1389,7 @@ def delete_balance_sheet_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM balance_sheet_category WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         except Exception as e:
             flash(f'Error deleting categories: {str(e)}', 'danger')
@@ -1403,6 +1425,7 @@ def pl_category():
                     VALUES (0, %s, %s, %s, %s)
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk), commit=True)
+                clear_category_cache()
                 flash('P&L Category created successfully', 'success')
             else:
                 # Update
@@ -1413,6 +1436,7 @@ def pl_category():
                     WHERE id = %s
                 """
                 db.execute_query(query, (name, level, current_date, current_user_pk, category_id), commit=True)
+                clear_category_cache()
                 flash('P&L Category updated successfully', 'success')
 
         except Exception as e:
@@ -1434,6 +1458,7 @@ def delete_pl_category():
             placeholders = ', '.join(['%s'] * len(selected_ids))
             query = f"DELETE FROM `p&l_category` WHERE id IN ({placeholders})"
             db.execute_query(query, tuple(selected_ids), commit=True)
+            clear_category_cache()
             flash(f'{len(selected_ids)} categories deleted', 'success')
         except Exception as e:
             flash(f'Error deleting categories: {str(e)}', 'danger')
@@ -1722,8 +1747,7 @@ def control_panel():
     """)
 
     # 5. Fetch Categories for Dropdown
-    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
+    bs_cats, pl_cats, _ = get_cached_categories(db)
 
     return render_template('control_panel.html',
                            warranty_enabled=warranty_enabled,
@@ -2051,9 +2075,7 @@ def bulk_upload_gl():
 
                 # Fetch Existing Data for Validation/Dropdowns
                 existing_accounts = {a['account_name']: a for a in db.execute_query("SELECT account_name, account_basment FROM new_account_table")}
-                bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-                pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-                cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+                bs_cats, pl_cats, cf_cats = get_cached_categories(db)
 
                 return render_template('bulk_upload_review.html',
                                        rows=rows,
@@ -2289,9 +2311,7 @@ def bulk_upload_tb():
                     flash(f'Found {len(missing_accounts)} missing accounts. Please create them first.', 'warning')
 
                     # Fetch categories again for quick create modal
-                    bs_cats = db.execute_query("SELECT name_of_category, holding_position FROM balance_sheet_category")
-                    pl_cats = db.execute_query("SELECT name_of_category, holding_position FROM `p&l_category`")
-                    cf_cats = db.execute_query("SELECT catogory_name FROM cf_catogory")
+                    bs_cats, pl_cats, cf_cats = get_cached_categories(db)
 
                     return render_template('bulk_upload_tb_review.html',
                                            rows=rows, total_dr=total_dr, total_cr=total_cr,
@@ -7382,6 +7402,7 @@ def ensure_default_categories():
         conn.commit()
         cursor.close()
         conn.close()
+        clear_category_cache()
         logging.info("Default categories checked/created.")
 
     except Exception as e:
