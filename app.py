@@ -4243,12 +4243,27 @@ def update_inventory_prices():
     spm_prices = request.form.getlist('spm_prices[]')
     loyalty_prices = request.form.getlist('loyalty_prices[]')
 
-    for i in range(len(item_ids)):
-        # Check if price record exists
-        link_id = item_ids[i]
-        exists = db.execute_query("SELECT id FROM inventory_price_recod WHERE inventory_price_link = %s", (link_id,))
+    if not item_ids:
+        flash('No items to update', 'warning')
+        return redirect(url_for('inventory_price_editing'))
 
-        if exists:
+    # Check existence in bulk
+    placeholders = ', '.join(['%s'] * len(item_ids))
+    query = f"SELECT inventory_price_link FROM inventory_price_recod WHERE inventory_price_link IN ({placeholders})"
+    existing_records = db.execute_query(query, tuple(item_ids))
+
+    existing_links = set()
+    if existing_records:
+        # execute_query with DictionaryCursor returns list of dicts
+        if isinstance(existing_records[0], dict):
+            existing_links = {str(r['inventory_price_link']) for r in existing_records}
+        else:
+            existing_links = {str(r[0]) for r in existing_records}
+
+    for i in range(len(item_ids)):
+        link_id = str(item_ids[i])
+
+        if link_id in existing_links:
             db.execute_query("""
                 UPDATE inventory_price_recod SET
                 inventory_price_selling = %s,
