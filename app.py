@@ -16,6 +16,8 @@ import random # For mocking exchange rate
 import subprocess
 import mysql.connector
 import urllib.request
+import typing
+from dataclasses import dataclass
 
 app = flask.Flask(__name__)
 
@@ -7940,29 +7942,42 @@ def create_outstanding_record(cursor, invoice_no, inv_date, grand_total, due_dat
     """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
     return cursor.lastrowid
 
-def process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_id, location, invoice_date, customer_name, items, is_inventory):
-    for item in items:
+@dataclass
+class InvoiceItemContext:
+    cursor: typing.Any
+    current_user: str
+    jv_no: str
+    invoice_no: str
+    outstanding_id: int
+    location: str
+    invoice_date: str
+    customer_name: str
+    items: list
+    is_inventory: bool
+
+def process_invoice_items(ctx: InvoiceItemContext):
+    for item in ctx.items:
         # Warranty Logic
-        if is_inventory:
-            cursor.execute("""
+        if ctx.is_inventory:
+            ctx.cursor.execute("""
                 SELECT yeas_, month, date_ FROM inventory_vorenty_period
                 WHERE name = %s LIMIT 1
             """, (item['name'],))
             # Logic for warranty calculation could be added here if needed
 
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
                 recode_date
             ) VALUES (%s, %s, %s, %s, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
         """, (
-            item['name'], item['qty'], item['price'], 1 if is_inventory else 0, jv_no, current_user,
-            customer_name, outstanding_id, item['unit'], datetime.now()
+            item['name'], item['qty'], item['price'], 1 if ctx.is_inventory else 0, ctx.jv_no, ctx.current_user,
+            ctx.customer_name, ctx.outstanding_id, item['unit'], datetime.now()
         ))
 
-        if is_inventory:
-            cursor.execute("""
+        if ctx.is_inventory:
+            ctx.cursor.execute("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_mesrmet,
                     inventory_recod_unit_price, inventory_recod_movment_out,
@@ -7973,7 +7988,7 @@ def process_invoice_items(cursor, current_user, jv_no, invoice_no, outstanding_i
                 ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
             """, (
                 item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                current_user, datetime.now(), location, invoice_date, jv_no, outstanding_id, invoice_no
+                ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
             ))
 
 def post_invoice_gl_entries(cursor, current_user, jv_no, invoice_date, job_no, totals):
