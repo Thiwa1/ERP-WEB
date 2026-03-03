@@ -764,8 +764,8 @@ def add_customer():
     try:
         salutations_data = db.execute_query("SELECT salutation FROM suplier_suporting_1")
         salutations = [row['salutation'] for row in salutations_data]
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error loading salutations: {e}")
     return render_template('add_customer.html', salutations=salutations)
 
 # --- Add Supplier (New) ---
@@ -856,8 +856,8 @@ def add_supplier():
     try:
         salutations_data = db.execute_query("SELECT salutation FROM suplier_suporting_1")
         salutations = [row['salutation'] for row in salutations_data]
-    except:
-        pass
+    except Exception as e:
+        logging.error(f"Error loading salutations: {e}")
     return render_template('add_supplier.html', salutations=salutations)
 
 @app.route('/add_salutation', methods=['POST'])
