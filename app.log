@@ -176,3 +176,36 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 17:16:27,649 - root - INFO - Default categories checked/created.
 2026-03-03 17:16:27,659 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 17:16:27,891 - root - ERROR - POS Error: DB Fail
+2026-03-03 18:34:38,100 - root - INFO - Creating default account: Account Payable
+2026-03-03 18:34:38,101 - root - INFO - Creating default account: Account Receivable
+2026-03-03 18:34:38,101 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 18:34:38,101 - root - INFO - Creating default account: Sales
+2026-03-03 18:34:38,101 - root - INFO - Creating default account: Inventory
+2026-03-03 18:34:38,101 - root - INFO - Creating default account: VAT Control
+2026-03-03 18:34:38,102 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 18:34:38,108 - root - INFO - Default categories checked/created.
+2026-03-03 18:34:38,114 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 18:34:38,143 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 18:34:38,347 - root - ERROR - POS Error: DB Fail
+2026-03-03 18:35:45,240 - root - INFO - Creating default account: Account Payable
+2026-03-03 18:35:45,240 - root - INFO - Creating default account: Account Receivable
+2026-03-03 18:35:45,241 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 18:35:45,241 - root - INFO - Creating default account: Sales
+2026-03-03 18:35:45,241 - root - INFO - Creating default account: Inventory
+2026-03-03 18:35:45,241 - root - INFO - Creating default account: VAT Control
+2026-03-03 18:35:45,241 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 18:35:45,247 - root - INFO - Default categories checked/created.
+2026-03-03 18:35:45,254 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 18:35:45,281 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 18:35:45,422 - root - ERROR - POS Error: DB Fail
+2026-03-03 18:36:19,004 - root - INFO - Creating default account: Account Payable
+2026-03-03 18:36:19,004 - root - INFO - Creating default account: Account Receivable
+2026-03-03 18:36:19,005 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-03 18:36:19,005 - root - INFO - Creating default account: Sales
+2026-03-03 18:36:19,005 - root - INFO - Creating default account: Inventory
+2026-03-03 18:36:19,005 - root - INFO - Creating default account: VAT Control
+2026-03-03 18:36:19,005 - root - INFO - Creating default account: Cash In Hand
+2026-03-03 18:36:19,011 - root - INFO - Default categories checked/created.
+2026-03-03 18:36:19,018 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-03 18:36:19,043 - root - ERROR - Cash Payment Error: DB Error
+2026-03-03 18:36:19,184 - root - ERROR - POS Error: DB Fail

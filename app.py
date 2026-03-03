@@ -3042,11 +3042,13 @@ def save_purchase_order():
                     Link_OP_NO_Table, Item, Discription, QTY, Unit_price, Mesurment
                 ) VALUES (%s, %s, %s, %s, %s, %s)
             """
-            for item in items:
-                cursor.execute(query_detail, (
-                    po_id, item['item'], item['description'],
-                    item['qty'], item['price'], item['unit']
-                ))
+            batch_data = [(
+                po_id, item['item'], item['description'],
+                item['qty'], item['price'], item['unit']
+            ) for item in items]
+
+            if batch_data:
+                cursor.executemany(query_detail, batch_data)
 
             conn.commit()
             flash(f'Purchase Order {po_number} created successfully.', 'success')
