@@ -5713,14 +5713,33 @@ def submit_customer_receipt():
         conn.start_transaction()
 
         # 1. Update Invoice Outstanding (Settle)
-        for p in payments:
-            # Get current payment to update
-            cursor.execute("SELECT invoice_oustanding_Patment FROM Invoice_Oustanding WHERE Id = %s", (p['id'],))
-            res = cursor.fetchone()
-            if res:
-                current_paid = float(res[0])
-                new_paid = current_paid + p['amount']
-                cursor.execute("UPDATE Invoice_Oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", (new_paid, p['id']))
+        if payments:
+            # Fetch all outstanding balances in a single query
+            payment_ids = [p['id'] for p in payments]
+            format_strings = ','.join(['%s'] * len(payment_ids))
+            cursor.execute(f"SELECT Id, invoice_oustanding_Patment FROM Invoice_Oustanding WHERE Id IN ({format_strings})", tuple(payment_ids))
+
+            # Map fetched balances to IDs
+            res = cursor.fetchall()
+            current_balances = {str(row[0]): float(row[1]) for row in res}
+
+            # Aggregate amounts per invoice in case of duplicates
+            payment_totals = {}
+            for p in payments:
+                pid = str(p['id'])
+                payment_totals[pid] = payment_totals.get(pid, 0.0) + p['amount']
+
+            # Prepare batch update data
+            update_data = []
+            for pid, total_amount in payment_totals.items():
+                current_paid = current_balances.get(pid)
+                if current_paid is not None:
+                    new_paid = current_paid + total_amount
+                    update_data.append((new_paid, pid))
+
+            # Execute batch update
+            if update_data:
+                cursor.executemany("UPDATE Invoice_Oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", update_data)
 
         # 2. Generate Receipt No
         if account_type == 'cash':
