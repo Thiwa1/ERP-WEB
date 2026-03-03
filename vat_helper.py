@@ -382,10 +382,8 @@ class VATReportGenerator:
             'rows': schedule_07
         }
 
-    def generate_amendments(self):
-        """Generates all Amendment Schedules (01-07)"""
-
-        # 6. Schedule 01 Amendment (Output Tax)
+    def _generate_amendment_01(self):
+        """Schedule 01 Amendment (Output Tax)"""
         query_amd = """
             SELECT
                 ed.entry_jv,
@@ -434,7 +432,14 @@ class VATReportGenerator:
             total_sched01_amd_value += value
             total_sched01_amd_vat += vat
 
-        # 7. Schedule 02 Amendment (Input Tax)
+        return {
+            'schedule_01_amendment': schedule_01_amendment,
+            'total_sched01_amd_value': total_sched01_amd_value,
+            'total_sched01_amd_vat': total_sched01_amd_vat
+        }
+
+    def _generate_amendment_02(self):
+        """Schedule 02 Amendment (Input Tax)"""
         query_amd_input = """
             SELECT
                 ed.entry_jv,
@@ -485,7 +490,14 @@ class VATReportGenerator:
             total_sched02_amd_value += value
             total_sched02_amd_vat += vat
 
-        # 8. Schedule 03 Amendment (Imports)
+        return {
+            'schedule_02_amendment': schedule_02_amendment,
+            'total_sched02_amd_value': total_sched02_amd_value,
+            'total_sched02_amd_vat': total_sched02_amd_vat
+        }
+
+    def _generate_amendment_03(self):
+        """Schedule 03 Amendment (Imports)"""
         query_sched03_amd = """
             SELECT
                 ed.entry_jv,
@@ -522,7 +534,13 @@ class VATReportGenerator:
             })
             total_sched03_amd_vat += vat
 
-        # 9. Schedule 04 Amendment (Credit/Debit Notes)
+        return {
+            'schedule_03_amendment': schedule_03_amendment,
+            'total_sched03_amd_vat': total_sched03_amd_vat
+        }
+
+    def _generate_amendment_04(self):
+        """Schedule 04 Amendment (Credit/Debit Notes)"""
         query_sched04_amd = """
             SELECT
                 ed.entry_jv,
@@ -567,7 +585,14 @@ class VATReportGenerator:
             total_sched04_amd_value += value
             total_sched04_amd_vat += vat
 
-        # 10. Schedule 05 Amendment (Deemed Input)
+        return {
+            'schedule_04_amendment': schedule_04_amendment,
+            'total_sched04_amd_value': total_sched04_amd_value,
+            'total_sched04_amd_vat': total_sched04_amd_vat
+        }
+
+    def _generate_amendment_05(self):
+        """Schedule 05 Amendment (Deemed Input)"""
         rate_res = self.db.execute_query("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
         std_rate = float(rate_res[0]['rate']) if rate_res else 18.0
         calc_factor = (100 + std_rate) / std_rate if std_rate > 0 else 0
@@ -612,7 +637,13 @@ class VATReportGenerator:
             })
             total_sched05_amd_credit += vat
 
-        # 11. Schedule 06 Amendment (Goods Export)
+        return {
+            'schedule_05_amendment': schedule_05_amendment,
+            'total_sched05_amd_credit': total_sched05_amd_credit
+        }
+
+    def _generate_amendment_06(self):
+        """Schedule 06 Amendment (Goods Export)"""
         query_sched06_amd = """
             SELECT
                 ed.entry_jv,
@@ -648,7 +679,12 @@ class VATReportGenerator:
                 'payment_date': '-'
             })
 
-        # 12. Schedule 07 Amendment (Service Export)
+        return {
+            'schedule_06_amendment': schedule_06_amendment
+        }
+
+    def _generate_amendment_07(self):
+        """Schedule 07 Amendment (Service Export)"""
         query_sched07_amd = """
             SELECT
                 ed.entry_jv,
@@ -701,22 +737,20 @@ class VATReportGenerator:
             })
 
         return {
-            'schedule_01_amendment': schedule_01_amendment,
-            'total_sched01_amd_value': total_sched01_amd_value,
-            'total_sched01_amd_vat': total_sched01_amd_vat,
-            'schedule_02_amendment': schedule_02_amendment,
-            'total_sched02_amd_value': total_sched02_amd_value,
-            'total_sched02_amd_vat': total_sched02_amd_vat,
-            'schedule_03_amendment': schedule_03_amendment,
-            'total_sched03_amd_vat': total_sched03_amd_vat,
-            'schedule_04_amendment': schedule_04_amendment,
-            'total_sched04_amd_value': total_sched04_amd_value,
-            'total_sched04_amd_vat': total_sched04_amd_vat,
-            'schedule_05_amendment': schedule_05_amendment,
-            'total_sched05_amd_credit': total_sched05_amd_credit,
-            'schedule_06_amendment': schedule_06_amendment,
             'schedule_07_amendment': schedule_07_amendment
         }
+
+    def generate_amendments(self):
+        """Generates all Amendment Schedules (01-07)"""
+        amendments = {}
+        amendments.update(self._generate_amendment_01())
+        amendments.update(self._generate_amendment_02())
+        amendments.update(self._generate_amendment_03())
+        amendments.update(self._generate_amendment_04())
+        amendments.update(self._generate_amendment_05())
+        amendments.update(self._generate_amendment_06())
+        amendments.update(self._generate_amendment_07())
+        return amendments
 
     def generate_reconciliation(self, net_vat):
         """13. Reconciliation (GL vs Schedules)"""
