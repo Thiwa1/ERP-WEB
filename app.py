@@ -120,7 +120,7 @@ db_config = {
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
-    'database': os.environ.get('DB_NAME', 'Book_keeping'),
+    'database': os.environ.get('DB_NAME', f'{db_suport_name}_Book_keeping'),
     'raise_on_warnings': True
 }
 
@@ -131,7 +131,7 @@ if not db_config['user']:
     print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
-MASTER_DB_NAME = 'Book_keeping_Master'
+MASTER_DB_NAME = f'{db_suport_name}_Book_keeping_Master'
 
 def get_session_db_name():
     """Returns the correct database name based on session."""
