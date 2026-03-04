@@ -124,7 +124,6 @@ db_config = {
     'raise_on_warnings': True
 }
 
-DB_PREFIX = os.environ.get('DB_PREFIX', 'bk_')
 
 # Ensure critical database configuration is present
 if not db_config['user']:
