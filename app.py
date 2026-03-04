@@ -114,6 +114,7 @@ THEMES = {
 
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
+db_suport_name = "sri"
 db_config = {
     'user': os.environ.get('DB_USER'),
     'user': os.environ.get('DB_USER', 'root'),
@@ -223,7 +224,7 @@ def create_tenant_db(company_name, username, password, email):
     import re
 
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"{DB_PREFIX}{safe_name}"
+    db_name = f"{db_suport_name}_{safe_name}"
 
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
