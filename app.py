@@ -171,13 +171,26 @@ def setup_master_db():
         master_db.execute_query("""
             CREATE TABLE IF NOT EXISTS users (
                 id INT AUTO_INCREMENT PRIMARY KEY,
-                username VARCHAR(255) NOT NULL UNIQUE,
+                username VARCHAR(255) NOT NULL,
                 password VARCHAR(255) NOT NULL,
                 email VARCHAR(255),
                 tenant_id INT,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_user_tenant (username, tenant_id)
             )
         """)
+
+        # Migration for existing deployed databases
+        try:
+            # Check if the unique constraint on 'username' alone exists
+            res = master_db.execute_query("SHOW INDEX FROM users WHERE Key_name = 'username'")
+            if res:
+                master_db.execute_query("ALTER TABLE users DROP INDEX username", commit=True)
+                master_db.execute_query("ALTER TABLE users ADD UNIQUE INDEX unique_user_tenant (username, tenant_id)", commit=True)
+                print("Migrated 'users' table in Master DB to allow duplicate usernames across tenants.")
+        except Exception as mig_e:
+            print(f"Warning during Master DB migration: {mig_e}")
+
         print("Master DB setup complete.")
     except Exception as e:
         print(f"Error setting up Master DB: {e}")
@@ -216,26 +229,29 @@ def parse_and_execute_sql(cursor, content):
                     print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
             statement = ""
 
-def create_tenant_db(company_name, username, password, email):
+def create_tenant_db(company_name, db_name, username, password, email):
     """Creates a new tenant DB, runs schema, and registers in Master DB."""
-    import re
 
-    safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"bk_{safe_name}"
-
-    existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
-    if existing_user: return False, "Username already exists."
+    # We now check uniqueness within the tenant below in setup_master_db schema change
+    # But for now, we remove the global username uniqueness check since it's now per tenant.
 
     existing_tenant = master_db.execute_query("SELECT id FROM tenants WHERE company_name = %s", (company_name,))
     if existing_tenant: return False, "Company already registered."
 
+    existing_db = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (db_name,))
+    if existing_db: return False, "Database Name already registered."
+
+    # Check if this user exists in another tenant, but since username is not unique globally we only
+    # check if they are trying to register a duplicate username for this company in a later step if needed,
+    # but here it's a new company so the tenant_id will be new.
+
     try:
-        # Create DB
+        # Create DB (or just ensure it exists, important for shared hosts where they created it)
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
         conn = mysql.connector.connect(**temp_config)
         cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
         cursor.close()
         conn.close()
 
@@ -293,11 +309,12 @@ def create_tenant_db(company_name, username, password, email):
 def register():
     if request.method == 'POST':
         company_name = request.form['company_name']
+        db_name = request.form['db_name']
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
 
-        success, message = create_tenant_db(company_name, username, password, email)
+        success, message = create_tenant_db(company_name, db_name, username, password, email)
         if success:
             flash(message, 'success')
             return redirect(url_for('login'))
@@ -520,11 +537,12 @@ def has_permission(perm):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
+        company_name = request.form.get('company_name')
         username = request.form.get('username')
         password = request.form.get('password')
 
-        if not username or not password:
-            flash('Please enter both username and password.', 'danger')
+        if not username or not password or not company_name:
+            flash('Please enter company name, username, and password.', 'danger')
             return redirect(url_for('login'))
 
         # Check credentials
@@ -535,14 +553,14 @@ def login():
                 SELECT u.username, u.password, t.db_name
                 FROM users u
                 JOIN tenants t ON u.tenant_id = t.id
-                WHERE u.username = %s
-            """, (username,))
+                WHERE u.username = %s AND t.company_name = %s
+            """, (username, company_name))
 
             if master_user_res:
                 master_user = master_user_res[0]
                 if master_user['password'] == password:
                     # Login Successful on Master
-                    session['tenant_db'] = master_user['db_name']
+                    session['db_name'] = master_user['db_name']
                     session['username'] = username
 
                     # Fetch User Details from Tenant DB (for permissions/FKs)
@@ -556,7 +574,7 @@ def login():
                         return redirect(url_for('index'))
                     else:
                         flash('User record missing in tenant database.', 'danger')
-                        session.pop('tenant_db', None)
+                        session.pop('db_name', None)
                         return redirect(url_for('login'))
                 else:
                     flash('Incorrect password.', 'danger')
@@ -567,7 +585,7 @@ def login():
 
         # 2. Fallback to Legacy Login (Default DB)
         # Ensure clean session regarding tenant
-        session.pop('tenant_db', None)
+        session.pop('db_name', None)
 
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))

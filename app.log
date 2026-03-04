@@ -198,3 +198,68 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 18:31:00,147 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 18:31:00,173 - root - ERROR - Cash Payment Error: DB Error
 2026-03-03 18:31:00,322 - root - ERROR - POS Error: DB Fail
+2026-03-04 08:51:37,382 - root - INFO - Creating default account: Account Payable
+2026-03-04 08:51:37,382 - root - INFO - Creating default account: Account Receivable
+2026-03-04 08:51:37,382 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 08:51:37,383 - root - INFO - Creating default account: Sales
+2026-03-04 08:51:37,383 - root - INFO - Creating default account: Inventory
+2026-03-04 08:51:37,383 - root - INFO - Creating default account: VAT Control
+2026-03-04 08:51:37,383 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 08:51:37,395 - root - INFO - Default categories checked/created.
+2026-03-04 08:51:37,418 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 08:51:37,446 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 08:51:37,514 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 08:51:37,681 - root - ERROR - POS Error: DB Fail
+2026-03-04 08:53:02,791 - root - INFO - Creating default account: Account Payable
+2026-03-04 08:53:02,791 - root - INFO - Creating default account: Account Receivable
+2026-03-04 08:53:02,793 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 08:53:02,793 - root - INFO - Creating default account: Sales
+2026-03-04 08:53:02,793 - root - INFO - Creating default account: Inventory
+2026-03-04 08:53:02,793 - root - INFO - Creating default account: VAT Control
+2026-03-04 08:53:02,794 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 08:53:02,800 - root - INFO - Default categories checked/created.
+2026-03-04 08:53:02,806 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 08:53:02,832 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 08:53:02,877 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 08:53:03,009 - root - ERROR - POS Error: DB Fail
+2026-03-04 08:54:20,099 - root - INFO - Creating default account: Account Payable
+2026-03-04 08:54:20,099 - root - INFO - Creating default account: Account Receivable
+2026-03-04 08:54:20,101 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 08:54:20,101 - root - INFO - Creating default account: Sales
+2026-03-04 08:54:20,101 - root - INFO - Creating default account: Inventory
+2026-03-04 08:54:20,101 - root - INFO - Creating default account: VAT Control
+2026-03-04 08:54:20,101 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 08:54:20,107 - root - INFO - Default categories checked/created.
+2026-03-04 08:54:20,113 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 08:54:20,139 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 08:54:20,182 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 08:54:20,313 - root - ERROR - POS Error: DB Fail
+2026-03-04 09:01:50,480 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+2026-03-04 09:01:50,480 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-03-04 09:01:50,481 - werkzeug - INFO -  * Restarting with stat
+2026-03-04 09:01:51,390 - werkzeug - WARNING -  * Debugger is active!
+2026-03-04 09:01:51,391 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-04 09:02:29,192 - root - WARNING - Warning: Could not check/create database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+2026-03-04 09:02:29,201 - root - WARNING - WARNING: Database connection failed. Cannot create default user.
+2026-03-04 09:02:29,202 - root - INFO - Creating default account: Account Payable
+2026-03-04 09:02:29,205 - root - INFO - Creating default account: Account Receivable
+2026-03-04 09:02:29,207 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 09:02:29,209 - root - INFO - Creating default account: Sales
+2026-03-04 09:02:29,211 - root - INFO - Creating default account: Inventory
+2026-03-04 09:02:29,214 - root - INFO - Creating default account: VAT Control
+2026-03-04 09:02:29,216 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 09:02:29,231 - werkzeug - INFO - 127.0.0.1 - - [04/Mar/2026 09:02:29] "GET /register HTTP/1.1" 200 -
+2026-03-04 09:02:30,658 - werkzeug - INFO - 127.0.0.1 - - [04/Mar/2026 09:02:30] "GET /login HTTP/1.1" 200 -
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: Account Payable
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: Account Receivable
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: Sales
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: Inventory
+2026-03-04 09:03:07,412 - root - INFO - Creating default account: VAT Control
+2026-03-04 09:03:07,413 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 09:03:07,420 - root - INFO - Default categories checked/created.
+2026-03-04 09:03:07,426 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 09:03:07,453 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 09:03:07,497 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 09:03:07,630 - root - ERROR - POS Error: DB Fail
