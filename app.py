@@ -8645,12 +8645,16 @@ def create_db_if_missing():
     except Exception as e:
         logging.warning(f"Warning: Could not check/create database: {e}")
 
-def execute_sql_file(cursor, filepath):
+def execute_sql_file(cursor, filepath, db_name=None):
     """Parses and executes a MySQL dump file with DELIMITER support."""
+    import re
     logging.info(f"Executing SQL file: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         # Read lines to handle DELIMITER command which is line-based
-        lines = f.readlines()
+        content = f.read()
+        if db_name:
+            content = re.sub(r'(?i)Book_keeping', db_name, content)
+        lines = content.split('\n')
 
     delimiter = ';'
     statement = ""
@@ -8710,13 +8714,15 @@ def import_initial_schema():
 
         logging.info("Login_Table missing. Attempting to import initial schema...")
 
+        default_db_name = db_config.get('database')
+
         if os.path.exists('database_schema.sql'):
             try:
-                execute_sql_file(cursor, 'database_schema.sql')
+                execute_sql_file(cursor, 'database_schema.sql', db_name=default_db_name)
                 logging.info("Schema imported successfully.")
 
                 if os.path.exists('fixed_assets.sql'):
-                    execute_sql_file(cursor, 'fixed_assets.sql')
+                    execute_sql_file(cursor, 'fixed_assets.sql', db_name=default_db_name)
                     logging.info("Fixed Assets schema imported.")
 
                 conn.commit()

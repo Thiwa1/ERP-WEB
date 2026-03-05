@@ -407,3 +407,23 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-05 16:18:13,982 - root - ERROR - Cash Payment Error: DB Error
 2026-03-05 16:18:14,043 - root - ERROR - Depreciation Error: 'asset_id'
 2026-03-05 16:18:14,215 - root - ERROR - POS Error: DB Fail
+2026-03-05 17:09:31,375 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-05 17:09:32,433 - werkzeug - INFO -  * Restarting with stat
+2026-03-05 17:09:33,397 - werkzeug - WARNING -  * Debugger is active!
+2026-03-05 17:09:33,399 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-05 17:10:02,482 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-05 17:10:02,560 - werkzeug - INFO -  * Restarting with stat
+2026-03-05 17:10:03,174 - werkzeug - WARNING -  * Debugger is active!
+2026-03-05 17:10:03,175 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-05 17:11:40,012 - root - INFO - Creating default account: Account Payable
+2026-03-05 17:11:40,012 - root - INFO - Creating default account: Account Receivable
+2026-03-05 17:11:40,013 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-05 17:11:40,013 - root - INFO - Creating default account: Sales
+2026-03-05 17:11:40,013 - root - INFO - Creating default account: Inventory
+2026-03-05 17:11:40,013 - root - INFO - Creating default account: VAT Control
+2026-03-05 17:11:40,013 - root - INFO - Creating default account: Cash In Hand
+2026-03-05 17:11:40,024 - root - INFO - Default categories checked/created.
+2026-03-05 17:11:40,030 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-05 17:11:40,064 - root - ERROR - Cash Payment Error: DB Error
+2026-03-05 17:11:40,122 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-05 17:11:40,282 - root - ERROR - POS Error: DB Fail
