@@ -327,3 +327,31 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-04 17:08:47,012 - root - ERROR - Cash Payment Error: DB Error
 2026-03-04 17:08:47,076 - root - ERROR - Depreciation Error: 'asset_id'
 2026-03-04 17:08:47,252 - root - ERROR - POS Error: DB Fail
+2026-03-04 17:21:50,324 - root - INFO - Creating default account: Account Payable
+2026-03-04 17:21:50,325 - root - INFO - Creating default account: Account Receivable
+2026-03-04 17:21:50,327 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 17:21:50,327 - root - INFO - Creating default account: Sales
+2026-03-04 17:21:50,327 - root - INFO - Creating default account: Inventory
+2026-03-04 17:21:50,327 - root - INFO - Creating default account: VAT Control
+2026-03-04 17:21:50,328 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 17:21:50,335 - root - INFO - Default categories checked/created.
+2026-03-04 17:21:50,342 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 17:21:50,375 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 17:21:50,434 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 17:21:50,604 - root - ERROR - POS Error: DB Fail
+2026-03-04 17:23:54,593 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-04 17:23:55,812 - werkzeug - INFO -  * Restarting with stat
+2026-03-04 17:23:56,736 - werkzeug - WARNING -  * Debugger is active!
+2026-03-04 17:23:56,738 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-04 17:32:25,958 - root - INFO - Creating default account: Account Payable
+2026-03-04 17:32:25,959 - root - INFO - Creating default account: Account Receivable
+2026-03-04 17:32:25,959 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-04 17:32:25,959 - root - INFO - Creating default account: Sales
+2026-03-04 17:32:25,959 - root - INFO - Creating default account: Inventory
+2026-03-04 17:32:25,960 - root - INFO - Creating default account: VAT Control
+2026-03-04 17:32:25,960 - root - INFO - Creating default account: Cash In Hand
+2026-03-04 17:32:25,970 - root - INFO - Default categories checked/created.
+2026-03-04 17:32:25,977 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-04 17:32:26,010 - root - ERROR - Cash Payment Error: DB Error
+2026-03-04 17:32:26,072 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-04 17:32:26,236 - root - ERROR - POS Error: DB Fail
