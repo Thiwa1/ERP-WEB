@@ -355,3 +355,19 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-04 17:32:26,010 - root - ERROR - Cash Payment Error: DB Error
 2026-03-04 17:32:26,072 - root - ERROR - Depreciation Error: 'asset_id'
 2026-03-04 17:32:26,236 - root - ERROR - POS Error: DB Fail
+2026-03-05 01:33:37,922 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-05 01:33:39,046 - werkzeug - INFO -  * Restarting with stat
+2026-03-05 01:33:40,117 - werkzeug - WARNING -  * Debugger is active!
+2026-03-05 01:33:40,119 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-05 01:34:12,362 - root - INFO - Creating default account: Account Payable
+2026-03-05 01:34:12,362 - root - INFO - Creating default account: Account Receivable
+2026-03-05 01:34:12,363 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-05 01:34:12,363 - root - INFO - Creating default account: Sales
+2026-03-05 01:34:12,363 - root - INFO - Creating default account: Inventory
+2026-03-05 01:34:12,363 - root - INFO - Creating default account: VAT Control
+2026-03-05 01:34:12,364 - root - INFO - Creating default account: Cash In Hand
+2026-03-05 01:34:12,373 - root - INFO - Default categories checked/created.
+2026-03-05 01:34:12,380 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-05 01:34:12,412 - root - ERROR - Cash Payment Error: DB Error
+2026-03-05 01:34:12,474 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-05 01:34:12,636 - root - ERROR - POS Error: DB Fail
