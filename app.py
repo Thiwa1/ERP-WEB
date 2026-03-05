@@ -181,6 +181,62 @@ def setup_master_db():
             )
         """)
         print("Master DB setup complete.")
+
+        # 3. Setup Default/Fallback Database if missing tables (e.g. Login_Table)
+        default_db_name = db_config['database']
+
+        # Check if default DB has Login_Table
+        try:
+            default_conn = mysql.connector.connect(**temp_config)
+            default_cursor = default_conn.cursor()
+            default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
+            default_cursor.close()
+            default_conn.close()
+
+            # Connect to default DB to check for tables
+            check_config = db_config.copy()
+            check_conn = mysql.connector.connect(**check_config)
+            check_cursor = check_conn.cursor()
+
+            # Try selecting from Login_Table to see if it exists
+            table_exists = False
+            try:
+                check_cursor.execute("SELECT 1 FROM Login_Table LIMIT 1")
+                check_cursor.fetchall()
+                table_exists = True
+            except mysql.connector.errors.ProgrammingError:
+                pass
+
+            if not table_exists:
+                print(f"Initializing schema for default database: {default_db_name}")
+                if os.path.exists('database_schema.sql'):
+                    with open('database_schema.sql', 'r') as f:
+                        content = f.read().replace('Book_keeping', default_db_name)
+                        parse_and_execute_sql(check_cursor, content)
+
+                if os.path.exists('fixed_assets.sql'):
+                    with open('fixed_assets.sql', 'r') as f:
+                        content = f.read().replace('Book_keeping', default_db_name)
+                        parse_and_execute_sql(check_cursor, content)
+
+                check_conn.commit()
+
+                # Insert default admin user into fallback db
+                try:
+                    check_cursor.execute("""
+                        INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
+                        VALUES ('admin', 'admin', 'admin@example.com', '1001', 1)
+                    """)
+                    check_conn.commit()
+                except Exception as e:
+                    print(f"Could not insert default admin: {e}")
+
+            check_cursor.close()
+            check_conn.close()
+
+        except Exception as default_db_err:
+            print(f"Error initializing default DB ({default_db_name}): {default_db_err}")
+
     except Exception as e:
         print(f"Error setting up Master DB: {e}")
 
