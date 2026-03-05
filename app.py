@@ -208,15 +208,16 @@ def setup_master_db():
                 pass
 
             if not table_exists:
+                import re
                 print(f"Initializing schema for default database: {default_db_name}")
                 if os.path.exists('database_schema.sql'):
                     with open('database_schema.sql', 'r') as f:
-                        content = f.read().replace('Book_keeping', default_db_name)
+                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
                         parse_and_execute_sql(check_cursor, content)
 
                 if os.path.exists('fixed_assets.sql'):
                     with open('fixed_assets.sql', 'r') as f:
-                        content = f.read().replace('Book_keeping', default_db_name)
+                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
                         parse_and_execute_sql(check_cursor, content)
 
                 check_conn.commit()
@@ -306,12 +307,12 @@ def create_tenant_db(company_name, username, password, email):
         # Execute Schema
         if os.path.exists('database_schema.sql'):
             with open('database_schema.sql', 'r') as f:
-                content = f.read().replace('Book_keeping', db_name)
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
                 parse_and_execute_sql(t_cursor, content)
 
         if os.path.exists('fixed_assets.sql'):
             with open('fixed_assets.sql', 'r') as f:
-                content = f.read().replace('Book_keeping', db_name)
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
                 parse_and_execute_sql(t_cursor, content)
 
         t_conn.commit()
