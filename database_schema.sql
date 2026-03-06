@@ -1799,7 +1799,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 ( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_assets` = 1
 GROUP BY `entry_details`.`account_name`$$
 
@@ -2004,7 +2004,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 (  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_exe"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_equity` = 1
 GROUP BY `entry_details`.`account_name`$$
 
@@ -2107,7 +2107,7 @@ SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description",
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
 WHERE `entry_details`.`entry_effective_date`
-BETWEEN from_date AND to_date &&  `new_account_table`.`account_name` = accout_name
+BETWEEN from_date AND to_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_income` = 1
 GROUP BY `entry_details`.`account_name` ;
 
@@ -2289,7 +2289,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 (  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_ex"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_liabilities` = 1
 GROUP BY `entry_details`.`account_name`$$
 
