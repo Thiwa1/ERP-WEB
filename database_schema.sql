@@ -479,7 +479,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
   `inventory_recod_last_edit_user` INT NULL,
   `inventory_recod_last_edit_date` DATE NULL,
   `inventory_recod_location` VARCHAR(60) NULL,
-  `inventory_recod_sales_invoice_link` BIGINT ZEROFILL NULL,
+  `inventory_recod_sales_invoice_link` BIGINT NULL,
   `inventory_recod_link_invoice` BIGINT NULL,
   `inventory_recod_selling_price` DOUBLE NULL,
   `inventory_recodcol_memo` VARCHAR(45) NULL,
