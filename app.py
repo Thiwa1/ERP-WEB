@@ -281,6 +281,7 @@ def parse_and_execute_sql(cursor, content):
                     while cursor.nextset(): pass
                 except Exception as e:
                     print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+                    raise e
             statement = ""
 
 def create_tenant_db(company_name, username, password, email):
@@ -302,7 +303,7 @@ def create_tenant_db(company_name, username, password, email):
         if 'database' in temp_config: del temp_config['database']
         conn = mysql.connector.connect(**temp_config)
         cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
         cursor.close()
         conn.close()
 
