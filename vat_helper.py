@@ -1,5 +1,3 @@
-from datetime import date
-
 class VATReportGenerator:
     def __init__(self, db, from_date, to_date):
         self.db = db
