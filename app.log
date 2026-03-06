@@ -511,3 +511,11 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-06 15:19:04,913 - werkzeug - INFO -  * Restarting with stat
 2026-03-06 15:19:05,952 - werkzeug - WARNING -  * Debugger is active!
 2026-03-06 15:19:05,953 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 16:19:05,285 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 16:19:06,862 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 16:19:07,936 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 16:19:07,941 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 16:19:42,037 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 16:19:42,107 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 16:19:42,656 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 16:19:42,657 - werkzeug - INFO -  * Debugger PIN: 410-907-091
