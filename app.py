@@ -2743,30 +2743,22 @@ def cash_payment():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
-@app.route('/cash_payment/get_data')
-@login_required
-def get_cash_supplier_data():
-    sup_name = request.args.get('name')
-    if not sup_name:
-        return {'error': 'No supplier name'}, 400
-
-    # 1. Supplier Details
+def _get_supplier_base_data(sup_name):
+    """Helper to fetch common supplier details and outstanding invoices."""
     sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
-    details = {}
-    if sup_data:
-        s = sup_data[0]
-        details = {
-            'code': s['supplier_code'],
-            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
-            'mobile': s['suppliers_teli_1'],
-            'email': s['suppliers_e_mail'],
-            'vat': s['suppliers_vat_regidter_no']
-        }
-        sup_id = s['sup_id']
-    else:
-        return {'error': 'Supplier not found'}, 404
+    if not sup_data:
+        return None, None, None
 
-    # 2. Outstanding Invoices
+    s = sup_data[0]
+    details = {
+        'code': s['supplier_code'],
+        'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
+        'mobile': s['suppliers_teli_1'],
+        'email': s['suppliers_e_mail'],
+        'vat': s['suppliers_vat_regidter_no']
+    }
+    sup_id = s['sup_id']
+
     invoices = db.execute_query("""
         SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
                suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
@@ -2785,6 +2777,20 @@ def get_cash_supplier_data():
             'paid': float(inv['suppliers_invoice_total_payment']),
             'balance': float(inv['suppliers_invoice_oustanding'])
         })
+
+    return details, inv_list, sup_id
+
+
+@app.route('/cash_payment/get_data')
+@login_required
+def get_cash_supplier_data():
+    sup_name = request.args.get('name')
+    if not sup_name:
+        return {'error': 'No supplier name'}, 400
+
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
+        return {'error': 'Supplier not found'}, 404
 
     # 3. Cash Payment History
     history = db.execute_query("""
@@ -3926,41 +3932,9 @@ def get_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    # 1. Supplier Details
-    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
-    details = {}
-    if sup_data:
-        s = sup_data[0]
-        details = {
-            'code': s['supplier_code'],
-            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
-            'mobile': s['suppliers_teli_1'],
-            'email': s['suppliers_e_mail'],
-            'vat': s['suppliers_vat_regidter_no']
-        }
-        sup_id = s['sup_id']
-    else:
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
         return {'error': 'Supplier not found'}, 404
-
-    # 2. Outstanding Invoices
-    invoices = db.execute_query("""
-        SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
-               suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
-        FROM suppliers_invoice_data
-        WHERE suppliers_invoice_buinding_supplier = %s AND suppliers_invoice_oustanding > 0 AND suppliers_oustanding_delete = 0
-    """, (sup_id,))
-
-    inv_list = []
-    for inv in invoices:
-        inv_list.append({
-            'id': inv['s_i_id'],
-            'invoice_no': inv['suppliers_invoice_number'],
-            'date': str(inv['suppliers_invoice_date']),
-            'due_date': str(inv['suppliers_invoice_final_date']),
-            'total': float(inv['suppliers_invoice_total_oustanding']),
-            'paid': float(inv['suppliers_invoice_total_payment']),
-            'balance': float(inv['suppliers_invoice_oustanding'])
-        })
 
     # 3. Payment History
     history = db.execute_query("""
