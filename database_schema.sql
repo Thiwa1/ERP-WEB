@@ -145,7 +145,6 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
   INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC) INVISIBLE,
   INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC) VISIBLE,
-  INDEX `key_to_catogory_pl` (`account_name_of_catogory_PL` ASC) VISIBLE,
   INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC) VISIBLE,
   INDEX `key_CF_Table` (`cf_catogory` ASC) VISIBLE,
   CONSTRAINT `key_to_balace_possion`
