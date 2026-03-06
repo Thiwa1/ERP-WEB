@@ -291,6 +291,14 @@ def parse_and_execute_sql(cursor, content):
                 try:
                     cursor.execute(sql_to_run)
                     while cursor.nextset(): pass
+                except mysql.connector.Error as e:
+                    # If this is a CREATE SCHEMA/DATABASE statement and we hit 1007/1044, safely ignore
+                    upper_sql = sql_to_run.upper()
+                    if e.errno in (1007, 1044) and ("CREATE SCHEMA" in upper_sql or "CREATE DATABASE" in upper_sql):
+                        logging.warning(f"Ignored DB/Schema creation error in parse_and_execute_sql: {e.msg}")
+                    else:
+                        print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+                        raise e
                 except Exception as e:
                     print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
                     raise e
