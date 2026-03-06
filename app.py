@@ -162,11 +162,17 @@ def setup_master_db():
         if 'database' in temp_config:
             del temp_config['database']
 
-        conn = mysql.connector.connect(**temp_config)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
-        cursor.close()
-        conn.close()
+        try:
+            conn = mysql.connector.connect(**temp_config)
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno} for Master DB: {e.msg}")
+            else:
+                raise e
 
         # Now create tables in Master DB
         master_db.execute_query("""
@@ -195,11 +201,17 @@ def setup_master_db():
 
         # Check if default DB has Login_Table
         try:
-            default_conn = mysql.connector.connect(**temp_config)
-            default_cursor = default_conn.cursor()
-            default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
-            default_cursor.close()
-            default_conn.close()
+            try:
+                default_conn = mysql.connector.connect(**temp_config)
+                default_cursor = default_conn.cursor()
+                default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
+                default_cursor.close()
+                default_conn.close()
+            except mysql.connector.Error as e:
+                if e.errno in (1007, 1044):
+                    logging.warning(f"Ignored DB creation error {e.errno} for default DB: {e.msg}")
+                else:
+                    raise e
 
             # Connect to default DB to check for tables
             check_config = db_config.copy()
@@ -301,11 +313,19 @@ def create_tenant_db(company_name, username, password, email):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
-        conn = mysql.connector.connect(**temp_config)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-        cursor.close()
-        conn.close()
+        try:
+            conn = mysql.connector.connect(**temp_config)
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            # 1007: Can't create database; database exists
+            # 1044: Access denied for user to database (on shared hosting where DB must be pre-created)
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno}: {e.msg} - assuming DB '{db_name}' is already created.")
+            else:
+                raise e
 
         # Connect to New DB
         t_config = db_config.copy()
@@ -8633,16 +8653,22 @@ def create_db_if_missing():
         if 'database' in temp_config:
             del temp_config['database']
 
-        conn_root = mysql.connector.connect(**temp_config)
-        cursor = conn_root.cursor()
+        try:
+            conn_root = mysql.connector.connect(**temp_config)
+            cursor = conn_root.cursor()
 
-        db_name = db_config.get('database', 'Book_keeping')
-        logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-        conn_root.commit()
-        cursor.close()
-        conn_root.close()
-        logging.info(f"Database '{db_name}' checked/created.")
+            db_name = db_config.get('database', 'Book_keeping')
+            logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+            conn_root.commit()
+            cursor.close()
+            conn_root.close()
+            logging.info(f"Database '{db_name}' checked/created.")
+        except mysql.connector.Error as e:
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno} in create_db_if_missing: {e.msg}")
+            else:
+                raise e
     except Exception as e:
         logging.warning(f"Warning: Could not check/create database: {e}")
 
