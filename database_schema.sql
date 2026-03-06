@@ -145,7 +145,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
   INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC) INVISIBLE,
   INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC) VISIBLE,
-  INDEX `key_to_catogory` (`account_name_of_catogory_PL` ASC) VISIBLE,
+  INDEX `key_to_catogory_pl` (`account_name_of_catogory_PL` ASC) VISIBLE,
   INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC) VISIBLE,
   INDEX `key_CF_Table` (`cf_catogory` ASC) VISIBLE,
   CONSTRAINT `key_to_balace_possion`
@@ -153,7 +153,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
     REFERENCES `Book_keeping`.`balance_sheet_category` (`holding_position`)
     ON DELETE SET NULL
     ON UPDATE CASCADE,
-  CONSTRAINT `key_to_catogory`
+  CONSTRAINT `fk_key_to_catogory_bs`
     FOREIGN KEY (`account_name_of_catogory_Balace_sheet`)
     REFERENCES `Book_keeping`.`balance_sheet_category` (`name_of_category`)
     ON DELETE SET NULL
