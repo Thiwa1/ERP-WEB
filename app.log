@@ -447,3 +447,43 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-06 11:57:00,607 - root - ERROR - Cash Payment Error: DB Error
 2026-03-06 11:57:00,666 - root - ERROR - Depreciation Error: 'asset_id'
 2026-03-06 11:57:00,837 - root - ERROR - POS Error: DB Fail
+2026-03-06 14:10:52,258 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 14:10:53,461 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:10:54,474 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:10:54,476 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:11:51,640 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 14:11:51,725 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:11:52,278 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:11:52,279 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:11:55,300 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 14:11:55,381 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:11:55,919 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:11:55,920 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:12:02,953 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 14:12:03,033 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:12:03,560 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:12:03,560 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:13:04,002 - root - INFO - Creating default account: Account Payable
+2026-03-06 14:13:04,006 - root - INFO - Creating default account: Account Receivable
+2026-03-06 14:13:04,006 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-06 14:13:04,007 - root - INFO - Creating default account: Sales
+2026-03-06 14:13:04,008 - root - INFO - Creating default account: Inventory
+2026-03-06 14:13:04,008 - root - INFO - Creating default account: VAT Control
+2026-03-06 14:13:04,008 - root - INFO - Creating default account: Cash In Hand
+2026-03-06 14:13:04,021 - root - INFO - Default categories checked/created.
+2026-03-06 14:13:04,036 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+2026-03-06 14:13:04,092 - root - ERROR - Cash Payment Error: DB Error
+2026-03-06 14:13:04,193 - root - ERROR - Depreciation Error: 'asset_id'
+2026-03-06 14:13:04,430 - root - ERROR - POS Error: DB Fail
+2026-03-06 14:15:26,187 - werkzeug - INFO -  * Detected change in '/app/tests/test_setup_master_db.py', reloading
+2026-03-06 14:15:26,308 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:15:26,892 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:15:26,893 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:16:00,032 - werkzeug - INFO -  * Detected change in '/app/tests/test_setup_master_db.py', reloading
+2026-03-06 14:16:00,111 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:16:00,645 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:16:00,646 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 14:16:09,679 - werkzeug - INFO -  * Detected change in '/app/tests/test_setup_master_db.py', reloading
+2026-03-06 14:16:09,755 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 14:16:10,287 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 14:16:10,288 - werkzeug - INFO -  * Debugger PIN: 410-907-091
