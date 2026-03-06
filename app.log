@@ -519,3 +519,23 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-06 16:19:42,107 - werkzeug - INFO -  * Restarting with stat
 2026-03-06 16:19:42,656 - werkzeug - WARNING -  * Debugger is active!
 2026-03-06 16:19:42,657 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 17:52:29,734 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-06 17:52:30,892 - werkzeug - INFO -  * Restarting with stat
+2026-03-06 17:52:31,974 - werkzeug - WARNING -  * Debugger is active!
+2026-03-06 17:52:31,977 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-06 17:54:32,384 - root - WARNING - Warning: Could not check/create database: 2003 (HY000): Can't connect to MySQL server on 'localhost:3306' (111)
+2026-03-06 17:54:32,393 - root - WARNING - WARNING: Database connection failed. Cannot create default user.
+2026-03-06 17:54:32,395 - root - INFO - Creating default account: Account Payable
+2026-03-06 17:54:32,397 - root - INFO - Creating default account: Account Receivable
+2026-03-06 17:54:32,400 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-03-06 17:54:32,402 - root - INFO - Creating default account: Sales
+2026-03-06 17:54:32,405 - root - INFO - Creating default account: Inventory
+2026-03-06 17:54:32,408 - root - INFO - Creating default account: VAT Control
+2026-03-06 17:54:32,410 - root - INFO - Creating default account: Cash In Hand
+2026-03-06 17:54:32,426 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:54:32] "GET /register HTTP/1.1" 200 -
+2026-03-06 17:56:07,893 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:56:07] "GET /register HTTP/1.1" 200 -
+2026-03-06 17:58:02,970 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:58:02] "GET /register HTTP/1.1" 200 -
+2026-03-06 17:58:03,387 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:58:03] "POST /register HTTP/1.1" 200 -
+2026-03-06 17:58:03,456 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:58:03] "GET /login HTTP/1.1" 200 -
+2026-03-06 17:58:03,593 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:58:03] "[32mPOST /login HTTP/1.1[0m" 302 -
+2026-03-06 17:58:03,602 - werkzeug - INFO - 127.0.0.1 - - [06/Mar/2026 17:58:03] "GET /login HTTP/1.1" 200 -

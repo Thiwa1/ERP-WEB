@@ -362,9 +362,9 @@ def create_tenant_db(company_name, username, password, email):
         t_db.execute_query("""
             INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
             VALUES (%s, %s, %s, '1001', 1)
-        """, (username, password, email))
+        """, (username, password, email), commit=True)
 
-        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,))
+        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
         # Insert into Master
         tenant_id = master_db.execute_query(
