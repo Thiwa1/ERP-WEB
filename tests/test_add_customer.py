@@ -23,6 +23,8 @@ mock_flask_module.session = mock_session
 
 # Apply to sys.modules
 sys.modules['flask'] = mock_flask_module
+import jinja2
+
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
 
