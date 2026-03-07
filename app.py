@@ -1602,8 +1602,7 @@ def pl_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')

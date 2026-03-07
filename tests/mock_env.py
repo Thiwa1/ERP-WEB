@@ -114,6 +114,10 @@ if 'jinja2' not in sys.modules:
     mock_jinja.pass_context = lambda f: f
     sys.modules['jinja2'] = mock_jinja
 
+mock_jinja = MagicMock()
+mock_jinja.pass_context = lambda f: f
+sys.modules['jinja2'] = mock_jinja
+
 if 'werkzeug.security' not in sys.modules:
     mock_wz = MagicMock()
     mock_wz.generate_password_hash = lambda x: f"hashed_{x}"
