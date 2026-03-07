@@ -241,12 +241,25 @@ def setup_master_db():
 
                 check_conn.commit()
 
+                # Run application-level migrations on this default database to ensure all dynamic columns are present
+                run_schema_migrations(check_conn)
+
                 # Insert default admin user into fallback db
                 try:
                     check_cursor.execute("""
                         INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
                         VALUES ('admin', 'admin', 'admin@example.com', '1001', 1)
                     """)
+                    check_conn.commit()
+                    user_id = check_cursor.lastrowid
+
+                    check_cursor.execute("""
+                        INSERT INTO User_Rights (
+                            Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
+                            Access_POS, Access_Accounting, Access_Reports, Access_Reversals
+                        )
+                        VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+                    """, (user_id,))
                     check_conn.commit()
                 except Exception as e:
                     print(f"Could not insert default admin: {e}")
@@ -352,6 +365,10 @@ def create_tenant_db(company_name, username, password, email):
                 parse_and_execute_sql(t_cursor, content)
 
         t_conn.commit()
+
+        # Run application-level migrations on this new database to ensure all dynamic columns are present
+        run_schema_migrations(t_conn)
+
         t_conn.close()
 
         # Insert Admin User
@@ -359,19 +376,10 @@ def create_tenant_db(company_name, username, password, email):
         t_db_conf['database'] = db_name
         t_db = Database(t_db_conf)
 
-        user_id = t_db.execute_query("""
+        t_db.execute_query("""
             INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
             VALUES (%s, %s, %s, '1001', 1)
         """, (username, password, email), commit=True)
-
-        # Grant all rights to the initial tenant admin user
-        t_db.execute_query("""
-            INSERT INTO User_Rights (
-                Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
-                Access_POS, Access_Accounting, Access_Reports, Access_Reversals
-            )
-            VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
-        """, (user_id,), commit=True)
 
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
@@ -6567,13 +6575,12 @@ def submit_pos_sale():
         cursor.close()
         conn.close()
 
-def run_schema_migrations():
+def run_schema_migrations(target_db_conn=None):
     """Checks and updates database schema for new features."""
-    conn = db.get_connection()
+    conn = target_db_conn if target_db_conn else db.get_connection()
+    if not conn: return
     migrations.run_migrations(conn)
     try:
-        conn = db.get_connection()
-        if not conn: return
         cursor = conn.cursor()
 
         # 0. Migration Table
