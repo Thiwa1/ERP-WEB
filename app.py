@@ -7522,13 +7522,17 @@ def ensure_default_categories():
             ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
             ('Adjustments', 0), ('Changes In Working Capital', 0)
         ]
-        for name, pos in cf_cats:
-             cursor.execute("SELECT id FROM cf_catogory WHERE catogory_name = %s", (name,))
-             if not cursor.fetchone():
-                 try:
-                     cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
-                 except Exception as e:
-                     logging.error(f"Error inserting CF category {name}: {e}")
+        cat_names = [c[0] for c in cf_cats]
+        format_strings = ','.join(['%s'] * len(cat_names))
+        cursor.execute(f"SELECT catogory_name FROM cf_catogory WHERE catogory_name IN ({format_strings})", tuple(cat_names))
+        existing_cats = {row[0] for row in cursor.fetchall()}
+
+        to_insert = [(name, pos) for name, pos in cf_cats if name not in existing_cats]
+        if to_insert:
+            try:
+                cursor.executemany("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", to_insert)
+            except Exception as e:
+                logging.error(f"Error inserting CF categories: {e}")
 
         conn.commit()
         cursor.close()
