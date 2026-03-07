@@ -198,3 +198,8 @@ Error connecting to database: 2003 (HY000): Can't connect to MySQL server on 'lo
 2026-03-03 18:31:00,147 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
 2026-03-03 18:31:00,173 - root - ERROR - Cash Payment Error: DB Error
 2026-03-03 18:31:00,322 - root - ERROR - POS Error: DB Fail
+2026-03-07 05:26:10,227 - werkzeug - WARNING -  * Debugger is active!
+2026-03-07 05:26:10,230 - werkzeug - INFO -  * Debugger PIN: 410-907-091
+2026-03-07 05:26:43,334 - werkzeug - INFO -  * Detected change in '/app/app.py', reloading
+2026-03-07 05:26:43,945 - werkzeug - WARNING -  * Debugger is active!
+2026-03-07 05:26:43,945 - werkzeug - INFO -  * Debugger PIN: 410-907-091

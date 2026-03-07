@@ -114,30 +114,21 @@ THEMES = {
 
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
-db_suport_name = "sri"
-
-# Force prefix onto database name to handle shared hosting constraints
-_raw_db_name = os.environ.get('DB_NAME', 'Book_keeping')
-if _raw_db_name.startswith(f"{db_suport_name}_"):
-    _final_db_name = _raw_db_name
-else:
-    _final_db_name = f"{db_suport_name}_{_raw_db_name}"
-
 db_config = {
+    'user': os.environ.get('DB_USER'),
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
-    'database': _final_db_name,
+    'database': os.environ.get('DB_NAME', 'Book_keeping'),
     'raise_on_warnings': True
 }
-
 
 # Ensure critical database configuration is present
 if not db_config['user']:
     print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
-MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master"
+MASTER_DB_NAME = 'Book_keeping_Master'
 
 def get_session_db_name():
     """Returns the correct database name based on session."""
@@ -161,17 +152,11 @@ def setup_master_db():
         if 'database' in temp_config:
             del temp_config['database']
 
-        try:
-            conn = mysql.connector.connect(**temp_config)
-            cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as e:
-            if e.errno in (1007, 1044):
-                logging.warning(f"Ignored DB creation error {e.errno} for Master DB: {e.msg}")
-            else:
-                raise e
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+        cursor.close()
+        conn.close()
 
         # Now create tables in Master DB
         master_db.execute_query("""
@@ -194,69 +179,6 @@ def setup_master_db():
             )
         """)
         print("Master DB setup complete.")
-
-        # 3. Setup Default/Fallback Database if missing tables (e.g. Login_Table)
-        default_db_name = db_config['database']
-
-        # Check if default DB has Login_Table
-        try:
-            try:
-                default_conn = mysql.connector.connect(**temp_config)
-                default_cursor = default_conn.cursor()
-                default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
-                default_cursor.close()
-                default_conn.close()
-            except mysql.connector.Error as e:
-                if e.errno in (1007, 1044):
-                    logging.warning(f"Ignored DB creation error {e.errno} for default DB: {e.msg}")
-                else:
-                    raise e
-
-            # Connect to default DB to check for tables
-            check_config = db_config.copy()
-            check_conn = mysql.connector.connect(**check_config)
-            check_cursor = check_conn.cursor()
-
-            # Try selecting from Login_Table to see if it exists
-            table_exists = False
-            try:
-                check_cursor.execute("SELECT 1 FROM Login_Table LIMIT 1")
-                check_cursor.fetchall()
-                table_exists = True
-            except mysql.connector.errors.ProgrammingError:
-                pass
-
-            if not table_exists:
-                import re
-                print(f"Initializing schema for default database: {default_db_name}")
-                if os.path.exists('database_schema.sql'):
-                    with open('database_schema.sql', 'r') as f:
-                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
-                        parse_and_execute_sql(check_cursor, content)
-
-                if os.path.exists('fixed_assets.sql'):
-                    with open('fixed_assets.sql', 'r') as f:
-                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
-                        parse_and_execute_sql(check_cursor, content)
-
-                check_conn.commit()
-
-                # Insert default admin user into fallback db
-                try:
-                    check_cursor.execute("""
-                        INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
-                        VALUES ('admin', 'admin', 'admin@example.com', '1001', 1)
-                    """)
-                    check_conn.commit()
-                except Exception as e:
-                    print(f"Could not insert default admin: {e}")
-
-            check_cursor.close()
-            check_conn.close()
-
-        except Exception as default_db_err:
-            print(f"Error initializing default DB ({default_db_name}): {default_db_err}")
-
     except Exception as e:
         print(f"Error setting up Master DB: {e}")
 
@@ -290,17 +212,8 @@ def parse_and_execute_sql(cursor, content):
                 try:
                     cursor.execute(sql_to_run)
                     while cursor.nextset(): pass
-                except mysql.connector.Error as e:
-                    # If this is a CREATE SCHEMA/DATABASE statement and we hit 1007/1044, safely ignore
-                    upper_sql = sql_to_run.upper()
-                    if e.errno in (1007, 1044) and ("CREATE SCHEMA" in upper_sql or "CREATE DATABASE" in upper_sql):
-                        logging.warning(f"Ignored DB/Schema creation error in parse_and_execute_sql: {e.msg}")
-                    else:
-                        print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
-                        raise e
                 except Exception as e:
                     print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
-                    raise e
             statement = ""
 
 def create_tenant_db(company_name, username, password, email):
@@ -308,7 +221,7 @@ def create_tenant_db(company_name, username, password, email):
     import re
 
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"{db_suport_name}_{safe_name}"
+    db_name = f"bk_{safe_name}"
 
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
@@ -320,19 +233,11 @@ def create_tenant_db(company_name, username, password, email):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
-        try:
-            conn = mysql.connector.connect(**temp_config)
-            cursor = conn.cursor()
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as e:
-            # 1007: Can't create database; database exists
-            # 1044: Access denied for user to database (on shared hosting where DB must be pre-created)
-            if e.errno in (1007, 1044):
-                logging.warning(f"Ignored DB creation error {e.errno}: {e.msg} - assuming DB '{db_name}' is already created.")
-            else:
-                raise e
+        conn = mysql.connector.connect(**temp_config)
+        cursor = conn.cursor()
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
+        cursor.close()
+        conn.close()
 
         # Connect to New DB
         t_config = db_config.copy()
@@ -343,12 +248,12 @@ def create_tenant_db(company_name, username, password, email):
         # Execute Schema
         if os.path.exists('database_schema.sql'):
             with open('database_schema.sql', 'r') as f:
-                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
+                content = f.read().replace('Book_keeping', db_name)
                 parse_and_execute_sql(t_cursor, content)
 
         if os.path.exists('fixed_assets.sql'):
             with open('fixed_assets.sql', 'r') as f:
-                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
+                content = f.read().replace('Book_keeping', db_name)
                 parse_and_execute_sql(t_cursor, content)
 
         t_conn.commit()
@@ -637,7 +542,7 @@ def login():
                 master_user = master_user_res[0]
                 if master_user['password'] == password:
                     # Login Successful on Master
-                    session['db_name'] = master_user['db_name']
+                    session['tenant_db'] = master_user['db_name']
                     session['username'] = username
 
                     # Fetch User Details from Tenant DB (for permissions/FKs)
@@ -651,7 +556,7 @@ def login():
                         return redirect(url_for('index'))
                     else:
                         flash('User record missing in tenant database.', 'danger')
-                        session.pop('db_name', None)
+                        session.pop('tenant_db', None)
                         return redirect(url_for('login'))
                 else:
                     flash('Incorrect password.', 'danger')
@@ -662,7 +567,7 @@ def login():
 
         # 2. Fallback to Legacy Login (Default DB)
         # Ensure clean session regarding tenant
-        session.pop('db_name', None)
+        session.pop('tenant_db', None)
 
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
@@ -8660,35 +8565,25 @@ def create_db_if_missing():
         if 'database' in temp_config:
             del temp_config['database']
 
-        try:
-            conn_root = mysql.connector.connect(**temp_config)
-            cursor = conn_root.cursor()
+        conn_root = mysql.connector.connect(**temp_config)
+        cursor = conn_root.cursor()
 
-            db_name = db_config.get('database', 'Book_keeping')
-            logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-            conn_root.commit()
-            cursor.close()
-            conn_root.close()
-            logging.info(f"Database '{db_name}' checked/created.")
-        except mysql.connector.Error as e:
-            if e.errno in (1007, 1044):
-                logging.warning(f"Ignored DB creation error {e.errno} in create_db_if_missing: {e.msg}")
-            else:
-                raise e
+        db_name = db_config.get('database', 'Book_keeping')
+        logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+        conn_root.commit()
+        cursor.close()
+        conn_root.close()
+        logging.info(f"Database '{db_name}' checked/created.")
     except Exception as e:
         logging.warning(f"Warning: Could not check/create database: {e}")
 
-def execute_sql_file(cursor, filepath, db_name=None):
+def execute_sql_file(cursor, filepath):
     """Parses and executes a MySQL dump file with DELIMITER support."""
-    import re
     logging.info(f"Executing SQL file: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         # Read lines to handle DELIMITER command which is line-based
-        content = f.read()
-        if db_name:
-            content = re.sub(r'(?i)Book_keeping', db_name, content)
-        lines = content.split('\n')
+        lines = f.readlines()
 
     delimiter = ';'
     statement = ""
@@ -8710,7 +8605,7 @@ def execute_sql_file(cursor, filepath, db_name=None):
         if not statement and not stripped:
             continue
 
-        statement += line + "\n"
+        statement += line
 
         # Check if statement ends with delimiter
         if statement.strip().endswith(delimiter):
@@ -8748,15 +8643,13 @@ def import_initial_schema():
 
         logging.info("Login_Table missing. Attempting to import initial schema...")
 
-        default_db_name = db_config.get('database')
-
         if os.path.exists('database_schema.sql'):
             try:
-                execute_sql_file(cursor, 'database_schema.sql', db_name=default_db_name)
+                execute_sql_file(cursor, 'database_schema.sql')
                 logging.info("Schema imported successfully.")
 
                 if os.path.exists('fixed_assets.sql'):
-                    execute_sql_file(cursor, 'fixed_assets.sql', db_name=default_db_name)
+                    execute_sql_file(cursor, 'fixed_assets.sql')
                     logging.info("Fixed Assets schema imported.")
 
                 conn.commit()
