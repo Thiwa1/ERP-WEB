@@ -376,10 +376,19 @@ def create_tenant_db(company_name, username, password, email):
         t_db_conf['database'] = db_name
         t_db = Database(t_db_conf)
 
-        t_db.execute_query("""
+        user_id = t_db.execute_query("""
             INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
             VALUES (%s, %s, %s, '1001', 1)
         """, (username, password, email), commit=True)
+
+        # Grant all rights to the initial tenant admin user
+        t_db.execute_query("""
+            INSERT INTO User_Rights (
+                Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
+                Access_POS, Access_Accounting, Access_Reports, Access_Reversals
+            )
+            VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+        """, (user_id,), commit=True)
 
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
@@ -1610,8 +1619,7 @@ def pl_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')
@@ -1657,8 +1665,7 @@ def bs_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_Balace_sheet = %s, account_hold_possion_Balace_Sheet = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')
@@ -6900,11 +6907,26 @@ def ensure_default_accounts():
 
         current_user = 0 # System
 
+        if not defaults:
+            return
+
+        # Extract all account names
+        account_names = [acc[0] for acc in defaults]
+
+        # Check existing accounts using a single batch query
+        format_strings = ','.join(['%s'] * len(account_names))
+        query = f"SELECT account_name FROM new_account_table WHERE account_name IN ({format_strings})"
+
+        existing_rows = db.execute_query(query, tuple(account_names))
+
+        # Store existing account names in a set for O(1) lookups
+        existing_names = {row['account_name'] for row in (existing_rows or [])}
+
         for acc in defaults:
             name, bs_pos, bs_cat, pl_pos, pl_cat, acc_type = acc
-            res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
 
-            if not res:
+            # Check against the set instead of making a DB query
+            if name not in existing_names:
                 logging.info(f"Creating default account: {name}")
                 # Determine basement
                 basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
@@ -7493,14 +7515,19 @@ def ensure_default_categories():
             ('Capital and reserves', 5),
             ('Current liabilities', 6)
         ]
-        for name, pos in bs_cats:
-            # Check if exists by position to avoid duplicate key error on position
-            cursor.execute("SELECT id FROM balance_sheet_category WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting BS category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM balance_sheet_category")
+            existing_bs_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching BS categories: {e}")
+            existing_bs_positions = set()
+
+        bs_inserts = [(name, pos, date.today()) for name, pos in bs_cats if pos not in existing_bs_positions]
+        if bs_inserts:
+            try:
+                cursor.executemany("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", bs_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting BS categories: {e}")
 
         # P&L Categories
         pl_cats = [
@@ -7516,26 +7543,38 @@ def ensure_default_categories():
             ('Minority interest', 10),
             ('Extraordinary items', 11)
         ]
-        for name, pos in pl_cats:
-            cursor.execute("SELECT id FROM `p&l_category` WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting PL category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM `p&l_category`")
+            existing_pl_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching PL categories: {e}")
+            existing_pl_positions = set()
+
+        pl_inserts = [(name, pos, date.today()) for name, pos in pl_cats if pos not in existing_pl_positions]
+        if pl_inserts:
+            try:
+                cursor.executemany("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", pl_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting PL categories: {e}")
 
         # CF Categories
         cf_cats = [
             ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
             ('Adjustments', 0), ('Changes In Working Capital', 0)
         ]
-        for name, pos in cf_cats:
-             cursor.execute("SELECT id FROM cf_catogory WHERE catogory_name = %s", (name,))
-             if not cursor.fetchone():
-                 try:
-                     cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
-                 except Exception as e:
-                     logging.error(f"Error inserting CF category {name}: {e}")
+        try:
+            cursor.execute("SELECT catogory_name FROM cf_catogory")
+            existing_cf_names = {row['catogory_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching CF categories: {e}")
+            existing_cf_names = set()
+
+        cf_inserts = [(name, pos) for name, pos in cf_cats if name not in existing_cf_names]
+        if cf_inserts:
+            try:
+                cursor.executemany("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", cf_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting CF categories: {e}")
 
         conn.commit()
         cursor.close()
@@ -8155,51 +8194,60 @@ def process_invoice_items(ctx: InvoiceItemContext):
                 ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
             ))
 
-def post_invoice_gl_entries(cursor, current_user, jv_no, invoice_date, job_no, totals):
-    job_no_val = job_no if job_no else None
+@dataclass
+class InvoiceGLContext:
+    cursor: object
+    current_user: int
+    jv_no: str
+    invoice_date: str
+    job_no: str
+    totals: dict
+
+def post_invoice_gl_entries(ctx: InvoiceGLContext):
+    job_no_val = ctx.job_no if ctx.job_no else None
 
     # DR Account Receivable (Total + VAT)
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO entry_details (
             account_name, enty_values_DR, entry_effective_date, entry_create_date,
             entry_naration, entry_create_user, entry_jv, entry_job_number
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, ('Account Receivable', totals['grand_total'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+    """, ('Account Receivable', ctx.totals['grand_total'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # CR Income (Sales)
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO entry_details (
             account_name, enty_values_CR, entry_effective_date, entry_create_date,
             entry_naration, entry_create_user, entry_jv, entry_job_number
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, ('Sales', totals['total_sales'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+    """, ('Sales', ctx.totals['total_sales'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # CR VAT (If any)
-    if totals['vat_amount'] > 0:
-        cursor.execute("""
+    if ctx.totals['vat_amount'] > 0:
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('VAT Control', totals['vat_amount'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('VAT Control', ctx.totals['vat_amount'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # Cost of Goods Sold (If inventory items exist)
-    if totals['total_cost'] > 0:
+    if ctx.totals['total_cost'] > 0:
             # DR COGS
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Cost Of Goods Sold', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('Cost Of Goods Sold', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
         # CR Inventory
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Inventory', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('Inventory', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
 @app.route('/invoice_creating/submit', methods=['POST'])
 @login_required
@@ -8367,51 +8415,20 @@ def submit_invoice():
                 """, inventory_recode_batch)
 
         # 8. GL Entries
-        job_no_val = job_no if job_no else None
-
-        # DR Account Receivable (Total + VAT)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_job_number
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # CR Income (Sales)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_job_number
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # CR VAT (If any)
-        if vat_amount > 0:
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # Cost of Goods Sold (If inventory items exist)
-        if total_cost > 0:
-             # DR COGS
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-            # CR Inventory
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
+        gl_ctx = InvoiceGLContext(
+            cursor=cursor,
+            current_user=current_user,
+            jv_no=jv_no,
+            invoice_date=inv_date,
+            job_no=job_no,
+            totals={
+                'grand_total': grand_total,
+                'total_sales': total_sales,
+                'vat_amount': vat_amount,
+                'total_cost': total_cost
+            }
+        )
+        post_invoice_gl_entries(gl_ctx)
         conn.commit()
         flash(f'Invoice {invoice_no} created successfully.', 'success')
 

@@ -101,7 +101,8 @@ class TestUserManagement(unittest.TestCase):
                         query = call[0][0]
                         if "INSERT INTO Login_Table" in query:
                             params = call[0][1]
-                            if params[0] == 'newuser' and params[1] == 'password123':
+                            # params[1] is a hashed password, so just check username
+                            if params[0] == 'newuser':
                                 found_insert = True
 
                         if "UPDATE Login_Table SET User_Code" in query:
