@@ -8139,51 +8139,60 @@ def process_invoice_items(ctx: InvoiceItemContext):
                 ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
             ))
 
-def post_invoice_gl_entries(cursor, current_user, jv_no, invoice_date, job_no, totals):
-    job_no_val = job_no if job_no else None
+@dataclass
+class InvoiceGLContext:
+    cursor: object
+    current_user: int
+    jv_no: str
+    invoice_date: str
+    job_no: str
+    totals: dict
+
+def post_invoice_gl_entries(ctx: InvoiceGLContext):
+    job_no_val = ctx.job_no if ctx.job_no else None
 
     # DR Account Receivable (Total + VAT)
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO entry_details (
             account_name, enty_values_DR, entry_effective_date, entry_create_date,
             entry_naration, entry_create_user, entry_jv, entry_job_number
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, ('Account Receivable', totals['grand_total'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+    """, ('Account Receivable', ctx.totals['grand_total'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # CR Income (Sales)
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO entry_details (
             account_name, enty_values_CR, entry_effective_date, entry_create_date,
             entry_naration, entry_create_user, entry_jv, entry_job_number
         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-    """, ('Sales', totals['total_sales'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+    """, ('Sales', ctx.totals['total_sales'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # CR VAT (If any)
-    if totals['vat_amount'] > 0:
-        cursor.execute("""
+    if ctx.totals['vat_amount'] > 0:
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('VAT Control', totals['vat_amount'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('VAT Control', ctx.totals['vat_amount'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
     # Cost of Goods Sold (If inventory items exist)
-    if totals['total_cost'] > 0:
+    if ctx.totals['total_cost'] > 0:
             # DR COGS
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Cost Of Goods Sold', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('Cost Of Goods Sold', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
         # CR Inventory
-        cursor.execute("""
+        ctx.cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Inventory', totals['total_cost'], invoice_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
+        """, ('Inventory', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
 @app.route('/invoice_creating/submit', methods=['POST'])
 @login_required
@@ -8351,51 +8360,20 @@ def submit_invoice():
                 """, inventory_recode_batch)
 
         # 8. GL Entries
-        job_no_val = job_no if job_no else None
-
-        # DR Account Receivable (Total + VAT)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_job_number
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Receivable', grand_total, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # CR Income (Sales)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_job_number
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', total_sales, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # CR VAT (If any)
-        if vat_amount > 0:
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', vat_amount, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-        # Cost of Goods Sold (If inventory items exist)
-        if total_cost > 0:
-             # DR COGS
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Cost Of Goods Sold', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
-            # CR Inventory
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_cost, inv_date, datetime.now().date(), "Credit Sale", current_user, jv_no, job_no_val))
-
+        gl_ctx = InvoiceGLContext(
+            cursor=cursor,
+            current_user=current_user,
+            jv_no=jv_no,
+            invoice_date=inv_date,
+            job_no=job_no,
+            totals={
+                'grand_total': grand_total,
+                'total_sales': total_sales,
+                'vat_amount': vat_amount,
+                'total_cost': total_cost
+            }
+        )
+        post_invoice_gl_entries(gl_ctx)
         conn.commit()
         flash(f'Invoice {invoice_no} created successfully.', 'success')
 

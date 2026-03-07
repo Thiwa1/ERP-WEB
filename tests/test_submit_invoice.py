@@ -119,9 +119,11 @@ class TestSubmitInvoice(unittest.TestCase):
         self.assertTrue(any("INSERT INTO Credit_Invoice_No" in s for s in sql_calls))
         self.assertTrue(any("INSERT INTO jv_numbers" in s for s in sql_calls))
         self.assertTrue(any("INSERT INTO Invoice_Oustanding" in s for s in sql_calls))
-        self.assertTrue(any("INSERT INTO Invoice_Recode" in s and "Item A" in s for s in sql_calls))
-        self.assertTrue(any("INSERT INTO inventory_recod" in s and "Item A" in s for s in sql_calls))
-        self.assertTrue(any("INSERT INTO Invoice_Recode" in s and "Service B" in s for s in sql_calls))
+        executemany_calls = mock_cursor.executemany.call_args_list
+        exec_sql_calls = [str(c) for c in executemany_calls]
+        self.assertTrue(any("INSERT INTO Invoice_Recode" in s and "Item A" in s for s in exec_sql_calls))
+        self.assertTrue(any("INSERT INTO inventory_recod" in s and "Item A" in s for s in exec_sql_calls))
+        self.assertTrue(any("INSERT INTO Invoice_Recode" in s and "Service B" in s for s in exec_sql_calls))
 
         self.assertTrue(any("INSERT INTO entry_details" in s and "Account Receivable" in s for s in sql_calls))
         self.assertTrue(any("INSERT INTO entry_details" in s and "Sales" in s for s in sql_calls))
