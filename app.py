@@ -7486,10 +7486,16 @@ def ensure_default_categories():
             ('Capital and reserves', 5),
             ('Current liabilities', 6)
         ]
+        try:
+            cursor.execute("SELECT holding_position FROM balance_sheet_category")
+            existing_bs = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            existing_bs = set()
+            logging.error(f"Error fetching existing BS categories: {e}")
+
         for name, pos in bs_cats:
             # Check if exists by position to avoid duplicate key error on position
-            cursor.execute("SELECT id FROM balance_sheet_category WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
+            if pos not in existing_bs:
                 try:
                     cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
@@ -7509,9 +7515,15 @@ def ensure_default_categories():
             ('Minority interest', 10),
             ('Extraordinary items', 11)
         ]
+        try:
+            cursor.execute("SELECT holding_position FROM `p&l_category`")
+            existing_pl = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            existing_pl = set()
+            logging.error(f"Error fetching existing PL categories: {e}")
+
         for name, pos in pl_cats:
-            cursor.execute("SELECT id FROM `p&l_category` WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
+            if pos not in existing_pl:
                 try:
                     cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
                 except Exception as e:
@@ -7522,9 +7534,15 @@ def ensure_default_categories():
             ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
             ('Adjustments', 0), ('Changes In Working Capital', 0)
         ]
+        try:
+            cursor.execute("SELECT catogory_name FROM cf_catogory")
+            existing_cf = {row['catogory_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            existing_cf = set()
+            logging.error(f"Error fetching existing CF categories: {e}")
+
         for name, pos in cf_cats:
-             cursor.execute("SELECT id FROM cf_catogory WHERE catogory_name = %s", (name,))
-             if not cursor.fetchone():
+             if name not in existing_cf:
                  try:
                      cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
                  except Exception as e:
