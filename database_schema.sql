@@ -145,7 +145,6 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
   INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC) INVISIBLE,
   INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC) VISIBLE,
-  INDEX `key_to_catogory` (`account_name_of_catogory_PL` ASC) VISIBLE,
   INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC) VISIBLE,
   INDEX `key_CF_Table` (`cf_catogory` ASC) VISIBLE,
   CONSTRAINT `key_to_balace_possion`
@@ -153,7 +152,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
     REFERENCES `Book_keeping`.`balance_sheet_category` (`holding_position`)
     ON DELETE SET NULL
     ON UPDATE CASCADE,
-  CONSTRAINT `key_to_catogory`
+  CONSTRAINT `fk_key_to_catogory_bs`
     FOREIGN KEY (`account_name_of_catogory_Balace_sheet`)
     REFERENCES `Book_keeping`.`balance_sheet_category` (`name_of_category`)
     ON DELETE SET NULL
@@ -272,7 +271,7 @@ COLLATE = utf8mb4_0900_ai_ci;
 -- Table `Book_keeping`.`suppliers`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers` (
-  `sup_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `sup_id` BIGINT NOT NULL AUTO_INCREMENT,
   `supplier_name` VARCHAR(200) NULL,
   `supplier_code` VARCHAR(200) NULL,
   `supplier_address_1` VARCHAR(45) NULL,
@@ -300,7 +299,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`suppliers_invoice_data`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers_invoice_data` (
-  `s_i_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `s_i_id` BIGINT NOT NULL AUTO_INCREMENT,
   `suppliers_code` VARCHAR(200) NULL,
   `suppliers_invoice_number` VARCHAR(200) NULL,
   `suppliers_invoice_date` DATE NULL,
@@ -308,8 +307,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers_invoice_data` (
   `suppliers_invoice_total_payment` DOUBLE NULL,
   `suppliers_invoice_oustanding` DOUBLE GENERATED ALWAYS AS ((`suppliers_invoice_total_oustanding` - `suppliers_invoice_total_payment`)) VIRTUAL,
   `suppliers_invoice_final_date` DATE NULL,
-  `suppliers_invoice_buinding_supplier` BIGINT(20) NULL,
-  `suppliers_invoice_JV` BIGINT(20) NULL,
+  `suppliers_invoice_buinding_supplier` BIGINT NULL,
+  `suppliers_invoice_JV` BIGINT NULL,
   `suppliers_VAT_rate` DOUBLE NULL,
   `suppliers_oustanding_delete` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`s_i_id`),
@@ -326,7 +325,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`cash_book`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book` (
-  `cash_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cash_id` BIGINT NOT NULL AUTO_INCREMENT,
   `cash_book_account_name` VARCHAR(60) NULL,
   `cash_creat_date` DATE NULL,
   `cash_created_user` INT NULL,
@@ -344,9 +343,9 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`cash_voucher_no`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_voucher_no` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `cash_voucher_link` VARCHAR(60) NULL,
-  `cash_voucher_number` BIGINT(20) NULL,
+  `cash_voucher_number` BIGINT NULL,
   PRIMARY KEY (`id`),
   INDEX `fk_cash_book_idx` (`cash_voucher_link` ASC) VISIBLE,
   CONSTRAINT `fk_cash_book`
@@ -361,16 +360,16 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`cash_book_recode`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book_recode` (
-  `chash_book_recod_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `chash_book_recod_id` BIGINT NOT NULL AUTO_INCREMENT,
   `cash_book_recode_dr` DOUBLE NULL,
   `cash_book_recode_cr` DOUBLE NULL,
   `cash_book_recode_accont_name` VARCHAR(60) NULL,
   `cash_book_recode_naration` VARCHAR(200) NULL,
-  `cash_book_recode_suplier_oustanding_id` BIGINT(20) NULL,
+  `cash_book_recode_suplier_oustanding_id` BIGINT NULL,
   `cash_book_recode_suplier_name` VARCHAR(200) NULL,
-  `jv_numbers_jv_id` BIGINT(20) NOT NULL,
+  `jv_numbers_jv_id` BIGINT NOT NULL,
   `cash_book_po_no` VARCHAR(255) NULL,
-  `cash_book_suplier_oustanding_id` BIGINT(20) NULL,
+  `cash_book_suplier_oustanding_id` BIGINT NULL,
   `cash_book_recod_voucher_no` VARCHAR(255) NULL,
   `User_Enter` INT NULL,
   `User_Edit` INT NULL,
@@ -413,7 +412,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`inventoy_items`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventoy_items` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `inventoy_name` VARCHAR(255) NULL,
   `inventoy_code` VARCHAR(255) NULL,
   `inventoy_suplier_code` VARCHAR(255) NULL,
@@ -450,7 +449,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`inventory_locations`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_locations` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `inventory_locations_name` VARCHAR(60) NULL,
   `inventory_locations_descriptions` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
@@ -462,7 +461,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`inventory_recod`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `inventoy_name` VARCHAR(255) NULL,
   `inventoy_code` VARCHAR(255) NULL,
   `inventory_recod_action_date` DATE NULL,
@@ -480,8 +479,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
   `inventory_recod_last_edit_user` INT NULL,
   `inventory_recod_last_edit_date` DATE NULL,
   `inventory_recod_location` VARCHAR(60) NULL,
-  `inventory_recod_sales_invoice_link` BIGINT(20) ZEROFILL NULL,
-  `inventory_recod_link_invoice` BIGINT(20) NULL,
+  `inventory_recod_sales_invoice_link` BIGINT NULL,
+  `inventory_recod_link_invoice` BIGINT NULL,
   `inventory_recod_selling_price` DOUBLE NULL,
   `inventory_recodcol_memo` VARCHAR(45) NULL,
   `JV_No` INT NULL,
@@ -506,8 +505,8 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`inventory_price_recod`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_price_recod` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
-  `inventory_price_link` BIGINT(20) NULL,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `inventory_price_link` BIGINT NULL,
   `inventory_price_purcharsing` DOUBLE NULL DEFAULT 0,
   `inventory_price_selling` DOUBLE NULL DEFAULT 0,
   `inventory_price_profit_marging_comen` DOUBLE NULL DEFAULT 0,
@@ -527,7 +526,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`bank_book`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `bank_bookcol_account_number` VARCHAR(60) NULL,
   `bank_book_create_date` DATE NULL,
   `bank_book_create_user` INT NULL,
@@ -541,9 +540,9 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`bank_book_voucher_no`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_voucher_no` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `bank_book_voucher_link` VARCHAR(60) NULL,
-  `bank_book_voucher_no` BIGINT(20) NULL,
+  `bank_book_voucher_no` BIGINT NULL,
   `bank_book_chq_no` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
   INDEX `fk_bank_book_idx` (`bank_book_voucher_link` ASC) VISIBLE,
@@ -559,14 +558,14 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`bank_book_recod`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_recod` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `bank_book_book_recode_dr` DOUBLE NULL,
   `bank_book__recode_cr` DOUBLE NULL,
   `bank_book__accont_name` VARCHAR(60) NULL,
   `bank_book__naration` VARCHAR(200) NULL,
-  `bank_book__suplier_oustanding_id` BIGINT(20) NULL,
+  `bank_book__suplier_oustanding_id` BIGINT NULL,
   `bank_book__suplier_name` VARCHAR(200) NULL,
-  `jv_numbers_jv_id` BIGINT(20) NULL,
+  `jv_numbers_jv_id` BIGINT NULL,
   `bank_book_reconciliation` TINYINT NULL,
   `bank_book_recod_voucher_no` VARCHAR(255) NULL,
   `bank_book_chque_no` VARCHAR(45) NULL,
@@ -617,7 +616,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`customer`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `customer_name` VARCHAR(255) NULL,
   `customer_code` VARCHAR(45) NULL,
   `customer_Billing_Address` VARCHAR(255) NULL,
@@ -640,7 +639,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`customer_invoice_data`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer_invoice_data` (
-  `cos_id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `cos_id` BIGINT NOT NULL AUTO_INCREMENT,
   `cos_code` VARCHAR(200) NULL,
   `cos_iv_no` VARCHAR(200) NULL,
   `cos_date_efective` DATE NULL,
@@ -648,8 +647,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer_invoice_data` (
   `cos_iv_total_payment` DOUBLE NULL,
   `cos_total_oustanding_aft` DOUBLE GENERATED ALWAYS AS (cos_iv_total_oustanding-cos_iv_total_payment) VIRTUAL,
   `cos_date_create` DATE NULL,
-  `cos_binding_cos` BIGINT(20) NULL,
-  `cos_jv_n0` BIGINT(20) NULL,
+  `cos_binding_cos` BIGINT NULL,
+  `cos_jv_n0` BIGINT NULL,
   `cos_delete` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`cos_id`),
   INDEX `key_to_cos_idx` (`cos_binding_cos` ASC) VISIBLE,
@@ -758,7 +757,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`OP_NO_Table`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`OP_NO_Table` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
   `OP_NO_Other` VARCHAR(45) NULL,
   `Creator_Id` INT NULL,
   `Create_Date` DATE NULL,
@@ -767,7 +766,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`OP_NO_Table` (
   `Aproed_Date` DATE NULL,
   `Edit_date` DATE NULL,
   `Delete_PO` TINYINT NULL,
-  `Sup_ID` BIGINT(20) NULL,
+  `Sup_ID` BIGINT NULL,
   `Sup_Name` VARCHAR(255) NULL,
   `Special_Instractions` VARCHAR(255) NULL,
   `Save_Post` TINYINT NULL,
@@ -783,8 +782,8 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`PO_Recode_Details`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`PO_Recode_Details` (
-  `id` BIGINT(20) NOT NULL AUTO_INCREMENT,
-  `Link_OP_NO_Table` BIGINT(20) NULL,
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `Link_OP_NO_Table` BIGINT NULL,
   `Item` VARCHAR(255) NULL,
   `Discription` VARCHAR(255) NULL,
   `QTY` DOUBLE NULL,
@@ -855,8 +854,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Oustanding` (
   `invoice_oustanding_Patment` DOUBLE NULL,
   `Invoice_Oustanding` DOUBLE GENERATED ALWAYS AS (invoice_total_oustanding-invoice_oustanding_Patment) VIRTUAL,
   `invoice_final_date` DATE NULL,
-  `invoice_buinding_Customer` BIGINT(20) NULL,
-  `invoice_JV` BIGINT(20) NULL,
+  `invoice_buinding_Customer` BIGINT NULL,
+  `invoice_JV` BIGINT NULL,
   `VAT_rate` DOUBLE NULL,
   `oustanding_delete` TINYINT NULL,
   PRIMARY KEY (`Id`))
@@ -877,7 +876,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Recode` (
   `User` VARCHAR(45) NULL,
   `Customer_Name` VARCHAR(255) NULL,
   `Save_Or_Not` TINYINT NULL,
-  `Buinding_To_Oustanding` INT(255) NULL,
+  `Buinding_To_Oustanding` INT NULL,
   `mesurment` VARCHAR(45) NULL,
   `recode_date` DATE NULL,
   `warety_end_date` DATE NULL,
@@ -988,8 +987,8 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`Invoice_Save`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save` (
-  `id` INT(255) NOT NULL AUTO_INCREMENT,
-  `No` INT(255) NULL,
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `No` INT NULL,
   `Item_Name` VARCHAR(255) NULL,
   `Measurement` VARCHAR(45) NULL,
   `Quantity` DOUBLE NULL,
@@ -1007,7 +1006,7 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`Invoice_Save_Id`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save_Id` (
-  `id` INT(255) NOT NULL AUTO_INCREMENT,
+  `id` INT NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`))
 ENGINE = InnoDB;
 
@@ -1025,11 +1024,11 @@ ENGINE = InnoDB;
 -- Table `Book_keeping`.`bank_reconciliation_reversal_log`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_reversal_log` (
-  `id` INT(11) NOT NULL AUTO_INCREMENT,
-  `original_rec_id` INT(11) NOT NULL,
+  `id` INT NOT NULL AUTO_INCREMENT,
+  `original_rec_id` INT NOT NULL,
   `bank_account` VARCHAR(45) NULL DEFAULT NULL,
   `reversal_date` DATETIME NOT NULL,
-  `reversed_by_user` INT(11) NULL DEFAULT NULL,
+  `reversed_by_user` INT NULL DEFAULT NULL,
   `opening_balance` DOUBLE NULL DEFAULT NULL,
   `closing_balance` DOUBLE NULL DEFAULT NULL,
   `reversal_reason` VARCHAR(500) NULL DEFAULT NULL,
@@ -1800,7 +1799,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 ( if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) - if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00)) as "Amount_incom_ex"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_assets` = 1
 GROUP BY `entry_details`.`account_name`$$
 
@@ -2005,7 +2004,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 (  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_exe"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_equity` = 1
 GROUP BY `entry_details`.`account_name`$$
 
@@ -2108,7 +2107,7 @@ SELECT `new_account_table`.`account_name_of_catogory_PL` as "Description",
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
 WHERE `entry_details`.`entry_effective_date`
-BETWEEN from_date AND to_date &&  `new_account_table`.`account_name` = accout_name
+BETWEEN from_date AND to_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_income` = 1
 GROUP BY `entry_details`.`account_name` ;
 
@@ -2290,7 +2289,7 @@ SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Descripti
 (  if(sum(enty_values_CR)>0,sum(enty_values_CR),0.00) - if(sum(enty_values_DR)>0,sum(enty_values_DR),0.00) ) as "Amount_incom_ex"
 FROM entry_details
 RIGHT JOIN `new_account_table` ON `entry_details`.`account_name` = `new_account_table`.`account_name`
-WHERE `entry_details`.`entry_effective_date`  <= from_date &&  `new_account_table`.`account_name` = accout_name
+WHERE `entry_details`.`entry_effective_date`  <= from_date AND  `new_account_table`.`account_name` = accout_name
 AND `new_account_table`.`account_liabilities` = 1
 GROUP BY `entry_details`.`account_name`$$
 

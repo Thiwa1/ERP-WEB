@@ -114,21 +114,30 @@ THEMES = {
 
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
+db_suport_name = "sri"
+
+# Force prefix onto database name to handle shared hosting constraints
+_raw_db_name = os.environ.get('DB_NAME', 'Book_keeping')
+if _raw_db_name.startswith(f"{db_suport_name}_"):
+    _final_db_name = _raw_db_name
+else:
+    _final_db_name = f"{db_suport_name}_{_raw_db_name}"
+
 db_config = {
-    'user': os.environ.get('DB_USER'),
     'user': os.environ.get('DB_USER', 'root'),
     'password': os.environ.get('DB_PASSWORD'),
     'host': os.environ.get('DB_HOST', 'localhost'),
-    'database': os.environ.get('DB_NAME', 'Book_keeping'),
+    'database': _final_db_name,
     'raise_on_warnings': True
 }
+
 
 # Ensure critical database configuration is present
 if not db_config['user']:
     print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
-MASTER_DB_NAME = 'Book_keeping_Master'
+MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master"
 
 def get_session_db_name():
     """Returns the correct database name based on session."""
@@ -152,11 +161,17 @@ def setup_master_db():
         if 'database' in temp_config:
             del temp_config['database']
 
-        conn = mysql.connector.connect(**temp_config)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
-        cursor.close()
-        conn.close()
+        try:
+            conn = mysql.connector.connect(**temp_config)
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno} for Master DB: {e.msg}")
+            else:
+                raise e
 
         # Now create tables in Master DB
         master_db.execute_query("""
@@ -179,6 +194,69 @@ def setup_master_db():
             )
         """)
         print("Master DB setup complete.")
+
+        # 3. Setup Default/Fallback Database if missing tables (e.g. Login_Table)
+        default_db_name = db_config['database']
+
+        # Check if default DB has Login_Table
+        try:
+            try:
+                default_conn = mysql.connector.connect(**temp_config)
+                default_cursor = default_conn.cursor()
+                default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
+                default_cursor.close()
+                default_conn.close()
+            except mysql.connector.Error as e:
+                if e.errno in (1007, 1044):
+                    logging.warning(f"Ignored DB creation error {e.errno} for default DB: {e.msg}")
+                else:
+                    raise e
+
+            # Connect to default DB to check for tables
+            check_config = db_config.copy()
+            check_conn = mysql.connector.connect(**check_config)
+            check_cursor = check_conn.cursor()
+
+            # Try selecting from Login_Table to see if it exists
+            table_exists = False
+            try:
+                check_cursor.execute("SELECT 1 FROM Login_Table LIMIT 1")
+                check_cursor.fetchall()
+                table_exists = True
+            except mysql.connector.errors.ProgrammingError:
+                pass
+
+            if not table_exists:
+                import re
+                print(f"Initializing schema for default database: {default_db_name}")
+                if os.path.exists('database_schema.sql'):
+                    with open('database_schema.sql', 'r') as f:
+                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
+                        parse_and_execute_sql(check_cursor, content)
+
+                if os.path.exists('fixed_assets.sql'):
+                    with open('fixed_assets.sql', 'r') as f:
+                        content = re.sub(r'(?i)Book_keeping', default_db_name, f.read())
+                        parse_and_execute_sql(check_cursor, content)
+
+                check_conn.commit()
+
+                # Insert default admin user into fallback db
+                try:
+                    check_cursor.execute("""
+                        INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
+                        VALUES ('admin', 'admin', 'admin@example.com', '1001', 1)
+                    """)
+                    check_conn.commit()
+                except Exception as e:
+                    print(f"Could not insert default admin: {e}")
+
+            check_cursor.close()
+            check_conn.close()
+
+        except Exception as default_db_err:
+            print(f"Error initializing default DB ({default_db_name}): {default_db_err}")
+
     except Exception as e:
         print(f"Error setting up Master DB: {e}")
 
@@ -212,8 +290,17 @@ def parse_and_execute_sql(cursor, content):
                 try:
                     cursor.execute(sql_to_run)
                     while cursor.nextset(): pass
+                except mysql.connector.Error as e:
+                    # If this is a CREATE SCHEMA/DATABASE statement and we hit 1007/1044, safely ignore
+                    upper_sql = sql_to_run.upper()
+                    if e.errno in (1007, 1044) and ("CREATE SCHEMA" in upper_sql or "CREATE DATABASE" in upper_sql):
+                        logging.warning(f"Ignored DB/Schema creation error in parse_and_execute_sql: {e.msg}")
+                    else:
+                        print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+                        raise e
                 except Exception as e:
                     print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
+                    raise e
             statement = ""
 
 def create_tenant_db(company_name, username, password, email):
@@ -221,7 +308,7 @@ def create_tenant_db(company_name, username, password, email):
     import re
 
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"bk_{safe_name}"
+    db_name = f"{db_suport_name}_{safe_name}"
 
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
@@ -233,11 +320,19 @@ def create_tenant_db(company_name, username, password, email):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
-        conn = mysql.connector.connect(**temp_config)
-        cursor = conn.cursor()
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS {db_name}")
-        cursor.close()
-        conn.close()
+        try:
+            conn = mysql.connector.connect(**temp_config)
+            cursor = conn.cursor()
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+            cursor.close()
+            conn.close()
+        except mysql.connector.Error as e:
+            # 1007: Can't create database; database exists
+            # 1044: Access denied for user to database (on shared hosting where DB must be pre-created)
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno}: {e.msg} - assuming DB '{db_name}' is already created.")
+            else:
+                raise e
 
         # Connect to New DB
         t_config = db_config.copy()
@@ -248,12 +343,12 @@ def create_tenant_db(company_name, username, password, email):
         # Execute Schema
         if os.path.exists('database_schema.sql'):
             with open('database_schema.sql', 'r') as f:
-                content = f.read().replace('Book_keeping', db_name)
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
                 parse_and_execute_sql(t_cursor, content)
 
         if os.path.exists('fixed_assets.sql'):
             with open('fixed_assets.sql', 'r') as f:
-                content = f.read().replace('Book_keeping', db_name)
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
                 parse_and_execute_sql(t_cursor, content)
 
         t_conn.commit()
@@ -542,7 +637,7 @@ def login():
                 master_user = master_user_res[0]
                 if master_user['password'] == password:
                     # Login Successful on Master
-                    session['tenant_db'] = master_user['db_name']
+                    session['db_name'] = master_user['db_name']
                     session['username'] = username
 
                     # Fetch User Details from Tenant DB (for permissions/FKs)
@@ -556,7 +651,7 @@ def login():
                         return redirect(url_for('index'))
                     else:
                         flash('User record missing in tenant database.', 'danger')
-                        session.pop('tenant_db', None)
+                        session.pop('db_name', None)
                         return redirect(url_for('login'))
                 else:
                     flash('Incorrect password.', 'danger')
@@ -567,7 +662,7 @@ def login():
 
         # 2. Fallback to Legacy Login (Default DB)
         # Ensure clean session regarding tenant
-        session.pop('tenant_db', None)
+        session.pop('db_name', None)
 
         query = "SELECT id, User_Code, Password FROM Login_Table WHERE User_Name = %s"
         users = db.execute_query(query, (username,))
@@ -2648,30 +2743,22 @@ def cash_payment():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
-@app.route('/cash_payment/get_data')
-@login_required
-def get_cash_supplier_data():
-    sup_name = request.args.get('name')
-    if not sup_name:
-        return {'error': 'No supplier name'}, 400
-
-    # 1. Supplier Details
+def _get_supplier_base_data(sup_name):
+    """Helper to fetch common supplier details and outstanding invoices."""
     sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
-    details = {}
-    if sup_data:
-        s = sup_data[0]
-        details = {
-            'code': s['supplier_code'],
-            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
-            'mobile': s['suppliers_teli_1'],
-            'email': s['suppliers_e_mail'],
-            'vat': s['suppliers_vat_regidter_no']
-        }
-        sup_id = s['sup_id']
-    else:
-        return {'error': 'Supplier not found'}, 404
+    if not sup_data:
+        return None, None, None
 
-    # 2. Outstanding Invoices
+    s = sup_data[0]
+    details = {
+        'code': s['supplier_code'],
+        'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
+        'mobile': s['suppliers_teli_1'],
+        'email': s['suppliers_e_mail'],
+        'vat': s['suppliers_vat_regidter_no']
+    }
+    sup_id = s['sup_id']
+
     invoices = db.execute_query("""
         SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
                suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
@@ -2690,6 +2777,20 @@ def get_cash_supplier_data():
             'paid': float(inv['suppliers_invoice_total_payment']),
             'balance': float(inv['suppliers_invoice_oustanding'])
         })
+
+    return details, inv_list, sup_id
+
+
+@app.route('/cash_payment/get_data')
+@login_required
+def get_cash_supplier_data():
+    sup_name = request.args.get('name')
+    if not sup_name:
+        return {'error': 'No supplier name'}, 400
+
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
+        return {'error': 'Supplier not found'}, 404
 
     # 3. Cash Payment History
     history = db.execute_query("""
@@ -3831,41 +3932,9 @@ def get_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    # 1. Supplier Details
-    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
-    details = {}
-    if sup_data:
-        s = sup_data[0]
-        details = {
-            'code': s['supplier_code'],
-            'address': f"{s['supplier_address_1']}, {s['supplier_address_2']}",
-            'mobile': s['suppliers_teli_1'],
-            'email': s['suppliers_e_mail'],
-            'vat': s['suppliers_vat_regidter_no']
-        }
-        sup_id = s['sup_id']
-    else:
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
         return {'error': 'Supplier not found'}, 404
-
-    # 2. Outstanding Invoices
-    invoices = db.execute_query("""
-        SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
-               suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
-        FROM suppliers_invoice_data
-        WHERE suppliers_invoice_buinding_supplier = %s AND suppliers_invoice_oustanding > 0 AND suppliers_oustanding_delete = 0
-    """, (sup_id,))
-
-    inv_list = []
-    for inv in invoices:
-        inv_list.append({
-            'id': inv['s_i_id'],
-            'invoice_no': inv['suppliers_invoice_number'],
-            'date': str(inv['suppliers_invoice_date']),
-            'due_date': str(inv['suppliers_invoice_final_date']),
-            'total': float(inv['suppliers_invoice_total_oustanding']),
-            'paid': float(inv['suppliers_invoice_total_payment']),
-            'balance': float(inv['suppliers_invoice_oustanding'])
-        })
 
     # 3. Payment History
     history = db.execute_query("""
@@ -7996,19 +8065,30 @@ def create_invoice_jv(cursor, current_user, narration):
                    (str(current_user), narration))
     return cursor.lastrowid
 
-def create_outstanding_record(cursor, invoice_no, inv_date, grand_total, due_date, cust_name, jv_no, vat_rate):
-    cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (cust_name,))
-    res = cursor.fetchone()
+@dataclass
+class OutstandingRecordContext:
+    cursor: typing.Any
+    invoice_no: str
+    inv_date: str
+    grand_total: float
+    due_date: str
+    cust_name: str
+    jv_no: str
+    vat_rate: float
+
+def create_outstanding_record(ctx: OutstandingRecordContext):
+    ctx.cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (ctx.cust_name,))
+    res = ctx.cursor.fetchone()
     cust_id = res[0] if res else 0
 
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO Invoice_Oustanding (
             invoice_number, invoice_date, invoice_total_oustanding,
             invoice_oustanding_Patment, invoice_final_date,
             invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
         ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-    """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
-    return cursor.lastrowid
+    """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
+    return ctx.cursor.lastrowid
 
 @dataclass
 class InvoiceItemContext:
@@ -8185,19 +8265,17 @@ def submit_invoice():
             grand_total += vat_amount
 
         # 6. Insert Outstanding Record
-        # Get Customer ID
-        cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (customer_name,))
-        res = cursor.fetchone()
-        cust_id = res[0] if res else 0
-
-        cursor.execute("""
-            INSERT INTO Invoice_Oustanding (
-                invoice_number, invoice_date, invoice_total_oustanding,
-                invoice_oustanding_Patment, invoice_final_date,
-                invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
-            ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-        """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
-        outstanding_id = cursor.lastrowid
+        ctx = OutstandingRecordContext(
+            cursor=cursor,
+            invoice_no=invoice_no,
+            inv_date=inv_date,
+            grand_total=grand_total,
+            due_date=due_date,
+            cust_name=customer_name,
+            jv_no=jv_no,
+            vat_rate=vat_rate
+        )
+        outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
 
@@ -8565,25 +8643,35 @@ def create_db_if_missing():
         if 'database' in temp_config:
             del temp_config['database']
 
-        conn_root = mysql.connector.connect(**temp_config)
-        cursor = conn_root.cursor()
+        try:
+            conn_root = mysql.connector.connect(**temp_config)
+            cursor = conn_root.cursor()
 
-        db_name = db_config.get('database', 'Book_keeping')
-        logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
-        cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-        conn_root.commit()
-        cursor.close()
-        conn_root.close()
-        logging.info(f"Database '{db_name}' checked/created.")
+            db_name = db_config.get('database', 'Book_keeping')
+            logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
+            conn_root.commit()
+            cursor.close()
+            conn_root.close()
+            logging.info(f"Database '{db_name}' checked/created.")
+        except mysql.connector.Error as e:
+            if e.errno in (1007, 1044):
+                logging.warning(f"Ignored DB creation error {e.errno} in create_db_if_missing: {e.msg}")
+            else:
+                raise e
     except Exception as e:
         logging.warning(f"Warning: Could not check/create database: {e}")
 
-def execute_sql_file(cursor, filepath):
+def execute_sql_file(cursor, filepath, db_name=None):
     """Parses and executes a MySQL dump file with DELIMITER support."""
+    import re
     logging.info(f"Executing SQL file: {filepath}")
     with open(filepath, 'r', encoding='utf-8') as f:
         # Read lines to handle DELIMITER command which is line-based
-        lines = f.readlines()
+        content = f.read()
+        if db_name:
+            content = re.sub(r'(?i)Book_keeping', db_name, content)
+        lines = content.split('\n')
 
     delimiter = ';'
     statement = ""
@@ -8605,7 +8693,7 @@ def execute_sql_file(cursor, filepath):
         if not statement and not stripped:
             continue
 
-        statement += line
+        statement += line + "\n"
 
         # Check if statement ends with delimiter
         if statement.strip().endswith(delimiter):
@@ -8643,13 +8731,15 @@ def import_initial_schema():
 
         logging.info("Login_Table missing. Attempting to import initial schema...")
 
+        default_db_name = db_config.get('database')
+
         if os.path.exists('database_schema.sql'):
             try:
-                execute_sql_file(cursor, 'database_schema.sql')
+                execute_sql_file(cursor, 'database_schema.sql', db_name=default_db_name)
                 logging.info("Schema imported successfully.")
 
                 if os.path.exists('fixed_assets.sql'):
-                    execute_sql_file(cursor, 'fixed_assets.sql')
+                    execute_sql_file(cursor, 'fixed_assets.sql', db_name=default_db_name)
                     logging.info("Fixed Assets schema imported.")
 
                 conn.commit()
