@@ -10,10 +10,11 @@ import app as app_module
 
 class TestSetupMasterDb(unittest.TestCase):
 
+    @patch('app.run_schema_migrations')
     @patch('app.mysql.connector.connect')
     @patch('app.master_db.execute_query')
     @patch('builtins.print')
-    def test_setup_master_db_success(self, mock_print, mock_execute_query, mock_connect):
+    def test_setup_master_db_success(self, mock_print, mock_execute_query, mock_connect, mock_run_schema_migrations):
         """Test that setup_master_db correctly initializes the master DB and tables."""
         # Setup mocks
         mock_conn = MagicMock()
@@ -62,10 +63,11 @@ class TestSetupMasterDb(unittest.TestCase):
         # 5. Success message was printed
         mock_print.assert_called_with("Master DB setup complete.")
 
+    @patch('app.run_schema_migrations')
     @patch('app.mysql.connector.connect')
     @patch('app.master_db.execute_query')
     @patch('builtins.print')
-    def test_setup_master_db_exception(self, mock_print, mock_execute_query, mock_connect):
+    def test_setup_master_db_exception(self, mock_print, mock_execute_query, mock_connect, mock_run_schema_migrations):
         """Test that setup_master_db handles exceptions gracefully."""
         # Make the connection fail
         mock_connect.side_effect = Exception("Connection Failed")
