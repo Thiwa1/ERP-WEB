@@ -6892,11 +6892,26 @@ def ensure_default_accounts():
 
         current_user = 0 # System
 
+        if not defaults:
+            return
+
+        # Extract all account names
+        account_names = [acc[0] for acc in defaults]
+
+        # Check existing accounts using a single batch query
+        format_strings = ','.join(['%s'] * len(account_names))
+        query = f"SELECT account_name FROM new_account_table WHERE account_name IN ({format_strings})"
+
+        existing_rows = db.execute_query(query, tuple(account_names))
+
+        # Store existing account names in a set for O(1) lookups
+        existing_names = {row['account_name'] for row in (existing_rows or [])}
+
         for acc in defaults:
             name, bs_pos, bs_cat, pl_pos, pl_cat, acc_type = acc
-            res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
 
-            if not res:
+            # Check against the set instead of making a DB query
+            if name not in existing_names:
                 logging.info(f"Creating default account: {name}")
                 # Determine basement
                 basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
