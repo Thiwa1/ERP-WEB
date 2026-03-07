@@ -7486,14 +7486,19 @@ def ensure_default_categories():
             ('Capital and reserves', 5),
             ('Current liabilities', 6)
         ]
-        for name, pos in bs_cats:
-            # Check if exists by position to avoid duplicate key error on position
-            cursor.execute("SELECT id FROM balance_sheet_category WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting BS category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM balance_sheet_category")
+            existing_bs_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching BS categories: {e}")
+            existing_bs_positions = set()
+
+        bs_inserts = [(name, pos, date.today()) for name, pos in bs_cats if pos not in existing_bs_positions]
+        if bs_inserts:
+            try:
+                cursor.executemany("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", bs_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting BS categories: {e}")
 
         # P&L Categories
         pl_cats = [
@@ -7509,26 +7514,38 @@ def ensure_default_categories():
             ('Minority interest', 10),
             ('Extraordinary items', 11)
         ]
-        for name, pos in pl_cats:
-            cursor.execute("SELECT id FROM `p&l_category` WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting PL category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM `p&l_category`")
+            existing_pl_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching PL categories: {e}")
+            existing_pl_positions = set()
+
+        pl_inserts = [(name, pos, date.today()) for name, pos in pl_cats if pos not in existing_pl_positions]
+        if pl_inserts:
+            try:
+                cursor.executemany("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", pl_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting PL categories: {e}")
 
         # CF Categories
         cf_cats = [
             ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
             ('Adjustments', 0), ('Changes In Working Capital', 0)
         ]
-        for name, pos in cf_cats:
-             cursor.execute("SELECT id FROM cf_catogory WHERE catogory_name = %s", (name,))
-             if not cursor.fetchone():
-                 try:
-                     cursor.execute("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", (name, pos))
-                 except Exception as e:
-                     logging.error(f"Error inserting CF category {name}: {e}")
+        try:
+            cursor.execute("SELECT catogory_name FROM cf_catogory")
+            existing_cf_names = {row['catogory_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching CF categories: {e}")
+            existing_cf_names = set()
+
+        cf_inserts = [(name, pos) for name, pos in cf_cats if name not in existing_cf_names]
+        if cf_inserts:
+            try:
+                cursor.executemany("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", cf_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting CF categories: {e}")
 
         conn.commit()
         cursor.close()
