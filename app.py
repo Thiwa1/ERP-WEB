@@ -8065,19 +8065,30 @@ def create_invoice_jv(cursor, current_user, narration):
                    (str(current_user), narration))
     return cursor.lastrowid
 
-def create_outstanding_record(cursor, invoice_no, inv_date, grand_total, due_date, cust_name, jv_no, vat_rate):
-    cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (cust_name,))
-    res = cursor.fetchone()
+@dataclass
+class OutstandingRecordContext:
+    cursor: typing.Any
+    invoice_no: str
+    inv_date: str
+    grand_total: float
+    due_date: str
+    cust_name: str
+    jv_no: str
+    vat_rate: float
+
+def create_outstanding_record(ctx: OutstandingRecordContext):
+    ctx.cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (ctx.cust_name,))
+    res = ctx.cursor.fetchone()
     cust_id = res[0] if res else 0
 
-    cursor.execute("""
+    ctx.cursor.execute("""
         INSERT INTO Invoice_Oustanding (
             invoice_number, invoice_date, invoice_total_oustanding,
             invoice_oustanding_Patment, invoice_final_date,
             invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
         ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-    """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
-    return cursor.lastrowid
+    """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
+    return ctx.cursor.lastrowid
 
 @dataclass
 class InvoiceItemContext:
@@ -8254,19 +8265,17 @@ def submit_invoice():
             grand_total += vat_amount
 
         # 6. Insert Outstanding Record
-        # Get Customer ID
-        cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (customer_name,))
-        res = cursor.fetchone()
-        cust_id = res[0] if res else 0
-
-        cursor.execute("""
-            INSERT INTO Invoice_Oustanding (
-                invoice_number, invoice_date, invoice_total_oustanding,
-                invoice_oustanding_Patment, invoice_final_date,
-                invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
-            ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-        """, (invoice_no, inv_date, grand_total, due_date, cust_id, jv_no, vat_rate))
-        outstanding_id = cursor.lastrowid
+        ctx = OutstandingRecordContext(
+            cursor=cursor,
+            invoice_no=invoice_no,
+            inv_date=inv_date,
+            grand_total=grand_total,
+            due_date=due_date,
+            cust_name=customer_name,
+            jv_no=jv_no,
+            vat_rate=vat_rate
+        )
+        outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
 
