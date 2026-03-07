@@ -1649,8 +1649,7 @@ def bs_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_Balace_sheet = %s, account_hold_possion_Balace_Sheet = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')
