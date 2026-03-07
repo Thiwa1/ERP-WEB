@@ -376,10 +376,19 @@ def create_tenant_db(company_name, username, password, email):
         t_db_conf['database'] = db_name
         t_db = Database(t_db_conf)
 
-        t_db.execute_query("""
+        user_id = t_db.execute_query("""
             INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
             VALUES (%s, %s, %s, '1001', 1)
         """, (username, password, email), commit=True)
+
+        # Grant all rights to the initial tenant admin user
+        t_db.execute_query("""
+            INSERT INTO User_Rights (
+                Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
+                Access_POS, Access_Accounting, Access_Reports, Access_Reversals
+            )
+            VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+        """, (user_id,), commit=True)
 
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
