@@ -392,6 +392,9 @@ def create_tenant_db(company_name, username, password, email):
 
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
+        ensure_default_categories(t_db)
+        ensure_default_accounts(t_db)
+
         # Insert into Master
         tenant_id = master_db.execute_query(
             "INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)",
@@ -6890,8 +6893,9 @@ def run_schema_migrations(target_db_conn=None):
     except Exception as e:
         logging.error(f"Schema Migration Error: {e}")
 
-def ensure_default_accounts():
+def ensure_default_accounts(target_db=None):
     """Ensures essential General Ledger accounts exist."""
+    current_db = target_db if target_db else db
     try:
         defaults = [
             # Name, BS Position, BS Category, P&L Position, P&L Category, Type
@@ -6917,7 +6921,7 @@ def ensure_default_accounts():
         format_strings = ','.join(['%s'] * len(account_names))
         query = f"SELECT account_name FROM new_account_table WHERE account_name IN ({format_strings})"
 
-        existing_rows = db.execute_query(query, tuple(account_names))
+        existing_rows = current_db.execute_query(query, tuple(account_names))
 
         # Store existing account names in a set for O(1) lookups
         existing_names = {row['account_name'] for row in (existing_rows or [])}
@@ -6939,7 +6943,7 @@ def ensure_default_accounts():
                         accont_create_date, account_create_user, account_active, account_basment
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
                 """
-                db.execute_query(query, (
+                current_db.execute_query(query, (
                     name, bs_pos, bs_cat, pl_pos, pl_cat,
                     1 if acc_type=='income' else 0, 1 if acc_type=='expenses' else 0,
                     1 if acc_type=='assets' else 0, 1 if acc_type=='liabilities' else 0, 0,
@@ -7526,10 +7530,11 @@ def create_default_user():
     except Exception as e:
         logging.error(f"Error creating default user: {e}")
 
-def ensure_default_categories():
+def ensure_default_categories(target_db=None):
     """Ensures default Balance Sheet and P&L categories exist."""
+    current_db = target_db if target_db else db
     try:
-        conn = db.get_connection()
+        conn = current_db.get_connection()
         if not conn: return
         cursor = conn.cursor()
 
