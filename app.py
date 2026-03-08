@@ -1130,7 +1130,7 @@ def add_inventory_item():
                     """
                     cursor.execute(query_item, (
                         name, code, supplier_code, batch_code, img_data,
-                        current_user, today_date, unit, main_cat, sub_cat, min_qty
+                        current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
                     ))
                     item_id = cursor.lastrowid
 
@@ -1141,32 +1141,6 @@ def add_inventory_item():
                         ) VALUES (0, %s, %s, %s, %s)
                     """
                     cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
-                # 3. Insert Item
-                query_item = """
-                    INSERT INTO inventoy_items (
-                        id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
-                        inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
-                        inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
-                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
-                """
-                cursor.execute(query_item, (
-                    name, code, supplier_code, batch_code, img_data,
-                    current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
-                ))
-                item_id = cursor.lastrowid
-
-                # 4. Insert Price
-                # C# uses "SELECT LAST_INSERT_ID()" but we have item_id
-                # However, schema for `inventory_price_recod` has `inventory_price_link` which is FK to item id?
-                # Wait, C# code says: `cmd1.Parameters.AddWithValue("@inventory_price_link", last_insert_jv_no);`
-                # Yes, `inventory_price_link` links to `inventoy_items.id`.
-
-                query_price = """
-                    INSERT INTO inventory_price_recod (
-                        id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
-                    ) VALUES (0, %s, %s, %s, %s)
-                """
-                cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
 
