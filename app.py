@@ -894,7 +894,6 @@ def add_customer():
                 flash('Customer added successfully!', 'success')
             except Exception as e:
                 print(f"Transaction failed: {e}")
-                conn.rollback()
                 logging.error(f"Transaction failed: {e}")
                 flash(f'Error adding customer: {str(e)}', 'danger')
 
