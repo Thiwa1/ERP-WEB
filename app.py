@@ -241,12 +241,25 @@ def setup_master_db():
 
                 check_conn.commit()
 
+                # Run application-level migrations on this default database to ensure all dynamic columns are present
+                run_schema_migrations(check_conn)
+
                 # Insert default admin user into fallback db
                 try:
                     check_cursor.execute("""
                         INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
                         VALUES ('admin', 'admin', 'admin@example.com', '1001', 1)
                     """)
+                    check_conn.commit()
+                    user_id = check_cursor.lastrowid
+
+                    check_cursor.execute("""
+                        INSERT INTO User_Rights (
+                            Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
+                            Access_POS, Access_Accounting, Access_Reports, Access_Reversals
+                        )
+                        VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+                    """, (user_id,))
                     check_conn.commit()
                 except Exception as e:
                     print(f"Could not insert default admin: {e}")
@@ -352,6 +365,10 @@ def create_tenant_db(company_name, username, password, email):
                 parse_and_execute_sql(t_cursor, content)
 
         t_conn.commit()
+
+        # Run application-level migrations on this new database to ensure all dynamic columns are present
+        run_schema_migrations(t_conn)
+
         t_conn.close()
 
         # Insert Admin User
@@ -1602,8 +1619,7 @@ def pl_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_PL = %s, account_hold_possion_PL = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')
@@ -1649,8 +1665,7 @@ def bs_category_correction():
                 conn.start_transaction()
 
                 query = "UPDATE new_account_table SET account_name_of_catogory_Balace_sheet = %s, account_hold_possion_Balace_Sheet = %s WHERE id = %s"
-                for u in updates:
-                    cursor.execute(query, u)
+                cursor.executemany(query, updates)
 
                 conn.commit()
                 flash(f'Updated {len(updates)} accounts successfully', 'success')
@@ -6569,13 +6584,12 @@ def submit_pos_sale():
         cursor.close()
         conn.close()
 
-def run_schema_migrations():
+def run_schema_migrations(target_db_conn=None):
     """Checks and updates database schema for new features."""
-    conn = db.get_connection()
+    conn = target_db_conn if target_db_conn else db.get_connection()
+    if not conn: return
     migrations.run_migrations(conn)
     try:
-        conn = db.get_connection()
-        if not conn: return
         cursor = conn.cursor()
 
         # 0. Migration Table
@@ -6893,11 +6907,26 @@ def ensure_default_accounts():
 
         current_user = 0 # System
 
+        if not defaults:
+            return
+
+        # Extract all account names
+        account_names = [acc[0] for acc in defaults]
+
+        # Check existing accounts using a single batch query
+        format_strings = ','.join(['%s'] * len(account_names))
+        query = f"SELECT account_name FROM new_account_table WHERE account_name IN ({format_strings})"
+
+        existing_rows = db.execute_query(query, tuple(account_names))
+
+        # Store existing account names in a set for O(1) lookups
+        existing_names = {row['account_name'] for row in (existing_rows or [])}
+
         for acc in defaults:
             name, bs_pos, bs_cat, pl_pos, pl_cat, acc_type = acc
-            res = db.execute_query("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
 
-            if not res:
+            # Check against the set instead of making a DB query
+            if name not in existing_names:
                 logging.info(f"Creating default account: {name}")
                 # Determine basement
                 basement = 'DR' if acc_type in ['expenses', 'assets'] else 'CR'
@@ -7486,14 +7515,19 @@ def ensure_default_categories():
             ('Capital and reserves', 5),
             ('Current liabilities', 6)
         ]
-        for name, pos in bs_cats:
-            # Check if exists by position to avoid duplicate key error on position
-            cursor.execute("SELECT id FROM balance_sheet_category WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting BS category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM balance_sheet_category")
+            existing_bs_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching BS categories: {e}")
+            existing_bs_positions = set()
+
+        bs_inserts = [(name, pos, date.today()) for name, pos in bs_cats if pos not in existing_bs_positions]
+        if bs_inserts:
+            try:
+                cursor.executemany("INSERT INTO balance_sheet_category (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", bs_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting BS categories: {e}")
 
         # P&L Categories
         pl_cats = [
@@ -7509,30 +7543,38 @@ def ensure_default_categories():
             ('Minority interest', 10),
             ('Extraordinary items', 11)
         ]
-        for name, pos in pl_cats:
-            cursor.execute("SELECT id FROM `p&l_category` WHERE holding_position = %s", (pos,))
-            if not cursor.fetchone():
-                try:
-                    cursor.execute("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", (name, pos, date.today()))
-                except Exception as e:
-                    logging.error(f"Error inserting PL category {name}: {e}")
+        try:
+            cursor.execute("SELECT holding_position FROM `p&l_category`")
+            existing_pl_positions = {row['holding_position'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching PL categories: {e}")
+            existing_pl_positions = set()
+
+        pl_inserts = [(name, pos, date.today()) for name, pos in pl_cats if pos not in existing_pl_positions]
+        if pl_inserts:
+            try:
+                cursor.executemany("INSERT INTO `p&l_category` (name_of_category, holding_position, create_date_time) VALUES (%s, %s, %s)", pl_inserts)
+            except Exception as e:
+                logging.error(f"Error bulk inserting PL categories: {e}")
 
         # CF Categories
         cf_cats = [
             ('Operating Activities', 1), ('Investing Activities', 2), ('Financing Activities', 3),
             ('Adjustments', 0), ('Changes In Working Capital', 0)
         ]
-        cat_names = [c[0] for c in cf_cats]
-        format_strings = ','.join(['%s'] * len(cat_names))
-        cursor.execute(f"SELECT catogory_name FROM cf_catogory WHERE catogory_name IN ({format_strings})", tuple(cat_names))
-        existing_cats = {row[0] for row in cursor.fetchall()}
+        try:
+            cursor.execute("SELECT catogory_name FROM cf_catogory")
+            existing_cf_names = {row['catogory_name'] if isinstance(row, dict) else row[0] for row in cursor.fetchall()}
+        except Exception as e:
+            logging.error(f"Error fetching CF categories: {e}")
+            existing_cf_names = set()
 
-        to_insert = [(name, pos) for name, pos in cf_cats if name not in existing_cats]
-        if to_insert:
+        cf_inserts = [(name, pos) for name, pos in cf_cats if name not in existing_cf_names]
+        if cf_inserts:
             try:
-                cursor.executemany("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", to_insert)
+                cursor.executemany("INSERT INTO cf_catogory (catogory_name, hold_level) VALUES (%s, %s)", cf_inserts)
             except Exception as e:
-                logging.error(f"Error inserting CF categories: {e}")
+                logging.error(f"Error bulk inserting CF categories: {e}")
 
         conn.commit()
         cursor.close()
