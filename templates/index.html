@@ -88,14 +88,25 @@
 
     /* Windows 10 Metro Colors by Category */
 
-    /* Core Accounting - Deep Blue */
-    .module-section:nth-of-type(1) .tile { background: #0063B1; }
+    /* Core Accounting - Varying Blues */
+    .module-section:nth-of-type(1) .col:nth-child(1) .tile { background: #0063B1; } /* Dark Blue */
+    .module-section:nth-of-type(1) .col:nth-child(2) .tile { background: #0078D7; } /* Windows Blue */
+    .module-section:nth-of-type(1) .col:nth-child(3) .tile { background: #2D7D9A; } /* Teal Blue */
+    .module-section:nth-of-type(1) .col:nth-child(4) .tile { background: #0099BC; } /* Light Blue */
+    .module-section:nth-of-type(1) .col:nth-child(5) .tile { background: #00B7C3; } /* Cyan Blue */
 
     /* Reversals - Dark Red */
     .module-section:has(.text-danger) .tile { background: #E81123; }
 
-    /* Inventory - Green */
-    .module-section:has(.text-success) .tile { background: #107C10; }
+    /* Inventory - Greens */
+    .module-section:has(.text-success) .col:nth-child(1) .tile { background: #107C10; }
+    .module-section:has(.text-success) .col:nth-child(2) .tile { background: #008272; }
+    .module-section:has(.text-success) .col:nth-child(3) .tile { background: #498205; }
+    .module-section:has(.text-success) .col:nth-child(4) .tile { background: #847545; }
+    .module-section:has(.text-success) .col:nth-child(5) .tile { background: #5D5A58; }
+    .module-section:has(.text-success) .col:nth-child(6) .tile { background: #00CC6A; }
+    .module-section:has(.text-success) .col:nth-child(7) .tile { background: #10893E; }
+    .module-section:has(.text-success) .col:nth-child(8) .tile { background: #00A3A3; }
 
     /* Key Features - Purple/Accent */
     .module-section:has(.text-primary) .tile { background: #6B69D6; }
@@ -222,6 +233,14 @@
                 <div class="module-header"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Services</div>
                 <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
                     <div class="col">
+                        <a href="/add_inventory_item" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-plus-square"></i>
+                                <span>New<br>Inv Item</span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col">
                         <a href="/grn" class="tile-link">
                             <div class="tile">
                                 <i class="fas fa-truck-loading"></i>
@@ -230,26 +249,50 @@
                         </a>
                     </div>
                     <div class="col">
-                        <a href="/placeholder?title=Service Entry" class="tile-link">
+                        <a href="/purchase_orders" class="tile-link">
                             <div class="tile">
-                                <i class="fas fa-tools"></i>
-                                <span>Service<br>Entry</span>
+                                <i class="fas fa-file-invoice"></i>
+                                <span>PO<br>Generator</span>
                             </div>
                         </a>
                     </div>
                     <div class="col">
-                        <a href="/inventory_reports?report_type=card" class="tile-link">
+                        <a href="/quotation_evaluation" class="tile-link">
                             <div class="tile">
-                                <i class="fas fa-clipboard-list"></i>
-                                <span>Inventory<br>Card</span>
+                                <i class="fas fa-balance-scale-right"></i>
+                                <span>Quotation<br>Eval</span>
                             </div>
                         </a>
                     </div>
                     <div class="col">
-                        <a href="/placeholder?title=Inventory Transfer" class="tile-link">
+                        <a href="/proforma_invoice" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-file-contract"></i>
+                                <span>Proforma<br>Invoice</span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col">
+                        <a href="/invoice_creating" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-file-invoice-dollar"></i>
+                                <span>Sales<br>Invoice</span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col">
+                        <a href="/inventory_transfer" class="tile-link">
                             <div class="tile">
                                 <i class="fas fa-exchange-alt"></i>
                                 <span>Stock<br>Transfer</span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col">
+                        <a href="/inventory_production" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-industry"></i>
+                                <span>Manufacturing</span>
                             </div>
                         </a>
                     </div>
