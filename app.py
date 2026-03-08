@@ -2077,20 +2077,38 @@ def save_bulk_gl_accounts(form_data, current_user):
     try:
         today = date.today()
 
-        # Iterate through form lists
         names = form_data.getlist('account_name[]')
         types = form_data.getlist('account_type[]')
-        cats = form_data.getlist('category[]') # "Name,Pos|Type" e.g. "Current Assets,3|BS"
+        cats = form_data.getlist('category[]')
         cfs = form_data.getlist('cf_category[]')
         actions = form_data.getlist('action[]')
+
+        # Filter valid names to check
+        valid_names = [n for i, n in enumerate(names) if actions[i] != 'skip' and n]
+
+        # Batch Fetch Existing Accounts
+        existing_map = {}
+        if valid_names:
+            format_strings = ','.join(['%s'] * len(valid_names))
+            cursor.execute(f"SELECT id, account_name FROM new_account_table WHERE account_name IN ({format_strings})", tuple(valid_names))
+            existing_rows = cursor.fetchall()
+            for row in existing_rows:
+                existing_map[row[1]] = row[0] # Name -> ID
+
+        to_update = []
+        to_insert = []
+
+        # For Sub-Ledgers
+        potential_banks = []
+        potential_cash = []
 
         count = 0
         for i in range(len(names)):
             if actions[i] == 'skip': continue
 
             name = names[i]
-            acc_type = types[i] # Asset, Liability, Equity, Income, Expense
-            cat_val = cats[i] # "CategoryName,Position|BS" or "|PL"
+            acc_type = types[i]
+            cat_val = cats[i]
             cf = cfs[i]
 
             # Parse Category
@@ -2107,7 +2125,6 @@ def save_bulk_gl_accounts(form_data, current_user):
                     if cat_type == 'BS': is_bs = True
                     elif cat_type == 'PL': is_pl = True
 
-            # Flags
             is_inc = 1 if acc_type == 'Income' else 0
             is_exp = 1 if acc_type == 'Expense' else 0
             is_ast = 1 if acc_type == 'Asset' else 0
@@ -2116,63 +2133,88 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             basement = 'DR' if is_ast or is_exp else 'CR'
 
-            # Insert or Update
-            # Check existence
-            cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (name,))
-            exists = cursor.fetchone()
-
-            if exists:
-                # Update
-                cursor.execute("""
-                    UPDATE new_account_table SET
-                        account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                        account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                        account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                        cf_catogory=%s, account_basment=%s
-                    WHERE id=%s
-                """, (
+            if name in existing_map:
+                # Prepare Update
+                to_update.append((
                     cat_pos if is_pl else None, cat_pos if is_bs else None,
                     cat_name if is_pl else None, cat_name if is_bs else None,
                     is_inc, is_exp, is_ast, is_lia, is_equ,
-                    cf, basement, exists[0]
+                    cf, basement, existing_map[name]
                 ))
             else:
-                # Insert
-                cursor.execute("""
-                    INSERT INTO new_account_table (
-                        account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                        account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                        cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-                """, (
+                # Prepare Insert
+                to_insert.append((
                     name, cat_pos if is_pl else None, cat_pos if is_bs else None,
                     cat_name if is_pl else None, cat_name if is_bs else None,
                     is_inc, is_exp, is_ast, is_lia, is_equ,
                     cf, today, current_user, basement
                 ))
 
-                # Auto-create Bank/Cash Book entries if applicable
+                # Collect for Sub-Ledger check
                 if is_ast:
                     acc_name_lower = name.lower()
                     if 'bank' in acc_name_lower:
-                        # Check if exists in bank_book
-                        cursor.execute("SELECT bank_id FROM bank_book WHERE bank_bookcol_account_number = %s", (name,))
-                        if not cursor.fetchone():
-                            cursor.execute("""
-                                INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
-                                VALUES (%s, %s, %s, %s)
-                            """, (name, name, today, current_user))
+                        potential_banks.append(name)
                     elif 'cash' in acc_name_lower:
-                        # Check if exists in cash_book
-                        cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
-                        if not cursor.fetchone():
-                            cursor.execute("""
-                                INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
-                                VALUES (%s, %s, %s, 0)
-                            """, (name, today, current_user))
+                        potential_cash.append(name)
 
             count += 1
+
+        # Batch Update
+        if to_update:
+            cursor.executemany("""
+                UPDATE new_account_table SET
+                    account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                    account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                    account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                    cf_catogory=%s, account_basment=%s
+                WHERE id=%s
+            """, to_update)
+
+        # Batch Insert
+        if to_insert:
+            cursor.executemany("""
+                INSERT INTO new_account_table (
+                    account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                    account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                    account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+            """, to_insert)
+
+        # Batch Sub-Ledger (Bank)
+        if potential_banks:
+            format_strings = ','.join(['%s'] * len(potential_banks))
+            cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
+            existing_banks = {row[0] for row in cursor.fetchall()}
+
+            banks_to_insert = []
+            for b_name in potential_banks:
+                if b_name not in existing_banks:
+                    banks_to_insert.append((b_name, b_name, today, current_user))
+
+            if banks_to_insert:
+                cursor.executemany("""
+                    INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                    VALUES (%s, %s, %s, %s)
+                """, banks_to_insert)
+
+        # Batch Sub-Ledger (Cash)
+        if potential_cash:
+            format_strings = ','.join(['%s'] * len(potential_cash))
+            cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
+            existing_cash = {row[0] for row in cursor.fetchall()}
+
+            cash_to_insert = []
+            for c_name in potential_cash:
+                if c_name not in existing_cash:
+                    cash_to_insert.append((c_name, today, current_user))
+
+            if cash_to_insert:
+                cursor.executemany("""
+                    INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                    VALUES (%s, %s, %s, 0)
+                """, cash_to_insert)
 
         conn.commit()
         return count
@@ -2227,167 +2269,6 @@ def bulk_upload_gl():
             try:
                 current_user = get_current_user_id()
                 count = save_bulk_gl_accounts(request.form, current_user)
-                current_user_pk = get_current_user_pk()
-                today = date.today()
-
-                names = request.form.getlist('account_name[]')
-                types = request.form.getlist('account_type[]')
-                cats = request.form.getlist('category[]')
-                cfs = request.form.getlist('cf_category[]')
-                actions = request.form.getlist('action[]')
-
-                # Filter valid names to check
-                valid_names = [n for i, n in enumerate(names) if actions[i] != 'skip' and n]
-
-                # Batch Fetch Existing Accounts
-                existing_map = {}
-                if valid_names:
-                    format_strings = ','.join(['%s'] * len(valid_names))
-                    cursor.execute(f"SELECT id, account_name FROM new_account_table WHERE account_name IN ({format_strings})", tuple(valid_names))
-                    existing_rows = cursor.fetchall()
-                    for row in existing_rows:
-                        existing_map[row[0]] = row[1] # ID -> Name (not useful for lookup by name)
-                        # Correct: Name -> ID
-                        existing_map[row[1]] = row[0]
-
-                to_update = []
-                to_insert = []
-
-                # For Sub-Ledgers
-                potential_banks = []
-                potential_cash = []
-
-                count = 0
-                for i in range(len(names)):
-                    if actions[i] == 'skip': continue
-
-                    name = names[i]
-                    acc_type = types[i]
-                    cat_val = cats[i]
-                    cf = cfs[i]
-
-                    # Parse Category
-                    cat_name = None
-                    cat_pos = None
-                    is_bs = False
-                    is_pl = False
-
-                    if cat_val:
-                        parts = cat_val.split('|')
-                        if len(parts) == 2:
-                            cat_data, cat_type = parts
-                            cat_name, cat_pos = cat_data.split(',')
-                            if cat_type == 'BS': is_bs = True
-                            elif cat_type == 'PL': is_pl = True
-
-                    is_inc = 1 if acc_type == 'Income' else 0
-                    is_exp = 1 if acc_type == 'Expense' else 0
-                    is_ast = 1 if acc_type == 'Asset' else 0
-                    is_lia = 1 if acc_type == 'Liability' else 0
-                    is_equ = 1 if acc_type == 'Equity' else 0
-
-                    basement = 'DR' if is_ast or is_exp else 'CR'
-
-                    if name in existing_map:
-                        # Prepare Update
-                        # Parameters must match query order
-                        to_update.append((
-                            cat_pos if is_pl else None, cat_pos if is_bs else None,
-                            cat_name if is_pl else None, cat_name if is_bs else None,
-                            is_inc, is_exp, is_ast, is_lia, is_equ,
-                            cf, basement, existing_map[name]
-                        ))
-                    else:
-                        # Prepare Insert
-                        to_insert.append((
-                            name, cat_pos if is_pl else None, cat_pos if is_bs else None,
-                            cat_name if is_pl else None, cat_name if is_bs else None,
-                            is_inc, is_exp, is_ast, is_lia, is_equ,
-                            cf, today, current_user, basement
-                        ))
-
-                        # Collect for Sub-Ledger check
-                        if is_ast:
-                            acc_name_lower = name.lower()
-                            if 'bank' in acc_name_lower:
-                                potential_banks.append(name)
-                            elif 'cash' in acc_name_lower:
-                                potential_cash.append(name)
-                                # Check if exists in bank_book
-                                cursor.execute("SELECT bank_id FROM bank_book WHERE bank_bookcol_account_number = %s", (name,))
-                                if not cursor.fetchone():
-                                    cursor.execute("""
-                                        INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
-                                        VALUES (%s, %s, %s, %s)
-                                    """, (name, name, today, current_user_pk))
-                            elif 'cash' in acc_name_lower:
-                                # Check if exists in cash_book
-                                cursor.execute("SELECT cash_id FROM cash_book WHERE cash_book_account_name = %s", (name,))
-                                if not cursor.fetchone():
-                                    cursor.execute("""
-                                        INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
-                                        VALUES (%s, %s, %s, 0)
-                                    """, (name, today, current_user_pk))
-
-                    count += 1
-
-                # Batch Update
-                if to_update:
-                    cursor.executemany("""
-                        UPDATE new_account_table SET
-                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                            cf_catogory=%s, account_basment=%s
-                        WHERE id=%s
-                    """, to_update)
-
-                # Batch Insert
-                if to_insert:
-                    cursor.executemany("""
-                        INSERT INTO new_account_table (
-                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-                    """, to_insert)
-
-                # Batch Sub-Ledger (Bank)
-                if potential_banks:
-                    format_strings = ','.join(['%s'] * len(potential_banks))
-                    cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
-                    existing_banks = {row[0] for row in cursor.fetchall()}
-
-                    banks_to_insert = []
-                    for b_name in potential_banks:
-                        if b_name not in existing_banks:
-                            banks_to_insert.append((b_name, b_name, today, current_user))
-
-                    if banks_to_insert:
-                        cursor.executemany("""
-                            INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
-                            VALUES (%s, %s, %s, %s)
-                        """, banks_to_insert)
-
-                # Batch Sub-Ledger (Cash)
-                if potential_cash:
-                    format_strings = ','.join(['%s'] * len(potential_cash))
-                    cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
-                    existing_cash = {row[0] for row in cursor.fetchall()}
-
-                    cash_to_insert = []
-                    for c_name in potential_cash:
-                        if c_name not in existing_cash:
-                            cash_to_insert.append((c_name, today, current_user))
-
-                    if cash_to_insert:
-                        cursor.executemany("""
-                            INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
-                            VALUES (%s, %s, %s, 0)
-                        """, cash_to_insert)
-
-                conn.commit()
                 flash(f'Successfully processed {count} accounts.', 'success')
                 return redirect(url_for('chart_of_accounts'))
 
