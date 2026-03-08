@@ -74,10 +74,15 @@
                         <div class="mb-3 row">
                             <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Currency Symbol</label>
                             <div class="col-sm-8">
-                                <div class="input-group" style="width: 140px;">
-                                    <input type="text" class="form-control fw-bold text-center" name="currency" value="{{ company.company_curency }}" maxlength="4" required>
-                                </div>
-                                <div class="form-text text-muted small">System-wide currency symbol (e.g., LKR, $, €)</div>
+                                <select class="form-select fw-bold" name="currency" required>
+                                    <option value="" disabled>Select Currency</option>
+                                    {% for curr in currencies %}
+                                    <option value="{{ curr.currency_code }}" {% if company.company_curency == curr.currency_code %}selected{% endif %}>
+                                        {{ curr.currency_code }} - {{ curr.currency_name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text text-muted small">System-wide currency symbol (e.g., LKR, USD, EUR)</div>
                             </div>
                         </div>
                         <div class="mb-3 row">

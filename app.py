@@ -1110,7 +1110,10 @@ def add_inventory_item():
                     # C# code saves as JpegBitmapEncoder buffer (bytes)
                     # We store as LONGBLOB or MEDIUMBLOB.
                     # MySQL Connector handles bytes object directly for BLOBs.
-                    img_data = file.read()
+                    # Wait, some tables expect base64 string because of C# legacy handling.
+                    # Let's save as base64 string to avoid 'Invalid utf8mb4 character string' error
+                    # when passing raw bytes to a query that expects text/string.
+                    img_data = base64.b64encode(file.read()).decode('utf-8')
 
             if not name or not code or not unit:
                 flash('Name, Code, and Unit are required.', 'danger')
@@ -2634,7 +2637,11 @@ def company_profile():
             import base64
             company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
 
-    return render_template('company_profile.html', company=company)
+    currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
+    if not currencies: # Fallback if table empty
+        currencies = [{'currency_code': 'LKR', 'currency_name': 'Sri Lankan Rupee'}]
+
+    return render_template('company_profile.html', company=company, currencies=currencies)
 
 # --- Bank Payment Module ---
 @app.route('/bank_payment', methods=['GET'])
