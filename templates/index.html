@@ -34,65 +34,79 @@
     }
 
     .tile {
-        background: #fff;
-        border: 1px solid #e2e8f0;
-        border-radius: 8px; /* Slightly sharper corners */
-        padding: 15px;
-        text-align: center;
-        transition: all 0.2s ease-in-out;
+        background: #0078D7; /* Default Windows Blue */
+        border: 2px solid transparent;
+        border-radius: 0; /* Windows 10 sharp corners */
+        padding: 12px;
+        text-align: left; /* Text to the left like Windows tiles */
+        transition: all 0.1s ease-in-out;
         height: 100%;
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        min-height: 100px;
+        align-items: flex-start;
+        justify-content: space-between; /* Icon top, Text bottom */
+        min-height: 110px;
         position: relative;
         overflow: hidden;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05); /* Subtle shadow by default */
+        box-shadow: none;
+        color: white;
     }
 
     .tile:hover {
-        background: #ffffff;
-        transform: translateY(-2px);
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
-        border-color: #94a3b8;
+        border-color: rgba(255,255,255,0.4);
+        transform: scale(0.98); /* Windows 10 click/hover press effect */
+        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15); /* Slight brighten on hover */
+    }
+
+    .tile:active {
+        transform: scale(0.95);
     }
 
     .tile i {
-        font-size: 1.5rem;
-        margin-bottom: 10px;
-        color: #334155; /* Dark Slate - High Contrast */
-        transition: color 0.2s;
-    }
-
-    .tile:hover i {
-        color: #0f172a; /* Even darker on hover */
+        font-size: 1.8rem;
+        color: white;
+        margin-bottom: auto; /* Push text to bottom */
+        align-self: center; /* Center icon horizontally */
+        margin-top: 10px;
     }
 
     .tile span {
-        font-size: 0.8rem;
-        font-weight: 600;
-        color: #1e293b; /* Very dark blue-gray */
-        line-height: 1.25;
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: white;
+        line-height: 1.2;
+        margin-top: 15px;
+        width: 100%;
+        text-align: left;
     }
 
-    /* Dense grid to avoid scrolling */
+    /* Dense grid for Windows style layout */
     .row-dense {
-        --bs-gutter-x: 12px;
-        --bs-gutter-y: 12px;
+        --bs-gutter-x: 8px;
+        --bs-gutter-y: 8px;
     }
 
-    /* Highlight Tile Style */
+    /* Windows 10 Metro Colors by Category */
+
+    /* Core Accounting - Deep Blue */
+    .module-section:nth-of-type(1) .tile { background: #0063B1; }
+
+    /* Reversals - Dark Red */
+    .module-section:has(.text-danger) .tile { background: #E81123; }
+
+    /* Inventory - Green */
+    .module-section:has(.text-success) .tile { background: #107C10; }
+
+    /* Key Features - Purple/Accent */
+    .module-section:has(.text-primary) .tile { background: #6B69D6; }
+
+    /* Reports - Teal */
+    .module-section:has(.text-info) .tile { background: #008272; }
+
+    /* Highlight Tile Style (Override) */
     .tile.tile-highlight {
-        background: #0f172a; /* Professional Dark Navy */
-        border: 1px solid #0f172a;
-    }
-    .tile.tile-highlight i,
-    .tile.tile-highlight span {
-        color: #f8fafc;
-    }
-    .tile.tile-highlight:hover {
-        background: #1e293b;
+        background: #005A9E !important; /* Darker blue for highlight */
+        border: 2px solid rgba(255,255,255,0.3);
     }
 
     /* Dashboard specific layout tweaks */
