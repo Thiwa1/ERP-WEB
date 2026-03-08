@@ -8165,54 +8165,81 @@ def create_outstanding_record(ctx: OutstandingRecordContext):
     """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
     return ctx.cursor.lastrowid
 
-@dataclass
-class InvoiceItemContext:
-    cursor: typing.Any
-    current_user: str
-    jv_no: str
-    invoice_no: str
-    outstanding_id: int
-    location: str
-    invoice_date: str
-    customer_name: str
-    items: list
-    is_inventory: bool
+def process_invoice_items_batch(
+    cursor, inv_items, non_inv_items,
+    jv_no, current_user, customer_name,
+    outstanding_id, location, inv_date, invoice_no
+):
+    # Prepare batch data
+    invoice_recode_batch = []
+    inventory_recode_batch = []
 
-def process_invoice_items(ctx: InvoiceItemContext):
-    for item in ctx.items:
-        # Warranty Logic
-        if ctx.is_inventory:
-            ctx.cursor.execute("""
-                SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                WHERE name = %s LIMIT 1
-            """, (item['name'],))
-            # Logic for warranty calculation could be added here if needed
+    current_time = datetime.now()
 
-        ctx.cursor.execute("""
+    # Inventory Items
+    for item in inv_items:
+        # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
+        # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
+        # Schema: Invoice_Recode
+
+        # Warranty Logic (Preserved but optimized to only run query)
+        # Fetch warranty period for item
+        w_end_date = None
+        cursor.execute("""
+            SELECT yeas_, month, date_ FROM inventory_vorenty_period
+            WHERE name = %s LIMIT 1
+        """, (item['name'],))
+        w_res = cursor.fetchone()
+        if w_res:
+            try:
+                years, months, days = w_res
+                # Logic retained from original code (pass)
+                pass
+            except Exception as e:
+                logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
+                pass
+
+        # Add to batch for Invoice_Recode
+        invoice_recode_batch.append((
+            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
+        ))
+
+        # Add to batch for Inventory_Recod
+        inventory_recode_batch.append((
+            item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
+            current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
+        ))
+
+    # Non-Inventory Items
+    for item in non_inv_items:
+        # Add to batch for Invoice_Recode
+        invoice_recode_batch.append((
+            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
+        ))
+
+    # Execute Batch Inserts
+    if invoice_recode_batch:
+        cursor.executemany("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
                 recode_date
-            ) VALUES (%s, %s, %s, %s, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-        """, (
-            item['name'], item['qty'], item['price'], 1 if ctx.is_inventory else 0, ctx.jv_no, ctx.current_user,
-            ctx.customer_name, ctx.outstanding_id, item['unit'], datetime.now()
-        ))
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, invoice_recode_batch)
 
-        if ctx.is_inventory:
-            ctx.cursor.execute("""
-                INSERT INTO inventory_recod (
-                    inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                    inventory_recod_unit_price, inventory_recod_movment_out,
-                    inventory_recod_account, inventory_recod_user_id,
-                    inventory_recod_user_recod_date, inventory_recod_location,
-                    inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                    inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-            """, (
-                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
-            ))
+    if inventory_recode_batch:
+        cursor.executemany("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                inventory_recod_unit_price, inventory_recod_movment_out,
+                inventory_recod_account, inventory_recod_user_id,
+                inventory_recod_user_recod_date, inventory_recod_location,
+                inventory_recod_action_date, inventory_recodcol_memo, JV_No,
+                inventory_recod_link_invoice, inventory_recod_suplier_iv_no
+            ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
+        """, inventory_recode_batch)
 
 @dataclass
 class InvoiceGLContext:
@@ -8269,39 +8296,65 @@ def post_invoice_gl_entries(ctx: InvoiceGLContext):
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ('Inventory', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
-@app.route('/invoice_creating/submit', methods=['POST'])
-@login_required
-def submit_invoice():
-    # 1. Validation & Input Parsing
-    customer_name = request.form.get('customer')
-    inv_date = request.form.get('invoice_date')
+def parse_invoice_form_data(form):
+    customer_name = form.get('customer')
+    inv_date = form.get('invoice_date')
 
     if not customer_name or not inv_date:
-        flash('Customer and Invoice Date are required.', 'danger')
-        return redirect(url_for('invoice_creating'))
+        return None, 'Customer and Invoice Date are required.'
 
-    location = request.form.get('location')
-    due_date = request.form.get('due_date')
-    job_no = request.form.get('job_no')
-    vat_rate = parse_float(request.form.get('vat_rate', 0))
-    apply_vat = 1 if request.form.get('apply_vat') else 0
+    location = form.get('location')
+    due_date = form.get('due_date')
+    job_no = form.get('job_no')
+    vat_rate = parse_float(form.get('vat_rate', 0))
+    apply_vat = 1 if form.get('apply_vat') else 0
 
-    inv_items_json = request.form.get('inventory_items_json')
-    non_inv_items_json = request.form.get('non_inventory_items_json')
+    inv_items_json = form.get('inventory_items_json')
+    non_inv_items_json = form.get('non_inventory_items_json')
 
     try:
         inv_items = json.loads(inv_items_json) if inv_items_json else []
         non_inv_items = json.loads(non_inv_items_json) if non_inv_items_json else []
     except json.JSONDecodeError as e:
-        flash(f'Error processing item list: {str(e)}', 'danger')
-        return redirect(url_for('invoice_creating'))
+        return None, f'Error processing item list: {str(e)}'
 
     if not inv_items and not non_inv_items:
-        flash('No items in invoice', 'danger')
+        return None, 'No items in invoice'
+
+    return {
+        'customer_name': customer_name,
+        'inv_date': inv_date,
+        'location': location,
+        'due_date': due_date,
+        'job_no': job_no,
+        'vat_rate': vat_rate,
+        'apply_vat': apply_vat,
+        'inv_items': inv_items,
+        'non_inv_items': non_inv_items
+    }, None
+
+@app.route('/invoice_creating/submit', methods=['POST'])
+@login_required
+def submit_invoice():
+    # 1. Validation & Input Parsing
+    parsed_data, error_msg = parse_invoice_form_data(request.form) if hasattr(request, 'form') else parse_invoice_form_data(request)
+
+    if error_msg:
+        flash(error_msg, 'danger')
         return redirect(url_for('invoice_creating'))
 
+    customer_name = parsed_data['customer_name']
+    inv_date = parsed_data['inv_date']
+    location = parsed_data['location']
+    due_date = parsed_data['due_date']
+    job_no = parsed_data['job_no']
+    vat_rate = parsed_data['vat_rate']
+    apply_vat = parsed_data['apply_vat']
+    inv_items = parsed_data['inv_items']
+    non_inv_items = parsed_data['non_inv_items']
+
     current_user = get_current_user_id()
-    current_user_pk = get_current_user_pk()
+    # current_user_pk is unused in the transaction below
 
     # 2. Database Transaction
     conn = db.get_connection()
@@ -8324,29 +8377,11 @@ def submit_invoice():
         jv_no = cursor.lastrowid
 
         # 5. Calculate Totals
-        total_sales = 0
-        total_cost = 0
-
-        # Inventory Items
-        for item in inv_items:
-            qty = parse_float(item.get('qty', 0))
-            price = parse_float(item.get('price', 0))
-            cost = parse_float(item.get('cost', 0))
-            total_sales += qty * price
-            total_cost += qty * cost
-
-        # Non-Inventory Items
-        for item in non_inv_items:
-            qty = parse_float(item.get('qty', 0))
-            price = parse_float(item.get('price', 0))
-            total_sales += qty * price
-            # Non-inventory might not have tracked cost or it's service
-
-        vat_amount = 0
-        grand_total = total_sales
-        if apply_vat:
-            vat_amount = (total_sales * vat_rate) / 100
-            grand_total += vat_amount
+        totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
+        total_sales = totals['total_sales']
+        total_cost = totals['total_cost']
+        vat_amount = totals['vat_amount']
+        grand_total = totals['grand_total']
 
         # 6. Insert Outstanding Record
         ctx = OutstandingRecordContext(
@@ -8362,77 +8397,11 @@ def submit_invoice():
         outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
-
-        # Prepare batch data
-        invoice_recode_batch = []
-        inventory_recode_batch = []
-
-        current_time = datetime.now()
-
-        # Inventory Items
-        for item in inv_items:
-            # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
-            # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
-            # Schema: Invoice_Recode
-
-            # Warranty Logic (Preserved but optimized to only run query)
-            # Fetch warranty period for item
-            w_end_date = None
-            cursor.execute("""
-                SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                WHERE name = %s LIMIT 1
-            """, (item['name'],))
-            w_res = cursor.fetchone()
-            if w_res:
-                try:
-                    years, months, days = w_res
-                    # Logic retained from original code (pass)
-                    pass
-                except Exception as e:
-                    logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
-                    pass
-
-            # Add to batch for Invoice_Recode
-            invoice_recode_batch.append((
-                item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
-                customer_name, 1, outstanding_id, item['unit'], current_time
-            ))
-
-            # Add to batch for Inventory_Recod
-            inventory_recode_batch.append((
-                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
-            ))
-
-        # Non-Inventory Items
-        for item in non_inv_items:
-             # Add to batch for Invoice_Recode
-            invoice_recode_batch.append((
-                item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
-                customer_name, 1, outstanding_id, item['unit'], current_time
-            ))
-
-            # Execute Batch Inserts
-            if invoice_recode_batch:
-                cursor.executemany("""
-                    INSERT INTO Invoice_Recode (
-                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                        recode_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, invoice_recode_batch)
-
-            if inventory_recode_batch:
-                cursor.executemany("""
-                    INSERT INTO inventory_recod (
-                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_movment_out,
-                        inventory_recod_account, inventory_recod_user_id,
-                        inventory_recod_user_recod_date, inventory_recod_location,
-                        inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                        inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                    ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-                """, inventory_recode_batch)
+        process_invoice_items_batch(
+            cursor, inv_items, non_inv_items,
+            jv_no, current_user, customer_name,
+            outstanding_id, location, inv_date, invoice_no
+        )
 
         # 8. GL Entries
         gl_ctx = InvoiceGLContext(
