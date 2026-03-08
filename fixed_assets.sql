@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS `fixed_assets_register` (
     REFERENCES `new_account_table` (`id`)
     ON DELETE SET NULL
     ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
 
 CREATE TABLE IF NOT EXISTS `asset_depreciation_history` (
   `id` INT NOT NULL AUTO_INCREMENT,
@@ -55,4 +55,4 @@ CREATE TABLE IF NOT EXISTS `asset_depreciation_history` (
     REFERENCES `jv_numbers` (`jv_id`)
     ON DELETE SET NULL
     ON UPDATE CASCADE
-) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;

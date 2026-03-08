@@ -11,7 +11,7 @@ SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,N
 -- -----------------------------------------------------
 -- Schema Book_keeping
 -- -----------------------------------------------------
-CREATE SCHEMA IF NOT EXISTS `Book_keeping` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci ;
+CREATE SCHEMA IF NOT EXISTS `Book_keeping` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci ;
 USE `Book_keeping` ;
 
 -- -----------------------------------------------------
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`balance_sheet_category` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 16
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`company` (
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`jobs_unit` (
   INDEX `index_job_no` (`job_number` ASC) VISIBLE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -90,7 +90,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`p&l_category` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 30
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 37
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`entry_details` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 19
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -239,7 +239,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`jv_numbers` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 41
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`sub_accont_for_new_account` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 6
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
@@ -806,7 +806,7 @@ ENGINE = InnoDB;
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`Login_Table` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `User_Name` VARCHAR(45) NULL,
-  `Password` VARCHAR(255) NULL,
+  `Password` VARCHAR(45) NULL,
   `Mobile_No` VARCHAR(45) NULL,
   `Email` VARCHAR(45) NULL,
   `User_Code` VARCHAR(45) NULL,
@@ -916,7 +916,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pose_Setting_Table` (
   `Top_Message` VARCHAR(255) NULL,
   `Image` LONGBLOB NULL,
   `User_Name` VARCHAR(45) NOT NULL,
-  `Password` VARCHAR(255) NULL,
+  `Password` VARCHAR(45) NULL,
   `Mobile_Number` VARCHAR(15) NULL,
   PRIMARY KEY (`Id`, `User_Name`),
   INDEX `Inventry_Location_Jpin_idx` (`Select_Inventry_Location` ASC) VISIBLE,
@@ -1036,7 +1036,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_reversal_log` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 7
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_unicode_ci;
+COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
