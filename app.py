@@ -4023,20 +4023,45 @@ def bank_payment_submit():
         current_user = get_current_user_id()
 
         # 1. Update Invoices (Vender Settle Logic)
-        for p in payments:
-            # Check balance again to be safe
-            cursor.execute("SELECT suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
-            res = cursor.fetchone()
-            if not res: continue
+        if payments:
+            inv_ids = tuple(p['id'] for p in payments)
+            format_strings = ','.join(['%s'] * len(inv_ids))
+            cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", inv_ids)
+            res = cursor.fetchall()
 
-            current_outstanding = float(res[0])
-            current_paid = float(res[1])
+            # Using list for invoice_data to allow updates to current_paid
+            invoice_data = {str(r[0]): [float(r[1] or 0), float(r[2] or 0)] for r in res}
 
-            if p['amount'] > current_outstanding:
-                raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+            update_args = []
+            for p in payments:
+                inv_d = invoice_data.get(str(p['id']))
+                if not inv_d: continue
 
-            new_total_paid = current_paid + p['amount']
-            cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
+                current_outstanding = inv_d[0]
+                current_paid = inv_d[1]
+
+                if p['amount'] > current_outstanding:
+                    raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+
+                new_total_paid = current_paid + p['amount']
+
+                # Update the cached data so subsequent duplicate payments use the new total
+                inv_d[0] = current_outstanding - p['amount'] # Reduce outstanding conceptually, although not checked directly here it is safer
+                inv_d[1] = new_total_paid
+
+                update_args.append((new_total_paid, p['id']))
+
+            if update_args:
+                # If there are duplicates, executemany might execute them sequentially or fail depending on the db driver and isolation.
+                # It's better to aggregate updates per invoice ID.
+                # Since update_args contains all sequential updates, the last one per ID is the one that matters.
+                # Let's aggregate to ensure executemany works correctly if the driver batches them.
+                final_updates = {}
+                for paid, inv_id in update_args:
+                    final_updates[inv_id] = paid
+
+                final_update_args = [(paid, inv_id) for inv_id, paid in final_updates.items()]
+                cursor.executemany("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", final_update_args)
 
         # Check Workflow
         cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
