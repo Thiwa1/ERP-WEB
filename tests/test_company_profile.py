@@ -45,11 +45,13 @@ class TestCompanyProfile(unittest.TestCase):
         with patch.dict('app.session', {'user_id': 'ADM001', 'user_pk': 1, 'username': 'admin'}):
             app.company_profile()
 
-        self.mock_db.execute_query.assert_called_with("SELECT * FROM company LIMIT 1")
+        self.mock_db.execute_query.assert_any_call("SELECT * FROM company LIMIT 1")
+        self.mock_db.execute_query.assert_any_call("SELECT currency_code, currency_name FROM currency_table")
         app.render_template.assert_called_once()
         args, kwargs = app.render_template.call_args
         self.assertEqual(args[0], 'company_profile.html')
         self.assertEqual(kwargs['company'], {})
+        self.assertEqual(kwargs['currencies'], [{'currency_code': 'LKR', 'currency_name': 'Sri Lankan Rupee'}])
 
     def test_company_profile_get_with_base64_bytes(self):
         """Test GET request when company logo is base64 bytes (decode succeeds)."""

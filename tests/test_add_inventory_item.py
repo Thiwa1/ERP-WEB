@@ -50,6 +50,24 @@ class TestAddInventoryItem(unittest.TestCase):
                 'cost_price': '50'
             }):
                 app.session['user_id'] = '1001'
+
+                # Setup request mock manually to avoid issues with test_request_context and files attribute
+                app.request = MagicMock()
+                app.request.method = 'POST'
+
+                class MockForm(dict):
+                    def get(self, key, default=None):
+                        return {
+                            'item_name': 'Test Item',
+                            'item_code': 'TI-001',
+                            'measurement_unit': 'PCS',
+                            'selling_price': '100',
+                            'cost_price': '50'
+                        }.get(key, default)
+
+                app.request.form = MockForm()
+                app.request.files = {}
+
                 app.add_inventory_item()
 
                 # Check that execute was called twice (once for item, once for price)
