@@ -1,6 +1,7 @@
+import sys; from unittest.mock import MagicMock; sys.modules["werkzeug"] = MagicMock(); sys.modules["werkzeug.security"] = MagicMock(); sys.modules["num2words"] = MagicMock(); sys.modules["dotenv"] = MagicMock()
 import unittest
 from unittest.mock import patch, MagicMock
-import app
+import sys; mock_flask = MagicMock(); sys.modules["flask"] = mock_flask; sys.modules["werkzeug"] = MagicMock(); sys.modules["werkzeug.security"] = MagicMock(); sys.modules["mysql"] = MagicMock(); sys.modules["mysql.connector"] = MagicMock(); import app
 
 class TestAddInventoryItem(unittest.TestCase):
 

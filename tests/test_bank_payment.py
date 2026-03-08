@@ -100,8 +100,10 @@ class TestBankPayment(unittest.TestCase):
             mock_conn.cursor.return_value = mock_cursor
 
             # Mock Responses
+            mock_cursor.fetchall.return_value = [
+                ('1', 1000.0, 0.0) # Outstanding
+            ]
             mock_cursor.fetchone.side_effect = [
-                (1000.0, 0.0), # Outstanding
                 None,          # Workflow
                 (5,),          # Max Voucher
                 (123,),        # Sub Account
@@ -118,14 +120,15 @@ class TestBankPayment(unittest.TestCase):
 
             # Verify Invoices Update (500 paid)
             found_update = False
-            for call_args in mock_cursor.execute.call_args_list:
+            for call_args in mock_cursor.executemany.call_args_list:
                 query = call_args[0][0]
                 if "UPDATE suppliers_invoice_data" in query:
-                    params = call_args[0][1]
-                    if params[0] == 500.0 and params[1] == '1':
-                        found_update = True
-                        break
-            self.assertTrue(found_update, "Should update supplier invoice payment")
+                    params_list = call_args[0][1]
+                    for params in params_list:
+                        if params[0] == 500.0 and params[1] == '1':
+                            found_update = True
+                            break
+            self.assertTrue(found_update, "Should update supplier invoice payment via executemany")
 
             # Verify Entry Details (AP Debit 500)
             found_ap = False
@@ -169,7 +172,9 @@ class TestBankPayment(unittest.TestCase):
             mock_conn.cursor.return_value = mock_cursor
 
             # Outstanding < Payment
-            mock_cursor.fetchone.return_value = (100.0, 0.0)
+            mock_cursor.fetchall.return_value = [
+                ('1', 100.0, 0.0)
+            ]
 
             app_module.bank_payment_submit()
 
@@ -201,8 +206,10 @@ class TestBankPayment(unittest.TestCase):
             mock_cursor = MagicMock()
             mock_conn.cursor.return_value = mock_cursor
 
+            mock_cursor.fetchall.return_value = [
+                ('1', 1000.0, 0.0) # Outstanding
+            ]
             mock_cursor.fetchone.side_effect = [
-                (1000.0, 0.0), # Outstanding
                 None,          # Workflow
                 (5,),          # Max Voucher
                 (123,),        # Sub Account
@@ -328,19 +335,18 @@ class TestBankPayment(unittest.TestCase):
 
         # Mock fetchone responses
         # Logic calls:
-        # 1. SELECT ... suppliers_invoice_data (Outstanding check) -> (10000.0, 0.0)
-        # 2. SELECT ... system_settings (Workflow) -> ('0',)
-        # 3. SELECT ... bank_book_voucher_no (Max ID) -> (100,)
-        # 4. SELECT ... sub_accont_for_new_account (Sub Code) -> (555,)
+        # 1. SELECT ... system_settings (Workflow) -> ('0',)
+        # 2. SELECT ... bank_book_voucher_no (Max ID) -> (100,)
+        # 3. SELECT ... sub_accont_for_new_account (Sub Code) -> (555,)
 
-        # The first call in the loop is fetchone()
-        # The subsequent calls are also fetchone()
+        cursor.fetchall.return_value = [
+            ('1', 10000.0, 0.0) # 1. Outstanding Check
+        ]
 
         cursor.fetchone.side_effect = [
-            (10000.0, 0.0), # 1. Outstanding Check
-            ('0',),         # 2. Workflow Check
-            (100,),         # 3. Max Voucher
-            (555,),         # 4. Sub Account Code
+            ('0',),         # 1. Workflow Check
+            (100,),         # 2. Max Voucher
+            (555,),         # 3. Sub Account Code
         ]
 
         # Mock lastrowid for Master Voucher ID
@@ -405,7 +411,9 @@ class TestBankPayment(unittest.TestCase):
         cursor = MagicMock()
         app.db.get_connection.return_value = conn
         conn.cursor.return_value = cursor
-        cursor.fetchone.return_value = (10000.0, 0.0)
+        cursor.fetchall.return_value = [
+            ('1', 10000.0, 0.0)
+        ]
 
         app.bank_payment_submit()
 

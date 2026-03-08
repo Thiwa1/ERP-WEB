@@ -1,3 +1,4 @@
+import sys; from unittest.mock import MagicMock; sys.modules["werkzeug"] = MagicMock(); sys.modules["werkzeug.security"] = MagicMock(); sys.modules["num2words"] = MagicMock(); sys.modules["dotenv"] = MagicMock()
 import sys
 from unittest.mock import MagicMock, patch
 import importlib
@@ -23,7 +24,7 @@ mock_flask_module.session = mock_session
 
 # Apply to sys.modules
 sys.modules['flask'] = mock_flask_module
-import jinja2
+import sys; mock_jinja = MagicMock(); mock_jinja.pass_context = lambda f: f; sys.modules["jinja2"] = mock_jinja
 
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
