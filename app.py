@@ -1132,7 +1132,7 @@ def add_inventory_item():
                     """
                     cursor.execute(query_item, (
                         name, code, supplier_code, batch_code, img_data,
-                        current_user, today_date, unit, main_cat, sub_cat, min_qty
+                        current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
                     ))
                     item_id = cursor.lastrowid
 
@@ -1143,32 +1143,6 @@ def add_inventory_item():
                         ) VALUES (0, %s, %s, %s, %s)
                     """
                     cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
-                # 3. Insert Item
-                query_item = """
-                    INSERT INTO inventoy_items (
-                        id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
-                        inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
-                        inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
-                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
-                """
-                cursor.execute(query_item, (
-                    name, code, supplier_code, batch_code, img_data,
-                    current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
-                ))
-                item_id = cursor.lastrowid
-
-                # 4. Insert Price
-                # C# uses "SELECT LAST_INSERT_ID()" but we have item_id
-                # However, schema for `inventory_price_recod` has `inventory_price_link` which is FK to item id?
-                # Wait, C# code says: `cmd1.Parameters.AddWithValue("@inventory_price_link", last_insert_jv_no);`
-                # Yes, `inventory_price_link` links to `inventoy_items.id`.
-
-                query_price = """
-                    INSERT INTO inventory_price_recod (
-                        id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
-                    ) VALUES (0, %s, %s, %s, %s)
-                """
-                cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
 
@@ -1717,17 +1691,32 @@ def create_bank_account():
             cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (acc_no,))
             if not cursor.fetchone():
                 # Find 'Current assets' or 'Cash & Bank'
-                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Bank%' OR name_of_category LIKE '%Cash%' LIMIT 1")
+                cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category WHERE name_of_category LIKE '%Bank%' OR name_of_category LIKE '%Cash%' LIMIT 1")
                 res = cursor.fetchone()
-                bs_pos = res[0] if res else 3
+
+                if res:
+                    bs_pos = res[0]
+                    bs_cat_name = res[1]
+                else:
+                    # Fallback to the first available category if no match
+                    cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category LIMIT 1")
+                    fallback_res = cursor.fetchone()
+                    if fallback_res:
+                        bs_pos = fallback_res[0]
+                        bs_cat_name = fallback_res[1]
+                    else:
+                        # Extreme fallback: Create 'Current assets' if table is empty
+                        bs_pos = 3
+                        bs_cat_name = 'Current assets'
+                        cursor.execute("INSERT IGNORE INTO balance_sheet_category (name_of_category, holding_position) VALUES (%s, %s)", (bs_cat_name, bs_pos))
 
                 cursor.execute("""
                     INSERT INTO new_account_table (
                         account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
                         account_assets, account_basment, accont_create_date, account_create_user, account_active,
                         currency_code
-                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
-                """, (acc_no, bs_pos, today_date, current_user))
+                    ) VALUES (%s, %s, %s, 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_no, bs_pos, bs_cat_name, today_date, current_user))
 
             # 2. Insert into Bank Book
             cursor.execute("""
@@ -1776,17 +1765,32 @@ def create_cash_account():
             if not cursor.fetchone():
                 # Create GL Account (Current Asset)
                 # Need to find 'Current assets' category position
-                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Current asset%' LIMIT 1")
+                cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category WHERE name_of_category LIKE '%Current asset%' LIMIT 1")
                 res = cursor.fetchone()
-                bs_pos = res[0] if res else 3 # Default to 3 (common for Current Assets)
+
+                if res:
+                    bs_pos = res[0]
+                    bs_cat_name = res[1]
+                else:
+                    # Fallback to the first available category if no match
+                    cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category LIMIT 1")
+                    fallback_res = cursor.fetchone()
+                    if fallback_res:
+                        bs_pos = fallback_res[0]
+                        bs_cat_name = fallback_res[1]
+                    else:
+                        # Extreme fallback: Create 'Current assets' if table is empty
+                        bs_pos = 3
+                        bs_cat_name = 'Current assets'
+                        cursor.execute("INSERT IGNORE INTO balance_sheet_category (name_of_category, holding_position) VALUES (%s, %s)", (bs_cat_name, bs_pos))
 
                 cursor.execute("""
                     INSERT INTO new_account_table (
                         account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
                         account_assets, account_basment, accont_create_date, account_create_user, account_active,
                         currency_code
-                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
-                """, (acc_name, bs_pos, today_date, current_user))
+                    ) VALUES (%s, %s, %s, 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_name, bs_pos, bs_cat_name, today_date, current_user))
 
             # 2. Insert into Cash Book
             # cash_book schema: cash_id, cash_book_account_name, cash_creat_date, cash_created_user, Select_As
