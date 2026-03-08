@@ -52,14 +52,16 @@ class TestBankCashCreation(unittest.TestCase):
         app_module.ensure_default_categories()
 
         found = False
-        for call in mock_cursor.execute.call_args_list:
+        # ensure_default_categories now uses executemany for bulk inserts
+        for call in mock_cursor.executemany.call_args_list:
             args = call[0]
             query = args[0]
             if "INSERT INTO balance_sheet_category" in query:
                 params = args[1]
-                if params[0] == "Current assets" and params[1] == 3:
-                    found = True
-                    break
+                for p in params:
+                    if p[0] == "Current assets" and p[1] == 3:
+                        found = True
+                        break
 
         self.assertTrue(found, "Should insert 'Current assets' at position 3")
 
@@ -95,7 +97,7 @@ class TestBankCashCreation(unittest.TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        mock_cursor.fetchone.side_effect = [None, [3], None]
+        mock_cursor.fetchone.side_effect = [None, [3, 'Current assets'], None]
 
         app_module.create_bank_account()
 
@@ -233,8 +235,8 @@ class TestBankCashCreation(unittest.TestCase):
                         mock_conn.cursor.return_value = mock_cursor
 
                         # 1. Acc Exists? -> None
-                        # 2. Cat Pos? -> [3]
-                        mock_cursor.fetchone.side_effect = [None, [3], None]
+                        # 2. Cat Pos? -> [3, 'Current assets']
+                        mock_cursor.fetchone.side_effect = [None, [3, 'Current assets'], None]
 
                         app_module.create_cash_account()
 
