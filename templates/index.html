@@ -13,7 +13,13 @@
         border: 1px solid #e2e8f0;
     }
 
+    .module-header:hover {
+        background-color: #f8fafc;
+        border-radius: 6px;
+    }
     .module-header {
+        cursor: pointer;
+        transition: background-color 0.2s;
         font-size: 0.85rem;
         font-weight: 700;
         color: #64748b; /* Professional Slate Gray */
@@ -89,30 +95,30 @@
     /* Windows 10 Metro Colors by Category */
 
     /* Core Accounting - Varying Blues */
-    .module-section:nth-of-type(1) .col:nth-child(1) .tile { background: #0063B1; } /* Dark Blue */
-    .module-section:nth-of-type(1) .col:nth-child(2) .tile { background: #0078D7; } /* Windows Blue */
-    .module-section:nth-of-type(1) .col:nth-child(3) .tile { background: #2D7D9A; } /* Teal Blue */
-    .module-section:nth-of-type(1) .col:nth-child(4) .tile { background: #0099BC; } /* Light Blue */
-    .module-section:nth-of-type(1) .col:nth-child(5) .tile { background: #00B7C3; } /* Cyan Blue */
+    .module-core-accounting .col:nth-child(1) .tile { background: #0063B1; } /* Dark Blue */
+    .module-core-accounting .col:nth-child(2) .tile { background: #0078D7; } /* Windows Blue */
+    .module-core-accounting .col:nth-child(3) .tile { background: #2D7D9A; } /* Teal Blue */
+    .module-core-accounting .col:nth-child(4) .tile { background: #0099BC; } /* Light Blue */
+    .module-core-accounting .col:nth-child(5) .tile { background: #00B7C3; } /* Cyan Blue */
 
     /* Reversals - Dark Red */
-    .module-section:has(.text-danger) .tile { background: #E81123; }
+    .module-reversals .tile { background: #E81123 !important; }
 
     /* Inventory - Greens */
-    .module-section:has(.text-success) .col:nth-child(1) .tile { background: #107C10; }
-    .module-section:has(.text-success) .col:nth-child(2) .tile { background: #008272; }
-    .module-section:has(.text-success) .col:nth-child(3) .tile { background: #498205; }
-    .module-section:has(.text-success) .col:nth-child(4) .tile { background: #847545; }
-    .module-section:has(.text-success) .col:nth-child(5) .tile { background: #5D5A58; }
-    .module-section:has(.text-success) .col:nth-child(6) .tile { background: #00CC6A; }
-    .module-section:has(.text-success) .col:nth-child(7) .tile { background: #10893E; }
-    .module-section:has(.text-success) .col:nth-child(8) .tile { background: #00A3A3; }
+    .module-inventory .col:nth-child(1) .tile { background: #107C10; }
+    .module-inventory .col:nth-child(2) .tile { background: #008272; }
+    .module-inventory .col:nth-child(3) .tile { background: #498205; }
+    .module-inventory .col:nth-child(4) .tile { background: #847545; }
+    .module-inventory .col:nth-child(5) .tile { background: #5D5A58; }
+    .module-inventory .col:nth-child(6) .tile { background: #00CC6A; }
+    .module-inventory .col:nth-child(7) .tile { background: #10893E; }
+    .module-inventory .col:nth-child(8) .tile { background: #00A3A3; }
 
     /* Key Features - Purple/Accent */
-    .module-section:has(.text-primary) .tile { background: #6B69D6; }
+    .module-key-features .tile { background: #6B69D6; }
 
     /* Reports - Teal */
-    .module-section:has(.text-info) .tile { background: #008272; }
+    .module-reports .tile { background: #008272; }
 
     /* Highlight Tile Style (Override) */
     .tile.tile-highlight {
@@ -136,6 +142,16 @@
             font-size: 0.75rem;
         }
     }
+
+    .module-header:not(.collapsed) .fa-chevron-down {
+        transform: rotate(180deg);
+        transition: transform 0.3s ease;
+    }
+    .module-header.collapsed .fa-chevron-down {
+        transform: rotate(0deg);
+        transition: transform 0.3s ease;
+    }
+
 </style>
 
 <div class="container-fluid p-0">
@@ -144,22 +160,34 @@
     <div class="row g-4 mb-4">
         <!-- Core Accounting -->
         <div class="col-xl-6">
-            <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-coins me-2 text-warning"></i> Core Accounting</div>
-                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
+            <div class="module-section h-100 module-core-accounting">
+                <div data-bs-toggle="collapse" data-bs-target="#collapseCore" class="module-header collapsed" aria-expanded="false" aria-controls="collapseCore">
+                    <i class="fas fa-coins me-2 text-warning"></i> Core Accounting
+                    <i class="fas fa-chevron-down ms-auto"></i>
+                </div>
+                <div class="collapse" id="collapseCore">
+                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
                     <div class="col">
-                        <a href="/placeholder?title=Cash Payment Supers" class="tile-link">
+                        <a href="/customer_receipt" class="tile-link">
                             <div class="tile">
-                                <i class="fas fa-money-bill-wave"></i>
-                                <span>Cash Pay<br>Supers</span>
+                                <i class="fas fa-receipt"></i>
+                                <span>Customer<br>Receipt</span>
+                            </div>
+                        </a>
+                    </div>
+                    <div class="col">
+                        <a href="/cash_payments" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-money-bill"></i>
+                                <span>Cash<br>Payment</span>
                             </div>
                         </a>
                     </div>
                     <div class="col">
                         <a href="/direct_purchasing" class="tile-link">
                             <div class="tile">
-                                <i class="fas fa-hand-holding-usd"></i>
-                                <span>Cash Direct<br>Supers</span>
+                                <i class="fas fa-shopping-cart"></i>
+                                <span>Direct<br>Purchase</span>
                             </div>
                         </a>
                     </div>
@@ -167,7 +195,7 @@
                         <a href="/bank_payment" class="tile-link">
                             <div class="tile">
                                 <i class="fas fa-university"></i>
-                                <span>Bank Pay<br>Supers</span>
+                                <span>Bank<br>Payment</span>
                             </div>
                         </a>
                     </div>
@@ -180,14 +208,19 @@
                         </a>
                     </div>
                 </div>
+                </div>
             </div>
         </div>
 
         <!-- Reversals & Adjustments -->
         <div class="col-xl-6">
-            <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-history me-2 text-danger"></i> Reversals & Adjustments</div>
-                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
+            <div class="module-section h-100 module-reversals">
+                <div data-bs-toggle="collapse" data-bs-target="#collapseReversals" class="module-header collapsed" aria-expanded="false" aria-controls="collapseReversals">
+                    <i class="fas fa-history me-2 text-danger"></i> Reversals & Adjustments
+                    <i class="fas fa-chevron-down ms-auto"></i>
+                </div>
+                <div class="collapse" id="collapseReversals">
+                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
                     <div class="col">
                         <a href="/pos_reversal" class="tile-link">
                             <div class="tile">
@@ -220,6 +253,15 @@
                             </div>
                         </a>
                     </div>
+                    <div class="col">
+                        <a href="/reversal_category" class="tile-link">
+                            <div class="tile">
+                                <i class="fas fa-tags"></i>
+                                <span>Reversal<br>Category</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
                 </div>
             </div>
         </div>
@@ -229,9 +271,13 @@
     <div class="row g-4 mb-4">
         <!-- Inventory & Services -->
         <div class="col-xl-6">
-            <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Services</div>
-                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
+            <div class="module-section h-100 module-inventory">
+                <div data-bs-toggle="collapse" data-bs-target="#collapseInventory" class="module-header collapsed" aria-expanded="false" aria-controls="collapseInventory">
+                    <i class="fas fa-boxes me-2 text-success"></i> Inventory & Services
+                    <i class="fas fa-chevron-down ms-auto"></i>
+                </div>
+                <div class="collapse" id="collapseInventory">
+                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
                     <div class="col">
                         <a href="/add_inventory_item" class="tile-link">
                             <div class="tile">
@@ -297,14 +343,19 @@
                         </a>
                     </div>
                 </div>
+                </div>
             </div>
         </div>
 
         <!-- Key Features (Subset) -->
         <div class="col-xl-6">
-            <div class="module-section h-100">
-                <div class="module-header"><i class="fas fa-star me-2 text-primary"></i> Key Features</div>
-                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4">
+            <div class="module-section h-100 module-key-features">
+                <div data-bs-toggle="collapse" data-bs-target="#collapseFeatures" class="module-header collapsed" aria-expanded="false" aria-controls="collapseFeatures">
+                    <i class="fas fa-star me-2 text-primary"></i> Key Features
+                    <i class="fas fa-chevron-down ms-auto"></i>
+                </div>
+                <div class="collapse" id="collapseFeatures">
+                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
                     <div class="col">
                         <a href="/pos" class="tile-link">
                             <div class="tile tile-highlight">
@@ -338,6 +389,7 @@
                         </a>
                     </div>
                 </div>
+                </div>
             </div>
         </div>
     </div>
@@ -345,9 +397,13 @@
     <!-- Row 3: Reports & Analysis (Full Width) -->
     <div class="row">
         <div class="col-12">
-            <div class="module-section">
-                <div class="module-header"><i class="fas fa-chart-bar me-2 text-info"></i> Reports & Analysis</div>
-                <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+            <div class="module-section module-reports">
+                <div data-bs-toggle="collapse" data-bs-target="#collapseReports" class="module-header collapsed" aria-expanded="false" aria-controls="collapseReports">
+                    <i class="fas fa-chart-bar me-2 text-info"></i> Reports & Analysis
+                    <i class="fas fa-chevron-down ms-auto"></i>
+                </div>
+                <div class="collapse" id="collapseReports">
+                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 mt-3">
                     <div class="col">
                         <a href="/placeholder?title=Load Report" class="tile-link">
                             <div class="tile">
@@ -396,6 +452,7 @@
                             </div>
                         </a>
                     </div>
+                </div>
                 </div>
             </div>
         </div>
