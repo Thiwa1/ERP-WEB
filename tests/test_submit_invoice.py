@@ -39,6 +39,8 @@ sys.modules['flask'] = mock_flask
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
 
+import tests.mock_env
+
 import app as app_module
 from app import app
 import json

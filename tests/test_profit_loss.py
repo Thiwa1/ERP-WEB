@@ -93,9 +93,9 @@ class TestProfitLoss(unittest.TestCase):
 
         # 2. Second fetchall call: Return Entries for the period
         entries_data = [
-            {'account_name': 'Sales', 'dr': 0, 'cr': 1000},  # Income = 1000
-            {'account_name': 'COGS', 'dr': 600, 'cr': 0},    # Expense = 600
-            {'account_name': 'Rent', 'dr': 100, 'cr': 0}     # Expense = 100
+            {'account_name': 'Sales', 'dr_0': 0, 'cr_0': 1000},  # Income = 1000
+            {'account_name': 'COGS', 'dr_0': 600, 'cr_0': 0},    # Expense = 600
+            {'account_name': 'Rent', 'dr_0': 100, 'cr_0': 0}     # Expense = 100
         ]
 
         mock_cursor.fetchall.side_effect = [accounts_data, entries_data]
@@ -138,17 +138,11 @@ class TestProfitLoss(unittest.TestCase):
 
         # Period 1 Data (Jan)
         p1_data = [
-            {'account_name': 'Sales', 'dr': 0, 'cr': 1000},
-            {'account_name': 'COGS', 'dr': 400, 'cr': 0}
+            {'account_name': 'Sales', 'dr_0': 0, 'cr_0': 1000, 'dr_1': 0, 'cr_1': 1500},
+            {'account_name': 'COGS', 'dr_0': 400, 'cr_0': 0, 'dr_1': 700, 'cr_1': 0}
         ]
 
-        # Period 2 Data (Feb)
-        p2_data = [
-            {'account_name': 'Sales', 'dr': 0, 'cr': 1500},
-            {'account_name': 'COGS', 'dr': 700, 'cr': 0}
-        ]
-
-        mock_cursor.fetchall.side_effect = [accounts_data, p1_data, p2_data]
+        mock_cursor.fetchall.side_effect = [accounts_data, p1_data]
 
         # Execute
         app.profit_loss()

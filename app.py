@@ -392,6 +392,9 @@ def create_tenant_db(company_name, username, password, email):
 
         t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
 
+        ensure_default_categories(t_db)
+        ensure_default_accounts(t_db)
+
         # Insert into Master
         tenant_id = master_db.execute_query(
             "INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)",
@@ -894,7 +897,6 @@ def add_customer():
                 flash('Customer added successfully!', 'success')
             except Exception as e:
                 print(f"Transaction failed: {e}")
-                conn.rollback()
                 logging.error(f"Transaction failed: {e}")
                 flash(f'Error adding customer: {str(e)}', 'danger')
 
@@ -1130,7 +1132,7 @@ def add_inventory_item():
                     """
                     cursor.execute(query_item, (
                         name, code, supplier_code, batch_code, img_data,
-                        current_user, today_date, unit, main_cat, sub_cat, min_qty
+                        current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
                     ))
                     item_id = cursor.lastrowid
 
@@ -1141,32 +1143,6 @@ def add_inventory_item():
                         ) VALUES (0, %s, %s, %s, %s)
                     """
                     cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
-                # 3. Insert Item
-                query_item = """
-                    INSERT INTO inventoy_items (
-                        id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
-                        inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
-                        inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
-                    ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
-                """
-                cursor.execute(query_item, (
-                    name, code, supplier_code, batch_code, img_data,
-                    current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
-                ))
-                item_id = cursor.lastrowid
-
-                # 4. Insert Price
-                # C# uses "SELECT LAST_INSERT_ID()" but we have item_id
-                # However, schema for `inventory_price_recod` has `inventory_price_link` which is FK to item id?
-                # Wait, C# code says: `cmd1.Parameters.AddWithValue("@inventory_price_link", last_insert_jv_no);`
-                # Yes, `inventory_price_link` links to `inventoy_items.id`.
-
-                query_price = """
-                    INSERT INTO inventory_price_recod (
-                        id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
-                    ) VALUES (0, %s, %s, %s, %s)
-                """
-                cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
 
@@ -1715,17 +1691,32 @@ def create_bank_account():
             cursor.execute("SELECT id FROM new_account_table WHERE account_name = %s", (acc_no,))
             if not cursor.fetchone():
                 # Find 'Current assets' or 'Cash & Bank'
-                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Bank%' OR name_of_category LIKE '%Cash%' LIMIT 1")
+                cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category WHERE name_of_category LIKE '%Bank%' OR name_of_category LIKE '%Cash%' LIMIT 1")
                 res = cursor.fetchone()
-                bs_pos = res[0] if res else 3
+
+                if res:
+                    bs_pos = res[0]
+                    bs_cat_name = res[1]
+                else:
+                    # Fallback to the first available category if no match
+                    cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category LIMIT 1")
+                    fallback_res = cursor.fetchone()
+                    if fallback_res:
+                        bs_pos = fallback_res[0]
+                        bs_cat_name = fallback_res[1]
+                    else:
+                        # Extreme fallback: Create 'Current assets' if table is empty
+                        bs_pos = 3
+                        bs_cat_name = 'Current assets'
+                        cursor.execute("INSERT IGNORE INTO balance_sheet_category (name_of_category, holding_position) VALUES (%s, %s)", (bs_cat_name, bs_pos))
 
                 cursor.execute("""
                     INSERT INTO new_account_table (
                         account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
                         account_assets, account_basment, accont_create_date, account_create_user, account_active,
                         currency_code
-                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
-                """, (acc_no, bs_pos, today_date, current_user))
+                    ) VALUES (%s, %s, %s, 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_no, bs_pos, bs_cat_name, today_date, current_user))
 
             # 2. Insert into Bank Book
             cursor.execute("""
@@ -1774,17 +1765,32 @@ def create_cash_account():
             if not cursor.fetchone():
                 # Create GL Account (Current Asset)
                 # Need to find 'Current assets' category position
-                cursor.execute("SELECT holding_position FROM balance_sheet_category WHERE name_of_category LIKE '%Current asset%' LIMIT 1")
+                cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category WHERE name_of_category LIKE '%Current asset%' LIMIT 1")
                 res = cursor.fetchone()
-                bs_pos = res[0] if res else 3 # Default to 3 (common for Current Assets)
+
+                if res:
+                    bs_pos = res[0]
+                    bs_cat_name = res[1]
+                else:
+                    # Fallback to the first available category if no match
+                    cursor.execute("SELECT holding_position, name_of_category FROM balance_sheet_category LIMIT 1")
+                    fallback_res = cursor.fetchone()
+                    if fallback_res:
+                        bs_pos = fallback_res[0]
+                        bs_cat_name = fallback_res[1]
+                    else:
+                        # Extreme fallback: Create 'Current assets' if table is empty
+                        bs_pos = 3
+                        bs_cat_name = 'Current assets'
+                        cursor.execute("INSERT IGNORE INTO balance_sheet_category (name_of_category, holding_position) VALUES (%s, %s)", (bs_cat_name, bs_pos))
 
                 cursor.execute("""
                     INSERT INTO new_account_table (
                         account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
                         account_assets, account_basment, accont_create_date, account_create_user, account_active,
                         currency_code
-                    ) VALUES (%s, %s, 'Current assets', 1, 'DR', %s, %s, 1, 'LKR')
-                """, (acc_name, bs_pos, today_date, current_user))
+                    ) VALUES (%s, %s, %s, 1, 'DR', %s, %s, 1, 'LKR')
+                """, (acc_name, bs_pos, bs_cat_name, today_date, current_user))
 
             # 2. Insert into Cash Book
             # cash_book schema: cash_id, cash_book_account_name, cash_creat_date, cash_created_user, Select_As
@@ -4017,20 +4023,45 @@ def bank_payment_submit():
         current_user = get_current_user_id()
 
         # 1. Update Invoices (Vender Settle Logic)
-        for p in payments:
-            # Check balance again to be safe
-            cursor.execute("SELECT suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id = %s", (p['id'],))
-            res = cursor.fetchone()
-            if not res: continue
+        if payments:
+            inv_ids = tuple(p['id'] for p in payments)
+            format_strings = ','.join(['%s'] * len(inv_ids))
+            cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", inv_ids)
+            res = cursor.fetchall()
 
-            current_outstanding = float(res[0])
-            current_paid = float(res[1])
+            # Using list for invoice_data to allow updates to current_paid
+            invoice_data = {str(r[0]): [float(r[1] or 0), float(r[2] or 0)] for r in res}
 
-            if p['amount'] > current_outstanding:
-                raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+            update_args = []
+            for p in payments:
+                inv_d = invoice_data.get(str(p['id']))
+                if not inv_d: continue
 
-            new_total_paid = current_paid + p['amount']
-            cursor.execute("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", (new_total_paid, p['id']))
+                current_outstanding = inv_d[0]
+                current_paid = inv_d[1]
+
+                if p['amount'] > current_outstanding:
+                    raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+
+                new_total_paid = current_paid + p['amount']
+
+                # Update the cached data so subsequent duplicate payments use the new total
+                inv_d[0] = current_outstanding - p['amount'] # Reduce outstanding conceptually, although not checked directly here it is safer
+                inv_d[1] = new_total_paid
+
+                update_args.append((new_total_paid, p['id']))
+
+            if update_args:
+                # If there are duplicates, executemany might execute them sequentially or fail depending on the db driver and isolation.
+                # It's better to aggregate updates per invoice ID.
+                # Since update_args contains all sequential updates, the last one per ID is the one that matters.
+                # Let's aggregate to ensure executemany works correctly if the driver batches them.
+                final_updates = {}
+                for paid, inv_id in update_args:
+                    final_updates[inv_id] = paid
+
+                final_update_args = [(paid, inv_id) for inv_id, paid in final_updates.items()]
+                cursor.executemany("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", final_update_args)
 
         # Check Workflow
         cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
@@ -5989,16 +6020,12 @@ def submit_customer_receipt():
 
     return redirect(url_for('customer_receipt'))
 
-# --- Profit & Loss Report ---
-@app.route('/profit_loss', methods=['GET', 'POST'])
-@login_required
-@has_permission('Access_Reports')
-def profit_loss():
+# --- Profit & Loss Report Helpers ---
+def _get_profit_loss_periods(req):
     periods = []
-
-    if request.method == 'POST':
-        starts = request.form.getlist('start_date[]')
-        ends = request.form.getlist('end_date[]')
+    if req.method == 'POST':
+        starts = req.form.getlist('start_date[]')
+        ends = req.form.getlist('end_date[]')
         for s, e in zip(starts, ends):
             if s and e:
                 periods.append({'start': s, 'end': e})
@@ -6010,103 +6037,72 @@ def profit_loss():
         end = today.strftime('%Y-%m-%d')
         periods.append({'start': start, 'end': end})
 
-    # Prepare Data Structure
-    # Map: Account Name -> {'category': cat, 'values': [0.0, 0.0, ...]}
+    return periods
+
+def _fetch_profit_loss_accounts(cursor, periods):
     acc_map = {}
+    # 1. Fetch all P&L Accounts (Income/Expense) to have a base list
+    cursor.execute("""
+        SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL, account_income, account_expenses
+        FROM new_account_table
+        WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+        ORDER BY account_hold_possion_PL, account_name
+    """)
+    all_accounts = cursor.fetchall()
 
-    # Pre-fetch all P&L accounts to ensure rows exist even if 0 balance?
-    # Or just fetch active ones.
-    # Better to fetch data per period and merge.
+    # Initialize Map with zero values for all periods
+    for acc in all_accounts:
+        acc_map[acc['account_name']] = {
+            'meta': acc,
+            'values': [0.0] * len(periods)
+        }
+    return acc_map
 
-    conn = db.get_connection()
-    if not conn:
-        flash('Database connection failed', 'danger')
-        return redirect(url_for('index'))
+def _fetch_profit_loss_data(cursor, periods, acc_map):
+    if not periods:
+        return acc_map
 
-    cursor = conn.cursor(dictionary=True)
+    select_clause = ["account_name"]
+    params = []
 
-    try:
-        # 1. Fetch all P&L Accounts (Income/Expense) to have a base list
-        # We need this to ensure alignment across columns if an account has value in Period 1 but not Period 2
-        cursor.execute("""
-            SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL, account_income, account_expenses
-            FROM new_account_table
-            WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
-            ORDER BY account_hold_possion_PL, account_name
-        """)
-        all_accounts = cursor.fetchall()
+    overall_start = min(p['start'] for p in periods)
+    overall_end = max(p['end'] for p in periods)
 
-        # Initialize Map with zero values for all periods
-        for acc in all_accounts:
-            acc_map[acc['account_name']] = {
-                'meta': acc,
-                'values': [0.0] * len(periods)
-            }
+    for i, p in enumerate(periods):
+        select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
+        select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
+        params.extend([p['start'], p['end'], p['start'], p['end']])
 
-        # 2. Optimized Data Fetching (Single Query)
-        # Construct dynamic SQL to pivot data by period
-        if not periods:
-            # Should be handled above, but as a safe guard to avoid min() error
-            return render_template('profit_loss.html', periods=[], report_data={}, default_start='', default_end='')
+    params.extend([overall_start, overall_end])
 
-        select_clause = ["account_name"]
-        params = []
+    query = f"""
+        SELECT {', '.join(select_clause)}
+        FROM entry_details
+        WHERE entry_effective_date BETWEEN %s AND %s
+        AND entry_deleted = 0
+        GROUP BY account_name
+    """
 
-        # We need overall date range to limit scan
-        # Note: If periods are disjoint or complex, BETWEEN min AND max is safe but might scan extra.
-        # Given they are usually monthly columns, min(start) and max(end) covers it.
-        overall_start = min(p['start'] for p in periods)
-        overall_end = max(p['end'] for p in periods)
+    cursor.execute(query, tuple(params))
+    rows = cursor.fetchall()
 
-        for i, p in enumerate(periods):
-            # For each period, sum DR and CR if date falls in range
-            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
-            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
-            params.extend([p['start'], p['end'], p['start'], p['end']])
+    for r in rows:
+        name = r['account_name']
+        if name in acc_map:
+            is_income = acc_map[name]['meta']['account_income'] == 1
+            for i in range(len(periods)):
+                dr = float(r.get(f'dr_{i}', 0) or 0)
+                cr = float(r.get(f'cr_{i}', 0) or 0)
+                val = (cr - dr) if is_income else (dr - cr)
+                acc_map[name]['values'][i] = val
 
-        # Add overall range params
-        params.extend([overall_start, overall_end])
+    return acc_map
 
-        query = f"""
-            SELECT {', '.join(select_clause)}
-            FROM entry_details
-            WHERE entry_effective_date BETWEEN %s AND %s
-            AND entry_deleted = 0
-            GROUP BY account_name
-        """
-
-        cursor.execute(query, tuple(params))
-        rows = cursor.fetchall()
-
-        for r in rows:
-            name = r['account_name']
-            if name in acc_map:
-                is_income = acc_map[name]['meta']['account_income'] == 1
-
-                # Iterate periods to extract values
-                for i in range(len(periods)):
-                    dr = float(r.get(f'dr_{i}', 0) or 0)
-                    cr = float(r.get(f'cr_{i}', 0) or 0)
-
-                    val = (cr - dr) if is_income else (dr - cr)
-                    acc_map[name]['values'][i] = val
-
-    finally:
-        cursor.close()
-        conn.close()
-
-    # 3. Structure for Template
-    # We need lists of categories, sorted by position
-    # Each category has 'name', 'order', 'accounts' list
-
-    # Using dictionaries to group by category name
+def _process_profit_loss_categories(acc_map, periods):
     income_cats_dict = {}
     expense_cats_dict = {}
 
-    # Process Map into Categories
     for name, data in acc_map.items():
-        # Check if any non-zero value across periods
-        # We can hide accounts that are zero in ALL selected periods to keep report clean
         if all(abs(v) < 0.01 for v in data['values']):
             continue
 
@@ -6124,28 +6120,22 @@ def profit_loss():
             'amounts': data['values']
         })
 
-    # Convert Dicts to Sorted Lists
-    # Sort categories by 'order'
     income_categories = sorted(income_cats_dict.values(), key=lambda x: x['order'])
     expense_categories = sorted(expense_cats_dict.values(), key=lambda x: x['order'])
 
-    # Sort accounts within categories alphabetically
     for cat in income_categories:
         cat['accounts'].sort(key=lambda x: x['name'])
     for cat in expense_categories:
         cat['accounts'].sort(key=lambda x: x['name'])
 
-    # Calculate Column Totals
     total_income = [0.0] * len(periods)
     total_expense = [0.0] * len(periods)
 
-    # Sum Incomes
     for cat in income_categories:
         for acc in cat['accounts']:
             for i, v in enumerate(acc['amounts']):
                 total_income[i] += v
 
-    # Sum Expenses
     for cat in expense_categories:
         for acc in cat['accounts']:
             for i, v in enumerate(acc['amounts']):
@@ -6153,13 +6143,38 @@ def profit_loss():
 
     net_profit = [i - e for i, e in zip(total_income, total_expense)]
 
-    report_data = {
+    return {
         'income_categories': income_categories,
         'expense_categories': expense_categories,
         'total_income': total_income,
         'total_expense': total_expense,
         'net_profit': net_profit
     }
+
+# --- Profit & Loss Report ---
+@app.route('/profit_loss', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Reports')
+def profit_loss():
+    periods = _get_profit_loss_periods(request)
+
+    conn = db.get_connection()
+    if not conn:
+        flash('Database connection failed', 'danger')
+        return redirect(url_for('index'))
+
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+        acc_map = _fetch_profit_loss_accounts(cursor, periods)
+        if not periods:
+            return render_template('profit_loss.html', periods=[], report_data={}, default_start='', default_end='')
+        acc_map = _fetch_profit_loss_data(cursor, periods, acc_map)
+    finally:
+        cursor.close()
+        conn.close()
+
+    report_data = _process_profit_loss_categories(acc_map, periods)
 
     return render_template('profit_loss.html',
                            periods=periods,
@@ -6891,8 +6906,9 @@ def run_schema_migrations(target_db_conn=None):
     except Exception as e:
         logging.error(f"Schema Migration Error: {e}")
 
-def ensure_default_accounts():
+def ensure_default_accounts(target_db=None):
     """Ensures essential General Ledger accounts exist."""
+    current_db = target_db if target_db else db
     try:
         defaults = [
             # Name, BS Position, BS Category, P&L Position, P&L Category, Type
@@ -6900,6 +6916,7 @@ def ensure_default_accounts():
             ('Account Receivable', 3, 'Current assets', None, None, 'assets'),
             ('Cost Of Goods Sold', None, None, 2, 'Cost Of Sales', 'expenses'),
             ('Sales', None, None, 1, 'Revenue', 'income'),
+            ('Income', None, None, 1, 'Revenue', 'income'),
             ('Inventory', 3, 'Current assets', None, None, 'assets'),
             ('VAT Control', 6, 'Current liabilities', None, None, 'liabilities'),
             ('Cash In Hand', 3, 'Current assets', None, None, 'assets')
@@ -6917,7 +6934,7 @@ def ensure_default_accounts():
         format_strings = ','.join(['%s'] * len(account_names))
         query = f"SELECT account_name FROM new_account_table WHERE account_name IN ({format_strings})"
 
-        existing_rows = db.execute_query(query, tuple(account_names))
+        existing_rows = current_db.execute_query(query, tuple(account_names))
 
         # Store existing account names in a set for O(1) lookups
         existing_names = {row['account_name'] for row in (existing_rows or [])}
@@ -6939,14 +6956,41 @@ def ensure_default_accounts():
                         accont_create_date, account_create_user, account_active, account_basment
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
                 """
-                db.execute_query(query, (
+                current_db.execute_query(query, (
                     name, bs_pos, bs_cat, pl_pos, pl_cat,
                     1 if acc_type=='income' else 0, 1 if acc_type=='expenses' else 0,
                     1 if acc_type=='assets' else 0, 1 if acc_type=='liabilities' else 0, 0,
                     date.today(), current_user, basement
                 ), commit=True)
+
+        # 2. Add POS SALE sub-account under Income
+        sub_query = "SELECT id FROM sub_account_table WHERE sub_sub_accaount_name = 'POS SALE' AND sub_new_account = 'Income'"
+        if not db.execute_query(sub_query):
+            db.execute_query("""
+                INSERT INTO sub_account_table (sub_sub_accaount_name, sub_new_account, creat_user, creat_date, active)
+                VALUES ('POS SALE', 'Income', %s, %s, 1)
+            """, (current_user, date.today()), commit=True)
+
+        # 3. Add Common customer
+        cust_query = "SELECT id FROM Customer_table WHERE costomer_code = '60001'"
+        if not db.execute_query(cust_query):
+            db.execute_query("""
+                INSERT INTO Customer_table (
+                    costomer_name, costomer_code, costomer_billing_addres,
+                    customer_dilivery_addres, coustomer_email, customer_credit_limit
+                ) VALUES ('Common customer', '60001', 'non', 'non', 'non', 0)
+            """, commit=True)
+
+        # 4. Add Direct Payment supplier
+        sup_query = "SELECT sup_id FROM suppliers WHERE supplier_code = '70001'"
+        if not db.execute_query(sup_query):
+            db.execute_query("""
+                INSERT INTO suppliers (sup_name, supplier_code)
+                VALUES ('Direct Payment', '70001')
+            """, commit=True)
+
     except Exception as e:
-        logging.error(f"Error ensuring default accounts: {e}")
+        logging.error(f"Error ensuring default accounts/entities: {e}")
 
 # --- Quotation Evaluation ---
 @app.route('/quotation_evaluation', methods=['GET'])
@@ -7499,10 +7543,11 @@ def create_default_user():
     except Exception as e:
         logging.error(f"Error creating default user: {e}")
 
-def ensure_default_categories():
+def ensure_default_categories(target_db=None):
     """Ensures default Balance Sheet and P&L categories exist."""
+    current_db = target_db if target_db else db
     try:
-        conn = db.get_connection()
+        conn = current_db.get_connection()
         if not conn: return
         cursor = conn.cursor()
 
@@ -8145,54 +8190,81 @@ def create_outstanding_record(ctx: OutstandingRecordContext):
     """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
     return ctx.cursor.lastrowid
 
-@dataclass
-class InvoiceItemContext:
-    cursor: typing.Any
-    current_user: str
-    jv_no: str
-    invoice_no: str
-    outstanding_id: int
-    location: str
-    invoice_date: str
-    customer_name: str
-    items: list
-    is_inventory: bool
+def process_invoice_items_batch(
+    cursor, inv_items, non_inv_items,
+    jv_no, current_user, customer_name,
+    outstanding_id, location, inv_date, invoice_no
+):
+    # Prepare batch data
+    invoice_recode_batch = []
+    inventory_recode_batch = []
 
-def process_invoice_items(ctx: InvoiceItemContext):
-    for item in ctx.items:
-        # Warranty Logic
-        if ctx.is_inventory:
-            ctx.cursor.execute("""
-                SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                WHERE name = %s LIMIT 1
-            """, (item['name'],))
-            # Logic for warranty calculation could be added here if needed
+    current_time = datetime.now()
 
-        ctx.cursor.execute("""
+    # Inventory Items
+    for item in inv_items:
+        # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
+        # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
+        # Schema: Invoice_Recode
+
+        # Warranty Logic (Preserved but optimized to only run query)
+        # Fetch warranty period for item
+        w_end_date = None
+        cursor.execute("""
+            SELECT yeas_, month, date_ FROM inventory_vorenty_period
+            WHERE name = %s LIMIT 1
+        """, (item['name'],))
+        w_res = cursor.fetchone()
+        if w_res:
+            try:
+                years, months, days = w_res
+                # Logic retained from original code (pass)
+                pass
+            except Exception as e:
+                logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
+                pass
+
+        # Add to batch for Invoice_Recode
+        invoice_recode_batch.append((
+            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
+        ))
+
+        # Add to batch for Inventory_Recod
+        inventory_recode_batch.append((
+            item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
+            current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
+        ))
+
+    # Non-Inventory Items
+    for item in non_inv_items:
+        # Add to batch for Invoice_Recode
+        invoice_recode_batch.append((
+            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
+        ))
+
+    # Execute Batch Inserts
+    if invoice_recode_batch:
+        cursor.executemany("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
                 recode_date
-            ) VALUES (%s, %s, %s, %s, 'Being account of customer sales', %s, %s, %s, 1, %s, %s, %s)
-        """, (
-            item['name'], item['qty'], item['price'], 1 if ctx.is_inventory else 0, ctx.jv_no, ctx.current_user,
-            ctx.customer_name, ctx.outstanding_id, item['unit'], datetime.now()
-        ))
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, invoice_recode_batch)
 
-        if ctx.is_inventory:
-            ctx.cursor.execute("""
-                INSERT INTO inventory_recod (
-                    inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                    inventory_recod_unit_price, inventory_recod_movment_out,
-                    inventory_recod_account, inventory_recod_user_id,
-                    inventory_recod_user_recod_date, inventory_recod_location,
-                    inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                    inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-            """, (
-                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                ctx.current_user, datetime.now(), ctx.location, ctx.invoice_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
-            ))
+    if inventory_recode_batch:
+        cursor.executemany("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                inventory_recod_unit_price, inventory_recod_movment_out,
+                inventory_recod_account, inventory_recod_user_id,
+                inventory_recod_user_recod_date, inventory_recod_location,
+                inventory_recod_action_date, inventory_recodcol_memo, JV_No,
+                inventory_recod_link_invoice, inventory_recod_suplier_iv_no
+            ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
+        """, inventory_recode_batch)
 
 @dataclass
 class InvoiceGLContext:
@@ -8249,39 +8321,65 @@ def post_invoice_gl_entries(ctx: InvoiceGLContext):
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ('Inventory', ctx.totals['total_cost'], ctx.invoice_date, datetime.now().date(), "Credit Sale", ctx.current_user, ctx.jv_no, job_no_val))
 
-@app.route('/invoice_creating/submit', methods=['POST'])
-@login_required
-def submit_invoice():
-    # 1. Validation & Input Parsing
-    customer_name = request.form.get('customer')
-    inv_date = request.form.get('invoice_date')
+def parse_invoice_form_data(form):
+    customer_name = form.get('customer')
+    inv_date = form.get('invoice_date')
 
     if not customer_name or not inv_date:
-        flash('Customer and Invoice Date are required.', 'danger')
-        return redirect(url_for('invoice_creating'))
+        return None, 'Customer and Invoice Date are required.'
 
-    location = request.form.get('location')
-    due_date = request.form.get('due_date')
-    job_no = request.form.get('job_no')
-    vat_rate = parse_float(request.form.get('vat_rate', 0))
-    apply_vat = 1 if request.form.get('apply_vat') else 0
+    location = form.get('location')
+    due_date = form.get('due_date')
+    job_no = form.get('job_no')
+    vat_rate = parse_float(form.get('vat_rate', 0))
+    apply_vat = 1 if form.get('apply_vat') else 0
 
-    inv_items_json = request.form.get('inventory_items_json')
-    non_inv_items_json = request.form.get('non_inventory_items_json')
+    inv_items_json = form.get('inventory_items_json')
+    non_inv_items_json = form.get('non_inventory_items_json')
 
     try:
         inv_items = json.loads(inv_items_json) if inv_items_json else []
         non_inv_items = json.loads(non_inv_items_json) if non_inv_items_json else []
     except json.JSONDecodeError as e:
-        flash(f'Error processing item list: {str(e)}', 'danger')
-        return redirect(url_for('invoice_creating'))
+        return None, f'Error processing item list: {str(e)}'
 
     if not inv_items and not non_inv_items:
-        flash('No items in invoice', 'danger')
+        return None, 'No items in invoice'
+
+    return {
+        'customer_name': customer_name,
+        'inv_date': inv_date,
+        'location': location,
+        'due_date': due_date,
+        'job_no': job_no,
+        'vat_rate': vat_rate,
+        'apply_vat': apply_vat,
+        'inv_items': inv_items,
+        'non_inv_items': non_inv_items
+    }, None
+
+@app.route('/invoice_creating/submit', methods=['POST'])
+@login_required
+def submit_invoice():
+    # 1. Validation & Input Parsing
+    parsed_data, error_msg = parse_invoice_form_data(request.form) if hasattr(request, 'form') else parse_invoice_form_data(request)
+
+    if error_msg:
+        flash(error_msg, 'danger')
         return redirect(url_for('invoice_creating'))
 
+    customer_name = parsed_data['customer_name']
+    inv_date = parsed_data['inv_date']
+    location = parsed_data['location']
+    due_date = parsed_data['due_date']
+    job_no = parsed_data['job_no']
+    vat_rate = parsed_data['vat_rate']
+    apply_vat = parsed_data['apply_vat']
+    inv_items = parsed_data['inv_items']
+    non_inv_items = parsed_data['non_inv_items']
+
     current_user = get_current_user_id()
-    current_user_pk = get_current_user_pk()
+    # current_user_pk is unused in the transaction below
 
     # 2. Database Transaction
     conn = db.get_connection()
@@ -8304,29 +8402,11 @@ def submit_invoice():
         jv_no = cursor.lastrowid
 
         # 5. Calculate Totals
-        total_sales = 0
-        total_cost = 0
-
-        # Inventory Items
-        for item in inv_items:
-            qty = parse_float(item.get('qty', 0))
-            price = parse_float(item.get('price', 0))
-            cost = parse_float(item.get('cost', 0))
-            total_sales += qty * price
-            total_cost += qty * cost
-
-        # Non-Inventory Items
-        for item in non_inv_items:
-            qty = parse_float(item.get('qty', 0))
-            price = parse_float(item.get('price', 0))
-            total_sales += qty * price
-            # Non-inventory might not have tracked cost or it's service
-
-        vat_amount = 0
-        grand_total = total_sales
-        if apply_vat:
-            vat_amount = (total_sales * vat_rate) / 100
-            grand_total += vat_amount
+        totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
+        total_sales = totals['total_sales']
+        total_cost = totals['total_cost']
+        vat_amount = totals['vat_amount']
+        grand_total = totals['grand_total']
 
         # 6. Insert Outstanding Record
         ctx = OutstandingRecordContext(
@@ -8342,77 +8422,11 @@ def submit_invoice():
         outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
-
-        # Prepare batch data
-        invoice_recode_batch = []
-        inventory_recode_batch = []
-
-        current_time = datetime.now()
-
-        # Inventory Items
-        for item in inv_items:
-            # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
-            # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
-            # Schema: Invoice_Recode
-
-            # Warranty Logic (Preserved but optimized to only run query)
-            # Fetch warranty period for item
-            w_end_date = None
-            cursor.execute("""
-                SELECT yeas_, month, date_ FROM inventory_vorenty_period
-                WHERE name = %s LIMIT 1
-            """, (item['name'],))
-            w_res = cursor.fetchone()
-            if w_res:
-                try:
-                    years, months, days = w_res
-                    # Logic retained from original code (pass)
-                    pass
-                except Exception as e:
-                    logging.error(f"Error parsing warranty for item '{item.get('name')}': {e}")
-                    pass
-
-            # Add to batch for Invoice_Recode
-            invoice_recode_batch.append((
-                item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
-                customer_name, 1, outstanding_id, item['unit'], current_time
-            ))
-
-            # Add to batch for Inventory_Recod
-            inventory_recode_batch.append((
-                item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-                current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
-            ))
-
-        # Non-Inventory Items
-        for item in non_inv_items:
-             # Add to batch for Invoice_Recode
-            invoice_recode_batch.append((
-                item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
-                customer_name, 1, outstanding_id, item['unit'], current_time
-            ))
-
-            # Execute Batch Inserts
-            if invoice_recode_batch:
-                cursor.executemany("""
-                    INSERT INTO Invoice_Recode (
-                        Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
-                        User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
-                        recode_date
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, invoice_recode_batch)
-
-            if inventory_recode_batch:
-                cursor.executemany("""
-                    INSERT INTO inventory_recod (
-                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
-                        inventory_recod_unit_price, inventory_recod_movment_out,
-                        inventory_recod_account, inventory_recod_user_id,
-                        inventory_recod_user_recod_date, inventory_recod_location,
-                        inventory_recod_action_date, inventory_recodcol_memo, JV_No,
-                        inventory_recod_link_invoice, inventory_recod_suplier_iv_no
-                    ) VALUES (%s, %s, %s, %s, %s, 'Inventoy', %s, %s, %s, %s, 'Credit Sales', %s, %s, %s)
-                """, inventory_recode_batch)
+        process_invoice_items_batch(
+            cursor, inv_items, non_inv_items,
+            jv_no, current_user, customer_name,
+            outstanding_id, location, inv_date, invoice_no
+        )
 
         # 8. GL Entries
         gl_ctx = InvoiceGLContext(

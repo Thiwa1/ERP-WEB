@@ -3,96 +3,257 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Suwin Accounting - Login</title>
+    <title>Login - Suwin Accounting</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        body, html { height: 100%; margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .bg-primary-custom { background-color: #1E3A5F; }
-        .text-accent { color: #149AEF; }
-        .login-container { height: 100vh; }
-        .branding-section { color: white; display: flex; flex-direction: column; justify-content: center; align-items: center; position: relative; }
-        .login-form-section { background-color: white; display: flex; align-items: center; justify-content: center; }
-        .brand-icon { width: 120px; height: 120px; background-color: #F8FBFF; border-radius: 8px; display: flex; align-items: center; justify-content: center; margin-bottom: 30px; position: relative; }
-        .form-control-lg { font-size: 14px; padding: 12px; }
-        .btn-login { background-color: #1E3A5F; color: white; padding: 10px 30px; font-weight: 600; width: 100%; }
-        .btn-login:hover { background-color: #2B5B80; color: white; }
-        .feature-list i { color: #A0B8D0; margin-right: 10px; font-size: 12px; }
-        .feature-list div { color: #A0B8D0; font-size: 13px; margin-bottom: 5px; }
-        .progress-bar-custom { height: 6px; background-color: #E1E8F0; }
-        .progress-bar-custom .bar { background-color: #149AEF; width: 100%; animation: progress 2s infinite linear; }
-        @keyframes progress { 0% { width: 0%; margin-left: 0; } 50% { width: 50%; margin-left: 25%; } 100% { width: 0%; margin-left: 100%; } }
+        body, html {
+            height: 100%;
+            margin: 0;
+            font-family: 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: #f4f5f8;
+            color: #393a3d;
+        }
+
+        /* Navigation */
+        .navbar {
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            padding: 15px 0;
+        }
+        .navbar-brand {
+            font-weight: 700;
+            font-size: 24px;
+            color: #0d333f;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .navbar-brand i {
+            color: #2ca01c; /* QuickBooks Green-ish */
+        }
+        .btn-outline-register {
+            border: 2px solid #0d333f;
+            color: #0d333f;
+            font-weight: 600;
+            border-radius: 20px;
+            padding: 6px 20px;
+        }
+        .btn-outline-register:hover {
+            background-color: #0d333f;
+            color: #fff;
+        }
+
+        /* Hero Section */
+        .hero-section {
+            background: linear-gradient(135deg, #0d333f 0%, #103661 100%);
+            background-size: cover;
+            background-position: center;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            padding: 60px 0;
+            position: relative;
+        }
+
+        .hero-text h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 20px;
+            line-height: 1.2;
+        }
+        .hero-text p {
+            font-size: 1.25rem;
+            color: #ffffff;
+            margin-bottom: 40px;
+            opacity: 0.9;
+        }
+        .check-list {
+            list-style: none;
+            padding: 0;
+            color: white;
+            font-size: 1.1rem;
+        }
+        .check-list li {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+        }
+        .check-list li i {
+            color: #5bef76;
+            margin-right: 15px;
+            font-size: 1.4rem;
+        }
+
+        /* Login Card */
+        .login-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+            padding: 50px 40px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .login-header h3 {
+            font-weight: 700;
+            color: #0d333f;
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+        .login-header p {
+            color: #6b6c72;
+            font-size: 1rem;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #393a3d;
+            font-size: 0.95rem;
+        }
+        .form-control {
+            border-radius: 6px;
+            padding: 12px 15px;
+            border: 1px solid #c3ced5;
+            background-color: #fff;
+            font-size: 1rem;
+        }
+        .form-control:focus {
+            border-color: #2ca01c;
+            box-shadow: 0 0 0 0.25rem rgba(44, 160, 28, 0.25);
+        }
+        .btn-login {
+            background-color: #2ca01c; /* QuickBooks Green */
+            color: #fff;
+            font-weight: 700;
+            border: none;
+            border-radius: 6px;
+            padding: 14px;
+            width: 100%;
+            font-size: 1.1rem;
+            margin-top: 25px;
+            transition: background-color 0.3s;
+        }
+        .btn-login:hover {
+            background-color: #1a7a10;
+            color: #fff;
+        }
+        .register-link {
+            text-align: center;
+            margin-top: 25px;
+            font-size: 0.95rem;
+            color: #393a3d;
+        }
+        .register-link a {
+            color: #0077c5;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+
+        /* Responsive */
+        @media (max-width: 991px) {
+            .hero-section {
+                text-align: center;
+                padding: 100px 0 40px 0; /* Add padding top to account for fixed navbar */
+            }
+            .hero-text {
+                margin-bottom: 50px;
+            }
+            .check-list {
+                display: inline-block;
+                text-align: left;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container-fluid login-container">
-        <div class="row h-100">
-            <!-- Left Side: Branding -->
-            <div class="col-md-7 bg-primary-custom branding-section d-none d-md-flex">
-                <div class="text-center">
-                    <div class="brand-icon mx-auto text-primary fs-1">
-                        <i class="fas fa-calculator"></i>
-                        <span class="position-absolute top-0 end-0 p-2 text-success fs-4">$</span>
-                    </div>
-                    <h1 class="fw-bold mb-2">Suwin Accounting</h1>
-                    <p class="fs-5 text-light opacity-75">Professional Accounting Solution</p>
 
-                    <div class="mt-5 text-start d-inline-block feature-list">
-                        <div><i class="fas fa-check"></i> Secure & Encrypted</div>
-                        <div><i class="fas fa-check"></i> Real-time Reporting</div>
-                        <div><i class="fas fa-check"></i> Multi-user Support</div>
-                        <div><i class="fas fa-check"></i> Cloud Backup</div>
-                    </div>
-                </div>
-                <div class="position-absolute bottom-0 mb-4 text-white-50 small">
-                    Version 2.1.0 • Secure • Reliable
-                </div>
-            </div>
-
-            <!-- Right Side: Login Form -->
-            <div class="col-md-5 login-form-section">
-                <div class="w-75">
-                    <div class="mb-5 text-center">
-                        <h2 class="fw-light text-primary-custom mb-2">Welcome Back</h2>
-                        <p class="text-muted">Sign in to your Pro account</p>
-                    </div>
-
-                    {% with messages = get_flashed_messages(with_categories=true) %}
-                        {% if messages %}
-                            {% for category, message in messages %}
-                                <div class="alert alert-{{ category }} mb-4" role="alert">
-                                    {{ message }}
-                                </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-
-                    <form action="{{ url_for('login') }}" method="POST">
-                        <div class="mb-3">
-                            <label for="username" class="form-label fw-bold">User Name</label>
-                            <input type="text" class="form-control form-control-lg bg-light" id="username" name="username" required>
-                        </div>
-                        <div class="mb-4">
-                            <label for="password" class="form-label fw-bold">Password</label>
-                            <input type="password" class="form-control form-control-lg bg-light" id="password" name="password" required>
-                        </div>
-                        <div class="d-grid gap-2 mb-4">
-                            <button type="submit" class="btn btn-login btn-lg">Login</button>
-                        </div>
-                        <div class="text-center">
-                            <a href="{{ url_for('register') }}" class="text-decoration-none">Need an account? Register here</a>
-                        </div>
-                    </form>
-
-                    <div class="text-center mt-5 pt-5">
-                        <div class="progress-bar-custom mb-2 rounded overflow-hidden">
-                            <div class="bar h-100"></div>
-                        </div>
-                        <small class="text-muted fw-bold">System Status: Ready</small>
-                    </div>
-                </div>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-pie fa-lg"></i>
+                Suwin Accounting
+            </a>
+            <div class="ms-auto">
+                <a href="{{ url_for('register') }}" class="btn btn-outline-register">Start free trial</a>
             </div>
         </div>
-    </div>
+    </nav>
+
+    <!-- Hero Section with Login Form -->
+    <section class="hero-section">
+        <div class="container">
+            <div class="row align-items-center">
+
+                <!-- Left Column: Value Proposition -->
+                <div class="col-lg-6 hero-text d-none d-lg-block">
+                    <h1>Smarter business management.</h1>
+                    <p>Log in to access your comprehensive dashboard, track performance, and run your business efficiently.</p>
+
+                    <ul class="check-list">
+                        <li><i class="fas fa-chart-line"></i> Real-time financial insights</li>
+                        <li><i class="fas fa-shield-alt"></i> Enterprise-grade security</li>
+                        <li><i class="fas fa-users"></i> Seamless team collaboration</li>
+                    </ul>
+                </div>
+
+                <!-- Right Column: Login Form -->
+                <div class="col-lg-5 offset-lg-1 col-md-8 mx-auto mx-lg-0">
+                    <div class="login-card">
+                        <div class="login-header">
+                            <h3>Welcome Back</h3>
+                            <p>Sign in to your Suwin account</p>
+                        </div>
+
+                        {% with messages = get_flashed_messages(with_categories=true) %}
+                            {% if messages %}
+                                {% for category, message in messages %}
+                                    <div class="alert alert-{{ category }} mb-4" role="alert">
+                                        {{ message }}
+                                    </div>
+                                {% endfor %}
+                            {% endif %}
+                        {% endwith %}
+
+                        <form action="{{ url_for('login') }}" method="POST">
+                            <div class="mb-4">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" placeholder="Enter your username" required>
+                            </div>
+
+                            <div class="mb-4">
+                                <label for="password" class="form-label">Password</label>
+                                <input type="password" class="form-control" id="password" name="password" placeholder="Enter your password" required>
+                            </div>
+
+                            <button type="submit" class="btn btn-login btn-loading">Sign In</button>
+
+                            <div class="register-link">
+                                New to Suwin Accounting? <a href="{{ url_for('register') }}">Create an account</a>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        document.querySelector('form').addEventListener('submit', function() {
+            var btn = this.querySelector('.btn-loading');
+            if(btn) {
+                var originalText = btn.innerHTML;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Signing in...';
+            }
+        });
+    </script>
 </body>
 </html>
