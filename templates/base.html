@@ -235,9 +235,40 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Global Page Loader */
+        .global-page-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .global-page-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        .global-page-loader .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            color: var(--primary-color) !important;
+        }
     </style>
 </head>
 <body>
+    <!-- Global Page Loader -->
+    <div id="globalPageLoader" class="global-page-loader">
+        <div class="spinner-border" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
 
     <!-- Sidebar Overlay for Mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -485,6 +516,24 @@
             if (!(btn instanceof jQuery)) btn = $(btn);
             btn.removeClass('btn-loading');
         }
+
+        // Global Page Loader Handling
+        window.addEventListener('load', function() {
+            const loader = document.getElementById('globalPageLoader');
+            if (loader) {
+                loader.classList.add('hidden');
+                setTimeout(() => { loader.style.display = 'none'; }, 300);
+            }
+        });
+
+        window.addEventListener('beforeunload', function() {
+            const loader = document.getElementById('globalPageLoader');
+            if (loader) {
+                loader.style.display = 'flex';
+                // Small delay to allow display: flex to apply before opacity transition
+                setTimeout(() => { loader.classList.remove('hidden'); }, 10);
+            }
+        });
 
         // Sidebar Toggle Script for Mobile
         document.addEventListener('DOMContentLoaded', function() {
