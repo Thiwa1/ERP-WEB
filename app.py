@@ -125,7 +125,7 @@ else:
 
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
-    'password': os.environ.get('DB_PASSWORD'),
+    'password': os.environ.get('DB_PASSWORD', '21219125'),
     'host': os.environ.get('DB_HOST', 'localhost'),
     'database': _final_db_name,
     'raise_on_warnings': True
