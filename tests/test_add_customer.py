@@ -23,10 +23,15 @@ mock_flask_module.session = mock_session
 
 # Apply to sys.modules
 sys.modules['flask'] = mock_flask_module
-import jinja2
 
+sys.modules['jinja2'] = MagicMock()
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
+sys.modules['werkzeug'] = MagicMock()
+sys.modules['werkzeug.security'] = MagicMock()
+sys.modules['werkzeug.utils'] = MagicMock()
+sys.modules['num2words'] = MagicMock()
+sys.modules['dotenv'] = MagicMock()
 
 # Import app (this might pick up a cached version)
 import app as app_module

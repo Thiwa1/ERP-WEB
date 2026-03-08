@@ -1,5 +1,18 @@
+import sys
 import unittest
 from unittest.mock import patch, MagicMock
+
+# Mock dependencies
+mock_mysql = MagicMock()
+sys.modules['mysql'] = mock_mysql
+sys.modules['mysql.connector'] = mock_mysql
+sys.modules['werkzeug'] = MagicMock()
+sys.modules['werkzeug.security'] = MagicMock()
+sys.modules['werkzeug.utils'] = MagicMock()
+sys.modules['flask'] = MagicMock()
+sys.modules['num2words'] = MagicMock()
+sys.modules['dotenv'] = MagicMock()
+
 import app
 
 class TestAddInventoryItem(unittest.TestCase):
@@ -48,3 +61,6 @@ class TestAddInventoryItem(unittest.TestCase):
 
                 second_call_query = mock_cursor.execute.call_args_list[1][0][0]
                 self.assertIn("INSERT INTO inventory_price_recod", second_call_query)
+
+if __name__ == '__main__':
+    unittest.main()
