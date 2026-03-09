@@ -32,7 +32,7 @@
         /* Sidebar Styling - Modern Pro */
         .sidebar {
             width: var(--sidebar-width);
-            background: rgba(15, 23, 42, 0.95); /* Deep slate, slightly translucent */
+            background: linear-gradient(180deg, var(--primary-color) 0%, var(--secondary-color) 100%); /* Deep slate, slightly translucent */
             backdrop-filter: blur(12px); /* Glassmorphism blur effect */
             -webkit-backdrop-filter: blur(12px);
             color: var(--text-light);
@@ -99,7 +99,7 @@
         }
 
         .menu-category {
-            color: #64748b; /* Sleek, dark gray */
+            color: rgba(255,255,255,0.7); /* Sleek, dark gray */
             text-transform: uppercase;
             font-size: 0.65rem;
             font-weight: 800;
@@ -109,7 +109,7 @@
         }
 
         .nav-link {
-            color: #94a3b8; /* Muted base text */
+            color: rgba(255,255,255,0.85); /* Muted base text */
             padding: 10px 16px;
             border-radius: 8px; /* Modern rounded rectangles */
             margin-bottom: 4px;
@@ -134,7 +134,7 @@
 
         /* Active State Pill */
         .nav-link.active {
-            background: linear-gradient(90deg, rgba(59,130,246,0.15) 0%, transparent 100%);
+            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
             color: #ffffff;
             font-weight: 600;
             border-left: 3px solid var(--accent-color);
@@ -147,7 +147,7 @@
             text-align: left;
             margin-right: 12px;
             font-size: 1.1rem;
-            color: #64748b;
+            color: rgba(255,255,255,0.7);
             transition: color 0.3s ease;
         }
 
