@@ -38,6 +38,7 @@ def run_migrations(conn):
         _migrate_cheque_print_settings(cursor)
         _migrate_proforma_invoice(cursor)
         _migrate_approval_workflow(cursor)
+        _migrate_password_length(cursor)
 
         conn.commit()
         cursor.close()
@@ -240,6 +241,14 @@ def _migrate_proforma_invoice(cursor):
             """)
     except Exception as e:
         print(f"Error migrating proforma_invoice tables: {e}")
+
+def _migrate_password_length(cursor):
+    """Update Password column length in Login_Table to accommodate hashes."""
+    try:
+        print("Migrating: Extending Password column length in Login_Table")
+        cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
+    except Exception as e:
+        print(f"Error migrating Password column length: {e}")
 
 def _migrate_approval_workflow(cursor):
     """9. Approval Workflow Updates."""
