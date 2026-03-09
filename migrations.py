@@ -243,12 +243,18 @@ def _migrate_proforma_invoice(cursor):
         print(f"Error migrating proforma_invoice tables: {e}")
 
 def _migrate_password_length(cursor):
-    """Update Password column length in Login_Table to accommodate hashes."""
+    """Update Password column length in Login_Table and Pose_Setting_Table to accommodate hashes."""
     try:
         print("Migrating: Extending Password column length in Login_Table")
         cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
     except Exception as e:
-        print(f"Error migrating Password column length: {e}")
+        print(f"Error migrating Password column length (Login_Table): {e}")
+
+    try:
+        print("Migrating: Extending Password column length in Pose_Setting_Table")
+        cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
+    except Exception as e:
+        print(f"Error migrating Password column length (Pose_Setting_Table): {e}")
 
 def _migrate_approval_workflow(cursor):
     """9. Approval Workflow Updates."""

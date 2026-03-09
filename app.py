@@ -2018,7 +2018,7 @@ def approval_action():
     return redirect(url_for('approvals'))
 
 # --- Bulk Upload Helpers ---
-def parse_csv_file(file_storage):
+def read_csv_content(file_storage):
     """
     Reads a FileStorage object (CSV), attempts various encodings,
     and returns the decoded string content.
@@ -2053,7 +2053,7 @@ def parse_gl_upload_data(file_storage):
     Parses the GL Upload CSV file and returns a list of dictionaries representing the rows.
     """
     try:
-        csv_content = parse_csv_file(file_storage)
+        csv_content = read_csv_content(file_storage)
         stream = io.StringIO(csv_content, newline=None)
         csv_input = csv.DictReader(stream)
 
@@ -2293,12 +2293,9 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
-                decoded_str = parse_csv_file(file)
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
-                # Use helper to parse and validate
-                # Note: `bulk_upload_tb` logic iterates rows differently (using row.get('Debit'))
-                # Our helper returns list of dicts.
+                # Need to reset stream cursor since read_csv_content consumes it
+                # Wait, our first parse_csv_file definition parses directly.
+                # Just call parse_csv_file directly and use its output.
                 parsed_rows = parse_csv_file(file, required_columns=['Account Name', 'Debit', 'Credit'])
 
                 rows = []
@@ -8122,7 +8119,7 @@ def process_invoice_items_batch(
     invoice_recode_batch = []
     inventory_recode_batch = []
 
-    current_time = datetime.now()
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Inventory Items
     for item in inv_items:
