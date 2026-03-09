@@ -385,6 +385,125 @@
             0% { left: -50%; }
             100% { left: 100%; }
         }
+
+        /* Quick Actions Pro Modal */
+        .modal-pro {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background-color: rgba(15, 23, 42, 0.4); /* Darker backdrop */
+        }
+        .modal-pro .modal-content {
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+        .modal-pro .modal-header {
+            background: linear-gradient(to right, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 20px 24px;
+        }
+        .modal-pro .modal-title {
+            color: #f8fafc;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-pro .modal-title i {
+            color: var(--accent-color);
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+            font-size: 1.2rem;
+        }
+        .modal-pro .btn-close-white {
+            filter: invert(1) grayscale(100%) brightness(200%);
+            opacity: 0.8;
+            transition: all 0.2s;
+        }
+        .modal-pro .btn-close-white:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+        .modal-pro .modal-body {
+            background-color: #f8fafc; /* Very light slate */
+            padding: 32px !important;
+        }
+
+        .qa-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+            height: 100%;
+            overflow: hidden;
+        }
+        .qa-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-color: rgba(203, 213, 225, 0.8);
+        }
+        .qa-header {
+            padding: 16px 20px 12px;
+            background: #ffffff;
+            border-bottom: 1px solid rgba(241, 245, 249, 1);
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #334155;
+            letter-spacing: 0.3px;
+        }
+        .qa-header i {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .qa-list {
+            padding: 8px 12px;
+            margin: 0;
+            list-style: none;
+        }
+        .qa-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: #475569;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            margin-bottom: 4px;
+            gap: 12px;
+            position: relative;
+        }
+        .qa-item i {
+            color: #94a3b8;
+            font-size: 1rem;
+            width: 20px;
+            text-align: center;
+            transition: color 0.2s ease, transform 0.2s ease;
+        }
+        .qa-item:hover {
+            background-color: #f1f5f9;
+            color: #0f172a;
+        }
+        .qa-item:hover i {
+            color: var(--accent-color);
+            transform: scale(1.1);
+        }
+        /* Color themes for category headers */
+        .qa-theme-primary .qa-header i { color: #3b82f6; }
+        .qa-theme-success .qa-header i { color: #10b981; }
+        .qa-theme-warning .qa-header i { color: #f59e0b; }
+        .qa-theme-info .qa-header i { color: #06b6d4; }
+        .qa-theme-purple .qa-header i { color: #8b5cf6; }
+        .qa-theme-rose .qa-header i { color: #f43f5e; }
+
     </style>
 </head>
 <body>
@@ -508,96 +627,96 @@
     </div>
 
     <!-- Quick Actions Modal -->
-    <div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade modal-pro" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content border-0 shadow-lg" style="border-radius: 12px; overflow: hidden;">
-                <div class="modal-header text-white" style="background-color: var(--secondary-color);">
-                    <h5 class="modal-title fw-bold fs-6"><i class="fas fa-bolt me-2"></i> QUICK ACTIONS</h5>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bolt"></i> QUICK ACTIONS</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body p-4" style="background-color: var(--bg-light);">
+                <div class="modal-body">
                     <div class="row g-4">
-                        <!-- Column 1: Company & Accounting -->
-                        <div class="col-md-4">
+                        <!-- Column 1: Setup & Accounting -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Company Setup -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
-                                    1) Company Setup
+                            <div class="qa-card qa-theme-primary">
+                                <div class="qa-header">
+                                    <i class="fas fa-building"></i> Company Setup
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/company_profile" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-building me-2 text-muted"></i> Setup Company Profile</a>
-                                    <a href="/create_bank_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-university me-2 text-muted"></i> Create Bank Account</a>
-                                    <a href="/create_cash_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-money-bill me-2 text-muted"></i> Create Cash Account</a>
-                                    <a href="/job_management" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-briefcase me-2 text-muted"></i> Create New Jobs</a>
-                                    <a href="/tax_settings" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-percentage me-2 text-muted"></i> Tax Settings (WHT)</a>
-                <a href="/control_panel" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-sliders-h me-2 text-muted"></i> System Control Panel</a>
-                                    <a href="/admin/users" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-plus me-2 text-muted"></i> Add New User</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/company_profile" class="qa-item"><i class="fas fa-id-card"></i> Setup Company Profile</a></li>
+                                    <li><a href="/create_bank_account" class="qa-item"><i class="fas fa-university"></i> Create Bank Account</a></li>
+                                    <li><a href="/create_cash_account" class="qa-item"><i class="fas fa-money-bill-wave"></i> Create Cash Account</a></li>
+                                    <li><a href="/job_management" class="qa-item"><i class="fas fa-briefcase"></i> Create New Jobs</a></li>
+                                    <li><a href="/tax_settings" class="qa-item"><i class="fas fa-percent"></i> Tax Settings (WHT)</a></li>
+                                    <li><a href="/control_panel" class="qa-item"><i class="fas fa-sliders-h"></i> System Control Panel</a></li>
+                                    <li><a href="/admin/users" class="qa-item"><i class="fas fa-user-plus"></i> Add New User</a></li>
+                                </ul>
                             </div>
 
                             <!-- Accounting -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
-                                    2) Accounting
+                            <div class="qa-card qa-theme-purple">
+                                <div class="qa-header">
+                                    <i class="fas fa-book-open"></i> Accounting
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/balance_sheet_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-balance-scale me-2 text-muted"></i> Balance Sheet Category</a>
-                                    <a href="/pl_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-chart-pie me-2 text-muted"></i> P&L Category</a>
-                                    <a href="/cash_flow_categories" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-stream me-2 text-muted"></i> Cash Flow Category</a>
-                                    <a href="/add_new_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-invoice me-2 text-muted"></i> Create New Account</a>
-                                    <a href="/cheque_print_setup" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-print me-2 text-muted"></i> Cheque Print Setup</a>
-                                    <a href="/bulk_upload_gl" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-upload me-2 text-muted"></i> Bulk Upload GL</a>
-                                    <a href="/bulk_upload_tb" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-csv me-2 text-muted"></i> Bulk Upload TB</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/balance_sheet_category" class="qa-item"><i class="fas fa-balance-scale"></i> Balance Sheet Category</a></li>
+                                    <li><a href="/pl_category" class="qa-item"><i class="fas fa-chart-pie"></i> P&L Category</a></li>
+                                    <li><a href="/cash_flow_categories" class="qa-item"><i class="fas fa-stream"></i> Cash Flow Category</a></li>
+                                    <li><a href="/add_new_account" class="qa-item"><i class="fas fa-file-invoice"></i> Create New Account</a></li>
+                                    <li><a href="/cheque_print_setup" class="qa-item"><i class="fas fa-print"></i> Cheque Print Setup</a></li>
+                                    <li><a href="/bulk_upload_gl" class="qa-item"><i class="fas fa-file-upload"></i> Bulk Upload GL</a></li>
+                                    <li><a href="/bulk_upload_tb" class="qa-item"><i class="fas fa-file-csv"></i> Bulk Upload TB</a></li>
+                                </ul>
                             </div>
                         </div>
 
-                        <!-- Column 2: Suppliers/Customer & Inventory -->
-                        <div class="col-md-4">
+                        <!-- Column 2: Entities & Inventory -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Suppliers & Customer -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
-                                    3) Suppliers & Customer
+                            <div class="qa-card qa-theme-success">
+                                <div class="qa-header">
+                                    <i class="fas fa-users"></i> Suppliers & Customers
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/add_customer" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-tag me-2 text-muted"></i> Create New Customer</a>
-                                    <a href="/add_supplier" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-truck me-2 text-muted"></i> Create New Supplier</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/add_customer" class="qa-item"><i class="fas fa-user-tag"></i> Create New Customer</a></li>
+                                    <li><a href="/add_supplier" class="qa-item"><i class="fas fa-truck"></i> Create New Supplier</a></li>
+                                </ul>
                             </div>
 
                             <!-- Inventory Management -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
-                                    4) Inventory Management
+                            <div class="qa-card qa-theme-info">
+                                <div class="qa-header">
+                                    <i class="fas fa-boxes"></i> Inventory Management
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/inventory_locations" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-warehouse me-2 text-muted"></i> Create Inventory House</a>
-                                    <a href="/add_inventory_item" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-box me-2 text-muted"></i> Create Inventory Items</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/inventory_locations" class="qa-item"><i class="fas fa-warehouse"></i> Create Inventory House</a></li>
+                                    <li><a href="/add_inventory_item" class="qa-item"><i class="fas fa-box"></i> Create Inventory Items</a></li>
+                                </ul>
                             </div>
                         </div>
 
                         <!-- Column 3: POS & Backup -->
-                        <div class="col-md-4">
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Point of Sales -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold text-warning border-bottom-0 pt-3">
-                                    5) Point of Sales
+                            <div class="qa-card qa-theme-warning">
+                                <div class="qa-header">
+                                    <i class="fas fa-cash-register"></i> Point of Sales
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/pos_settings" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-cogs me-2 text-muted"></i> POS Settings</a>
-                                    <a href="/warranty_period" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-shield-alt me-2 text-muted"></i> Warranty Period</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/pos_settings" class="qa-item"><i class="fas fa-cogs"></i> POS Settings</a></li>
+                                    <li><a href="/warranty_period" class="qa-item"><i class="fas fa-shield-alt"></i> Warranty Period</a></li>
+                                </ul>
                             </div>
 
                             <!-- System Backup -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold text-info border-bottom-0 pt-3">
-                                    6) System Backup
+                            <div class="qa-card qa-theme-rose">
+                                <div class="qa-header">
+                                    <i class="fas fa-server"></i> System
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/system_backup" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-download me-2 text-muted"></i> System Backup</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/system_backup" class="qa-item"><i class="fas fa-download"></i> System Backup</a></li>
+                                </ul>
                             </div>
                         </div>
                     </div>
