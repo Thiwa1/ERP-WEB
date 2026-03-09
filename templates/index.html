@@ -4,34 +4,94 @@
 
 {% block content %}
 <style>
-    .module-section {
-        background-color: white;
-        border-radius: 12px;
+    /* Reset layout for full page Windows 10 feel */
+    .dashboard-container {
         padding: 20px;
-        margin-bottom: 25px;
-        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
-        border: 1px solid #e2e8f0;
     }
 
-    .module-header:hover {
-        background-color: #f8fafc;
-        border-radius: 6px;
+    /* Group Container */
+    .metro-group {
+        margin-bottom: 40px;
     }
-    .module-header {
-        cursor: pointer;
-        transition: background-color 0.2s;
-        font-size: 0.85rem;
-        font-weight: 700;
-        color: #64748b; /* Professional Slate Gray */
-        text-transform: uppercase;
+
+    .metro-group-title {
+        font-size: 1.2rem;
+        font-weight: 400;
+        color: white; /* Metro usually uses white text for groups on solid background */
         margin-bottom: 15px;
-        border-bottom: 2px solid #f1f5f9;
-        padding-bottom: 10px;
         letter-spacing: 0.5px;
-        display: flex;
-        align-items: center;
+        display: block;
     }
 
+    /* Global Text color adjustments since we're making tiles */
+    .dashboard-container {
+         /* A slight dark background to make the tiles pop, typical of Start menu */
+         background-color: #1f1f1f;
+         min-height: calc(100vh - 60px);
+         margin: -20px; /* offset the default container padding */
+         padding: 30px;
+    }
+
+    /* Top Grid: Main Categories */
+    .main-category-tile {
+        cursor: pointer;
+        width: 100%;
+        aspect-ratio: 1; /* Make them perfect squares */
+        background: #0078D7;
+        border: 2px solid transparent;
+        border-radius: 0;
+        padding: 15px;
+        position: relative;
+        overflow: hidden;
+        transition: transform 0.1s ease-in-out, border-color 0.1s;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .main-category-tile:hover {
+        border-color: rgba(255,255,255,0.4);
+        transform: scale(0.98);
+        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15);
+    }
+
+    .main-category-tile:active {
+        transform: scale(0.95);
+    }
+
+    .main-category-tile i.main-icon {
+        font-size: 3rem;
+        color: white;
+        align-self: center;
+        margin-top: 15px;
+    }
+
+    .main-category-tile .tile-title {
+        color: white;
+        font-weight: 500;
+        font-size: 1.1rem;
+        line-height: 1.2;
+        text-align: left;
+    }
+
+    /* Distinct Colors for Main Categories */
+    #cat-core { background: #0063B1; }
+    #cat-reversals { background: #E81123; }
+    #cat-inventory { background: #107C10; }
+    #cat-features { background: #6B69D6; }
+    #cat-reports { background: #008272; }
+
+
+    /* Sub-modules container (The expanded folder area) */
+    .sub-modules-container {
+        margin-top: 25px;
+        padding: 20px;
+        background-color: rgba(255, 255, 255, 0.05); /* Slight white tint for the "open folder" area */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: 4px solid #0078D7; /* Accent border */
+    }
+
+    /* Sub-module items */
     .tile-link {
         text-decoration: none;
         color: inherit;
@@ -40,28 +100,25 @@
     }
 
     .tile {
-        background: #0078D7; /* Default Windows Blue */
+        background: #2D7D9A; /* Sub-tile base color */
         border: 2px solid transparent;
-        border-radius: 0; /* Windows 10 sharp corners */
+        border-radius: 0;
         padding: 12px;
-        text-align: left; /* Text to the left like Windows tiles */
+        text-align: left;
         transition: all 0.1s ease-in-out;
         height: 100%;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
-        justify-content: space-between; /* Icon top, Text bottom */
+        justify-content: space-between;
         min-height: 110px;
         position: relative;
-        overflow: hidden;
-        box-shadow: none;
-        color: white;
     }
 
     .tile:hover {
         border-color: rgba(255,255,255,0.4);
-        transform: scale(0.98); /* Windows 10 click/hover press effect */
-        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15); /* Slight brighten on hover */
+        transform: scale(0.98);
+        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15);
     }
 
     .tile:active {
@@ -71,8 +128,7 @@
     .tile i {
         font-size: 1.8rem;
         color: white;
-        margin-bottom: auto; /* Push text to bottom */
-        align-self: center; /* Center icon horizontally */
+        align-self: center;
         margin-top: 10px;
     }
 
@@ -86,377 +142,386 @@
         text-align: left;
     }
 
-    /* Dense grid for Windows style layout */
     .row-dense {
-        --bs-gutter-x: 8px;
-        --bs-gutter-y: 8px;
+        --bs-gutter-x: 10px;
+        --bs-gutter-y: 10px;
     }
 
-    /* Windows 10 Metro Colors by Category */
+    /* Specific sub-tile colors matching category */
+    #collapseCore .tile { background: #0078D7; }
+    #collapseReversals .tile { background: #B10610; }
+    #collapseInventory .tile { background: #008272; }
+    #collapseFeatures .tile { background: #5A58D6; }
+    #collapseReports .tile { background: #00A3A3; }
 
-    /* Core Accounting - Varying Blues */
-    .module-core-accounting .col:nth-child(1) .tile { background: #0063B1; } /* Dark Blue */
-    .module-core-accounting .col:nth-child(2) .tile { background: #0078D7; } /* Windows Blue */
-    .module-core-accounting .col:nth-child(3) .tile { background: #2D7D9A; } /* Teal Blue */
-    .module-core-accounting .col:nth-child(4) .tile { background: #0099BC; } /* Light Blue */
-    .module-core-accounting .col:nth-child(5) .tile { background: #00B7C3; } /* Cyan Blue */
-
-    /* Reversals - Dark Red */
-    .module-reversals .tile { background: #E81123 !important; }
-
-    /* Inventory - Greens */
-    .module-inventory .col:nth-child(1) .tile { background: #107C10; }
-    .module-inventory .col:nth-child(2) .tile { background: #008272; }
-    .module-inventory .col:nth-child(3) .tile { background: #498205; }
-    .module-inventory .col:nth-child(4) .tile { background: #847545; }
-    .module-inventory .col:nth-child(5) .tile { background: #5D5A58; }
-    .module-inventory .col:nth-child(6) .tile { background: #00CC6A; }
-    .module-inventory .col:nth-child(7) .tile { background: #10893E; }
-    .module-inventory .col:nth-child(8) .tile { background: #00A3A3; }
-
-    /* Key Features - Purple/Accent */
-    .module-key-features .tile { background: #6B69D6; }
-
-    /* Reports - Teal */
-    .module-reports .tile { background: #008272; }
-
-    /* Highlight Tile Style (Override) */
+    /* Highlight */
     .tile.tile-highlight {
-        background: #005A9E !important; /* Darker blue for highlight */
+        background: #005A9E !important;
         border: 2px solid rgba(255,255,255,0.3);
     }
 
-    /* Dashboard specific layout tweaks */
-    @media (max-width: 576px) {
-        .module-section {
-            padding: 15px;
-        }
-        .tile {
-            min-height: 90px;
-            padding: 10px;
-        }
-        .tile i {
-            font-size: 1.25rem;
-        }
-        .tile span {
-            font-size: 0.75rem;
-        }
+    /* Make body dark so the container blends nicely */
+    body {
+        background-color: #1f1f1f !important;
     }
 
-    .module-header:not(.collapsed) .fa-chevron-down {
-        transform: rotate(180deg);
-        transition: transform 0.3s ease;
+    .module-header-text {
+        color: white;
+        font-size: 1.5rem;
+        font-weight: 300;
+        margin-bottom: 20px;
+        display: block;
     }
-    .module-header.collapsed .fa-chevron-down {
-        transform: rotate(0deg);
-        transition: transform 0.3s ease;
+
+    /* Override any light theme text leaking in */
+    h1, h2, h3, h4, h5, h6 {
+        color: white;
     }
 
 </style>
 
-<div class="container-fluid p-0">
+<div class="dashboard-container">
+    <div class="module-header-text">Start</div>
 
-    <!-- Row 1: Core Accounting & Reversals -->
-    <div class="row g-4 mb-4">
-        <!-- Core Accounting -->
-        <div class="col-xl-6">
-            <div class="module-section h-100 module-core-accounting">
-                <div data-bs-toggle="collapse" data-bs-target="#collapseCore" class="module-header collapsed" aria-expanded="false" aria-controls="collapseCore">
-                    <i class="fas fa-coins me-2 text-warning"></i> Core Accounting
-                    <i class="fas fa-chevron-down ms-auto"></i>
-                </div>
-                <div class="collapse" id="collapseCore">
-                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
-                    <div class="col">
-                        <a href="/customer_receipt" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-receipt"></i>
-                                <span>Customer<br>Receipt</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/cash_payments" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-money-bill"></i>
-                                <span>Cash<br>Payment</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/direct_purchasing" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-shopping-cart"></i>
-                                <span>Direct<br>Purchase</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/bank_payment" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-university"></i>
-                                <span>Bank<br>Payment</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/placeholder?title=Journal Entry" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-book"></i>
-                                <span>Journal<br>Entry (J/V)</span>
-                            </div>
-                        </a>
-                    </div>
-                </div>
-                </div>
+    <!-- MAIN CATEGORY TILES (The "Folders") -->
+    <div class="row row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-5 g-3 mb-4">
+
+        <!-- Core Accounting Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-core" onclick="toggleCategory('collapseCore')">
+                <i class="fas fa-coins main-icon"></i>
+                <span class="tile-title">Core<br>Accounting</span>
             </div>
         </div>
 
-        <!-- Reversals & Adjustments -->
-        <div class="col-xl-6">
-            <div class="module-section h-100 module-reversals">
-                <div data-bs-toggle="collapse" data-bs-target="#collapseReversals" class="module-header collapsed" aria-expanded="false" aria-controls="collapseReversals">
-                    <i class="fas fa-history me-2 text-danger"></i> Reversals & Adjustments
-                    <i class="fas fa-chevron-down ms-auto"></i>
+        <!-- Inventory & Services Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-inventory" onclick="toggleCategory('collapseInventory')">
+                <i class="fas fa-boxes main-icon"></i>
+                <span class="tile-title">Inventory &<br>Services</span>
+            </div>
+        </div>
+
+        <!-- Reversals Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-reversals" onclick="toggleCategory('collapseReversals')">
+                <i class="fas fa-history main-icon"></i>
+                <span class="tile-title">Reversals &<br>Adjustments</span>
+            </div>
+        </div>
+
+        <!-- Key Features Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-features" onclick="toggleCategory('collapseFeatures')">
+                <i class="fas fa-star main-icon"></i>
+                <span class="tile-title">Key<br>Features</span>
+            </div>
+        </div>
+
+        <!-- Reports Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-reports" onclick="toggleCategory('collapseReports')">
+                <i class="fas fa-chart-bar main-icon"></i>
+                <span class="tile-title">Reports &<br>Analysis</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- EXPANDED SUB-MODULES AREA -->
+    <!-- We use Bootstrap Collapse. Only one should be open at a time. -->
+
+    <!-- Core Accounting Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseCore" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #0063B1;">
+            <div class="metro-group-title">Core Accounting</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/customer_receipt" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-receipt"></i>
+                            <span>Customer<br>Receipt</span>
+                        </div>
+                    </a>
                 </div>
-                <div class="collapse" id="collapseReversals">
-                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
-                    <div class="col">
-                        <a href="/pos_reversal" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-undo"></i>
-                                <span>POS<br>Reversal</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/cash_payment_reversal" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-undo-alt"></i>
-                                <span>Cash Pay<br>Reversal</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/bank_payment_reversal" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-history"></i>
-                                <span>Bank Pay<br>Reversal</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/direct_payment_reversal" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-sync"></i>
-                                <span>Direct Pay<br>Reversal</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/reversal_category" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-tags"></i>
-                                <span>Reversal<br>Category</span>
-                            </div>
-                        </a>
-                    </div>
+                <div class="col">
+                    <a href="/cash_payments" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-money-bill"></i>
+                            <span>Cash<br>Payment</span>
+                        </div>
+                    </a>
                 </div>
+                <div class="col">
+                    <a href="/direct_purchasing" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-shopping-cart"></i>
+                            <span>Direct<br>Purchase</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/bank_payment" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-university"></i>
+                            <span>Bank<br>Payment</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/placeholder?title=Journal Entry" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-book"></i>
+                            <span>Journal<br>Entry (J/V)</span>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Row 2: Inventory & Services + Additional Features -->
-    <div class="row g-4 mb-4">
-        <!-- Inventory & Services -->
-        <div class="col-xl-6">
-            <div class="module-section h-100 module-inventory">
-                <div data-bs-toggle="collapse" data-bs-target="#collapseInventory" class="module-header collapsed" aria-expanded="false" aria-controls="collapseInventory">
-                    <i class="fas fa-boxes me-2 text-success"></i> Inventory & Services
-                    <i class="fas fa-chevron-down ms-auto"></i>
+    <!-- Inventory Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseInventory" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #107C10;">
+            <div class="metro-group-title">Inventory & Services</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/add_inventory_item" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-plus-square"></i>
+                            <span>New<br>Inv Item</span>
+                        </div>
+                    </a>
                 </div>
-                <div class="collapse" id="collapseInventory">
-                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
-                    <div class="col">
-                        <a href="/add_inventory_item" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-plus-square"></i>
-                                <span>New<br>Inv Item</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/grn" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-truck-loading"></i>
-                                <span>GRN<br>Entry</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/purchase_orders" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-file-invoice"></i>
-                                <span>PO<br>Generator</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/quotation_evaluation" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-balance-scale-right"></i>
-                                <span>Quotation<br>Eval</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/proforma_invoice" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-file-contract"></i>
-                                <span>Proforma<br>Invoice</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/invoice_creating" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-file-invoice-dollar"></i>
-                                <span>Sales<br>Invoice</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/inventory_transfer" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-exchange-alt"></i>
-                                <span>Stock<br>Transfer</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/inventory_production" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-industry"></i>
-                                <span>Manufacturing</span>
-                            </div>
-                        </a>
-                    </div>
+                <div class="col">
+                    <a href="/grn" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-truck-loading"></i>
+                            <span>GRN<br>Entry</span>
+                        </div>
+                    </a>
                 </div>
+                <div class="col">
+                    <a href="/purchase_orders" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-invoice"></i>
+                            <span>PO<br>Generator</span>
+                        </div>
+                    </a>
                 </div>
-            </div>
-        </div>
-
-        <!-- Key Features (Subset) -->
-        <div class="col-xl-6">
-            <div class="module-section h-100 module-key-features">
-                <div data-bs-toggle="collapse" data-bs-target="#collapseFeatures" class="module-header collapsed" aria-expanded="false" aria-controls="collapseFeatures">
-                    <i class="fas fa-star me-2 text-primary"></i> Key Features
-                    <i class="fas fa-chevron-down ms-auto"></i>
+                <div class="col">
+                    <a href="/quotation_evaluation" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-balance-scale-right"></i>
+                            <span>Quotation<br>Eval</span>
+                        </div>
+                    </a>
                 </div>
-                <div class="collapse" id="collapseFeatures">
-                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 mt-3">
-                    <div class="col">
-                        <a href="/pos" class="tile-link">
-                            <div class="tile tile-highlight">
-                                <i class="fas fa-cash-register"></i>
-                                <span>POS<br>System</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/bank_reconciliation" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-check-double"></i>
-                                <span>Bank<br>Reconcile</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/customer_receipt" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-receipt"></i>
-                                <span>Customer<br>Payment</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/inventory_category" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-plus-square"></i>
-                                <span>Add Fin.<br>Goods</span>
-                            </div>
-                        </a>
-                    </div>
+                <div class="col">
+                    <a href="/proforma_invoice" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-contract"></i>
+                            <span>Proforma<br>Invoice</span>
+                        </div>
+                    </a>
                 </div>
+                <div class="col">
+                    <a href="/invoice_creating" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            <span>Sales<br>Invoice</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/inventory_transfer" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-exchange-alt"></i>
+                            <span>Stock<br>Transfer</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/inventory_production" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-industry"></i>
+                            <span>Manufacturing</span>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Row 3: Reports & Analysis (Full Width) -->
-    <div class="row">
-        <div class="col-12">
-            <div class="module-section module-reports">
-                <div data-bs-toggle="collapse" data-bs-target="#collapseReports" class="module-header collapsed" aria-expanded="false" aria-controls="collapseReports">
-                    <i class="fas fa-chart-bar me-2 text-info"></i> Reports & Analysis
-                    <i class="fas fa-chevron-down ms-auto"></i>
+    <!-- Reversals Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseReversals" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #E81123;">
+            <div class="metro-group-title">Reversals & Adjustments</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/pos_reversal" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-undo"></i>
+                            <span>POS<br>Reversal</span>
+                        </div>
+                    </a>
                 </div>
-                <div class="collapse" id="collapseReports">
-                    <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6 mt-3">
-                    <div class="col">
-                        <a href="/placeholder?title=Load Report" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-file-alt"></i>
-                                <span>Load<br>Report</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/sales_summary_cashier" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-file-invoice-dollar"></i>
-                                <span>Sales<br>Summary</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/balance_sheet" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-balance-scale"></i>
-                                <span>Balance<br>Sheet</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/trial_balance" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-balance-scale-left"></i>
-                                <span>Trial<br>Balance</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/profit_loss" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-chart-pie"></i>
-                                <span>Profit &<br>Loss</span>
-                            </div>
-                        </a>
-                    </div>
-                    <div class="col">
-                        <a href="/supplier_aging" class="tile-link">
-                            <div class="tile">
-                                <i class="fas fa-clock"></i>
-                                <span>Aging<br>Reports</span>
-                            </div>
-                        </a>
-                    </div>
+                <div class="col">
+                    <a href="/cash_payment_reversal" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-undo-alt"></i>
+                            <span>Cash Pay<br>Reversal</span>
+                        </div>
+                    </a>
                 </div>
+                <div class="col">
+                    <a href="/bank_payment_reversal" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-history"></i>
+                            <span>Bank Pay<br>Reversal</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/direct_payment_reversal" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-sync"></i>
+                            <span>Direct Pay<br>Reversal</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/reversal_category" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-tags"></i>
+                            <span>Reversal<br>Category</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseFeatures" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #6B69D6;">
+            <div class="metro-group-title">Key Features</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/pos" class="tile-link">
+                        <div class="tile tile-highlight">
+                            <i class="fas fa-cash-register"></i>
+                            <span>POS<br>System</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/bank_reconciliation" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-check-double"></i>
+                            <span>Bank<br>Reconcile</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/customer_receipt" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-receipt"></i>
+                            <span>Customer<br>Payment</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/inventory_category" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-plus-square"></i>
+                            <span>Add Fin.<br>Goods</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Reports Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseReports" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #008272;">
+            <div class="metro-group-title">Reports & Analysis</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/placeholder?title=Load Report" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-alt"></i>
+                            <span>Load<br>Report</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/sales_summary_cashier" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            <span>Sales<br>Summary</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/balance_sheet" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-balance-scale"></i>
+                            <span>Balance<br>Sheet</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/trial_balance" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-balance-scale-left"></i>
+                            <span>Trial<br>Balance</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/profit_loss" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-chart-pie"></i>
+                            <span>Profit &<br>Loss</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/supplier_aging" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-clock"></i>
+                            <span>Aging<br>Reports</span>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 
 </div>
+
+<script>
+    // Custom JS to handle accordion-like behavior for the new structure
+    function toggleCategory(targetId) {
+        // Find all collapses
+        const collapses = document.querySelectorAll('.multi-collapse');
+        collapses.forEach(collapseEl => {
+            if (collapseEl.id !== targetId) {
+                // If it's not the clicked one, hide it
+                const bsCollapse = bootstrap.Collapse.getInstance(collapseEl);
+                if (bsCollapse) {
+                    bsCollapse.hide();
+                }
+            } else {
+                 // If it is the clicked one, toggle it
+                 let bsCollapse = bootstrap.Collapse.getInstance(collapseEl);
+                 if (!bsCollapse) {
+                     bsCollapse = new bootstrap.Collapse(collapseEl, { toggle: false });
+                 }
+                 bsCollapse.toggle();
+            }
+        });
+    }
+</script>
 {% endblock %}
