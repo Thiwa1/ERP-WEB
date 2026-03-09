@@ -2024,7 +2024,7 @@ def approval_action():
     return redirect(url_for('approvals'))
 
 # --- Bulk Upload Helpers ---
-def parse_csv_file(file_storage):
+def read_csv_content(file_storage):
     """
     Reads a FileStorage object (CSV), attempts various encodings,
     and returns the decoded string content.
@@ -2059,7 +2059,7 @@ def parse_gl_upload_data(file_storage):
     Parses the GL Upload CSV file and returns a list of dictionaries representing the rows.
     """
     try:
-        csv_content = parse_csv_file(file_storage)
+        csv_content = read_csv_content(file_storage)
         stream = io.StringIO(csv_content, newline=None)
         csv_input = csv.DictReader(stream)
 
@@ -2299,12 +2299,9 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
             try:
-                decoded_str = parse_csv_file(file)
-                stream = io.StringIO(decoded_str, newline=None)
-                csv_input = csv.DictReader(stream)
-                # Use helper to parse and validate
-                # Note: `bulk_upload_tb` logic iterates rows differently (using row.get('Debit'))
-                # Our helper returns list of dicts.
+                # Need to reset stream cursor since read_csv_content consumes it
+                # Wait, our first parse_csv_file definition parses directly.
+                # Just call parse_csv_file directly and use its output.
                 parsed_rows = parse_csv_file(file, required_columns=['Account Name', 'Debit', 'Credit'])
 
                 rows = []
@@ -3281,6 +3278,22 @@ def add_new_user():
         """, (user_id,))
 
         conn.commit()
+
+        # Sync to Master DB for multi-tenant login routing
+        try:
+            current_db_name = get_session_db_name()
+            # Find tenant ID
+            tenant_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (current_db_name,))
+            if tenant_res:
+                tenant_id = tenant_res[0]['id']
+                master_db.execute_query("""
+                    INSERT INTO users (username, password, email, tenant_id)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE password=VALUES(password), email=VALUES(email)
+                """, (username, pw_hash, email, tenant_id), commit=True)
+        except Exception as master_e:
+            logging.error(f"Error syncing new user to master DB: {master_e}")
+
         flash(f'User {username} created successfully.', 'success')
     except Exception as e:
         conn.rollback()
@@ -3355,6 +3368,25 @@ def update_user_details():
                 SET User_Name = %s, Mobile_No = %s, Email = %s, User_Active = %s
                 WHERE id = %s
             """, (username, mobile, email, active, user_id), commit=True)
+
+        # Sync update to Master DB
+        try:
+            current_db_name = get_session_db_name()
+            tenant_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (current_db_name,))
+            if tenant_res:
+                tenant_id = tenant_res[0]['id']
+                if password:
+                    master_db.execute_query("""
+                        UPDATE users SET username = %s, password = %s, email = %s
+                        WHERE username = (SELECT User_Name FROM (SELECT User_Name FROM Login_Table WHERE id = %s) as t) AND tenant_id = %s
+                    """, (username, pw_hash, email, user_id, tenant_id), commit=True)
+                else:
+                    master_db.execute_query("""
+                        UPDATE users SET username = %s, email = %s
+                        WHERE username = (SELECT User_Name FROM (SELECT User_Name FROM Login_Table WHERE id = %s) as t) AND tenant_id = %s
+                    """, (username, email, user_id, tenant_id), commit=True)
+        except Exception as master_e:
+            logging.error(f"Error syncing user update to master DB: {master_e}")
 
         flash('User details updated successfully', 'success')
     except Exception as e:
@@ -8093,7 +8125,7 @@ def process_invoice_items_batch(
     invoice_recode_batch = []
     inventory_recode_batch = []
 
-    current_time = datetime.now()
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Inventory Items
     for item in inv_items:

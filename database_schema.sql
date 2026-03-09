@@ -11,7 +11,7 @@ SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,N
 -- -----------------------------------------------------
 -- Schema Book_keeping
 -- -----------------------------------------------------
-CREATE SCHEMA IF NOT EXISTS `Book_keeping` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci ;
+CREATE SCHEMA IF NOT EXISTS `Book_keeping` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci ;
 USE `Book_keeping` ;
 
 -- -----------------------------------------------------
@@ -24,13 +24,13 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`balance_sheet_category` (
   `create_date_time` DATE NULL DEFAULT NULL,
   `create_user_code` INT NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC) VISIBLE,
-  INDEX `to_new_acc` (`name_of_category` ASC) VISIBLE,
-  INDEX `holding_position_UNIQUE` (`holding_position` ASC) VISIBLE)
+  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC),
+  INDEX `to_new_acc` (`name_of_category` ASC),
+  INDEX `holding_position_UNIQUE` (`holding_position` ASC))
 ENGINE = InnoDB
 AUTO_INCREMENT = 16
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`company` (
   PRIMARY KEY (`id`))
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -68,10 +68,10 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`jobs_unit` (
   `job_finsh` TINYINT NULL DEFAULT NULL,
   `job_cancell` TINYINT NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  INDEX `index_job_no` (`job_number` ASC) VISIBLE)
+  INDEX `index_job_no` (`job_number` ASC))
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -84,13 +84,13 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`p&l_category` (
   `create_date_time` DATE NULL DEFAULT NULL,
   `create_user_code` INT NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
-  INDEX `to_new_account` (`name_of_category` ASC) VISIBLE,
-  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC) INVISIBLE,
-  INDEX `holding_position_UNIQUE` (`holding_position` ASC) INVISIBLE)
+  INDEX `to_new_account` (`name_of_category` ASC),
+  UNIQUE INDEX `name_of_category_UNIQUE` (`name_of_category` ASC),
+  INDEX `holding_position_UNIQUE` (`holding_position` ASC))
 ENGINE = InnoDB
 AUTO_INCREMENT = 30
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cf_catogory` (
   `catogory_name` VARCHAR(100) NULL,
   `hold_level` INT NOT NULL,
   PRIMARY KEY (`id`),
-  INDEX `cf` (`catogory_name` ASC) VISIBLE)
+  INDEX `cf` (`catogory_name` ASC))
 ENGINE = InnoDB;
 
 
@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`currency_table` (
   `currency_name` VARCHAR(100) NULL,
   `is_base_currency` TINYINT DEFAULT 0,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `currency_code_UNIQUE` (`currency_code` ASC) VISIBLE)
+  UNIQUE INDEX `currency_code_UNIQUE` (`currency_code` ASC))
 ENGINE = InnoDB;
 
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
@@ -141,12 +141,12 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   `cf_catogory` VARCHAR(100) NULL,
   `currency_code` VARCHAR(3) NULL DEFAULT 'LKR',
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `account_name_UNIQUE` (`account_name` ASC) VISIBLE,
-  INDEX `index3` (`account_hold_possion_PL` ASC) VISIBLE,
-  INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC) INVISIBLE,
-  INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC) VISIBLE,
-  INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC) VISIBLE,
-  INDEX `key_CF_Table` (`cf_catogory` ASC) VISIBLE,
+  UNIQUE INDEX `account_name_UNIQUE` (`account_name` ASC),
+  INDEX `index3` (`account_hold_possion_PL` ASC),
+  INDEX `index_balance_sheet` (`account_hold_possion_Balace_Sheet` ASC),
+  INDEX `key_possion_name_idx` (`account_name_of_catogory_PL` ASC),
+  INDEX `key_to_catogory_idx` (`account_name_of_catogory_Balace_sheet` ASC),
+  INDEX `key_CF_Table` (`cf_catogory` ASC),
   CONSTRAINT `key_to_balace_possion`
     FOREIGN KEY (`account_hold_possion_Balace_Sheet`)
     REFERENCES `Book_keeping`.`balance_sheet_category` (`holding_position`)
@@ -175,7 +175,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 37
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -206,10 +206,10 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`entry_details` (
   `fc_amount` DOUBLE NULL DEFAULT 0,
   `exchange_rate` DOUBLE NULL DEFAULT 1,
   PRIMARY KEY (`id`),
-  INDEX `index_entry_name` (`account_name` ASC) INVISIBLE,
-  INDEX `index_sub_account` (`entry_sub_account_code` ASC) VISIBLE,
-  INDEX `index_job_no` (`entry_job_number` ASC) VISIBLE,
-  INDEX `foreing_key_jv_no_idx` (`entry_jv` ASC) VISIBLE,
+  INDEX `index_entry_name` (`account_name` ASC),
+  INDEX `index_sub_account` (`entry_sub_account_code` ASC),
+  INDEX `index_job_no` (`entry_job_number` ASC),
+  INDEX `foreing_key_jv_no_idx` (`entry_jv` ASC),
   CONSTRAINT `foreing_key_jon_no`
     FOREIGN KEY (`entry_job_number`)
     REFERENCES `Book_keeping`.`jobs_unit` (`job_number`)
@@ -223,7 +223,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`entry_details` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 19
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -235,11 +235,11 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`jv_numbers` (
   `jv_naration` VARCHAR(300) NULL DEFAULT NULL,
   `jv_pdf` LONGBLOB NULL DEFAULT NULL,
   PRIMARY KEY (`jv_id`),
-  INDEX `index` (`jv_id` ASC) VISIBLE)
+  INDEX `index` (`jv_id` ASC))
 ENGINE = InnoDB
 AUTO_INCREMENT = 41
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -254,9 +254,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`sub_accont_for_new_account` (
   `active` TINYINT NULL DEFAULT NULL,
   `sub_account_code` INT NOT NULL,
   PRIMARY KEY (`id_sub`),
-  UNIQUE INDEX `sub_sub_accaount_name_UNIQUE` (`sub_sub_accaount_name` ASC) VISIBLE,
-  INDEX `to_new_accont` (`sub_new_account` ASC) INVISIBLE,
-  INDEX `to_new_acc_sub` (`sub_sub_accaount_name` ASC) VISIBLE,
+  UNIQUE INDEX `sub_sub_accaount_name_UNIQUE` (`sub_sub_accaount_name` ASC),
+  INDEX `to_new_accont` (`sub_new_account` ASC),
+  INDEX `to_new_acc_sub` (`sub_sub_accaount_name` ASC),
   CONSTRAINT `FK_new_account`
     FOREIGN KEY (`sub_new_account`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
@@ -264,7 +264,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`sub_accont_for_new_account` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 6
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -291,7 +291,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers` (
   `Is_Suplier` TINYINT NULL,
   `Is_Customer` TINYINT NULL,
   PRIMARY KEY (`sup_id`),
-  UNIQUE INDEX `supplier_name_UNIQUE` (`supplier_name` ASC) VISIBLE)
+  UNIQUE INDEX `supplier_name_UNIQUE` (`supplier_name` ASC))
 ENGINE = InnoDB;
 
 
@@ -312,9 +312,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers_invoice_data` (
   `suppliers_VAT_rate` DOUBLE NULL,
   `suppliers_oustanding_delete` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`s_i_id`),
-  UNIQUE INDEX `suppliers_invoice_number_UNIQUE` (`suppliers_invoice_number` ASC) VISIBLE,
-  INDEX `fk_suplier_idx` (`suppliers_invoice_buinding_supplier` ASC) VISIBLE,
-  INDEX `fk_jv` (`suppliers_invoice_JV` ASC) VISIBLE,
+  UNIQUE INDEX `suppliers_invoice_number_UNIQUE` (`suppliers_invoice_number` ASC),
+  INDEX `fk_suplier_idx` (`suppliers_invoice_buinding_supplier` ASC),
+  INDEX `fk_jv` (`suppliers_invoice_JV` ASC),
   CONSTRAINT `fk_suplier`
     FOREIGN KEY (`suppliers_invoice_buinding_supplier`)
     REFERENCES `Book_keeping`.`suppliers` (`sup_id`))
@@ -331,7 +331,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book` (
   `cash_created_user` INT NULL,
   `Select_As` TINYINT NULL,
   PRIMARY KEY (`cash_id`),
-  INDEX `index1` (`cash_book_account_name` ASC) VISIBLE,
+  INDEX `index1` (`cash_book_account_name` ASC),
   CONSTRAINT `key_to_new_ac`
     FOREIGN KEY (`cash_book_account_name`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
@@ -347,7 +347,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_voucher_no` (
   `cash_voucher_link` VARCHAR(60) NULL,
   `cash_voucher_number` BIGINT NULL,
   PRIMARY KEY (`id`),
-  INDEX `fk_cash_book_idx` (`cash_voucher_link` ASC) VISIBLE,
+  INDEX `fk_cash_book_idx` (`cash_voucher_link` ASC),
   CONSTRAINT `fk_cash_book`
     FOREIGN KEY (`cash_voucher_link`)
     REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
@@ -379,9 +379,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book_recode` (
   `Revers_Date` DATE NULL,
   `VAT_Rate` VARCHAR(45) NULL,
   PRIMARY KEY (`chash_book_recod_id`),
-  INDEX `fk_cash_book_recode_jv_numbers1_idx` (`jv_numbers_jv_id` ASC) VISIBLE,
-  INDEX `ss_idx` (`cash_book_recode_accont_name` ASC) VISIBLE,
-  INDEX `Fk_to_C_Suplier_idx` (`cash_book_recode_suplier_name` ASC) VISIBLE,
+  INDEX `fk_cash_book_recode_jv_numbers1_idx` (`jv_numbers_jv_id` ASC),
+  INDEX `ss_idx` (`cash_book_recode_accont_name` ASC),
+  INDEX `Fk_to_C_Suplier_idx` (`cash_book_recode_suplier_name` ASC),
   CONSTRAINT `fk_cash_book_to_new_account`
     FOREIGN KEY (`cash_book_recode_accont_name`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`),
@@ -403,8 +403,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_carogory` (
   `dis_continue_main` TINYINT NULL DEFAULT 0,
   `dis_continue_sub` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `main_catogory_UNIQUE` (`main_catogory` ASC) VISIBLE,
-  UNIQUE INDEX `sub_catogory_UNIQUE` (`sub_catogory` ASC) VISIBLE)
+  UNIQUE INDEX `main_catogory_UNIQUE` (`main_catogory` ASC),
+  UNIQUE INDEX `sub_catogory_UNIQUE` (`sub_catogory` ASC))
 ENGINE = InnoDB;
 
 
@@ -428,10 +428,10 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventoy_items` (
   `min_qty` DOUBLE NULL,
   `active` TINYINT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `inventoy_name_UNIQUE` (`inventoy_name` ASC) VISIBLE,
-  UNIQUE INDEX `inventoy_code_UNIQUE` (`inventoy_code` ASC) VISIBLE,
-  INDEX `key_to_main_catogry_idx` (`Main_Catogry` ASC) VISIBLE,
-  INDEX `key_to_sub_catogory_idx` (`Sub_Catogory` ASC) VISIBLE,
+  UNIQUE INDEX `inventoy_name_UNIQUE` (`inventoy_name` ASC),
+  UNIQUE INDEX `inventoy_code_UNIQUE` (`inventoy_code` ASC),
+  INDEX `key_to_main_catogry_idx` (`Main_Catogry` ASC),
+  INDEX `key_to_sub_catogory_idx` (`Sub_Catogory` ASC),
   CONSTRAINT `key_to_main_catogry`
     FOREIGN KEY (`Main_Catogry`)
     REFERENCES `Book_keeping`.`inventory_carogory` (`main_catogory`)
@@ -453,7 +453,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_locations` (
   `inventory_locations_name` VARCHAR(60) NULL,
   `inventory_locations_descriptions` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `inventory_locations_name_UNIQUE` (`inventory_locations_name` ASC) VISIBLE)
+  UNIQUE INDEX `inventory_locations_name_UNIQUE` (`inventory_locations_name` ASC))
 ENGINE = InnoDB;
 
 
@@ -486,8 +486,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
   `JV_No` INT NULL,
   `IV_Deleted` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  INDEX `fk_invenrty_name_idx` (`inventoy_name` ASC) VISIBLE,
-  INDEX `fk_to_locations_idx` (`inventory_recod_location` ASC) VISIBLE,
+  INDEX `fk_invenrty_name_idx` (`inventoy_name` ASC),
+  INDEX `fk_to_locations_idx` (`inventory_recod_location` ASC),
   CONSTRAINT `fk_invenrty_name`
     FOREIGN KEY (`inventoy_name`)
     REFERENCES `Book_keeping`.`inventoy_items` (`inventoy_name`)
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_price_recod` (
   `inventory_price_for_Loyality_customer` DOUBLE NULL DEFAULT 0,
   `created_date` DATE NULL,
   PRIMARY KEY (`id`),
-  INDEX `price_link_index` (`inventory_price_link` ASC) VISIBLE,
+  INDEX `price_link_index` (`inventory_price_link` ASC),
   CONSTRAINT `fk_item_price`
     FOREIGN KEY (`inventory_price_link`)
     REFERENCES `Book_keeping`.`inventoy_items` (`id`)
@@ -532,7 +532,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book` (
   `bank_book_create_user` INT NULL,
   `bank_book_bank_name` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `bank_bookcol_account_name_UNIQUE` (`bank_bookcol_account_number` ASC) VISIBLE)
+  UNIQUE INDEX `bank_bookcol_account_name_UNIQUE` (`bank_bookcol_account_number` ASC))
 ENGINE = InnoDB;
 
 
@@ -545,7 +545,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_voucher_no` (
   `bank_book_voucher_no` BIGINT NULL,
   `bank_book_chq_no` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
-  INDEX `fk_bank_book_idx` (`bank_book_voucher_link` ASC) VISIBLE,
+  INDEX `fk_bank_book_idx` (`bank_book_voucher_link` ASC),
   CONSTRAINT `fk_bank_book`
     FOREIGN KEY (`bank_book_voucher_link`)
     REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
@@ -578,9 +578,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_recod` (
   `Bank_Online_Trasfer` TINYINT NULL,
   `Bank_Merchan_ID` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
-  INDEX `fk_new_account_bank_idx` (`bank_book__accont_name` ASC) VISIBLE,
-  INDEX `fk_jv_no2_idx` (`jv_numbers_jv_id` ASC) VISIBLE,
-  INDEX `FK_Supplier_idx` (`bank_book__suplier_name` ASC) VISIBLE,
+  INDEX `fk_new_account_bank_idx` (`bank_book__accont_name` ASC),
+  INDEX `fk_jv_no2_idx` (`jv_numbers_jv_id` ASC),
+  INDEX `FK_Supplier_idx` (`bank_book__suplier_name` ASC),
   CONSTRAINT `fk_new_account_bank`
     FOREIGN KEY (`bank_book__accont_name`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`),
@@ -630,8 +630,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer` (
   `Paid_Amountl` DOUBLE NULL,
   `Create_Cashiyer` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `customer_code_UNIQUE` (`customer_code` ASC) VISIBLE,
-  UNIQUE INDEX `customer_name_UNIQUE` (`customer_name` ASC) VISIBLE)
+  UNIQUE INDEX `customer_code_UNIQUE` (`customer_code` ASC),
+  UNIQUE INDEX `customer_name_UNIQUE` (`customer_name` ASC))
 ENGINE = InnoDB;
 
 
@@ -651,8 +651,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer_invoice_data` (
   `cos_jv_n0` BIGINT NULL,
   `cos_delete` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`cos_id`),
-  INDEX `key_to_cos_idx` (`cos_binding_cos` ASC) VISIBLE,
-  INDEX `key_jv_idx` (`cos_jv_n0` ASC) VISIBLE)
+  INDEX `key_to_cos_idx` (`cos_binding_cos` ASC),
+  INDEX `key_jv_idx` (`cos_jv_n0` ASC))
 ENGINE = InnoDB;
 
 
@@ -774,7 +774,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`OP_NO_Table` (
   `Deliver_Location` VARCHAR(255) NULL,
   `VAT_Rate` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
-  INDEX `Index_To_Recode_Table` (`id` ASC) VISIBLE)
+  INDEX `Index_To_Recode_Table` (`id` ASC))
 ENGINE = InnoDB;
 
 
@@ -791,7 +791,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`PO_Recode_Details` (
   `Rejection_Comment` VARCHAR(255) NULL,
   `Mesurment` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
-  INDEX `Index_To_No_Table` (`Link_OP_NO_Table` ASC) VISIBLE,
+  INDEX `Index_To_No_Table` (`Link_OP_NO_Table` ASC),
   CONSTRAINT `Key_No_Table`
     FOREIGN KEY (`Link_OP_NO_Table`)
     REFERENCES `Book_keeping`.`OP_NO_Table` (`id`)
@@ -812,8 +812,8 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Login_Table` (
   `User_Code` VARCHAR(45) NULL,
   `User_Active` TINYINT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC) VISIBLE,
-  UNIQUE INDEX `User_Code_UNIQUE` (`User_Code` ASC) VISIBLE)
+  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC),
+  UNIQUE INDEX `User_Code_UNIQUE` (`User_Code` ASC))
 ENGINE = InnoDB;
 
 
@@ -881,7 +881,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Recode` (
   `recode_date` DATE NULL,
   `warety_end_date` DATE NULL,
   PRIMARY KEY (`Id`),
-  INDEX `key_to_custome_idx` (`Customer_Name` ASC) VISIBLE,
+  INDEX `key_to_custome_idx` (`Customer_Name` ASC),
   CONSTRAINT `key_to_custome`
     FOREIGN KEY (`Customer_Name`)
     REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
@@ -916,14 +916,14 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pose_Setting_Table` (
   `Top_Message` VARCHAR(255) NULL,
   `Image` LONGBLOB NULL,
   `User_Name` VARCHAR(45) NOT NULL,
-  `Password` VARCHAR(45) NULL,
+  `Password` VARCHAR(255) NULL,
   `Mobile_Number` VARCHAR(15) NULL,
   PRIMARY KEY (`Id`, `User_Name`),
-  INDEX `Inventry_Location_Jpin_idx` (`Select_Inventry_Location` ASC) VISIBLE,
-  INDEX `AC_Card_AC_idx` (`Card_Control_AC` ASC) VISIBLE,
-  INDEX `AC_CA_AC_idx` (`Cash_Account` ASC) VISIBLE,
-  UNIQUE INDEX `Mobile_Number_UNIQUE` (`Mobile_Number` ASC) VISIBLE,
-  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC) VISIBLE,
+  INDEX `Inventry_Location_Jpin_idx` (`Select_Inventry_Location` ASC),
+  INDEX `AC_Card_AC_idx` (`Card_Control_AC` ASC),
+  INDEX `AC_CA_AC_idx` (`Cash_Account` ASC),
+  UNIQUE INDEX `Mobile_Number_UNIQUE` (`Mobile_Number` ASC),
+  UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC),
   CONSTRAINT `Inventry_Location_Jpin`
     FOREIGN KEY (`Select_Inventry_Location`)
     REFERENCES `Book_keeping`.`inventory_locations` (`inventory_locations_name`)
@@ -1036,7 +1036,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_reversal_log` (
 ENGINE = InnoDB
 AUTO_INCREMENT = 7
 DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1064,7 +1064,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_recipt` (
   `likn` VARCHAR(60) NULL,
   `reciept_no` INT NULL,
   PRIMARY KEY (`id`),
-  INDEX `key_cash_book_rwciept_idx` (`likn` ASC) VISIBLE,
+  INDEX `key_cash_book_rwciept_idx` (`likn` ASC),
   CONSTRAINT `key_cash_book_rwciept`
     FOREIGN KEY (`likn`)
     REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
@@ -1081,7 +1081,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_ecipt` (
   `link` VARCHAR(45) NULL,
   `reciept_no` INT NULL,
   PRIMARY KEY (`id`),
-  INDEX `key_Bank_book_recipt_idx` (`link` ASC) VISIBLE,
+  INDEX `key_Bank_book_recipt_idx` (`link` ASC),
   CONSTRAINT `key_Bank_book_recipt`
     FOREIGN KEY (`link`)
     REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
@@ -1112,7 +1112,7 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Inventory_vorenty_period` (
   `name` VARCHAR(255) NULL DEFAULT 0,
   `month` INT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  INDEX `key_To_Inventory_idx` (`name` ASC) VISIBLE,
+  INDEX `key_To_Inventory_idx` (`name` ASC),
   CONSTRAINT `key_To_Inventory`
     FOREIGN KEY (`name`)
     REFERENCES `Book_keeping`.`inventoy_items` (`inventoy_name`)
@@ -1133,10 +1133,10 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`adding_New` (
   `ac4` VARCHAR(60) NULL DEFAULT 'null',
   `ac5` VARCHAR(60) NULL DEFAULT 'null',
   PRIMARY KEY (`id`),
-  INDEX `key_to_ac1_idx` (`ac1` ASC) VISIBLE,
-  INDEX `key_to_ac2_idx` (`ac2` ASC) VISIBLE,
-  INDEX `key_to_ac3_idx` (`ac3` ASC) VISIBLE,
-  INDEX `key_to_ac5_idx` (`ac5` ASC) VISIBLE,
+  INDEX `key_to_ac1_idx` (`ac1` ASC),
+  INDEX `key_to_ac2_idx` (`ac2` ASC),
+  INDEX `key_to_ac3_idx` (`ac3` ASC),
+  INDEX `key_to_ac5_idx` (`ac5` ASC),
   CONSTRAINT `key_to_ac1`
     FOREIGN KEY (`ac1`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
