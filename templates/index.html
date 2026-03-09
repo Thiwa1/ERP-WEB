@@ -36,59 +36,70 @@
     .main-category-tile {
         cursor: pointer;
         width: 100%;
-        aspect-ratio: 1; /* Make them perfect squares */
-        background: #0078D7;
-        border: 2px solid transparent;
-        border-radius: 0;
-        padding: 15px;
+        aspect-ratio: 1; /* Perfect squares */
+        background: rgba(255, 255, 255, 0.05); /* Pro glassmorphism base */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 16px; /* Modern rounded corners */
+        padding: 20px;
         position: relative;
         overflow: hidden;
-        transition: transform 0.1s ease-in-out, border-color 0.1s;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         display: flex;
         flex-direction: column;
         justify-content: space-between;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        backdrop-filter: blur(10px);
     }
 
+    /* Pro Hover Effects */
     .main-category-tile:hover {
-        border-color: rgba(255,255,255,0.4);
-        transform: scale(0.98);
-        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15);
+        transform: translateY(-5px);
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+        border-color: rgba(255, 255, 255, 0.3);
     }
 
     .main-category-tile:active {
-        transform: scale(0.95);
+        transform: translateY(2px);
     }
 
     .main-category-tile i.main-icon {
-        font-size: 3rem;
-        color: white;
+        font-size: 3.5rem;
         align-self: center;
-        margin-top: 15px;
+        margin-top: 10px;
+        filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.3));
+        transition: transform 0.3s ease;
+    }
+
+    .main-category-tile:hover i.main-icon {
+        transform: scale(1.1);
     }
 
     .main-category-tile .tile-title {
         color: white;
-        font-weight: 500;
-        font-size: 1.1rem;
-        line-height: 1.2;
+        font-weight: 600;
+        font-size: 1.15rem;
+        line-height: 1.3;
         text-align: left;
+        letter-spacing: 0.5px;
     }
 
-    /* Distinct Colors for Main Categories */
-    #cat-core { background: #0063B1; }
-    #cat-reversals { background: #E81123; }
-    #cat-inventory { background: #107C10; }
-    #cat-features { background: #6B69D6; }
-    #cat-reports { background: #008272; }
+    /* Distinct Gradients for Main Categories (Pro Look) */
+    #cat-core { background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%); }
+    #cat-inventory { background: linear-gradient(135deg, #064e3b 0%, #10b981 100%); }
+    #cat-reversals { background: linear-gradient(135deg, #7f1d1d 0%, #ef4444 100%); }
+    #cat-features { background: linear-gradient(135deg, #4c1d95 0%, #8b5cf6 100%); }
+    #cat-reports { background: linear-gradient(135deg, #0f766e 0%, #14b8a6 100%); }
 
 
     /* Sub-modules container (The expanded folder area) */
     .sub-modules-container {
         margin-top: 25px;
-        padding: 20px;
-        background-color: rgba(255, 255, 255, 0.05); /* Slight white tint for the "open folder" area */
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-left: 4px solid #0078D7; /* Accent border */
+        padding: 30px;
+        background-color: rgba(25, 25, 25, 0.6); /* Sleek inset area */
+        border: 1px solid rgba(255, 255, 255, 0.05);
+        border-radius: 16px;
+        border-left: 5px solid #3b82f6; /* Accent border */
+        box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
     }
 
     /* Sub-module items */
@@ -100,64 +111,72 @@
     }
 
     .tile {
-        background: #2D7D9A; /* Sub-tile base color */
-        border: 2px solid transparent;
-        border-radius: 0;
-        padding: 12px;
+        background: rgba(255, 255, 255, 0.08); /* Frosted glass */
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px; /* Soft rounded corners */
+        padding: 15px;
         text-align: left;
-        transition: all 0.1s ease-in-out;
+        transition: all 0.2s ease;
         height: 100%;
         display: flex;
         flex-direction: column;
         align-items: flex-start;
         justify-content: space-between;
-        min-height: 110px;
+        min-height: 120px;
         position: relative;
+        backdrop-filter: blur(5px);
     }
 
     .tile:hover {
-        border-color: rgba(255,255,255,0.4);
-        transform: scale(0.98);
-        box-shadow: inset 0 0 0 9999px rgba(255,255,255,0.15);
+        background: rgba(255, 255, 255, 0.15);
+        border-color: rgba(255, 255, 255, 0.3);
+        transform: translateY(-3px);
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
     }
 
     .tile:active {
-        transform: scale(0.95);
+        transform: translateY(1px);
     }
 
     .tile i {
         font-size: 1.8rem;
-        color: white;
+        color: rgba(255,255,255,0.9);
         align-self: center;
-        margin-top: 10px;
+        margin-top: 5px;
+        transition: color 0.2s ease;
+    }
+
+    .tile:hover i {
+        color: #ffffff;
     }
 
     .tile span {
         font-size: 0.85rem;
         font-weight: 500;
-        color: white;
-        line-height: 1.2;
+        color: rgba(255,255,255,0.9);
+        line-height: 1.3;
         margin-top: 15px;
         width: 100%;
         text-align: left;
+        letter-spacing: 0.3px;
     }
 
     .row-dense {
-        --bs-gutter-x: 10px;
-        --bs-gutter-y: 10px;
+        --bs-gutter-x: 15px;
+        --bs-gutter-y: 15px;
     }
 
-    /* Specific sub-tile colors matching category */
-    #collapseCore .tile { background: #0078D7; }
-    #collapseReversals .tile { background: #B10610; }
-    #collapseInventory .tile { background: #008272; }
-    #collapseFeatures .tile { background: #5A58D6; }
-    #collapseReports .tile { background: #00A3A3; }
+    /* Specific sub-tile subtle tints matching category */
+    #collapseCore .tile:hover { border-bottom: 3px solid #3b82f6; }
+    #collapseReversals .tile:hover { border-bottom: 3px solid #ef4444; }
+    #collapseInventory .tile:hover { border-bottom: 3px solid #10b981; }
+    #collapseFeatures .tile:hover { border-bottom: 3px solid #8b5cf6; }
+    #collapseReports .tile:hover { border-bottom: 3px solid #14b8a6; }
 
     /* Highlight */
     .tile.tile-highlight {
-        background: #005A9E !important;
-        border: 2px solid rgba(255,255,255,0.3);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.2) 0%, rgba(59, 130, 246, 0.4) 100%) !important;
+        border: 1px solid rgba(59, 130, 246, 0.5);
     }
 
     /* Make body dark so the container blends nicely */
