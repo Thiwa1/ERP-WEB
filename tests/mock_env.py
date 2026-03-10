@@ -138,3 +138,9 @@ if 'flask_wtf' not in sys.modules:
 if 'dotenv' not in sys.modules:
     mock_dotenv = MagicMock()
     sys.modules['dotenv'] = mock_dotenv
+import sys
+from unittest.mock import MagicMock
+
+# Mock PyPDF2
+mock_pypdf2 = MagicMock()
+sys.modules['PyPDF2'] = mock_pypdf2
