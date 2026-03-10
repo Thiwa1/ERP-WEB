@@ -14,11 +14,16 @@
         <div class="card-body bg-light text-center py-5">
             <form method="POST" enctype="multipart/form-data">
                 <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                <h5 class="mb-3">Select CSV File to Upload</h5>
-                <p class="text-muted small mb-4">Required Headers: Account Name, Account Type (Income/Expense/Asset/Liability/Equity), Category (Optional), Cash Flow (Optional)</p>
+                <h5 class="mb-3">Select Excel or CSV File to Upload</h5>
+                <p class="text-muted small mb-4">Required Headers: Account Name, BS Category, P&L Category, CashFlow Category</p>
+
+                <div class="d-flex justify-content-center mb-3">
+                    <a href="{{ url_for('download_template', template_type='gl', format='csv') }}" class="btn btn-outline-secondary btn-sm me-2"><i class="fas fa-download me-1"></i> Sample CSV</a>
+                    <a href="{{ url_for('download_template', template_type='gl', format='excel') }}" class="btn btn-outline-success btn-sm"><i class="fas fa-download me-1"></i> Sample Excel</a>
+                </div>
 
                 <div class="d-flex justify-content-center">
-                    <input type="file" name="file" class="form-control w-50" accept=".csv" required>
+                    <input type="file" name="file" class="form-control w-50" accept=".csv, .xls, .xlsx" required>
                 </div>
 
                 <button type="submit" class="btn btn-primary fw-bold mt-4 px-5">
@@ -32,7 +37,7 @@
     <div class="alert alert-info">
         <h6 class="fw-bold"><i class="fas fa-info-circle me-2"></i> Instructions</h6>
         <ul class="mb-0 small">
-            <li>Ensure the file is in <strong>CSV format</strong>.</li>
+            <li>Ensure the file is in <strong>CSV or Excel (.xlsx) format</strong>.</li>
             <li>Duplicate account names will update the existing record.</li>
             <li>You can review and map categories in the next step.</li>
         </ul>

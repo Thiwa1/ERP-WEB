@@ -517,20 +517,15 @@ def parse_float(value):
 def parse_csv_file(file_storage, required_columns=None):
     """
     Parses a file-like object (e.g., Flask FileStorage) into a list of dictionaries.
-    Handles multiple encodings and optional column validation.
-
-    Args:
-        file_storage: A Flask FileStorage object or similar with a .stream attribute or read() method.
-        required_columns: A list of strings representing column headers that must be present.
-
-    Returns:
-        A list of dictionaries representing the CSV rows.
-
-    Raises:
-        ValueError: If decoding fails or required columns are missing.
+    Handles multiple encodings, CSV, and Excel (.xls, .xlsx) files.
     """
     try:
-        # Read file bytes. If it's a FileStorage, use .stream.read() or .read()
+        import pandas as pd
+        import io
+
+        filename = getattr(file_storage, 'filename', '').lower()
+
+        # Read file bytes
         if hasattr(file_storage, 'stream'):
             file_bytes = file_storage.stream.read()
         elif hasattr(file_storage, 'read'):
@@ -2050,23 +2045,20 @@ def read_csv_content(file_storage):
 
 def parse_gl_upload_data(file_storage):
     """
-    Parses the GL Upload CSV file and returns a list of dictionaries representing the rows.
+    Parses the GL Upload file and returns a list of dictionaries representing the rows.
+    Uses the robust parse_csv_file which supports both CSV and Excel.
     """
     try:
-        csv_content = read_csv_content(file_storage)
-        stream = io.StringIO(csv_content, newline=None)
-        csv_input = csv.DictReader(stream)
+        parsed_rows = parse_csv_file(file_storage)
 
         rows = []
-        for row in csv_input:
-            # Clean keys/values
-            clean_row = {k.strip(): v.strip() for k, v in row.items() if k}
-            if not clean_row.get('Account Name'): continue
-            rows.append(clean_row)
+        for row in parsed_rows:
+            if not row.get('Account Name'): continue
+            rows.append(row)
 
         return rows
     except Exception as e:
-        raise ValueError(f"Error parsing CSV data: {str(e)}")
+        raise ValueError(f"Error parsing data: {str(e)}")
 
 def save_bulk_gl_accounts(form_data, current_user):
     """
@@ -2230,6 +2222,49 @@ def save_bulk_gl_accounts(form_data, current_user):
         conn.close()
 
 # --- Bulk Upload Module ---
+@app.route('/download_template/<template_type>')
+@login_required
+def download_template(template_type):
+    import io
+    import pandas as pd
+    from flask import send_file
+
+    format_type = request.args.get('format', 'csv')
+
+    if template_type == 'gl':
+        columns = ['Account Name', 'BS Category', 'P&L Category', 'CashFlow Category']
+        filename = 'gl_upload_template'
+    elif template_type == 'tb':
+        columns = ['Account Name', 'Debit', 'Credit']
+        filename = 'tb_upload_template'
+    else:
+        flash('Invalid template requested.', 'danger')
+        return redirect(url_for('index'))
+
+    df = pd.DataFrame(columns=columns)
+
+    if format_type == 'excel':
+        out = io.BytesIO()
+        with pd.ExcelWriter(out, engine='openpyxl') as writer:
+            df.to_excel(writer, index=False)
+        out.seek(0)
+        return send_file(
+            out,
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=f'{filename}.xlsx'
+        )
+    else:
+        out = io.StringIO()
+        df.to_csv(out, index=False)
+        out.seek(0)
+        return send_file(
+            io.BytesIO(out.getvalue().encode('utf-8')),
+            mimetype='text/csv',
+            as_attachment=True,
+            download_name=f'{filename}.csv'
+        )
+
 @app.route('/bulk_upload_gl', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Accounting')
