@@ -33,6 +33,10 @@ sys.modules['werkzeug.utils'] = MagicMock()
 sys.modules['num2words'] = MagicMock()
 sys.modules['dotenv'] = MagicMock()
 
+import os
+if 'SECRET_KEY' not in os.environ:
+    os.environ['SECRET_KEY'] = 'test-secret'
+
 # Import app (this might pick up a cached version)
 import app as app_module
 

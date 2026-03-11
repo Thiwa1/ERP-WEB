@@ -138,6 +138,12 @@ if 'flask_wtf' not in sys.modules:
 if 'dotenv' not in sys.modules:
     mock_dotenv = MagicMock()
     sys.modules['dotenv'] = mock_dotenv
+
+# Set SECRET_KEY in environment to satisfy app.py initialization
+import os
+if 'SECRET_KEY' not in os.environ:
+    os.environ['SECRET_KEY'] = 'mocked_secret_key_for_testing'
+
 import sys
 from unittest.mock import MagicMock
 

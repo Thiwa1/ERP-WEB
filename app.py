@@ -73,12 +73,11 @@ logging.basicConfig(
 
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
-app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
-    # Generate a random key if environment variable is not set
-    # This ensures sessions are secure but will invalidate on restart if not set in ENV
-    app.secret_key = secrets.token_hex(32)
+    # The application MUST have a SECRET_KEY configured in production.
+    # Falling back to a random key invalidates all sessions on restart or across workers.
+    raise ValueError("No SECRET_KEY set for Flask application. You must define one in your environment variables for security and session stability.")
 
 app.config['SECRET_KEY'] = app.secret_key
 
