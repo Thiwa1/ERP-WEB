@@ -29,10 +29,12 @@
             overflow-x: hidden;
         }
 
-        /* Sidebar Styling */
+        /* Sidebar Styling - Modern Pro */
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary-color) 0%, #0f172a 100%);
+            background: linear-gradient(180deg, var(--primary-color) 0%, var(--secondary-color) 100%); /* Deep slate, slightly translucent */
+            backdrop-filter: blur(12px); /* Glassmorphism blur effect */
+            -webkit-backdrop-filter: blur(12px);
             color: var(--text-light);
             height: 100vh;
             position: fixed;
@@ -40,71 +42,135 @@
             left: 0;
             z-index: 1000;
             padding-top: 0;
-            transition: transform 0.3s ease-in-out;
-            box-shadow: 4px 0 10px rgba(0,0,0,0.1);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            box-shadow: 5px 0 25px rgba(0,0,0,0.15);
             overflow-y: auto;
         }
 
+        /* Webkit scrollbar specific for sidebar to blend in */
+        .sidebar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .sidebar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .sidebar::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+        .sidebar::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
         .sidebar-header {
-            padding: 20px;
-            background-color: rgba(255,255,255,0.03);
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.05);
+            padding: 24px 20px;
+            background: linear-gradient(to right, rgba(255,255,255,0.02), transparent);
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
         }
 
         .sidebar-brand {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: white;
+            font-size: 1.35rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             text-decoration: none;
             display: flex;
             align-items: center;
-            justify-content: center;
-            gap: 10px;
+            gap: 12px;
             letter-spacing: 0.5px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .sidebar-brand i {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, var(--accent-color), #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
         }
 
         .sidebar-menu {
-            padding: 15px 10px;
+            padding: 20px 12px;
         }
 
         .menu-category {
-            color: var(--text-muted); /* Changed from light blue to professional gray */
+            color: rgba(255,255,255,0.7); /* Sleek, dark gray */
             text-transform: uppercase;
-            font-size: 0.7rem;
-            font-weight: 700;
-            margin: 25px 0 10px 15px;
-            letter-spacing: 0.8px;
+            font-size: 0.65rem;
+            font-weight: 800;
+            margin: 28px 0 12px 16px;
+            letter-spacing: 1.2px;
+            opacity: 0.8;
         }
 
         .nav-link {
-            color: #cbd5e1; /* Lighter gray for better readability */
-            padding: 10px 15px;
-            border-radius: 6px;
-            margin-bottom: 2px;
-            font-size: 0.9rem;
-            transition: all 0.2s;
+            color: rgba(255,255,255,0.85); /* Muted base text */
+            padding: 10px 16px;
+            border-radius: 8px; /* Modern rounded rectangles */
+            margin-bottom: 4px;
+            font-size: 0.88rem;
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             align-items: center;
             font-weight: 500;
+            border: 1px solid transparent;
+            position: relative;
+            overflow: hidden;
         }
 
-        .nav-link:hover, .nav-link.active {
-            background-color: rgba(255,255,255,0.08);
-            color: white;
-            transform: translateX(3px);
+        /* Hover Glow Effect */
+        .nav-link:hover {
+            background-color: rgba(255,255,255,0.04);
+            color: #f8fafc;
+            border-color: rgba(255,255,255,0.05);
+            transform: translateX(4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+
+        /* Active State Pill */
+        .nav-link.active {
+            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+            color: #ffffff;
+            font-weight: 600;
+            border-left: 3px solid var(--accent-color);
+            border-radius: 0 8px 8px 0; /* Flat left side for active indicator */
+            padding-left: 13px; /* Compensate for border */
         }
 
         .nav-link i {
-            width: 25px;
-            text-align: center;
-            margin-right: 10px;
-            font-size: 1rem;
-            color: #94a3b8; /* Icon color matches muted theme */
+            width: 24px;
+            text-align: left;
+            margin-right: 12px;
+            font-size: 1.1rem;
+            color: rgba(255,255,255,0.7);
+            transition: color 0.3s ease;
         }
 
         .nav-link:hover i {
+            color: #ffffff;
+            filter: drop-shadow(0 0 5px rgba(255,255,255,0.3));
+        }
+
+        .nav-link.active i {
             color: var(--accent-color);
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+        }
+
+        /* Specifically style the pending approvals text */
+        .nav-link.text-warning {
+            color: #eab308 !important;
+        }
+        .nav-link.text-warning i {
+            color: #eab308;
+        }
+        .nav-link.text-warning:hover {
+            background-color: rgba(234, 179, 8, 0.05);
+            border-color: rgba(234, 179, 8, 0.1);
         }
 
         /* Main Content */
@@ -235,9 +301,221 @@
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
+
+        /* Global Page Loader */
+        .global-page-loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: rgba(255, 255, 255, 0.7);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(2px);
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .global-page-loader.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        .suwin-loader-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+        .suwin-loader {
+            display: flex;
+            gap: 8px;
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            letter-spacing: 4px;
+            text-transform: uppercase;
+            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        .suwin-loader span {
+            display: inline-block;
+            animation: pro-bounce 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+        }
+        .suwin-loader span:nth-child(1) { animation-delay: 0.0s; }
+        .suwin-loader span:nth-child(2) { animation-delay: 0.1s; }
+        .suwin-loader span:nth-child(3) { animation-delay: 0.2s; }
+        .suwin-loader span:nth-child(4) { animation-delay: 0.3s; }
+        .suwin-loader span:nth-child(5) { animation-delay: 0.4s; }
+
+        @keyframes pro-bounce {
+            0%, 100% {
+                transform: translateY(0) scale(1);
+                opacity: 0.6;
+                color: var(--primary-color);
+            }
+            50% {
+                transform: translateY(-12px) scale(1.1);
+                opacity: 1;
+                color: var(--accent-color);
+                text-shadow: 0 10px 20px rgba(44, 160, 28, 0.3);
+            }
+        }
+
+        .suwin-loader-progress {
+            width: 150px;
+            height: 4px;
+            background: rgba(0,0,0,0.05);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .suwin-loader-progress::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -50%;
+            width: 50%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
+            animation: progress-slide 1.5s infinite linear;
+        }
+
+        @keyframes progress-slide {
+            0% { left: -50%; }
+            100% { left: 100%; }
+        }
+
+        /* Quick Actions Pro Modal */
+        .modal-pro {
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            background-color: rgba(15, 23, 42, 0.4); /* Darker backdrop */
+        }
+        .modal-pro .modal-content {
+            background: #ffffff;
+            border-radius: 16px;
+            border: 1px solid rgba(0,0,0,0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+        }
+        .modal-pro .modal-header {
+            background: linear-gradient(to right, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding: 20px 24px;
+        }
+        .modal-pro .modal-title {
+            color: #f8fafc;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .modal-pro .modal-title i {
+            color: var(--accent-color);
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+            font-size: 1.2rem;
+        }
+        .modal-pro .btn-close-white {
+            filter: invert(1) grayscale(100%) brightness(200%);
+            opacity: 0.8;
+            transition: all 0.2s;
+        }
+        .modal-pro .btn-close-white:hover {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+        .modal-pro .modal-body {
+            background-color: #f8fafc; /* Very light slate */
+            padding: 32px !important;
+        }
+
+        .qa-card {
+            background: #ffffff;
+            border-radius: 12px;
+            border: 1px solid rgba(226, 232, 240, 0.8);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
+            height: 100%;
+            overflow: hidden;
+        }
+        .qa-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border-color: rgba(203, 213, 225, 0.8);
+        }
+        .qa-header {
+            padding: 16px 20px 12px;
+            background: #ffffff;
+            border-bottom: 1px solid rgba(241, 245, 249, 1);
+            font-weight: 700;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #334155;
+            letter-spacing: 0.3px;
+        }
+        .qa-header i {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .qa-list {
+            padding: 8px 12px;
+            margin: 0;
+            list-style: none;
+        }
+        .qa-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 12px;
+            border-radius: 8px;
+            color: #475569;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            margin-bottom: 4px;
+            gap: 12px;
+            position: relative;
+        }
+        .qa-item i {
+            color: #94a3b8;
+            font-size: 1rem;
+            width: 20px;
+            text-align: center;
+            transition: color 0.2s ease, transform 0.2s ease;
+        }
+        .qa-item:hover {
+            background-color: #f1f5f9;
+            color: #0f172a;
+        }
+        .qa-item:hover i {
+            color: var(--accent-color);
+            transform: scale(1.1);
+        }
+        /* Color themes for category headers */
+        .qa-theme-primary .qa-header i { color: #3b82f6; }
+        .qa-theme-success .qa-header i { color: #10b981; }
+        .qa-theme-warning .qa-header i { color: #f59e0b; }
+        .qa-theme-info .qa-header i { color: #06b6d4; }
+        .qa-theme-purple .qa-header i { color: #8b5cf6; }
+        .qa-theme-rose .qa-header i { color: #f43f5e; }
+
     </style>
 </head>
 <body>
+    <!-- Global Page Loader -->
+    <div id="globalPageLoader" class="global-page-loader">
+        <div class="suwin-loader-container">
+            <div class="suwin-loader">
+                <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
+            </div>
+            <div class="suwin-loader-progress"></div>
+        </div>
+    </div>
 
     <!-- Sidebar Overlay for Mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
@@ -349,96 +627,96 @@
     </div>
 
     <!-- Quick Actions Modal -->
-    <div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal fade modal-pro" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
         <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content border-0 shadow-lg" style="border-radius: 12px; overflow: hidden;">
-                <div class="modal-header text-white" style="background-color: var(--secondary-color);">
-                    <h5 class="modal-title fw-bold fs-6"><i class="fas fa-bolt me-2"></i> QUICK ACTIONS</h5>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bolt"></i> QUICK ACTIONS</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body p-4" style="background-color: var(--bg-light);">
+                <div class="modal-body">
                     <div class="row g-4">
-                        <!-- Column 1: Company & Accounting -->
-                        <div class="col-md-4">
+                        <!-- Column 1: Setup & Accounting -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Company Setup -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
-                                    1) Company Setup
+                            <div class="qa-card qa-theme-primary">
+                                <div class="qa-header">
+                                    <i class="fas fa-building"></i> Company Setup
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/company_profile" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-building me-2 text-muted"></i> Setup Company Profile</a>
-                                    <a href="/create_bank_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-university me-2 text-muted"></i> Create Bank Account</a>
-                                    <a href="/create_cash_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-money-bill me-2 text-muted"></i> Create Cash Account</a>
-                                    <a href="/job_management" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-briefcase me-2 text-muted"></i> Create New Jobs</a>
-                                    <a href="/tax_settings" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-percentage me-2 text-muted"></i> Tax Settings (WHT)</a>
-                <a href="/control_panel" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-sliders-h me-2 text-muted"></i> System Control Panel</a>
-                                    <a href="/admin/users" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-plus me-2 text-muted"></i> Add New User</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/company_profile" class="qa-item"><i class="fas fa-id-card"></i> Setup Company Profile</a></li>
+                                    <li><a href="/create_bank_account" class="qa-item"><i class="fas fa-university"></i> Create Bank Account</a></li>
+                                    <li><a href="/create_cash_account" class="qa-item"><i class="fas fa-money-bill-wave"></i> Create Cash Account</a></li>
+                                    <li><a href="/job_management" class="qa-item"><i class="fas fa-briefcase"></i> Create New Jobs</a></li>
+                                    <li><a href="/tax_settings" class="qa-item"><i class="fas fa-percent"></i> Tax Settings (WHT)</a></li>
+                                    <li><a href="/control_panel" class="qa-item"><i class="fas fa-sliders-h"></i> System Control Panel</a></li>
+                                    <li><a href="/admin/users" class="qa-item"><i class="fas fa-user-plus"></i> Add New User</a></li>
+                                </ul>
                             </div>
 
                             <!-- Accounting -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold border-bottom-0 pt-3" style="color: var(--primary-color);">
-                                    2) Accounting
+                            <div class="qa-card qa-theme-purple">
+                                <div class="qa-header">
+                                    <i class="fas fa-book-open"></i> Accounting
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/balance_sheet_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-balance-scale me-2 text-muted"></i> Balance Sheet Category</a>
-                                    <a href="/pl_category" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-chart-pie me-2 text-muted"></i> P&L Category</a>
-                                    <a href="/cash_flow_categories" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-stream me-2 text-muted"></i> Cash Flow Category</a>
-                                    <a href="/add_new_account" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-invoice me-2 text-muted"></i> Create New Account</a>
-                                    <a href="/cheque_print_setup" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-print me-2 text-muted"></i> Cheque Print Setup</a>
-                                    <a href="/bulk_upload_gl" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-upload me-2 text-muted"></i> Bulk Upload GL</a>
-                                    <a href="/bulk_upload_tb" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-file-csv me-2 text-muted"></i> Bulk Upload TB</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/balance_sheet_category" class="qa-item"><i class="fas fa-balance-scale"></i> Balance Sheet Category</a></li>
+                                    <li><a href="/pl_category" class="qa-item"><i class="fas fa-chart-pie"></i> P&L Category</a></li>
+                                    <li><a href="/cash_flow_categories" class="qa-item"><i class="fas fa-stream"></i> Cash Flow Category</a></li>
+                                    <li><a href="/add_new_account" class="qa-item"><i class="fas fa-file-invoice"></i> Create New Account</a></li>
+                                    <li><a href="/cheque_print_setup" class="qa-item"><i class="fas fa-print"></i> Cheque Print Setup</a></li>
+                                    <li><a href="/bulk_upload_gl" class="qa-item"><i class="fas fa-file-upload"></i> Bulk Upload GL</a></li>
+                                    <li><a href="/bulk_upload_tb" class="qa-item"><i class="fas fa-file-csv"></i> Bulk Upload TB</a></li>
+                                </ul>
                             </div>
                         </div>
 
-                        <!-- Column 2: Suppliers/Customer & Inventory -->
-                        <div class="col-md-4">
+                        <!-- Column 2: Entities & Inventory -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Suppliers & Customer -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
-                                    3) Suppliers & Customer
+                            <div class="qa-card qa-theme-success">
+                                <div class="qa-header">
+                                    <i class="fas fa-users"></i> Suppliers & Customers
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/add_customer" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-user-tag me-2 text-muted"></i> Create New Customer</a>
-                                    <a href="/add_supplier" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-truck me-2 text-muted"></i> Create New Supplier</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/add_customer" class="qa-item"><i class="fas fa-user-tag"></i> Create New Customer</a></li>
+                                    <li><a href="/add_supplier" class="qa-item"><i class="fas fa-truck"></i> Create New Supplier</a></li>
+                                </ul>
                             </div>
 
                             <!-- Inventory Management -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold text-success border-bottom-0 pt-3">
-                                    4) Inventory Management
+                            <div class="qa-card qa-theme-info">
+                                <div class="qa-header">
+                                    <i class="fas fa-boxes"></i> Inventory Management
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/inventory_locations" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-warehouse me-2 text-muted"></i> Create Inventory House</a>
-                                    <a href="/add_inventory_item" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-box me-2 text-muted"></i> Create Inventory Items</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/inventory_locations" class="qa-item"><i class="fas fa-warehouse"></i> Create Inventory House</a></li>
+                                    <li><a href="/add_inventory_item" class="qa-item"><i class="fas fa-box"></i> Create Inventory Items</a></li>
+                                </ul>
                             </div>
                         </div>
 
                         <!-- Column 3: POS & Backup -->
-                        <div class="col-md-4">
+                        <div class="col-md-4 d-flex flex-column gap-4">
                             <!-- Point of Sales -->
-                            <div class="card h-100 border-0 shadow-sm mb-3">
-                                <div class="card-header bg-white fw-bold text-warning border-bottom-0 pt-3">
-                                    5) Point of Sales
+                            <div class="qa-card qa-theme-warning">
+                                <div class="qa-header">
+                                    <i class="fas fa-cash-register"></i> Point of Sales
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/pos_settings" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-cogs me-2 text-muted"></i> POS Settings</a>
-                                    <a href="/warranty_period" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-shield-alt me-2 text-muted"></i> Warranty Period</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/pos_settings" class="qa-item"><i class="fas fa-cogs"></i> POS Settings</a></li>
+                                    <li><a href="/warranty_period" class="qa-item"><i class="fas fa-shield-alt"></i> Warranty Period</a></li>
+                                </ul>
                             </div>
 
                             <!-- System Backup -->
-                            <div class="card h-100 border-0 shadow-sm">
-                                <div class="card-header bg-white fw-bold text-info border-bottom-0 pt-3">
-                                    6) System Backup
+                            <div class="qa-card qa-theme-rose">
+                                <div class="qa-header">
+                                    <i class="fas fa-server"></i> System
                                 </div>
-                                <div class="list-group list-group-flush rounded-bottom">
-                                    <a href="/system_backup" class="list-group-item list-group-item-action border-0 px-4 py-2"><i class="fas fa-download me-2 text-muted"></i> System Backup</a>
-                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/system_backup" class="qa-item"><i class="fas fa-download"></i> System Backup</a></li>
+                                </ul>
                             </div>
                         </div>
                     </div>
@@ -485,6 +763,24 @@
             if (!(btn instanceof jQuery)) btn = $(btn);
             btn.removeClass('btn-loading');
         }
+
+        // Global Page Loader Handling
+        window.addEventListener('load', function() {
+            const loader = document.getElementById('globalPageLoader');
+            if (loader) {
+                loader.classList.add('hidden');
+                setTimeout(() => { loader.style.display = 'none'; }, 300);
+            }
+        });
+
+        window.addEventListener('beforeunload', function() {
+            const loader = document.getElementById('globalPageLoader');
+            if (loader) {
+                loader.style.display = 'flex';
+                // Small delay to allow display: flex to apply before opacity transition
+                setTimeout(() => { loader.classList.remove('hidden'); }, 10);
+            }
+        });
 
         // Sidebar Toggle Script for Mobile
         document.addEventListener('DOMContentLoaded', function() {

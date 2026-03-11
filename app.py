@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import os
+
 import difflib
 import time
 import knowledge_base
@@ -52,6 +53,9 @@ import logging
 import shutil
 import re
 import os
+import PyPDF2
+import io
+
 import migrations
 import secrets
 
@@ -91,6 +95,12 @@ THEMES = {
         'primary': '#003366',
         'secondary': '#004080',
         'accent': '#0073e6'
+    },
+    'pro_blue': {
+        'name': 'Pro Sky Blue',
+        'primary': '#4188ff',
+        'secondary': '#649eff',
+        'accent': '#92bbff'
     },
     'forest': {
         'name': 'Forest Green',
@@ -723,7 +733,7 @@ def login():
                         db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
                         migrated = True
                     except Exception as e:
-                        logging.error(f"Error migrating password for user {user['id']}")
+                        logging.error("Error migrating password for user")
 
             if verified:
                 session['user_id'] = user['User_Code']
@@ -910,6 +920,46 @@ def add_customer():
     return render_template('add_customer.html', salutations=salutations)
 
 # --- Add Supplier (New) ---
+
+@app.route('/api/extract_vat_from_pdf', methods=['POST'])
+@login_required
+def extract_vat_from_pdf():
+    if 'document' not in request.files:
+        return jsonify({'success': False, 'message': 'No document uploaded'}), 400
+
+    file = request.files['document']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
+
+    if not file.filename.lower().endswith('.pdf'):
+        return jsonify({'success': False, 'message': 'Only PDF files are supported'}), 400
+
+    try:
+        # Read PDF content
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + " "
+
+        # "AI" Regex to find VAT Numbers
+        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789)
+        vat_pattern = r'(?i)VAT\s*(?:NO|NUMBER|#)?\s*[:\-\s]?\s*([A-Z0-9]{8,15})'
+        matches = re.findall(vat_pattern, text)
+
+        if matches:
+            # Return first distinct match
+            vat_no = matches[0].strip()
+            return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'No VAT number found in the document'})
+
+    except Exception as e:
+        app.logger.error(f"Error extracting VAT: {e}")
+        return jsonify({'success': False, 'message': 'Failed to process document'}), 500
+
+
 @app.route('/add_supplier', methods=['GET', 'POST'])
 @login_required
 def add_supplier():
@@ -1106,6 +1156,7 @@ def add_inventory_item():
                     # We store as LONGBLOB or MEDIUMBLOB.
                     # MySQL Connector handles bytes object directly for BLOBs.
                     # Wait, some tables expect base64 string because of C# legacy handling.
+                    # Let's save as base64 string to avoid 'Invalid utf8mb4 character string' error
                     # Let's save as base64 string to avoid 'Invalid utf8mb4 character string' error
                     # when passing raw bytes to a query that expects text/string.
                     img_data = base64.b64encode(file.read()).decode('utf-8')
@@ -3307,6 +3358,7 @@ def add_new_user():
         """, (user_id,))
 
         conn.commit()
+
 
         # Sync to Master DB for multi-tenant login routing
         try:
@@ -6328,7 +6380,7 @@ def pos_api_login():
                     new_hash = generate_password_hash(password)
                     db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
                 except Exception as e:
-                    logging.error(f"Error migrating POS user {settings['Id']}")
+                    logging.error("Error migrating POS user password")
 
         if verified:
             return {

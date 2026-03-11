@@ -52,12 +52,21 @@
                             </div>
                         </div>
 
+
                         <div class="mb-3 row">
-                            <label for="vat_no" class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">VAT No</label>
+                            <label for="vatNoInput" class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">VAT No</label>
                             <div class="col-sm-8">
-                                <input type="text" class="form-control" id="vat_no" name="vat_no">
+                                <div class="input-group">
+                                    <input type="text" class="form-control" id="vatNoInput" name="vat_no">
+                                    <input type="file" class="d-none" id="vatDocumentUpload" accept=".pdf">
+                                    <button class="btn btn-outline-secondary" type="button" onclick="document.getElementById('vatDocumentUpload').click()">
+                                        <i class="fas fa-file-pdf text-danger"></i> Scan AI
+                                    </button>
+                                </div>
+                                <small class="text-muted" id="vatStatusMessage">Upload document for auto-extraction.</small>
                             </div>
                         </div>
+
                     </div>
 
                     <!-- Right Panel: Address & Contact -->
@@ -154,4 +163,43 @@
     </div>
   </div>
 </div>
+
+<script>
+    document.getElementById('vatDocumentUpload').addEventListener('change', function(e) {
+        if (!e.target.files.length) return;
+
+        const file = e.target.files[0];
+        const statusMsg = document.getElementById('vatStatusMessage');
+        const vatInput = document.getElementById('vatNoInput');
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            statusMsg.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Please upload a PDF file.</span>';
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('document', file);
+
+        statusMsg.innerHTML = '<span class="text-primary"><i class="fas fa-spinner fa-spin"></i> Analyzing document for VAT Number...</span>';
+
+        fetch('/api/extract_vat_from_pdf', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                vatInput.value = data.vat_no;
+                statusMsg.innerHTML = '<span class="text-success"><i class="fas fa-check-circle"></i> Found VAT Number: ' + data.vat_no + '</span>';
+            } else {
+                statusMsg.innerHTML = '<span class="text-warning"><i class="fas fa-exclamation-triangle"></i> ' + data.message + '</span>';
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            statusMsg.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Error processing document.</span>';
+        });
+    });
+</script>
+
 {% endblock %}

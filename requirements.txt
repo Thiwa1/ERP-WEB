@@ -2,5 +2,6 @@ flask
 mysql-connector-python
 num2words
 python-dotenv
+PyPDF2==3.0.1
 pandas
 openpyxl
