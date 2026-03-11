@@ -3,7 +3,6 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch, call
 import json
-from datetime import date
 
 # Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
