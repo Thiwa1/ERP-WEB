@@ -2708,6 +2708,48 @@ def cash_payment():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
+def _get_supplier_history_data(sup_name, payment_type):
+    """Helper to fetch common supplier details, outstanding invoices, and payment history."""
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
+        return {'error': 'Supplier not found'}, 404
+
+    if payment_type == 'cash':
+        history = db.execute_query("""
+            SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
+                   cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
+                   User_Enter as extra, jv_numbers_jv_id as extra2
+            FROM cash_book_recode
+            WHERE cash_book_recode_suplier_name = %s
+            ORDER BY chash_book_recod_id DESC
+        """, (sup_name,))
+    else:
+        history = db.execute_query("""
+            SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
+                   bank_book__accont_name as account, bank_book__recode_cr as amount,
+                   bank_book__naration as extra, NULL as extra2
+            FROM bank_book_recod
+            WHERE bank_book__suplier_name = %s
+            ORDER BY id DESC
+        """, (sup_name,))
+
+    hist_list = []
+    for h in history:
+        item = {
+            'voucher': h['voucher'],
+            'date': str(h['date']),
+            'account': h['account'],
+            'amount': float(h['amount'] or 0)
+        }
+        if payment_type == 'cash':
+            item['user_id'] = h['extra']
+            item['jv_no'] = h['extra2']
+        else:
+            item['narration'] = h['extra']
+        hist_list.append(item)
+
+    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+
 def _get_supplier_base_data(sup_name):
     """Helper to fetch common supplier details and outstanding invoices."""
     sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
@@ -2753,30 +2795,7 @@ def get_cash_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
-    if not details:
-        return {'error': 'Supplier not found'}, 404
-
-    # 3. Cash Payment History
-    history = db.execute_query("""
-        SELECT cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_cr, User_Enter, jv_numbers_jv_id
-        FROM cash_book_recode
-        WHERE cash_book_recode_suplier_name = %s
-        ORDER BY chash_book_recod_id DESC
-    """, (sup_name,))
-
-    hist_list = []
-    for h in history:
-        hist_list.append({
-            'voucher': h['cash_book_recod_voucher_no'],
-            'date': str(h['Payment_Date']),
-            'account': h['cash_book_recode_accont_name'],
-            'amount': float(h['cash_book_recode_cr'] or 0),
-            'user_id': h['User_Enter'],
-            'jv_no': h['jv_numbers_jv_id']
-        })
-
-    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+    return _get_supplier_history_data(sup_name, 'cash')
 
 @app.route('/cash_payment/submit', methods=['POST'])
 @login_required
@@ -3932,29 +3951,7 @@ def get_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
-    if not details:
-        return {'error': 'Supplier not found'}, 404
-
-    # 3. Payment History
-    history = db.execute_query("""
-        SELECT bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__recode_cr, bank_book__naration
-        FROM bank_book_recod
-        WHERE bank_book__suplier_name = %s
-        ORDER BY id DESC
-    """, (sup_name,))
-
-    hist_list = []
-    for h in history:
-        hist_list.append({
-            'voucher': h['bank_book_recod_voucher_no'],
-            'date': str(h['Bank_Payment_Date']),
-            'account': h['bank_book__accont_name'],
-            'amount': float(h['bank_book__recode_cr'] or 0),
-            'narration': h['bank_book__naration']
-        })
-
-    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+    return _get_supplier_history_data(sup_name, 'bank')
 
 @app.route('/bank_payment_submit', methods=['POST'])
 @login_required
