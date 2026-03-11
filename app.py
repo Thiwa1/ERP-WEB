@@ -6172,59 +6172,32 @@ def add_pos_user():
 def pos():
     return render_template('pos.html')
 
-@app.route('/api/pos/login', methods=['POST'])
+@app.route('/api/pos/settings', methods=['GET'])
 @login_required
-def pos_api_login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
+def pos_api_settings():
+    username = session.get('username')
 
     # Verify against pose_setting_table
     users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
 
     if users:
         settings = users[0]
-        stored_password = settings.get('Password', '')
-        verified = False
-
-        # 1. Try Hash Verification
-        try:
-            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                if check_password_hash(stored_password, password):
-                    verified = True
-            else:
-                raise ValueError("Not a valid hash")
-        except ValueError:
-            # stored_password might not be a valid hash format (e.g. plain text)
-            pass
-
-        # 2. Fallback to Plain Text (Legacy Support & Migration)
-        if not verified:
-            if stored_password == password:
-                verified = True
-                try:
-                    new_hash = generate_password_hash(password)
-                    db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
-                except Exception as e:
-                    logging.error("Error migrating POS user password")
-
-        if verified:
-            return {
-                'success': True,
-                'settings': {
-                    'location': settings['Select_Inventry_Location'],
-                    'card_ac': settings['Card_Control_AC'],
-                    'cash_ac': settings['Cash_Account'],
-                    'market_price': settings['Sales_with_market_price'],
-                    'special_price': settings['Sales_with_Special_price'],
-                    'loyalty_price': settings['Loyalty_Price'],
-                    'vat_enable': settings['VAT_Enable'],
-                    'footer': settings['Footer_Message'],
-                    'top': settings['Top_Message']
-                }
+        return {
+            'success': True,
+            'settings': {
+                'location': settings['Select_Inventry_Location'],
+                'card_ac': settings['Card_Control_AC'],
+                'cash_ac': settings['Cash_Account'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
+                'vat_enable': settings['VAT_Enable'],
+                'footer': settings['Footer_Message'],
+                'top': settings['Top_Message']
             }
+        }
 
-    return {'success': False, 'error': 'Invalid POS Credentials'}
+    return {'success': False, 'error': 'POS settings not found for current user'}
 
 @app.route('/api/pos/items', methods=['GET'])
 @login_required
