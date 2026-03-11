@@ -2118,6 +2118,57 @@ def parse_gl_upload_data(file_storage):
     except Exception as e:
         raise ValueError(f"Error parsing CSV data: {str(e)}")
 
+def _parse_gl_category(cat_val):
+    cat_name = None
+    cat_pos = None
+    is_bs = False
+    is_pl = False
+
+    if cat_val:
+        parts = cat_val.split('|')
+        if len(parts) == 2:
+            cat_data, cat_type = parts
+            cat_name, cat_pos = cat_data.split(',')
+            if cat_type == 'BS': is_bs = True
+            elif cat_type == 'PL': is_pl = True
+
+    return cat_name, cat_pos, is_bs, is_pl
+
+def _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user):
+    # Batch Sub-Ledger (Bank)
+    if potential_banks:
+        format_strings = ','.join(['%s'] * len(potential_banks))
+        cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
+        existing_banks = {row[0] for row in cursor.fetchall()}
+
+        banks_to_insert = []
+        for b_name in potential_banks:
+            if b_name not in existing_banks:
+                banks_to_insert.append((b_name, b_name, today, current_user))
+
+        if banks_to_insert:
+            cursor.executemany("""
+                INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                VALUES (%s, %s, %s, %s)
+            """, banks_to_insert)
+
+    # Batch Sub-Ledger (Cash)
+    if potential_cash:
+        format_strings = ','.join(['%s'] * len(potential_cash))
+        cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
+        existing_cash = {row[0] for row in cursor.fetchall()}
+
+        cash_to_insert = []
+        for c_name in potential_cash:
+            if c_name not in existing_cash:
+                cash_to_insert.append((c_name, today, current_user))
+
+        if cash_to_insert:
+            cursor.executemany("""
+                INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                VALUES (%s, %s, %s, 0)
+            """, cash_to_insert)
+
 def save_bulk_gl_accounts(form_data, current_user):
     """
     Handles the database insertion logic for bulk GL account upload.
@@ -2165,18 +2216,7 @@ def save_bulk_gl_accounts(form_data, current_user):
             cf = cfs[i]
 
             # Parse Category
-            cat_name = None
-            cat_pos = None
-            is_bs = False
-            is_pl = False
-
-            if cat_val:
-                parts = cat_val.split('|')
-                if len(parts) == 2:
-                    cat_data, cat_type = parts
-                    cat_name, cat_pos = cat_data.split(',')
-                    if cat_type == 'BS': is_bs = True
-                    elif cat_type == 'PL': is_pl = True
+            cat_name, cat_pos, is_bs, is_pl = _parse_gl_category(cat_val)
 
             is_inc = 1 if acc_type == 'Income' else 0
             is_exp = 1 if acc_type == 'Expense' else 0
@@ -2235,39 +2275,7 @@ def save_bulk_gl_accounts(form_data, current_user):
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
             """, to_insert)
 
-        # Batch Sub-Ledger (Bank)
-        if potential_banks:
-            format_strings = ','.join(['%s'] * len(potential_banks))
-            cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
-            existing_banks = {row[0] for row in cursor.fetchall()}
-
-            banks_to_insert = []
-            for b_name in potential_banks:
-                if b_name not in existing_banks:
-                    banks_to_insert.append((b_name, b_name, today, current_user))
-
-            if banks_to_insert:
-                cursor.executemany("""
-                    INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
-                    VALUES (%s, %s, %s, %s)
-                """, banks_to_insert)
-
-        # Batch Sub-Ledger (Cash)
-        if potential_cash:
-            format_strings = ','.join(['%s'] * len(potential_cash))
-            cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
-            existing_cash = {row[0] for row in cursor.fetchall()}
-
-            cash_to_insert = []
-            for c_name in potential_cash:
-                if c_name not in existing_cash:
-                    cash_to_insert.append((c_name, today, current_user))
-
-            if cash_to_insert:
-                cursor.executemany("""
-                    INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
-                    VALUES (%s, %s, %s, 0)
-                """, cash_to_insert)
+        _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
         conn.commit()
         return count
