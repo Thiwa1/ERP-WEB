@@ -73,10 +73,12 @@ logging.basicConfig(
 
 # Set a secret key for session management.
 # In production, this should be set via environment variable.
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
-    # Ensure a secret key is explicitly set in the environment
-    raise RuntimeError("No SECRET_KEY set for Flask application. This is a required environment variable for security.")
+    # Generate a random key if environment variable is not set
+    # This ensures sessions are secure but will invalidate on restart if not set in ENV
+    app.secret_key = secrets.token_hex(32)
 
 app.config['SECRET_KEY'] = app.secret_key
 
@@ -418,8 +420,8 @@ def create_tenant_db(company_name, username, password, email):
         return True, "Registration successful."
 
     except Exception as e:
-        logging.error("Registration Error occurred.")
-        return False, "An error occurred during registration."
+        print(f"Registration Error: {e}")
+        return False, str(e)
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -626,7 +628,7 @@ def check_permission(perm_name):
             return True
 
     except Exception as e:
-        logging.error("Permission check error.")
+        logging.error(f"Permission check error: {e}")
         return False
     return False
 
@@ -689,7 +691,7 @@ def login():
                     flash('Incorrect password.', 'danger')
                     return redirect(url_for('login'))
         except Exception as e:
-            logging.error("Master Login Error occurred.")
+            print(f"Master Login Error: {e}")
             # Fallthrough to legacy
 
         # 2. Fallback to Legacy Login (Default DB)
@@ -2109,57 +2111,6 @@ def parse_gl_upload_data(file_storage):
     except Exception as e:
         raise ValueError(f"Error parsing data: {str(e)}")
 
-def _parse_gl_category(cat_val):
-    cat_name = None
-    cat_pos = None
-    is_bs = False
-    is_pl = False
-
-    if cat_val:
-        parts = cat_val.split('|')
-        if len(parts) == 2:
-            cat_data, cat_type = parts
-            cat_name, cat_pos = cat_data.split(',')
-            if cat_type == 'BS': is_bs = True
-            elif cat_type == 'PL': is_pl = True
-
-    return cat_name, cat_pos, is_bs, is_pl
-
-def _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user):
-    # Batch Sub-Ledger (Bank)
-    if potential_banks:
-        format_strings = ','.join(['%s'] * len(potential_banks))
-        cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
-        existing_banks = {row[0] for row in cursor.fetchall()}
-
-        banks_to_insert = []
-        for b_name in potential_banks:
-            if b_name not in existing_banks:
-                banks_to_insert.append((b_name, b_name, today, current_user))
-
-        if banks_to_insert:
-            cursor.executemany("""
-                INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
-                VALUES (%s, %s, %s, %s)
-            """, banks_to_insert)
-
-    # Batch Sub-Ledger (Cash)
-    if potential_cash:
-        format_strings = ','.join(['%s'] * len(potential_cash))
-        cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
-        existing_cash = {row[0] for row in cursor.fetchall()}
-
-        cash_to_insert = []
-        for c_name in potential_cash:
-            if c_name not in existing_cash:
-                cash_to_insert.append((c_name, today, current_user))
-
-        if cash_to_insert:
-            cursor.executemany("""
-                INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
-                VALUES (%s, %s, %s, 0)
-            """, cash_to_insert)
-
 def save_bulk_gl_accounts(form_data, current_user):
     """
     Handles the database insertion logic for bulk GL account upload.
@@ -2207,7 +2158,18 @@ def save_bulk_gl_accounts(form_data, current_user):
             cf = cfs[i]
 
             # Parse Category
-            cat_name, cat_pos, is_bs, is_pl = _parse_gl_category(cat_val)
+            cat_name = None
+            cat_pos = None
+            is_bs = False
+            is_pl = False
+
+            if cat_val:
+                parts = cat_val.split('|')
+                if len(parts) == 2:
+                    cat_data, cat_type = parts
+                    cat_name, cat_pos = cat_data.split(',')
+                    if cat_type == 'BS': is_bs = True
+                    elif cat_type == 'PL': is_pl = True
 
             is_inc = 1 if acc_type == 'Income' else 0
             is_exp = 1 if acc_type == 'Expense' else 0
@@ -2266,7 +2228,39 @@ def save_bulk_gl_accounts(form_data, current_user):
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
             """, to_insert)
 
-        _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
+        # Batch Sub-Ledger (Bank)
+        if potential_banks:
+            format_strings = ','.join(['%s'] * len(potential_banks))
+            cursor.execute(f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({format_strings})", tuple(potential_banks))
+            existing_banks = {row[0] for row in cursor.fetchall()}
+
+            banks_to_insert = []
+            for b_name in potential_banks:
+                if b_name not in existing_banks:
+                    banks_to_insert.append((b_name, b_name, today, current_user))
+
+            if banks_to_insert:
+                cursor.executemany("""
+                    INSERT INTO bank_book (bank_bookcol_account_number, bank_book_bank_name, bank_book_create_date, bank_book_create_user)
+                    VALUES (%s, %s, %s, %s)
+                """, banks_to_insert)
+
+        # Batch Sub-Ledger (Cash)
+        if potential_cash:
+            format_strings = ','.join(['%s'] * len(potential_cash))
+            cursor.execute(f"SELECT cash_book_account_name FROM cash_book WHERE cash_book_account_name IN ({format_strings})", tuple(potential_cash))
+            existing_cash = {row[0] for row in cursor.fetchall()}
+
+            cash_to_insert = []
+            for c_name in potential_cash:
+                if c_name not in existing_cash:
+                    cash_to_insert.append((c_name, today, current_user))
+
+            if cash_to_insert:
+                cursor.executemany("""
+                    INSERT INTO cash_book (cash_book_account_name, cash_creat_date, cash_created_user, Select_As)
+                    VALUES (%s, %s, %s, 0)
+                """, cash_to_insert)
 
         conn.commit()
         return count
@@ -2750,48 +2744,6 @@ def cash_payment():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
-def _get_supplier_history_data(sup_name, payment_type):
-    """Helper to fetch common supplier details, outstanding invoices, and payment history."""
-    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
-    if not details:
-        return {'error': 'Supplier not found'}, 404
-
-    if payment_type == 'cash':
-        history = db.execute_query("""
-            SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
-                   cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
-                   User_Enter as extra, jv_numbers_jv_id as extra2
-            FROM cash_book_recode
-            WHERE cash_book_recode_suplier_name = %s
-            ORDER BY chash_book_recod_id DESC
-        """, (sup_name,))
-    else:
-        history = db.execute_query("""
-            SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
-                   bank_book__accont_name as account, bank_book__recode_cr as amount,
-                   bank_book__naration as extra, NULL as extra2
-            FROM bank_book_recod
-            WHERE bank_book__suplier_name = %s
-            ORDER BY id DESC
-        """, (sup_name,))
-
-    hist_list = []
-    for h in history:
-        item = {
-            'voucher': h['voucher'],
-            'date': str(h['date']),
-            'account': h['account'],
-            'amount': float(h['amount'] or 0)
-        }
-        if payment_type == 'cash':
-            item['user_id'] = h['extra']
-            item['jv_no'] = h['extra2']
-        else:
-            item['narration'] = h['extra']
-        hist_list.append(item)
-
-    return {'details': details, 'invoices': inv_list, 'history': hist_list}
-
 def _get_supplier_base_data(sup_name):
     """Helper to fetch common supplier details and outstanding invoices."""
     sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
@@ -2837,7 +2789,30 @@ def get_cash_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(sup_name, 'cash')
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
+        return {'error': 'Supplier not found'}, 404
+
+    # 3. Cash Payment History
+    history = db.execute_query("""
+        SELECT cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_cr, User_Enter, jv_numbers_jv_id
+        FROM cash_book_recode
+        WHERE cash_book_recode_suplier_name = %s
+        ORDER BY chash_book_recod_id DESC
+    """, (sup_name,))
+
+    hist_list = []
+    for h in history:
+        hist_list.append({
+            'voucher': h['cash_book_recod_voucher_no'],
+            'date': str(h['Payment_Date']),
+            'account': h['cash_book_recode_accont_name'],
+            'amount': float(h['cash_book_recode_cr'] or 0),
+            'user_id': h['User_Enter'],
+            'jv_no': h['jv_numbers_jv_id']
+        })
+
+    return {'details': details, 'invoices': inv_list, 'history': hist_list}
 
 @app.route('/cash_payment/submit', methods=['POST'])
 @login_required
@@ -3398,13 +3373,12 @@ def add_new_user():
                     ON DUPLICATE KEY UPDATE password=VALUES(password), email=VALUES(email)
                 """, (username, pw_hash, email, tenant_id), commit=True)
         except Exception as master_e:
-            logging.error("Error syncing new user to master DB")
+            logging.error(f"Error syncing new user to master DB: {master_e}")
 
         flash(f'User {username} created successfully.', 'success')
     except Exception as e:
         conn.rollback()
-        logging.error("Database error while creating user.")
-        flash('Error creating user. Please try again.', 'danger')
+        flash(f'Error creating user: {str(e)}', 'danger')
     finally:
         cursor.close()
         conn.close()
@@ -3493,12 +3467,11 @@ def update_user_details():
                         WHERE username = (SELECT User_Name FROM (SELECT User_Name FROM Login_Table WHERE id = %s) as t) AND tenant_id = %s
                     """, (username, email, user_id, tenant_id), commit=True)
         except Exception as master_e:
-            logging.error("Error syncing user update to master DB")
+            logging.error(f"Error syncing user update to master DB: {master_e}")
 
         flash('User details updated successfully', 'success')
     except Exception as e:
-        logging.error("Database error while updating user.")
-        flash('Error updating user. Please try again.', 'danger')
+        flash(f'Error updating user: {str(e)}', 'danger')
 
     return redirect(url_for('admin_users'))
 
@@ -3996,7 +3969,29 @@ def get_supplier_data():
     if not sup_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(sup_name, 'bank')
+    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    if not details:
+        return {'error': 'Supplier not found'}, 404
+
+    # 3. Payment History
+    history = db.execute_query("""
+        SELECT bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__recode_cr, bank_book__naration
+        FROM bank_book_recod
+        WHERE bank_book__suplier_name = %s
+        ORDER BY id DESC
+    """, (sup_name,))
+
+    hist_list = []
+    for h in history:
+        hist_list.append({
+            'voucher': h['bank_book_recod_voucher_no'],
+            'date': str(h['Bank_Payment_Date']),
+            'account': h['bank_book__accont_name'],
+            'amount': float(h['bank_book__recode_cr'] or 0),
+            'narration': h['bank_book__naration']
+        })
+
+    return {'details': details, 'invoices': inv_list, 'history': hist_list}
 
 @app.route('/bank_payment_submit', methods=['POST'])
 @login_required
@@ -6451,129 +6446,6 @@ def pos_api_customers():
         })
     return json.dumps(custs)
 
-def _generate_pos_invoice_number(cursor, today_date):
-    """Helper to generate a new POS Invoice Number."""
-    cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
-    last_id = cursor.lastrowid
-    invoice_no = f"{today_date.year}POS-{last_id}"
-    cursor.execute("UPDATE pos_invoice_no SET IV_No = %s WHERE Id = %s", (invoice_no, last_id))
-    return invoice_no
-
-def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_pk, payment, customer, invoice_no, jv_no, today_date):
-    """Helper to process items, yielding total sales and total costs, and executing batch inserts."""
-    total_sale_value = 0
-    total_cost_value = 0
-    pos_sales_params = []
-    inventory_params = []
-    action_timestamp = datetime.now()
-
-    for item in cart:
-        total_sale_value += item['total']
-        total_cost_value += (item['cost'] * item['qty'])
-
-        # Prepare pos_sales_invoice_01 params
-        pos_sales_params.append((
-            item['code'], item['name'], item['unit'],
-            item['price_market'], item['price_special'], item['price_loyalty'],
-            settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
-            current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
-            payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-            invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
-        ))
-
-        # Prepare Inventory Movement OUT params
-        inventory_params.append((
-            item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-            current_user, jv_no, settings.get('location')
-        ))
-
-    # Batch Insert into pos_sales_invoice_01
-    if pos_sales_params:
-        cursor.executemany("""
-            INSERT INTO pos_sales_invoice_01 (
-                ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
-                Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
-                RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
-                CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
-        """, pos_sales_params)
-
-    # Batch Insert into inventory_recod
-    if inventory_params:
-        cursor.executemany("""
-            INSERT INTO inventory_recod (
-                inventoy_name, inventoy_code, inventory_recod_action_date,
-                inventory_recod_moument_in, inventory_recod_movment_out,
-                inventory_recod_mesrmet, inventory_recod_unit_price,
-                inventory_recod_account, inventory_recod_user_id, JV_No,
-                inventory_recod_location
-            ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
-        """, inventory_params)
-
-    return total_sale_value, total_cost_value
-
-def _post_pos_gl_entries(cursor, settings, payment, total_sale_value, total_cost_value, today_date, invoice_no, current_user_pk, jv_no):
-    """Helper to post corresponding General Ledger entries for POS sale."""
-    # Debit Cash/Bank
-    ac_name = settings.get('cash_ac') if payment.get('method') == 1 else settings.get('bank_ac')
-    cursor.execute("""
-        INSERT INTO entry_details (
-            account_name, enty_values_DR, entry_effective_date, entry_create_date,
-            entry_naration, entry_create_user, entry_jv
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
-
-    # Calculate VAT if enabled
-    vat_enabled = settings.get('vat_enable') == 1
-    vat_amount = 0
-    net_sales = total_sale_value
-
-    if vat_enabled:
-        # Fetch VAT Rate from Tax Settings if exists, else 18%
-        cursor.execute("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
-        res_vat = cursor.fetchone()
-        vat_rate = res_vat[0] if res_vat else 18.0
-
-        net_sales = total_sale_value / (1 + (vat_rate / 100))
-        vat_amount = total_sale_value - net_sales
-
-    # Credit Sales Account (Net)
-    cursor.execute("""
-        INSERT INTO entry_details (
-            account_name, enty_values_CR, entry_effective_date, entry_create_date,
-            entry_naration, entry_create_user, entry_jv
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-    """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
-
-    # Credit VAT Control (If VAT > 0)
-    if vat_amount > 0:
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
-
-    # Cost of Goods Sold (DR COGS, CR Inventory)
-    if total_cost_value > 0:
-        # Debit Cost Of Goods Sold
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
-
-        # Credit Inventory
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
-
-
 @app.route('/pos/submit_sale', methods=['POST'])
 @login_required
 def submit_pos_sale():
@@ -6595,21 +6467,133 @@ def submit_pos_sale():
         conn.start_transaction()
 
         # 1. Generate Invoice No
-        invoice_no = _generate_pos_invoice_number(cursor, today_date)
+        cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
+        last_id = cursor.lastrowid
+        invoice_no = f"{today_date.year}POS-{last_id}"
+        cursor.execute("UPDATE pos_invoice_no SET IV_No = %s WHERE Id = %s", (invoice_no, last_id))
 
         # 2. Create JV
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM POS', f"POS Sale {invoice_no}"))
         jv_no = cursor.lastrowid
 
+        total_sale_value = 0
+        total_cost_value = 0
+
         # 3. Process Cart Items
-        total_sale_value, total_cost_value = _process_pos_cart_items(
-            cursor, cart, settings, current_user, current_user_pk, payment, customer, invoice_no, jv_no, today_date
-        )
+        pos_sales_params = []
+        inventory_params = []
+        action_timestamp = datetime.now()
+
+        for item in cart:
+            total_sale_value += item['total']
+            total_cost_value += (item['cost'] * item['qty'])
+
+            # Prepare pos_sales_invoice_01 params
+            pos_sales_params.append((
+                item['code'], item['name'], item['unit'],
+                item['price_market'], item['price_special'], item['price_loyalty'],
+                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+                current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            ))
+
+            # Prepare Inventory Movement OUT params
+            inventory_params.append((
+                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+                current_user, jv_no, settings.get('location')
+            ))
+
+        # Batch Insert into pos_sales_invoice_01
+        if pos_sales_params:
+            cursor.executemany("""
+                INSERT INTO pos_sales_invoice_01 (
+                    ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
+                    Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
+                    RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
+                    CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+            """, pos_sales_params)
+
+        # Batch Insert into inventory_recod
+        if inventory_params:
+            cursor.executemany("""
+                INSERT INTO inventory_recod (
+                    inventoy_name, inventoy_code, inventory_recod_action_date,
+                    inventory_recod_moument_in, inventory_recod_movment_out,
+                    inventory_recod_mesrmet, inventory_recod_unit_price,
+                    inventory_recod_account, inventory_recod_user_id, JV_No,
+                    inventory_recod_location
+                ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+            """, inventory_params)
 
         # 4. GL Entries
-        _post_pos_gl_entries(
-            cursor, settings, payment, total_sale_value, total_cost_value, today_date, invoice_no, current_user_pk, jv_no
-        )
+        # Debit Cash/Bank
+        ac_name = settings.get('cash_ac') if payment.get('method') == 1 else settings.get('bank_ac')
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
+
+        # Calculate VAT if enabled
+        vat_enabled = settings.get('vat_enable') == 1
+        vat_amount = 0
+        net_sales = total_sale_value
+
+        if vat_enabled:
+            # Check company VAT rate or assume 18% (should be in tax_rates or system_settings)
+            # Defaulting to 15% as per Sri Lanka historical or dynamic.
+            # Ideally fetch from tax_rates table. For now, assume 18% (current SL rate) or similar.
+            # The prompt mentions "VAT Schedule of Sri Lanka".
+            # If VAT is inclusive in Price: Net = Total / (1 + Rate)
+            # If VAT is exclusive: Total = Net + (Net * Rate)
+            # POS usually implies tax inclusive pricing on shelf.
+
+            # Fetch VAT Rate from Tax Settings if exists, else 18%
+            cursor.execute("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
+            res_vat = cursor.fetchone()
+            vat_rate = res_vat[0] if res_vat else 18.0
+
+            net_sales = total_sale_value / (1 + (vat_rate / 100))
+            vat_amount = total_sale_value - net_sales
+
+        # Credit Sales Account (Net)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
+
+        # Credit VAT Control (If VAT > 0)
+        if vat_amount > 0:
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
+
+        # Cost of Goods Sold (DR COGS, CR Inventory)
+        if total_cost_value > 0:
+            # Debit Cost Of Goods Sold
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
+
+            # Credit Inventory
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
 
         conn.commit()
         return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
@@ -7564,7 +7548,7 @@ def create_default_user():
         else:
             logging.info("Users exist in database. Skipping default user creation.")
     except Exception as e:
-        logging.error("Error creating default user.")
+        logging.error(f"Error creating default user: {e}")
 
 def ensure_default_categories(target_db=None):
     """Ensures default Balance Sheet and P&L categories exist."""
@@ -8213,21 +8197,11 @@ def create_outstanding_record(ctx: OutstandingRecordContext):
     """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
     return ctx.cursor.lastrowid
 
-
-@dataclass
-class InvoiceBatchContext:
-    cursor: typing.Any
-    inv_items: list
-    non_inv_items: list
-    jv_no: str
-    current_user: int
-    customer_name: str
-    outstanding_id: int
-    location: str
-    inv_date: str
-    invoice_no: str
-
-def process_invoice_items_batch(ctx: InvoiceBatchContext):
+def process_invoice_items_batch(
+    cursor, inv_items, non_inv_items,
+    jv_no, current_user, customer_name,
+    outstanding_id, location, inv_date, invoice_no
+):
     # Prepare batch data
     invoice_recode_batch = []
     inventory_recode_batch = []
@@ -8235,7 +8209,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Inventory Items
-    for item in ctx.inv_items:
+    for item in inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
         # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
         # Schema: Invoice_Recode
@@ -8243,11 +8217,11 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        ctx.cursor.execute("""
+        cursor.execute("""
             SELECT yeas_, month, date_ FROM inventory_vorenty_period
             WHERE name = %s LIMIT 1
         """, (item['name'],))
-        w_res = ctx.cursor.fetchone()
+        w_res = cursor.fetchone()
         if w_res:
             try:
                 years, months, days = w_res
@@ -8259,27 +8233,27 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
         ))
 
         # Add to batch for Inventory_Recod
         inventory_recode_batch.append((
             item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-            ctx.current_user, current_time, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
+            current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
         ))
 
     # Non-Inventory Items
-    for item in ctx.non_inv_items:
+    for item in non_inv_items:
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
+            customer_name, 1, outstanding_id, item['unit'], current_time
         ))
 
     # Execute Batch Inserts
     if invoice_recode_batch:
-        ctx.cursor.executemany("""
+        cursor.executemany("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
@@ -8288,7 +8262,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         """, invoice_recode_batch)
 
     if inventory_recode_batch:
-        ctx.cursor.executemany("""
+        cursor.executemany("""
             INSERT INTO inventory_recod (
                 inventoy_name, inventoy_code, inventory_recod_mesrmet,
                 inventory_recod_unit_price, inventory_recod_movment_out,
@@ -8455,19 +8429,11 @@ def submit_invoice():
         outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
-        batch_ctx = InvoiceBatchContext(
-            cursor=cursor,
-            inv_items=inv_items,
-            non_inv_items=non_inv_items,
-            jv_no=jv_no,
-            current_user=current_user,
-            customer_name=customer_name,
-            outstanding_id=outstanding_id,
-            location=location,
-            inv_date=inv_date,
-            invoice_no=invoice_no
+        process_invoice_items_batch(
+            cursor, inv_items, non_inv_items,
+            jv_no, current_user, customer_name,
+            outstanding_id, location, inv_date, invoice_no
         )
-        process_invoice_items_batch(batch_ctx)
 
         # 8. GL Entries
         gl_ctx = InvoiceGLContext(
