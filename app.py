@@ -9,6 +9,7 @@ import csv
 import io
 import json
 import os
+
 import difflib
 import time
 import knowledge_base
@@ -52,6 +53,9 @@ import logging
 import shutil
 import re
 import os
+import PyPDF2
+import io
+
 import migrations
 import secrets
 
@@ -921,6 +925,46 @@ def add_customer():
     return render_template('add_customer.html', salutations=salutations)
 
 # --- Add Supplier (New) ---
+
+@app.route('/api/extract_vat_from_pdf', methods=['POST'])
+@login_required
+def extract_vat_from_pdf():
+    if 'document' not in request.files:
+        return jsonify({'success': False, 'message': 'No document uploaded'}), 400
+
+    file = request.files['document']
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No selected file'}), 400
+
+    if not file.filename.lower().endswith('.pdf'):
+        return jsonify({'success': False, 'message': 'Only PDF files are supported'}), 400
+
+    try:
+        # Read PDF content
+        pdf_reader = PyPDF2.PdfReader(io.BytesIO(file.read()))
+        text = ""
+        for page in pdf_reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + " "
+
+        # "AI" Regex to find VAT Numbers
+        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789)
+        vat_pattern = r'(?i)VAT\s*(?:NO|NUMBER|#)?\s*[:\-\s]?\s*([A-Z0-9]{8,15})'
+        matches = re.findall(vat_pattern, text)
+
+        if matches:
+            # Return first distinct match
+            vat_no = matches[0].strip()
+            return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
+        else:
+            return jsonify({'success': False, 'message': 'No VAT number found in the document'})
+
+    except Exception as e:
+        app.logger.error(f"Error extracting VAT: {e}")
+        return jsonify({'success': False, 'message': 'Failed to process document'}), 500
+
+
 @app.route('/add_supplier', methods=['GET', 'POST'])
 @login_required
 def add_supplier():
