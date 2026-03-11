@@ -6409,6 +6409,129 @@ def pos_api_customers():
         })
     return json.dumps(custs)
 
+def _generate_pos_invoice_number(cursor, today_date):
+    """Helper to generate a new POS Invoice Number."""
+    cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
+    last_id = cursor.lastrowid
+    invoice_no = f"{today_date.year}POS-{last_id}"
+    cursor.execute("UPDATE pos_invoice_no SET IV_No = %s WHERE Id = %s", (invoice_no, last_id))
+    return invoice_no
+
+def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_pk, payment, customer, invoice_no, jv_no, today_date):
+    """Helper to process items, yielding total sales and total costs, and executing batch inserts."""
+    total_sale_value = 0
+    total_cost_value = 0
+    pos_sales_params = []
+    inventory_params = []
+    action_timestamp = datetime.now()
+
+    for item in cart:
+        total_sale_value += item['total']
+        total_cost_value += (item['cost'] * item['qty'])
+
+        # Prepare pos_sales_invoice_01 params
+        pos_sales_params.append((
+            item['code'], item['name'], item['unit'],
+            item['price_market'], item['price_special'], item['price_loyalty'],
+            settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+            current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+            payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
+            invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+        ))
+
+        # Prepare Inventory Movement OUT params
+        inventory_params.append((
+            item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+            current_user, jv_no, settings.get('location')
+        ))
+
+    # Batch Insert into pos_sales_invoice_01
+    if pos_sales_params:
+        cursor.executemany("""
+            INSERT INTO pos_sales_invoice_01 (
+                ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
+                Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
+                RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
+                CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+        """, pos_sales_params)
+
+    # Batch Insert into inventory_recod
+    if inventory_params:
+        cursor.executemany("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code, inventory_recod_action_date,
+                inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                inventory_recod_account, inventory_recod_user_id, JV_No,
+                inventory_recod_location
+            ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
+        """, inventory_params)
+
+    return total_sale_value, total_cost_value
+
+def _post_pos_gl_entries(cursor, settings, payment, total_sale_value, total_cost_value, today_date, invoice_no, current_user_pk, jv_no):
+    """Helper to post corresponding General Ledger entries for POS sale."""
+    # Debit Cash/Bank
+    ac_name = settings.get('cash_ac') if payment.get('method') == 1 else settings.get('bank_ac')
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
+
+    # Calculate VAT if enabled
+    vat_enabled = settings.get('vat_enable') == 1
+    vat_amount = 0
+    net_sales = total_sale_value
+
+    if vat_enabled:
+        # Fetch VAT Rate from Tax Settings if exists, else 18%
+        cursor.execute("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
+        res_vat = cursor.fetchone()
+        vat_rate = res_vat[0] if res_vat else 18.0
+
+        net_sales = total_sale_value / (1 + (vat_rate / 100))
+        vat_amount = total_sale_value - net_sales
+
+    # Credit Sales Account (Net)
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_CR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
+
+    # Credit VAT Control (If VAT > 0)
+    if vat_amount > 0:
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
+
+    # Cost of Goods Sold (DR COGS, CR Inventory)
+    if total_cost_value > 0:
+        # Debit Cost Of Goods Sold
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
+
+        # Credit Inventory
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
+
+
 @app.route('/pos/submit_sale', methods=['POST'])
 @login_required
 def submit_pos_sale():
@@ -6430,133 +6553,21 @@ def submit_pos_sale():
         conn.start_transaction()
 
         # 1. Generate Invoice No
-        cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
-        last_id = cursor.lastrowid
-        invoice_no = f"{today_date.year}POS-{last_id}"
-        cursor.execute("UPDATE pos_invoice_no SET IV_No = %s WHERE Id = %s", (invoice_no, last_id))
+        invoice_no = _generate_pos_invoice_number(cursor, today_date)
 
         # 2. Create JV
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM POS', f"POS Sale {invoice_no}"))
         jv_no = cursor.lastrowid
 
-        total_sale_value = 0
-        total_cost_value = 0
-
         # 3. Process Cart Items
-        pos_sales_params = []
-        inventory_params = []
-        action_timestamp = datetime.now()
-
-        for item in cart:
-            total_sale_value += item['total']
-            total_cost_value += (item['cost'] * item['qty'])
-
-            # Prepare pos_sales_invoice_01 params
-            pos_sales_params.append((
-                item['code'], item['name'], item['unit'],
-                item['price_market'], item['price_special'], item['price_loyalty'],
-                settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-                current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
-                current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
-                payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-                invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
-            ))
-
-            # Prepare Inventory Movement OUT params
-            inventory_params.append((
-                item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-                current_user, jv_no, settings.get('location')
-            ))
-
-        # Batch Insert into pos_sales_invoice_01
-        if pos_sales_params:
-            cursor.executemany("""
-                INSERT INTO pos_sales_invoice_01 (
-                    ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
-                    Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
-                    RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
-                    CashAccountName, BankAccountName, Invoice_No, Loyalty_No, Total_Value, jv, Revers
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
-            """, pos_sales_params)
-
-        # Batch Insert into inventory_recod
-        if inventory_params:
-            cursor.executemany("""
-                INSERT INTO inventory_recod (
-                    inventoy_name, inventoy_code, inventory_recod_action_date,
-                    inventory_recod_moument_in, inventory_recod_movment_out,
-                    inventory_recod_mesrmet, inventory_recod_unit_price,
-                    inventory_recod_account, inventory_recod_user_id, JV_No,
-                    inventory_recod_location
-                ) VALUES (%s, %s, %s, 0, %s, %s, %s, 'Cost Of Goods Sold', %s, %s, %s)
-            """, inventory_params)
+        total_sale_value, total_cost_value = _process_pos_cart_items(
+            cursor, cart, settings, current_user, current_user_pk, payment, customer, invoice_no, jv_no, today_date
+        )
 
         # 4. GL Entries
-        # Debit Cash/Bank
-        ac_name = settings.get('cash_ac') if payment.get('method') == 1 else settings.get('bank_ac')
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (ac_name, total_sale_value, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
-
-        # Calculate VAT if enabled
-        vat_enabled = settings.get('vat_enable') == 1
-        vat_amount = 0
-        net_sales = total_sale_value
-
-        if vat_enabled:
-            # Check company VAT rate or assume 18% (should be in tax_rates or system_settings)
-            # Defaulting to 15% as per Sri Lanka historical or dynamic.
-            # Ideally fetch from tax_rates table. For now, assume 18% (current SL rate) or similar.
-            # The prompt mentions "VAT Schedule of Sri Lanka".
-            # If VAT is inclusive in Price: Net = Total / (1 + Rate)
-            # If VAT is exclusive: Total = Net + (Net * Rate)
-            # POS usually implies tax inclusive pricing on shelf.
-
-            # Fetch VAT Rate from Tax Settings if exists, else 18%
-            cursor.execute("SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1")
-            res_vat = cursor.fetchone()
-            vat_rate = res_vat[0] if res_vat else 18.0
-
-            net_sales = total_sale_value / (1 + (vat_rate / 100))
-            vat_amount = total_sale_value - net_sales
-
-        # Credit Sales Account (Net)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Sales', net_sales, today_date, today_date, f"POS Sale {invoice_no}", current_user_pk, jv_no))
-
-        # Credit VAT Control (If VAT > 0)
-        if vat_amount > 0:
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', vat_amount, today_date, today_date, f"VAT on POS Sale {invoice_no}", current_user_pk, jv_no))
-
-        # Cost of Goods Sold (DR COGS, CR Inventory)
-        if total_cost_value > 0:
-            # Debit Cost Of Goods Sold
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Cost Of Goods Sold', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
-
-            # Credit Inventory
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('Inventory', total_cost_value, today_date, today_date, f"POS Sale {invoice_no} (COGS)", current_user_pk, jv_no))
+        _post_pos_gl_entries(
+            cursor, settings, payment, total_sale_value, total_cost_value, today_date, invoice_no, current_user_pk, jv_no
+        )
 
         conn.commit()
         return {'success': True, 'invoice_no': invoice_no, 'jv': jv_no}
