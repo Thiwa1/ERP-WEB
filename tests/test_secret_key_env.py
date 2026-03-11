@@ -19,6 +19,14 @@ class TestSecretKeyEnv(unittest.TestCase):
         test_key = "my_super_secret_test_key"
         os.environ['SECRET_KEY'] = test_key
 
+        # Set up mocks before importing app
+        sys.modules['jinja2'] = MagicMock()
+        sys.modules['num2words'] = MagicMock()
+        sys.modules['dotenv'] = MagicMock()
+        sys.modules['PyPDF2'] = MagicMock()
+        sys.modules['werkzeug'] = MagicMock()
+        sys.modules['werkzeug.security'] = MagicMock()
+
         # We need to reload app to pick up the env var change because
         # app.secret_key is set at module level
         if 'app' in sys.modules:
