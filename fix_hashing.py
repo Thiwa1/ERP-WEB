@@ -88,7 +88,7 @@ new_pos_login = """    if users:
                     new_hash = generate_password_hash(password)
                     db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
                 except Exception as e:
-                    print(f"Error migrating POS password: {e}")"""
+                    logging.error("Error migrating POS user password")"""
 if old_pos_login in text: text = text.replace(old_pos_login, new_pos_login)
 
 # 6. Handle main Login fallback
@@ -116,9 +116,9 @@ new_login = """        elif users:
                         new_hash = generate_password_hash(password)
                         db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
                     except Exception as e:
-                        print(f"Migration error: {e}")
+                        logging.error("Error migrating password for user")
             except Exception as e:
-                print(f"Password check error: {e}")
+                logging.error("Password check error")
 
             if verified:
                 session['user_id'] = user['User_Code']
