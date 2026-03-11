@@ -47,7 +47,6 @@ mock_flask.Response = MagicMock()
 # Now import app
 import app as app_module
 from app import app
-from datetime import date, datetime
 import json
 
 class TestUserManagement(unittest.TestCase):

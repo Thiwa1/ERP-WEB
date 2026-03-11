@@ -44,7 +44,6 @@ import tests.mock_env
 import app as app_module
 from app import app
 import json
-from datetime import datetime, date
 
 class TestSubmitInvoice(unittest.TestCase):
     def setUp(self):

@@ -2,7 +2,6 @@ import mysql.connector
 import os
 import sys
 import subprocess
-from datetime import date
 
 import getpass
 

@@ -2,7 +2,6 @@ import sys
 import unittest
 from unittest.mock import MagicMock, patch
 import json
-from datetime import date, datetime
 
 # --- MOCKING SETUP START ---
 # We must mock flask and mysql.connector BEFORE importing app

@@ -1,5 +1,4 @@
 import unittest
-from datetime import date
 from benchmark_ensure_default_accounts import original_logic, optimized_logic
 
 class MockDB:
