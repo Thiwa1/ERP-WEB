@@ -324,7 +324,7 @@ def parse_and_execute_sql(cursor, content):
                     raise e
             statement = ""
 
-def create_tenant_db(company_name, username, password, email):
+def create_tenant_db(company_name, username, password, email, mobile=None):
     """Creates a new tenant DB, runs schema, and registers in Master DB."""
     import re
 
@@ -385,9 +385,9 @@ def create_tenant_db(company_name, username, password, email):
         t_db = Database(t_db_conf)
 
         user_id = t_db.execute_query("""
-            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
-            VALUES (%s, %s, %s, '1001', 1)
-        """, (username, password, email), commit=True)
+            INSERT INTO Login_Table (User_Name, Password, Email, Mobile_No, User_Code, User_Active)
+            VALUES (%s, %s, %s, %s, '1001', 1)
+        """, (username, password, email, mobile), commit=True)
 
         # Grant all rights to the initial tenant admin user
         t_db.execute_query("""
@@ -428,8 +428,9 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
+        mobile = request.form.get('mobile')
 
-        success, message = create_tenant_db(company_name, username, password, email)
+        success, message = create_tenant_db(company_name, username, password, email, mobile)
         if success:
             flash(message, 'success')
             return redirect(url_for('login'))
