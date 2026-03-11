@@ -32,6 +32,10 @@ sys.modules['werkzeug.security'] = MagicMock()
 sys.modules['werkzeug.utils'] = MagicMock()
 sys.modules['num2words'] = MagicMock()
 sys.modules['dotenv'] = MagicMock()
+sys.modules['PyPDF2'] = MagicMock()
+
+import os
+os.environ['SECRET_KEY'] = 'test-secret-key-for-mock-env'
 
 # Import app (this might pick up a cached version)
 import app as app_module

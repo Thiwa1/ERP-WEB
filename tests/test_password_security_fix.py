@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch, ANY
 import sys
 import os
+import tests.mock_env
 from werkzeug.security import generate_password_hash
 
 # Add project root to path
