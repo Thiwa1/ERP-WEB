@@ -8160,11 +8160,20 @@ def create_outstanding_record(ctx: OutstandingRecordContext):
     """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
     return ctx.cursor.lastrowid
 
-def process_invoice_items_batch(
-    cursor, inv_items, non_inv_items,
-    jv_no, current_user, customer_name,
-    outstanding_id, location, inv_date, invoice_no
-):
+@dataclass
+class ProcessInvoiceItemsContext:
+    cursor: typing.Any
+    inv_items: list
+    non_inv_items: list
+    jv_no: str
+    current_user: int
+    customer_name: str
+    outstanding_id: int
+    location: str
+    inv_date: str
+    invoice_no: str
+
+def process_invoice_items_batch(ctx: ProcessInvoiceItemsContext):
     # Prepare batch data
     invoice_recode_batch = []
     inventory_recode_batch = []
@@ -8172,7 +8181,7 @@ def process_invoice_items_batch(
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     # Inventory Items
-    for item in inv_items:
+    for item in ctx.inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
         # Check schema capitalization. Given previous tables, sticking to lowercase match if possible or schema name.
         # Schema: Invoice_Recode
@@ -8180,11 +8189,11 @@ def process_invoice_items_batch(
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        cursor.execute("""
+        ctx.cursor.execute("""
             SELECT yeas_, month, date_ FROM inventory_vorenty_period
             WHERE name = %s LIMIT 1
         """, (item['name'],))
-        w_res = cursor.fetchone()
+        w_res = ctx.cursor.fetchone()
         if w_res:
             try:
                 years, months, days = w_res
@@ -8196,27 +8205,27 @@ def process_invoice_items_batch(
 
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', jv_no, current_user,
-            customer_name, 1, outstanding_id, item['unit'], current_time
+            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
         ))
 
         # Add to batch for Inventory_Recod
         inventory_recode_batch.append((
             item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-            current_user, current_time, location, inv_date, jv_no, outstanding_id, invoice_no
+            ctx.current_user, current_time, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
         ))
 
     # Non-Inventory Items
-    for item in non_inv_items:
+    for item in ctx.non_inv_items:
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', jv_no, current_user,
-            customer_name, 1, outstanding_id, item['unit'], current_time
+            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
         ))
 
     # Execute Batch Inserts
     if invoice_recode_batch:
-        cursor.executemany("""
+        ctx.cursor.executemany("""
             INSERT INTO Invoice_Recode (
                 Item_Name, Qty, Pricing, Inventory_Items_Or_Not, Natation, JV_No,
                 User, Customer_Name, Save_Or_Not, Buinding_To_Oustanding, mesurment,
@@ -8225,7 +8234,7 @@ def process_invoice_items_batch(
         """, invoice_recode_batch)
 
     if inventory_recode_batch:
-        cursor.executemany("""
+        ctx.cursor.executemany("""
             INSERT INTO inventory_recod (
                 inventoy_name, inventoy_code, inventory_recod_mesrmet,
                 inventory_recod_unit_price, inventory_recod_movment_out,
@@ -8392,11 +8401,19 @@ def submit_invoice():
         outstanding_id = create_outstanding_record(ctx)
 
         # 7. Insert Invoice Records (Details) & Update Inventory
-        process_invoice_items_batch(
-            cursor, inv_items, non_inv_items,
-            jv_no, current_user, customer_name,
-            outstanding_id, location, inv_date, invoice_no
+        items_ctx = ProcessInvoiceItemsContext(
+            cursor=cursor,
+            inv_items=inv_items,
+            non_inv_items=non_inv_items,
+            jv_no=jv_no,
+            current_user=current_user,
+            customer_name=customer_name,
+            outstanding_id=outstanding_id,
+            location=location,
+            inv_date=inv_date,
+            invoice_no=invoice_no
         )
+        process_invoice_items_batch(items_ctx)
 
         # 8. GL Entries
         gl_ctx = InvoiceGLContext(
