@@ -418,8 +418,8 @@ def create_tenant_db(company_name, username, password, email):
         return True, "Registration successful."
 
     except Exception as e:
-        print(f"Registration Error: {e}")
-        return False, str(e)
+        logging.error("Registration Error occurred.")
+        return False, "An error occurred during registration."
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -631,7 +631,7 @@ def check_permission(perm_name):
             return True
 
     except Exception as e:
-        logging.error(f"Permission check error: {e}")
+        logging.error("Permission check error.")
         return False
     return False
 
@@ -694,7 +694,7 @@ def login():
                     flash('Incorrect password.', 'danger')
                     return redirect(url_for('login'))
         except Exception as e:
-            print(f"Master Login Error: {e}")
+            logging.error("Master Login Error occurred.")
             # Fallthrough to legacy
 
         # 2. Fallback to Legacy Login (Default DB)
@@ -3342,12 +3342,13 @@ def add_new_user():
                     ON DUPLICATE KEY UPDATE password=VALUES(password), email=VALUES(email)
                 """, (username, pw_hash, email, tenant_id), commit=True)
         except Exception as master_e:
-            logging.error(f"Error syncing new user to master DB: {master_e}")
+            logging.error("Error syncing new user to master DB")
 
         flash(f'User {username} created successfully.', 'success')
     except Exception as e:
         conn.rollback()
-        flash(f'Error creating user: {str(e)}', 'danger')
+        logging.error("Database error while creating user.")
+        flash('Error creating user. Please try again.', 'danger')
     finally:
         cursor.close()
         conn.close()
@@ -3436,11 +3437,12 @@ def update_user_details():
                         WHERE username = (SELECT User_Name FROM (SELECT User_Name FROM Login_Table WHERE id = %s) as t) AND tenant_id = %s
                     """, (username, email, user_id, tenant_id), commit=True)
         except Exception as master_e:
-            logging.error(f"Error syncing user update to master DB: {master_e}")
+            logging.error("Error syncing user update to master DB")
 
         flash('User details updated successfully', 'success')
     except Exception as e:
-        flash(f'Error updating user: {str(e)}', 'danger')
+        logging.error("Database error while updating user.")
+        flash('Error updating user. Please try again.', 'danger')
 
     return redirect(url_for('admin_users'))
 
@@ -7517,7 +7519,7 @@ def create_default_user():
         else:
             logging.info("Users exist in database. Skipping default user creation.")
     except Exception as e:
-        logging.error(f"Error creating default user: {e}")
+        logging.error("Error creating default user.")
 
 def ensure_default_categories(target_db=None):
     """Ensures default Balance Sheet and P&L categories exist."""
