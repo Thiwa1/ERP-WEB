@@ -11,6 +11,7 @@ sys.modules['dotenv'] = MagicMock()
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
 sys.modules['num2words'] = MagicMock()
+sys.modules['PyPDF2'] = MagicMock()
 
 def mock_login_required(f):
     return f
