@@ -47,6 +47,31 @@ sys.modules['flask'] = mock_flask_module
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
 
+
+# Define pass_context explicitly
+def mock_pass_context(*args, **kwargs):
+    if len(args) == 1 and callable(args[0]):
+        return args[0]
+    def decorator(f):
+        return f
+    return decorator
+
+# Create mock module
+class MockJinja2:
+    pass_context = mock_pass_context
+    Environment = MagicMock()
+    FileSystemLoader = MagicMock()
+    select_autoescape = MagicMock()
+
+sys.modules['jinja2'] = MockJinja2()
+
+sys.modules['werkzeug'] = MagicMock()
+sys.modules['werkzeug.security'] = MagicMock()
+sys.modules['dotenv'] = MagicMock()
+sys.modules['num2words'] = MagicMock()
+sys.modules['PyPDF2'] = MagicMock()
+
+
 # --- Import App ---
 import app as app_module
 import unittest
@@ -130,8 +155,8 @@ class TestPOSSale(unittest.TestCase):
             self.assertTrue(any("INSERT INTO pos_invoice_no" in c for c in calls))
             self.assertTrue(any("UPDATE pos_invoice_no" in c for c in calls))
             self.assertTrue(any("INSERT INTO jv_numbers" in c for c in calls))
-            self.assertTrue(any("INSERT INTO pos_sales_invoice_01" in c for c in calls))
-            self.assertTrue(any("INSERT INTO inventory_recod" in c for c in calls))
+            self.assertTrue(any("INSERT INTO pos_sales_invoice_01" in c for c in [str(call) for call in mock_cursor.executemany.call_args_list]))
+            self.assertTrue(any("INSERT INTO inventory_recod" in c for c in [str(call) for call in mock_cursor.executemany.call_args_list]))
 
             # Verify GL Entries (Cash & Sales)
             # We look for param matches in the call args

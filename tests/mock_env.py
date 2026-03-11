@@ -55,6 +55,9 @@ sys.modules['mysql.connector'] = mock_mysql
 mock_flask = MagicMock()
 sys.modules['flask'] = mock_flask
 
+import os
+os.environ['SECRET_KEY'] = 'test-secret-key-for-mock-env'
+
 # Configure specific Flask mocks that are imported directly
 # When Flask() is instantiated, it returns a MagicMock
 # We need to ensure that instance has .config dictionary
@@ -142,5 +145,6 @@ import sys
 from unittest.mock import MagicMock
 
 # Mock PyPDF2
-mock_pypdf2 = MagicMock()
-sys.modules['PyPDF2'] = mock_pypdf2
+if 'PyPDF2' not in sys.modules:
+    mock_pypdf2 = MagicMock()
+    sys.modules['PyPDF2'] = mock_pypdf2

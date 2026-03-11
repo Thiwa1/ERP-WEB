@@ -12,6 +12,10 @@ sys.modules['werkzeug.utils'] = MagicMock()
 sys.modules['flask'] = MagicMock()
 sys.modules['num2words'] = MagicMock()
 sys.modules['dotenv'] = MagicMock()
+sys.modules['PyPDF2'] = MagicMock()
+
+import os
+os.environ['SECRET_KEY'] = 'test-secret-key-for-mock-env'
 
 import app
 

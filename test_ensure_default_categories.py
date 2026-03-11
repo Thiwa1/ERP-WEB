@@ -1,7 +1,6 @@
 import sys
 from unittest.mock import MagicMock
 import unittest
-from datetime import date
 
 # Mock external dependencies
 sys.modules['flask'] = MagicMock()
