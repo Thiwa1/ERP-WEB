@@ -4644,7 +4644,10 @@ def inventory_reports():
                 inventory_recod_action_date as date,
                 inventory_recodcol_memo as description,
                 inventory_recod_moument_in as in_qty,
-                inventory_recod_movment_out as out_qty
+                inventory_recod_movment_out as out_qty,
+                inventory_recod_suplier_iv_no as iv_no,
+                inventory_recod_unit_price as purchasing_price,
+                inventory_recod_selling_price as selling_price
             FROM inventory_recod
             WHERE inventoy_name = %s AND inventory_recod_action_date BETWEEN %s AND %s
             ORDER BY inventory_recod_action_date
@@ -4654,6 +4657,7 @@ def inventory_reports():
         for m in mvs:
             curr += float(m['in_qty']) - float(m['out_qty'])
             m['balance'] = curr
+            m['balance_value'] = curr * float(m['purchasing_price'] or 0)
             report_data.append(m)
 
     return render_template('inventory_reports.html', report_type=report_type, items=items, report_data=report_data, item_name=item_name, from_date=from_date, to_date=to_date, opening_balance=opening_balance)
