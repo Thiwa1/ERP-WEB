@@ -117,6 +117,24 @@ THEMES = {
         'primary': '#000000',
         'secondary': '#1a1a1a',
         'accent': '#ffcc00'
+    },
+    'sap_neutral_deep': {
+        'name': 'SAP Neutral Deep',
+        'primary': '#00305D',
+        'secondary': '#003B72',
+        'accent': '#0055A5'
+    },
+    'sap_neutral_mid': {
+        'name': 'SAP Neutral Mid',
+        'primary': '#0065C3',
+        'secondary': '#0074E2',
+        'accent': '#168EFF'
+    },
+    'sap_neutral_light': {
+        'name': 'SAP Neutral Light',
+        'primary': '#3FA2FF',
+        'secondary': '#62B3FF',
+        'accent': '#8BC7FF'
     }
 }
 
