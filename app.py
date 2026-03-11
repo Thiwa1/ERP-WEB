@@ -6245,6 +6245,64 @@ def pos_api_customers():
         })
     return json.dumps(custs)
 
+@app.route('/api/pos/add_loyalty_customer', methods=['POST'])
+@login_required
+def pos_api_add_loyalty_customer():
+    data = request.json
+    name = data.get('name')
+    mobile = data.get('mobile')
+    email = data.get('email', '')
+    billing_address = data.get('billing_address', '')
+    delivery_address = data.get('delivery_address', '')
+    amount_paid = data.get('amount_paid', 0)
+
+    if not name or not mobile:
+        return {'success': False, 'error': 'Name and Mobile Number are required'}
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Determine max id to generate customer_code
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM customer")
+        max_id = cursor.fetchone()[0]
+        customer_code = max_id + 60001
+
+        query = """
+            INSERT INTO customer (
+                customer_name, customer_code, customer_Billing_Address, costomer_Delivery_Address,
+                e_mail, coustomer_credit_limit, Mobile_nimber, Is_Loyality_Customer, Compay_Or_Not,
+                Create_Date, Paid_Amountl, Create_Cashiyer
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        # Note: Depending on the schema, Paid_Amountl might be a string or number,
+        # and Is_Loyality_Customer might be a boolean/tinyint.
+        cursor.execute(query, (
+            name, str(customer_code), billing_address, delivery_address,
+            email, 1, mobile, 1, 0,
+            datetime.utcnow(), amount_paid, 0
+        ))
+
+        conn.commit()
+
+        # Fetch the new customer details to return
+        new_customer_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        return {
+            'success': True,
+            'customer': {
+                'id': new_customer_id,
+                'name': name,
+                'mobile': mobile
+            }
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return {'success': False, 'error': str(e)}
+
 def _generate_pos_invoice_number(cursor, today_date):
     """Helper to generate a new POS Invoice Number."""
     cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")

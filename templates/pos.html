@@ -14,6 +14,47 @@
     }
 </style>
 
+<!-- New Loyalty Customer Modal -->
+<div class="modal fade" id="newCustomerModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header text-white" style="background-color: #2C3E50;">
+                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Registration of Loyalty Customer</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Customer Name</label>
+                    <input type="text" class="form-control" id="newCustName" placeholder="Enter name">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Billing Address</label>
+                    <input type="text" class="form-control" id="newCustBillAddr" placeholder="Enter billing address">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Delivery Address</label>
+                    <input type="text" class="form-control" id="newCustDelAddr" placeholder="Enter delivery address">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">E-Mail</label>
+                    <input type="email" class="form-control" id="newCustEmail" placeholder="Enter email">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Mobile No</label>
+                    <input type="text" class="form-control" id="newCustMobile" placeholder="Enter mobile number">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Amount Paid</label>
+                    <input type="number" class="form-control" id="newCustAmount" placeholder="0.00" value="0">
+                </div>
+                <div class="d-grid mt-4">
+                    <button type="button" class="btn fw-bold" style="background-color: #3498DB; color: white;" onclick="submitNewCustomer()">Submit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Main POS Interface -->
 <div class="container-fluid py-3" id="posInterface">
 
@@ -99,7 +140,8 @@
                         <label class="small text-uppercase text-light opacity-75 fw-bold">Customer (Loyalty)</label>
                         <div class="input-group">
                             <input type="text" class="form-control border-0 fw-bold" id="customerPhone" placeholder="Mobile Number" onblur="checkLoyalty()">
-                            <button class="btn btn-light" type="button"><i class="fas fa-search"></i></button>
+                            <button class="btn btn-light" type="button" onclick="checkLoyalty()"><i class="fas fa-search"></i></button>
+                            <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#newCustomerModal" title="Add New Customer"><i class="fas fa-user-plus"></i></button>
                         </div>
                         <div id="customerName" class="mt-1 fw-bold text-warning small">-</div>
                     </div>
@@ -218,12 +260,17 @@
     function insertNumber(num) {
         if (!lastFocusedInput) lastFocusedInput = document.getElementById('itemInput');
 
-        const start = lastFocusedInput.selectionStart;
-        const end = lastFocusedInput.selectionEnd;
-        const val = lastFocusedInput.value;
+        // Use standard append for number inputs (selectionStart throws an error on input type="number" in some browsers)
+        if (lastFocusedInput.type === 'number') {
+            lastFocusedInput.value = lastFocusedInput.value + num;
+        } else {
+            const start = lastFocusedInput.selectionStart;
+            const end = lastFocusedInput.selectionEnd;
+            const val = lastFocusedInput.value;
 
-        lastFocusedInput.value = val.substring(0, start) + num + val.substring(end);
-        lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start + 1;
+            lastFocusedInput.value = val.substring(0, start) + num + val.substring(end);
+            lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start + 1;
+        }
         lastFocusedInput.focus();
 
         // Trigger input event
@@ -232,14 +279,19 @@
 
     function handleBackspace() {
         if (!lastFocusedInput) return;
-        const start = lastFocusedInput.selectionStart;
-        const val = lastFocusedInput.value;
 
-        if (start > 0) {
-            lastFocusedInput.value = val.substring(0, start - 1) + val.substring(start);
-            lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start - 1;
-            lastFocusedInput.dispatchEvent(new Event('input'));
+        if (lastFocusedInput.type === 'number') {
+             lastFocusedInput.value = lastFocusedInput.value.slice(0, -1);
+        } else {
+            const start = lastFocusedInput.selectionStart;
+            const val = lastFocusedInput.value;
+
+            if (start > 0) {
+                lastFocusedInput.value = val.substring(0, start - 1) + val.substring(start);
+                lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start - 1;
+            }
         }
+        lastFocusedInput.dispatchEvent(new Event('input'));
         lastFocusedInput.focus();
     }
 
@@ -265,6 +317,62 @@
                 document.getElementById(inputs[idx + 1]).focus();
             }
         }
+    }
+
+    function submitNewCustomer() {
+        const name = document.getElementById('newCustName').value;
+        const mobile = document.getElementById('newCustMobile').value;
+        const email = document.getElementById('newCustEmail').value;
+        const billing_address = document.getElementById('newCustBillAddr').value;
+        const delivery_address = document.getElementById('newCustDelAddr').value;
+        const amount_paid = document.getElementById('newCustAmount').value || 0;
+
+        if (!name || !mobile) {
+            alert('Name and Mobile Number are required.');
+            return;
+        }
+
+        const payload = {
+            name: name,
+            mobile: mobile,
+            email: email,
+            billing_address: billing_address,
+            delivery_address: delivery_address,
+            amount_paid: parseFloat(amount_paid)
+        };
+
+        fetch('/api/pos/add_loyalty_customer', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                alert("Customer created successfully!");
+                // Add to cache
+                customersCache.push(data.customer);
+
+                // Auto-select the new customer
+                document.getElementById('customerPhone').value = data.customer.mobile;
+                checkLoyalty();
+
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('newCustomerModal')).hide();
+
+                // Clear form
+                document.getElementById('newCustName').value = '';
+                document.getElementById('newCustMobile').value = '';
+                document.getElementById('newCustEmail').value = '';
+                document.getElementById('newCustBillAddr').value = '';
+                document.getElementById('newCustDelAddr').value = '';
+                document.getElementById('newCustAmount').value = '0';
+
+                document.getElementById('itemInput').focus();
+            } else {
+                alert("Error creating customer: " + data.error);
+            }
+        });
     }
 
     // --- 2. Client-Side Caching ---
