@@ -324,7 +324,7 @@ def parse_and_execute_sql(cursor, content):
                     raise e
             statement = ""
 
-def create_tenant_db(company_name, username, password, email):
+def create_tenant_db(company_name, username, password, email, mobile=None):
     """Creates a new tenant DB, runs schema, and registers in Master DB."""
     import re
 
@@ -385,9 +385,9 @@ def create_tenant_db(company_name, username, password, email):
         t_db = Database(t_db_conf)
 
         user_id = t_db.execute_query("""
-            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
-            VALUES (%s, %s, %s, '1001', 1)
-        """, (username, password, email), commit=True)
+            INSERT INTO Login_Table (User_Name, Password, Email, Mobile_No, User_Code, User_Active)
+            VALUES (%s, %s, %s, %s, '1001', 1)
+        """, (username, password, email, mobile), commit=True)
 
         # Grant all rights to the initial tenant admin user
         t_db.execute_query("""
@@ -428,8 +428,9 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
+        mobile = request.form.get('mobile')
 
-        success, message = create_tenant_db(company_name, username, password, email)
+        success, message = create_tenant_db(company_name, username, password, email, mobile)
         if success:
             flash(message, 'success')
             return redirect(url_for('login'))
@@ -6176,59 +6177,32 @@ def add_pos_user():
 def pos():
     return render_template('pos.html')
 
-@app.route('/api/pos/login', methods=['POST'])
+@app.route('/api/pos/settings', methods=['GET'])
 @login_required
-def pos_api_login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
+def pos_api_settings():
+    username = session.get('username')
 
     # Verify against pose_setting_table
     users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
 
     if users:
         settings = users[0]
-        stored_password = settings.get('Password', '')
-        verified = False
-
-        # 1. Try Hash Verification
-        try:
-            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                if check_password_hash(stored_password, password):
-                    verified = True
-            else:
-                raise ValueError("Not a valid hash")
-        except ValueError:
-            # stored_password might not be a valid hash format (e.g. plain text)
-            pass
-
-        # 2. Fallback to Plain Text (Legacy Support & Migration)
-        if not verified:
-            if stored_password == password:
-                verified = True
-                try:
-                    new_hash = generate_password_hash(password)
-                    db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
-                except Exception as e:
-                    logging.error("Error migrating POS user password")
-
-        if verified:
-            return {
-                'success': True,
-                'settings': {
-                    'location': settings['Select_Inventry_Location'],
-                    'card_ac': settings['Card_Control_AC'],
-                    'cash_ac': settings['Cash_Account'],
-                    'market_price': settings['Sales_with_market_price'],
-                    'special_price': settings['Sales_with_Special_price'],
-                    'loyalty_price': settings['Loyalty_Price'],
-                    'vat_enable': settings['VAT_Enable'],
-                    'footer': settings['Footer_Message'],
-                    'top': settings['Top_Message']
-                }
+        return {
+            'success': True,
+            'settings': {
+                'location': settings['Select_Inventry_Location'],
+                'card_ac': settings['Card_Control_AC'],
+                'cash_ac': settings['Cash_Account'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
+                'vat_enable': settings['VAT_Enable'],
+                'footer': settings['Footer_Message'],
+                'top': settings['Top_Message']
             }
+        }
 
-    return {'success': False, 'error': 'Invalid POS Credentials'}
+    return {'success': False, 'error': 'POS settings not found for current user'}
 
 @app.route('/api/pos/items', methods=['GET'])
 @login_required
@@ -6275,6 +6249,64 @@ def pos_api_customers():
             'mobile': r['Mobile_nimber']
         })
     return json.dumps(custs)
+
+@app.route('/api/pos/add_loyalty_customer', methods=['POST'])
+@login_required
+def pos_api_add_loyalty_customer():
+    data = request.json
+    name = data.get('name')
+    mobile = data.get('mobile')
+    email = data.get('email', '')
+    billing_address = data.get('billing_address', '')
+    delivery_address = data.get('delivery_address', '')
+    amount_paid = data.get('amount_paid', 0)
+
+    if not name or not mobile:
+        return {'success': False, 'error': 'Name and Mobile Number are required'}
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Determine max id to generate customer_code
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM customer")
+        max_id = cursor.fetchone()[0]
+        customer_code = max_id + 60001
+
+        query = """
+            INSERT INTO customer (
+                customer_name, customer_code, customer_Billing_Address, costomer_Delivery_Address,
+                e_mail, coustomer_credit_limit, Mobile_nimber, Is_Loyality_Customer, Compay_Or_Not,
+                Create_Date, Paid_Amountl, Create_Cashiyer
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        # Note: Depending on the schema, Paid_Amountl might be a string or number,
+        # and Is_Loyality_Customer might be a boolean/tinyint.
+        cursor.execute(query, (
+            name, str(customer_code), billing_address, delivery_address,
+            email, 1, mobile, 1, 0,
+            datetime.utcnow(), amount_paid, 0
+        ))
+
+        conn.commit()
+
+        # Fetch the new customer details to return
+        new_customer_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        return {
+            'success': True,
+            'customer': {
+                'id': new_customer_id,
+                'name': name,
+                'mobile': mobile
+            }
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return {'success': False, 'error': str(e)}
 
 def _generate_pos_invoice_number(cursor, today_date):
     """Helper to generate a new POS Invoice Number."""

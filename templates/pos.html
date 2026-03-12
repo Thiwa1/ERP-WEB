@@ -1,33 +1,62 @@
 {% extends "base.html" %}
 
 {% block content %}
-<!-- POS Login Modal -->
-<div class="modal fade" id="posLoginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+<style>
+    /* Hide the sidebar and top navbar for the POS page */
+    .sidebar, .top-navbar {
+        display: none !important;
+    }
+
+    /* Make the main content use full width and remove margin */
+    .main-content {
+        margin-left: 0 !important;
+        padding: 0 !important;
+    }
+</style>
+
+<!-- New Loyalty Customer Modal -->
+<div class="modal fade" id="newCustomerModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white" style="background-color: var(--primary-color);">
-                <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i> POS LOGIN</h5>
-                <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="location.href='/'"></button>
+            <div class="modal-header text-white" style="background-color: #2C3E50;">
+                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Registration of Loyalty Customer</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
-            <div class="modal-body p-4">
+            <div class="modal-body p-4 bg-light">
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Cashier Username</label>
-                    <input type="text" class="form-control" id="posUser" value="{{ session.get('username', '') }}" readonly>
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Customer Name</label>
+                    <input type="text" class="form-control" id="newCustName" placeholder="Enter name">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label fw-bold">Confirm Password</label>
-                    <input type="password" class="form-control" id="posPass" placeholder="Enter Password">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Billing Address</label>
+                    <input type="text" class="form-control" id="newCustBillAddr" placeholder="Enter billing address">
                 </div>
-                <div class="d-grid">
-                    <button type="button" class="btn btn-primary fw-bold" onclick="posLogin()">LOGIN TO POS</button>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Delivery Address</label>
+                    <input type="text" class="form-control" id="newCustDelAddr" placeholder="Enter delivery address">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">E-Mail</label>
+                    <input type="email" class="form-control" id="newCustEmail" placeholder="Enter email">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Mobile No</label>
+                    <input type="text" class="form-control" id="newCustMobile" placeholder="Enter mobile number">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold" style="color: #2C3E50;">Amount Paid</label>
+                    <input type="number" class="form-control" id="newCustAmount" placeholder="0.00" value="0">
+                </div>
+                <div class="d-grid mt-4">
+                    <button type="button" class="btn fw-bold" style="background-color: #3498DB; color: white;" onclick="submitNewCustomer()">Submit</button>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- Main POS Interface (Hidden initially) -->
-<div class="container-fluid py-3" id="posInterface" style="display:none;">
+<!-- Main POS Interface -->
+<div class="container-fluid py-3" id="posInterface">
 
     <!-- Top Bar -->
     <div class="row mb-3 align-items-center bg-white p-2 rounded shadow-sm mx-0">
@@ -105,50 +134,78 @@
         <!-- Right: Totals & Payment -->
         <div class="col-md-4">
             <div class="card h-100 shadow-sm border-0" style="background-color: var(--primary-color);">
-                <div class="card-body text-white d-flex flex-column">
+                <div class="card-body text-white d-flex flex-column p-2">
                     <!-- Customer Info -->
-                    <div class="mb-3 p-2 bg-white bg-opacity-10 rounded">
+                    <div class="mb-2 p-2 bg-white bg-opacity-10 rounded">
                         <label class="small text-uppercase text-light opacity-75 fw-bold">Customer (Loyalty)</label>
                         <div class="input-group">
                             <input type="text" class="form-control border-0 fw-bold" id="customerPhone" placeholder="Mobile Number" onblur="checkLoyalty()">
-                            <button class="btn btn-light" type="button"><i class="fas fa-search"></i></button>
+                            <button class="btn btn-light" type="button" onclick="checkLoyalty()"><i class="fas fa-search"></i></button>
+                            <button class="btn btn-success" type="button" data-bs-toggle="modal" data-bs-target="#newCustomerModal" title="Add New Customer"><i class="fas fa-user-plus"></i></button>
                         </div>
                         <div id="customerName" class="mt-1 fw-bold text-warning small">-</div>
                     </div>
 
                     <!-- Totals Display -->
                     <div class="flex-grow-1 d-flex flex-column justify-content-center text-center">
-                        <div class="mb-2 opacity-75">TOTAL AMOUNT</div>
-                        <div class="display-3 fw-bold" id="grandTotal">0.00</div>
-                        <div class="mt-2 text-warning fw-bold" id="savingsDisplay" style="display:none;">
+                        <div class="mb-1 opacity-75">TOTAL AMOUNT</div>
+                        <div class="display-4 fw-bold" id="grandTotal">0.00</div>
+                        <div class="mt-1 text-warning fw-bold" id="savingsDisplay" style="display:none;">
                             YOU SAVED: <span id="totalSavings">0.00</span>
                         </div>
                     </div>
 
-                    <!-- Numpad & Actions -->
-                    <div class="bg-white p-3 rounded text-dark">
+                    <!-- Number Pad -->
+                    <div class="bg-white p-2 rounded text-dark mt-2 mb-2">
+                        <div class="row g-1 mb-1">
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('1')">1</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('2')">2</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('3')">3</button></div>
+                        </div>
+                        <div class="row g-1 mb-1">
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('4')">4</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('5')">5</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('6')">6</button></div>
+                        </div>
+                        <div class="row g-1 mb-1">
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('7')">7</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('8')">8</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('9')">9</button></div>
+                        </div>
+                        <div class="row g-1">
+                            <div class="col-4"><button class="btn btn-danger w-100 py-2 fw-bold" onclick="handleClear()">C</button></div>
+                            <div class="col-4"><button class="btn btn-outline-secondary w-100 py-2 fs-5 fw-bold" onclick="insertNumber('0')">0</button></div>
+                            <div class="col-4"><button class="btn btn-warning w-100 py-2 fw-bold" onclick="handleBackspace()"><i class="fas fa-backspace"></i></button></div>
+                        </div>
+                        <div class="row g-1 mt-1">
+                            <div class="col-12"><button class="btn btn-primary w-100 py-2 fw-bold" onclick="handleEnter()">ENTER</button></div>
+                        </div>
+                    </div>
+
+                    <!-- Payment Actions -->
+                    <div class="bg-white p-2 rounded text-dark">
                         <!-- Quick Cash -->
-                        <div class="row g-2 mb-3">
+                        <div class="row g-2 mb-2">
                             <div class="col-6">
-                                <label class="fw-bold">Cash Paid</label>
-                                <input type="number" class="form-control form-control-lg fw-bold text-end" id="cashPaid" placeholder="0.00" oninput="calcChange()">
+                                <label class="fw-bold small">Cash Paid</label>
+                                <input type="number" class="form-control fw-bold text-end" id="cashPaid" placeholder="0.00" oninput="calcChange()">
                             </div>
                             <div class="col-6">
-                                <label class="fw-bold">Change</label>
-                                <input type="text" class="form-control form-control-lg fw-bold text-end text-danger" id="changeDue" readonly value="0.00">
+                                <label class="fw-bold small">Change</label>
+                                <input type="text" class="form-control fw-bold text-end text-danger" id="changeDue" readonly value="0.00">
                             </div>
                         </div>
 
                         <!-- Pay Buttons -->
                         <div class="row g-2">
                             <div class="col-6">
-                                <button class="btn btn-success w-100 py-3 fw-bold fs-5" onclick="processPayment(1)">
-                                    <i class="fas fa-money-bill-wave d-block mb-1"></i> CASH
+                                <button class="btn btn-success w-100 py-2 fw-bold" onclick="processPayment(1)">
+                                    <i class="fas fa-money-bill-wave me-1"></i> CASH
                                 </button>
                             </div>
                             <div class="col-6">
-                                <button class="btn btn-info text-white w-100 py-3 fw-bold fs-5" onclick="processPayment(2)">
-                                    <i class="fas fa-credit-card d-block mb-1"></i> CARD
+                                <button class="btn btn-info text-white w-100 py-2 fw-bold" onclick="processPayment(2)">
+                                    <i class="fas fa-credit-card me-1"></i> CARD
                                 </button>
                             </div>
                         </div>
@@ -168,40 +225,152 @@
     let cart = [];
     let currentItem = null;
     let loyaltyCustomer = null;
+    let lastFocusedInput = null;
 
     // --- Startup ---
     document.addEventListener('DOMContentLoaded', () => {
-        // Show Login Modal
-        new bootstrap.Modal(document.getElementById('posLoginModal')).show();
+        // Fetch POS settings automatically since the user is already logged into the system
+        fetch('/api/pos/settings')
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    posSettings = data.settings;
+                    loadCache(); // Load Items/Customers
+                    document.getElementById('itemInput').focus();
+                } else {
+                    alert("Failed to load POS Settings: " + data.error);
+                }
+            });
 
         // Start Clock
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString();
         }, 1000);
+
+        // Track active input for Numpad
+        document.querySelectorAll('input[type="text"], input[type="number"]').forEach(input => {
+            input.addEventListener('focus', () => {
+                lastFocusedInput = input;
+            });
+        });
+        lastFocusedInput = document.getElementById('itemInput');
     });
 
-    // --- 1. Login & Load Settings ---
-    function posLogin() {
-        const pass = document.getElementById('posPass').value;
-        const user = document.getElementById('posUser').value;
+    // --- 1. Numpad Logic ---
+    function insertNumber(num) {
+        if (!lastFocusedInput) lastFocusedInput = document.getElementById('itemInput');
 
-        if(!pass) return alert("Enter password");
+        // Use standard append for number inputs (selectionStart throws an error on input type="number" in some browsers)
+        if (lastFocusedInput.type === 'number') {
+            lastFocusedInput.value = lastFocusedInput.value + num;
+        } else {
+            const start = lastFocusedInput.selectionStart;
+            const end = lastFocusedInput.selectionEnd;
+            const val = lastFocusedInput.value;
 
-        fetch('/api/pos/login', {
+            lastFocusedInput.value = val.substring(0, start) + num + val.substring(end);
+            lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start + 1;
+        }
+        lastFocusedInput.focus();
+
+        // Trigger input event
+        lastFocusedInput.dispatchEvent(new Event('input'));
+    }
+
+    function handleBackspace() {
+        if (!lastFocusedInput) return;
+
+        if (lastFocusedInput.type === 'number') {
+             lastFocusedInput.value = lastFocusedInput.value.slice(0, -1);
+        } else {
+            const start = lastFocusedInput.selectionStart;
+            const val = lastFocusedInput.value;
+
+            if (start > 0) {
+                lastFocusedInput.value = val.substring(0, start - 1) + val.substring(start);
+                lastFocusedInput.selectionStart = lastFocusedInput.selectionEnd = start - 1;
+            }
+        }
+        lastFocusedInput.dispatchEvent(new Event('input'));
+        lastFocusedInput.focus();
+    }
+
+    function handleClear() {
+        if (!lastFocusedInput) return;
+        lastFocusedInput.value = '';
+        lastFocusedInput.dispatchEvent(new Event('input'));
+        lastFocusedInput.focus();
+    }
+
+    function handleEnter() {
+        if (!lastFocusedInput) return;
+
+        if (lastFocusedInput.id === 'itemInput' || lastFocusedInput.id === 'itemQty') {
+            addItemToCart();
+        } else if (lastFocusedInput.id === 'cashPaid') {
+            processPayment(1); // Default to Cash
+        } else {
+            // Move focus to next logical element
+            const inputs = ['itemInput', 'itemQty', 'customerPhone', 'cashPaid'];
+            const idx = inputs.indexOf(lastFocusedInput.id);
+            if (idx > -1 && idx < inputs.length - 1) {
+                document.getElementById(inputs[idx + 1]).focus();
+            }
+        }
+    }
+
+    function submitNewCustomer() {
+        const name = document.getElementById('newCustName').value;
+        const mobile = document.getElementById('newCustMobile').value;
+        const email = document.getElementById('newCustEmail').value;
+        const billing_address = document.getElementById('newCustBillAddr').value;
+        const delivery_address = document.getElementById('newCustDelAddr').value;
+        const amount_paid = document.getElementById('newCustAmount').value || 0;
+
+        if (!name || !mobile) {
+            alert('Name and Mobile Number are required.');
+            return;
+        }
+
+        const payload = {
+            name: name,
+            mobile: mobile,
+            email: email,
+            billing_address: billing_address,
+            delivery_address: delivery_address,
+            amount_paid: parseFloat(amount_paid)
+        };
+
+        fetch('/api/pos/add_loyalty_customer', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: user, password: pass})
+            body: JSON.stringify(payload)
         })
         .then(r => r.json())
         .then(data => {
-            if(data.success) {
-                posSettings = data.settings;
-                bootstrap.Modal.getInstance(document.getElementById('posLoginModal')).hide();
-                document.getElementById('posInterface').style.display = 'block';
-                loadCache(); // Load Items/Customers
+            if (data.success) {
+                alert("Customer created successfully!");
+                // Add to cache
+                customersCache.push(data.customer);
+
+                // Auto-select the new customer
+                document.getElementById('customerPhone').value = data.customer.mobile;
+                checkLoyalty();
+
+                // Close modal
+                bootstrap.Modal.getInstance(document.getElementById('newCustomerModal')).hide();
+
+                // Clear form
+                document.getElementById('newCustName').value = '';
+                document.getElementById('newCustMobile').value = '';
+                document.getElementById('newCustEmail').value = '';
+                document.getElementById('newCustBillAddr').value = '';
+                document.getElementById('newCustDelAddr').value = '';
+                document.getElementById('newCustAmount').value = '0';
+
                 document.getElementById('itemInput').focus();
             } else {
-                alert("Login Failed: " + data.error);
+                alert("Error creating customer: " + data.error);
             }
         });
     }
