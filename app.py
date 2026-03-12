@@ -4644,7 +4644,10 @@ def inventory_reports():
                 inventory_recod_action_date as date,
                 inventory_recodcol_memo as description,
                 inventory_recod_moument_in as in_qty,
-                inventory_recod_movment_out as out_qty
+                inventory_recod_movment_out as out_qty,
+                inventory_recod_suplier_iv_no as iv_no,
+                inventory_recod_unit_price as purchasing_price,
+                inventory_recod_selling_price as selling_price
             FROM inventory_recod
             WHERE inventoy_name = %s AND inventory_recod_action_date BETWEEN %s AND %s
             ORDER BY inventory_recod_action_date
@@ -4654,6 +4657,7 @@ def inventory_reports():
         for m in mvs:
             curr += float(m['in_qty']) - float(m['out_qty'])
             m['balance'] = curr
+            m['balance_value'] = curr * float(m['purchasing_price'] or 0)
             report_data.append(m)
 
     return render_template('inventory_reports.html', report_type=report_type, items=items, report_data=report_data, item_name=item_name, from_date=from_date, to_date=to_date, opening_balance=opening_balance)
@@ -8053,7 +8057,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
     invoice_recode_batch = []
     inventory_recode_batch = []
 
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_date = datetime.now().strftime('%Y-%m-%d')
 
     # Inventory Items
     for item in ctx.inv_items:
@@ -8081,13 +8085,13 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
             item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
         # Add to batch for Inventory_Recod
         inventory_recode_batch.append((
             item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-            ctx.current_user, current_time, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
+            ctx.current_user, current_date, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
         ))
 
     # Non-Inventory Items
@@ -8095,7 +8099,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
             item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
     # Execute Batch Inserts

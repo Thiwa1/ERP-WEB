@@ -80,6 +80,10 @@
                             <th class="text-end">In</th>
                             <th class="text-end">Out</th>
                             <th class="text-end">Balance</th>
+                            <th>Inv No</th>
+                            <th class="text-end">Purchasing Price</th>
+                            <th class="text-end">Selling Price</th>
+                            <th class="text-end">Balance Value</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -89,6 +93,10 @@
                             <td></td>
                             <td></td>
                             <td class="text-end fw-bold">{{ "{:,.2f}".format(opening_balance) }}</td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
+                            <td></td>
                         </tr>
                         {% for row in report_data %}
                         <tr>
@@ -97,6 +105,10 @@
                             <td class="text-end text-success">{{ "{:,.2f}".format(row.in_qty) if row.in_qty > 0 else '-' }}</td>
                             <td class="text-end text-danger">{{ "{:,.2f}".format(row.out_qty) if row.out_qty > 0 else '-' }}</td>
                             <td class="text-end fw-bold">{{ "{:,.2f}".format(row.balance) }}</td>
+                            <td>{{ row.iv_no or '-' }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(row.purchasing_price) if row.purchasing_price else '-' }}</td>
+                            <td class="text-end">{{ "{:,.2f}".format(row.selling_price) if row.selling_price else '-' }}</td>
+                            <td class="text-end fw-bold">{{ "{:,.2f}".format(row.balance_value) }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
