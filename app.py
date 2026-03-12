@@ -4603,6 +4603,24 @@ def cash_flow():
 
     return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
 
+
+# --- Inventory Balance ---
+@app.route('/inventory_balance')
+@login_required
+@has_permission('Access_Inventory')
+def inventory_balance():
+    view = request.args.get('view', 'all')
+    report_data = []
+
+    if view == 'all':
+        report_data = db.execute_query("CALL inventory_balance_01()")
+    elif view == 'low':
+        report_data = db.execute_query("CALL inventory_balance_02()")
+    elif view == 'out':
+        report_data = db.execute_query("CALL inventory_balance_03()")
+
+    return render_template('inventory_balance.html', view=view, report_data=report_data)
+
 # --- Inventory Reports ---
 @app.route('/inventory_reports')
 @login_required
