@@ -3831,7 +3831,7 @@ def inventory_trend_analysis():
 
         if raw_data:
             # Prepare Lists
-            sales = [float(r['MonthlySales']) for r in raw_data]
+            sales = [float(r.get('MonthlySales', 0)) for r in raw_data]
             n = len(sales)
 
             # Moving Average (3 months)
