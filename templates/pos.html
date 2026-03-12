@@ -56,7 +56,7 @@
 </div>
 
 <!-- Main POS Interface -->
-<div class="container-fluid py-3" id="posInterface" style="display:block;">
+<div class="container-fluid py-3" id="posInterface">
 
     <!-- Top Bar -->
     <div class="row mb-3 align-items-center bg-white p-2 rounded shadow-sm mx-0">
@@ -219,8 +219,7 @@
 <!-- Scripts -->
 <script>
     // --- Global State ---
-    // Inject backend session POS settings natively
-    let posSettings = {{ pos_settings | tojson | safe if pos_settings else '{}' }};
+    let posSettings = {};
     let itemsCache = [];
     let customersCache = [];
     let cart = [];
@@ -230,14 +229,18 @@
 
     // --- Startup ---
     document.addEventListener('DOMContentLoaded', () => {
-        // Check if POS settings exist (must be logged in)
-        if(Object.keys(posSettings).length === 0) {
-            alert('POS settings missing. Please re-login.');
-            window.location.href = '/pos/login';
-            return;
-        }
-
-        loadCache(); // Load Items/Customers
+        // Fetch POS settings automatically since the user is already logged into the system
+        fetch('/api/pos/settings')
+            .then(r => r.json())
+            .then(data => {
+                if(data.success) {
+                    posSettings = data.settings;
+                    loadCache(); // Load Items/Customers
+                    document.getElementById('itemInput').focus();
+                } else {
+                    alert("Failed to load POS Settings: " + data.error);
+                }
+            });
 
         // Start Clock
         setInterval(() => {

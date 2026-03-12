@@ -117,6 +117,24 @@ THEMES = {
         'primary': '#000000',
         'secondary': '#1a1a1a',
         'accent': '#ffcc00'
+    },
+    'sap_neutral_deep': {
+        'name': 'SAP Neutral Deep',
+        'primary': '#00305D',
+        'secondary': '#003B72',
+        'accent': '#0055A5'
+    },
+    'sap_neutral_mid': {
+        'name': 'SAP Neutral Mid',
+        'primary': '#0065C3',
+        'secondary': '#0074E2',
+        'accent': '#168EFF'
+    },
+    'sap_neutral_light': {
+        'name': 'SAP Neutral Light',
+        'primary': '#3FA2FF',
+        'secondary': '#62B3FF',
+        'accent': '#8BC7FF'
     }
 }
 
@@ -604,6 +622,21 @@ def login_required(f):
         if 'user_id' not in session:
             return redirect(url_for('login'))
         return f(*args, **kwargs)
+    return decorated_function
+
+def pos_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # A user can access POS endpoints if they are logged in via the dedicated POS login
+        if session.get('pos_logged_in'):
+            return f(*args, **kwargs)
+
+        # Or if they are a standard web ERP user who has the 'Access_POS' permission
+        if 'user_id' in session and check_permission('Access_POS'):
+            return f(*args, **kwargs)
+
+        # Otherwise, redirect to the specific POS login
+        return redirect(url_for('pos_login'))
     return decorated_function
 
 def get_current_user_id():
@@ -6226,7 +6259,7 @@ def pos_api_settings():
     return {'success': False, 'error': 'POS settings not found for current user'}
 
 @app.route('/api/pos/items', methods=['GET'])
-@login_required
+@pos_login_required
 def pos_api_items():
     # Fetch all active items with prices for caching
     query = """
@@ -6256,7 +6289,7 @@ def pos_api_items():
     return json.dumps(items)
 
 @app.route('/api/pos/customers', methods=['GET'])
-@login_required
+@pos_login_required
 def pos_api_customers():
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
@@ -6272,7 +6305,7 @@ def pos_api_customers():
     return json.dumps(custs)
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
-@login_required
+@pos_login_required
 def pos_api_add_loyalty_customer():
     data = request.json
     name = data.get('name')
@@ -6343,7 +6376,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
     total_cost_value = 0
     pos_sales_params = []
     inventory_params = []
-    action_timestamp = datetime.now()
+    action_date_str = today_date.strftime('%Y-%m-%d')
 
     for item in cart:
         total_sale_value += item['total']
@@ -6354,7 +6387,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
             item['code'], item['name'], item['unit'],
             item['price_market'], item['price_special'], item['price_loyalty'],
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user_pk, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_date_str, item['qty'], item['cost'],
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
         ))
