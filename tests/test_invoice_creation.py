@@ -31,6 +31,20 @@ mock_flask.Flask.return_value = mock_app_instance
 mock_request = MagicMock()
 mock_flask.request = mock_request
 mock_session = {} # Use a dict for session to behave like real one
+sys.modules["jinja2"] = MagicMock()
+sys.modules["werkzeug"] = MagicMock()
+sys.modules["werkzeug.security"] = MagicMock()
+sys.modules["dotenv"] = MagicMock()
+sys.modules["num2words"] = MagicMock()
+sys.modules["PyPDF2"] = MagicMock()
+from datetime import date, datetime
+import os
+sys.modules["cryptography"] = MagicMock()
+os.environ["SECRET_KEY"] = "mocked_secret_key_for_testing"
+
+
+
+
 mock_flask.session = mock_session
 mock_flask.flash = MagicMock()
 mock_flask.redirect = MagicMock()

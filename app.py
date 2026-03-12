@@ -324,7 +324,7 @@ def parse_and_execute_sql(cursor, content):
                     raise e
             statement = ""
 
-def create_tenant_db(company_name, username, password, email):
+def create_tenant_db(company_name, username, password, email, mobile=None):
     """Creates a new tenant DB, runs schema, and registers in Master DB."""
     import re
 
@@ -385,9 +385,9 @@ def create_tenant_db(company_name, username, password, email):
         t_db = Database(t_db_conf)
 
         user_id = t_db.execute_query("""
-            INSERT INTO Login_Table (User_Name, Password, Email, User_Code, User_Active)
-            VALUES (%s, %s, %s, '1001', 1)
-        """, (username, password, email), commit=True)
+            INSERT INTO Login_Table (User_Name, Password, Email, Mobile_No, User_Code, User_Active)
+            VALUES (%s, %s, %s, %s, '1001', 1)
+        """, (username, password, email, mobile), commit=True)
 
         # Grant all rights to the initial tenant admin user
         t_db.execute_query("""
@@ -428,8 +428,9 @@ def register():
         username = request.form['username']
         password = request.form['password']
         email = request.form['email']
+        mobile = request.form.get('mobile')
 
-        success, message = create_tenant_db(company_name, username, password, email)
+        success, message = create_tenant_db(company_name, username, password, email, mobile)
         if success:
             flash(message, 'success')
             return redirect(url_for('login'))
@@ -3830,7 +3831,7 @@ def inventory_trend_analysis():
 
         if raw_data:
             # Prepare Lists
-            sales = [float(r['MonthlySales']) for r in raw_data]
+            sales = [float(r.get('MonthlySales', 0)) for r in raw_data]
             n = len(sales)
 
             # Moving Average (3 months)
@@ -4602,6 +4603,24 @@ def cash_flow():
 
     return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
 
+
+# --- Inventory Balance ---
+@app.route('/inventory_balance')
+@login_required
+@has_permission('Access_Inventory')
+def inventory_balance():
+    view = request.args.get('view', 'all')
+    report_data = []
+
+    if view == 'all':
+        report_data = db.execute_query("CALL inventory_balance_01()")
+    elif view == 'low':
+        report_data = db.execute_query("CALL inventory_balance_02()")
+    elif view == 'out':
+        report_data = db.execute_query("CALL inventory_balance_03()")
+
+    return render_template('inventory_balance.html', view=view, report_data=report_data)
+
 # --- Inventory Reports ---
 @app.route('/inventory_reports')
 @login_required
@@ -4644,7 +4663,10 @@ def inventory_reports():
                 inventory_recod_action_date as date,
                 inventory_recodcol_memo as description,
                 inventory_recod_moument_in as in_qty,
-                inventory_recod_movment_out as out_qty
+                inventory_recod_movment_out as out_qty,
+                inventory_recod_suplier_iv_no as iv_no,
+                inventory_recod_unit_price as purchasing_price,
+                inventory_recod_selling_price as selling_price
             FROM inventory_recod
             WHERE inventoy_name = %s AND inventory_recod_action_date BETWEEN %s AND %s
             ORDER BY inventory_recod_action_date
@@ -4654,6 +4676,7 @@ def inventory_reports():
         for m in mvs:
             curr += float(m['in_qty']) - float(m['out_qty'])
             m['balance'] = curr
+            m['balance_value'] = curr * float(m['purchasing_price'] or 0)
             report_data.append(m)
 
     return render_template('inventory_reports.html', report_type=report_type, items=items, report_data=report_data, item_name=item_name, from_date=from_date, to_date=to_date, opening_balance=opening_balance)
@@ -5032,6 +5055,7 @@ def supplier_aging():
                            })
 
 # --- Supplier Aging Report ---
+@app.route('/sales_summary_cashier', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
 def sales_summary_cashier():
@@ -5051,7 +5075,8 @@ def sales_summary_cashier():
     # and the error says "Truncated incorrect DOUBLE value: 'ADM001'", it means `RecodeUserId` column is numeric.
     # We should use `session['user_pk']` (the auto-inc ID) for filtering if RecodeUserId stores the ID.
 
-    cashier_name = session.get('username', 'Unknown')
+    res = db.execute_query("SELECT User_Name FROM pose_setting_table WHERE Id = %s", (current_user_pk,))
+    cashier_name = res[0]['User_Name'] if res else session.get('username', 'Unknown')
 
     # 2. Build Query
     query = """
@@ -5075,7 +5100,7 @@ def sales_summary_cashier():
             s.RecodeUserId,
             lt.User_Name as CashierName
         FROM pos_sales_invoice_01 s
-        LEFT JOIN Login_Table lt ON s.RecodeUserId = lt.id
+        LEFT JOIN pose_setting_table lt ON s.RecodeUserId = lt.Id
         WHERE DATE(s.AcctionDate) = %s
         AND s.Revers = 0
     """
@@ -5142,7 +5167,8 @@ def sales_summary_cashier():
                 r['QuntirySale'],
                 r['UnitPrice'],
                 r['Total_Value'],
-                r['AcctionDate'], # Formatted automatically or need strftime
+                r['AcctionDate'].strftime('%Y-%m-%d') if r['AcctionDate'] else '',
+                r['AcctionDate'].strftime('%H:%M') if hasattr(r['AcctionDate'], 'strftime') else '00:00',
                 r['jv']
             ])
 
@@ -6172,59 +6198,32 @@ def add_pos_user():
 def pos():
     return render_template('pos.html')
 
-@app.route('/api/pos/login', methods=['POST'])
+@app.route('/api/pos/settings', methods=['GET'])
 @login_required
-def pos_api_login():
-    data = request.json
-    username = data.get('username')
-    password = data.get('password')
+def pos_api_settings():
+    username = session.get('username')
 
     # Verify against pose_setting_table
     users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
 
     if users:
         settings = users[0]
-        stored_password = settings.get('Password', '')
-        verified = False
-
-        # 1. Try Hash Verification
-        try:
-            if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
-                if check_password_hash(stored_password, password):
-                    verified = True
-            else:
-                raise ValueError("Not a valid hash")
-        except ValueError:
-            # stored_password might not be a valid hash format (e.g. plain text)
-            pass
-
-        # 2. Fallback to Plain Text (Legacy Support & Migration)
-        if not verified:
-            if stored_password == password:
-                verified = True
-                try:
-                    new_hash = generate_password_hash(password)
-                    db.execute_query("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, settings['Id']), commit=True)
-                except Exception as e:
-                    logging.error("Error migrating POS user password")
-
-        if verified:
-            return {
-                'success': True,
-                'settings': {
-                    'location': settings['Select_Inventry_Location'],
-                    'card_ac': settings['Card_Control_AC'],
-                    'cash_ac': settings['Cash_Account'],
-                    'market_price': settings['Sales_with_market_price'],
-                    'special_price': settings['Sales_with_Special_price'],
-                    'loyalty_price': settings['Loyalty_Price'],
-                    'vat_enable': settings['VAT_Enable'],
-                    'footer': settings['Footer_Message'],
-                    'top': settings['Top_Message']
-                }
+        return {
+            'success': True,
+            'settings': {
+                'location': settings['Select_Inventry_Location'],
+                'card_ac': settings['Card_Control_AC'],
+                'cash_ac': settings['Cash_Account'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
+                'vat_enable': settings['VAT_Enable'],
+                'footer': settings['Footer_Message'],
+                'top': settings['Top_Message']
             }
+        }
 
-    return {'success': False, 'error': 'Invalid POS Credentials'}
+    return {'success': False, 'error': 'POS settings not found for current user'}
 
 @app.route('/api/pos/items', methods=['GET'])
 @login_required
@@ -6272,6 +6271,64 @@ def pos_api_customers():
         })
     return json.dumps(custs)
 
+@app.route('/api/pos/add_loyalty_customer', methods=['POST'])
+@login_required
+def pos_api_add_loyalty_customer():
+    data = request.json
+    name = data.get('name')
+    mobile = data.get('mobile')
+    email = data.get('email', '')
+    billing_address = data.get('billing_address', '')
+    delivery_address = data.get('delivery_address', '')
+    amount_paid = data.get('amount_paid', 0)
+
+    if not name or not mobile:
+        return {'success': False, 'error': 'Name and Mobile Number are required'}
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Determine max id to generate customer_code
+        cursor.execute("SELECT COALESCE(MAX(id), 0) FROM customer")
+        max_id = cursor.fetchone()[0]
+        customer_code = max_id + 60001
+
+        query = """
+            INSERT INTO customer (
+                customer_name, customer_code, customer_Billing_Address, costomer_Delivery_Address,
+                e_mail, coustomer_credit_limit, Mobile_nimber, Is_Loyality_Customer, Compay_Or_Not,
+                Create_Date, Paid_Amountl, Create_Cashiyer
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """
+        # Note: Depending on the schema, Paid_Amountl might be a string or number,
+        # and Is_Loyality_Customer might be a boolean/tinyint.
+        cursor.execute(query, (
+            name, str(customer_code), billing_address, delivery_address,
+            email, 1, mobile, 1, 0,
+            datetime.utcnow(), amount_paid, 0
+        ))
+
+        conn.commit()
+
+        # Fetch the new customer details to return
+        new_customer_id = cursor.lastrowid
+        cursor.close()
+        conn.close()
+
+        return {
+            'success': True,
+            'customer': {
+                'id': new_customer_id,
+                'name': name,
+                'mobile': mobile
+            }
+        }
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return {'success': False, 'error': str(e)}
+
 def _generate_pos_invoice_number(cursor, today_date):
     """Helper to generate a new POS Invoice Number."""
     cursor.execute("INSERT INTO pos_invoice_no (IV_No) VALUES ('')")
@@ -6297,8 +6354,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
             item['code'], item['name'], item['unit'],
             item['price_market'], item['price_special'], item['price_loyalty'],
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user, settings.get('location'), action_timestamp, item['qty'], item['cost'],
-            current_user_pk, settings.get('location'), datetime.now(), item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_timestamp, item['qty'], item['cost'],
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
         ))
@@ -8053,7 +8109,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
     invoice_recode_batch = []
     inventory_recode_batch = []
 
-    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_date = datetime.now().strftime('%Y-%m-%d')
 
     # Inventory Items
     for item in ctx.inv_items:
@@ -8081,13 +8137,13 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
             item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
         # Add to batch for Inventory_Recod
         inventory_recode_batch.append((
             item['name'], item['code'], item['unit'], item['cost'] * parse_float(item['qty']), parse_float(item['qty']),
-            ctx.current_user, current_time, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
+            ctx.current_user, current_date, ctx.location, ctx.inv_date, ctx.jv_no, ctx.outstanding_id, ctx.invoice_no
         ))
 
     # Non-Inventory Items
@@ -8095,7 +8151,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
             item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
-            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_time
+            ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
     # Execute Batch Inserts
