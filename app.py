@@ -623,15 +623,32 @@ def login_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
+def pos_login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        # A user can access POS endpoints if they are logged in via the dedicated POS login
+        if session.get('pos_logged_in'):
+            return f(*args, **kwargs)
+
+        # Or if they are a standard web ERP user who has the 'Access_POS' permission
+        if 'user_id' in session and check_permission('Access_POS'):
+            return f(*args, **kwargs)
+
+        # Otherwise, redirect to the specific POS login
+        return redirect(url_for('pos_login'))
+    return decorated_function
+
 def get_current_user_id():
     return session.get('user_id', 0)
 
 def get_current_user_pk():
-    try:
-        pk = session.get('user_pk', 0)
-        return int(pk)
-    except (ValueError, TypeError):
-        return 0
+    user_pk = session.get('user_pk')
+    if user_pk:
+        try:
+            return int(user_pk)
+        except (ValueError, TypeError):
+            return -1
+    return -1
 
 def check_permission(perm_name):
     """Checks if current user has specific permission."""
@@ -6184,11 +6201,99 @@ def add_pos_user():
     return redirect(url_for('pos_settings'))
 
 # --- Point of Sale (POS) ---
+@app.route('/pos/login', methods=['GET', 'POST'])
+def pos_login():
+    """Independent POS Login page handling Company, Username, Password."""
+    if request.method == 'GET':
+        return render_template('pos_login.html')
+
+    company = request.form.get('company')
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not company or not username or not password:
+        flash('All fields are required.', 'danger')
+        return redirect(url_for('pos_login'))
+
+    try:
+        # First, find the tenant DB based on company
+        # We query master_db like standard login, or if legacy, assume single DB
+        master_user_res = master_db.execute_query("""
+            SELECT t.db_name
+            FROM tenants t
+            WHERE t.company_name = %s
+        """, (company,))
+
+        if master_user_res:
+            session['db_name'] = master_user_res[0]['db_name']
+        else:
+            # Fallback for local/legacy where company might just map to default
+            session.pop('db_name', None)
+
+        # Now verify POS credentials against tenant DB
+        users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+
+        if not users:
+            flash('Invalid POS Username or Company.', 'danger')
+            return redirect(url_for('pos_login'))
+
+        settings = users[0]
+        stored_password = settings.get('Password', '')
+        verified = False
+
+        # Support both hashed passwords (if already migrated) and plaintext
+        # Important: Do NOT automatically migrate plaintext to hash here,
+        # because the external C# desktop client relies on exact plaintext matches.
+        if stored_password and (stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:')):
+            from werkzeug.security import check_password_hash
+            if check_password_hash(stored_password, password):
+                verified = True
+        elif stored_password == password:
+            verified = True
+
+        if verified:
+            # Create POS session
+            session['pos_logged_in'] = True
+            session['pos_username'] = username
+            session['pos_user_pk'] = settings['Id']
+
+            # Note: We purposely do NOT set session['user_pk'] to settings['Id']
+            # because pose_setting_table IDs are in a different namespace than Login_Table IDs,
+            # which could cause dangerous ID collisions resulting in privilege escalation
+            # if a POS user ID happens to match an Admin user ID.
+            session['is_pos_only'] = True
+
+            # Pre-load settings into session so pos.html doesn't need to ask again
+            session['pos_settings'] = {
+                'location': settings['Select_Inventry_Location'],
+                'card_ac': settings['Card_Control_AC'],
+                'cash_ac': settings['Cash_Account'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
+                'vat_enable': settings['VAT_Enable'],
+                'footer': settings['Footer_Message'],
+                'top': settings['Top_Message']
+            }
+            return redirect(url_for('pos'))
+        else:
+            flash('Invalid POS Password.', 'danger')
+            return redirect(url_for('pos_login'))
+
+    except Exception as e:
+        logging.error(f"POS Login Error: {e}")
+        flash('An error occurred during POS login.', 'danger')
+        return redirect(url_for('pos_login'))
+
+
 @app.route('/pos', methods=['GET'])
-@login_required
-@has_permission('Access_POS')
+@pos_login_required
 def pos():
-    return render_template('pos.html')
+    # If standard user hits /pos without POS login but has permissions
+    if not session.get('pos_logged_in'):
+        # Just use their regular web session settings, as they've been authenticated
+        pass
+    return render_template('pos.html', pos_settings=session.get('pos_settings'))
 
 @app.route('/api/pos/login', methods=['POST'])
 @login_required
@@ -6245,7 +6350,7 @@ def pos_api_login():
     return {'success': False, 'error': 'Invalid POS Credentials'}
 
 @app.route('/api/pos/items', methods=['GET'])
-@login_required
+@pos_login_required
 def pos_api_items():
     # Fetch all active items with prices for caching
     query = """
@@ -6275,7 +6380,7 @@ def pos_api_items():
     return json.dumps(items)
 
 @app.route('/api/pos/customers', methods=['GET'])
-@login_required
+@pos_login_required
 def pos_api_customers():
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
@@ -6414,7 +6519,7 @@ def _post_pos_gl_entries(cursor, settings, payment, total_sale_value, total_cost
 
 
 @app.route('/pos/submit_sale', methods=['POST'])
-@login_required
+@pos_login_required
 def submit_pos_sale():
     data = request.json
     cart = data.get('cart', [])

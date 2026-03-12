@@ -1,33 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-<!-- POS Login Modal -->
-<div class="modal fade" id="posLoginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white" style="background-color: var(--primary-color);">
-                <h5 class="modal-title fw-bold"><i class="fas fa-cash-register me-2"></i> POS LOGIN</h5>
-                <button type="button" class="btn-close btn-close-white" aria-label="Close" onclick="location.href='/'"></button>
-            </div>
-            <div class="modal-body p-4">
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Cashier Username</label>
-                    <input type="text" class="form-control" id="posUser" value="{{ session.get('username', '') }}" readonly>
-                </div>
-                <div class="mb-3">
-                    <label class="form-label fw-bold">Confirm Password</label>
-                    <input type="password" class="form-control" id="posPass" placeholder="Enter Password">
-                </div>
-                <div class="d-grid">
-                    <button type="button" class="btn btn-primary fw-bold" onclick="posLogin()">LOGIN TO POS</button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Main POS Interface (Hidden initially) -->
-<div class="container-fluid py-3" id="posInterface" style="display:none;">
+<!-- Main POS Interface -->
+<div class="container-fluid py-3" id="posInterface" style="display:block;">
 
     <!-- Top Bar -->
     <div class="row mb-3 align-items-center bg-white p-2 rounded shadow-sm mx-0">
@@ -162,7 +137,8 @@
 <!-- Scripts -->
 <script>
     // --- Global State ---
-    let posSettings = {};
+    // Inject backend session POS settings natively
+    let posSettings = {{ pos_settings | tojson | safe if pos_settings else '{}' }};
     let itemsCache = [];
     let customersCache = [];
     let cart = [];
@@ -171,40 +147,23 @@
 
     // --- Startup ---
     document.addEventListener('DOMContentLoaded', () => {
-        // Show Login Modal
-        new bootstrap.Modal(document.getElementById('posLoginModal')).show();
+        // Check if POS settings exist (must be logged in)
+        if(Object.keys(posSettings).length === 0) {
+            alert('POS settings missing. Please re-login.');
+            window.location.href = '/pos/login';
+            return;
+        }
 
         // Start Clock
         setInterval(() => {
             document.getElementById('clock').innerText = new Date().toLocaleTimeString();
         }, 1000);
+
+        // Auto load caches
+        loadCache();
+        const input = document.getElementById('itemInput');
+        if(input) input.focus();
     });
-
-    // --- 1. Login & Load Settings ---
-    function posLogin() {
-        const pass = document.getElementById('posPass').value;
-        const user = document.getElementById('posUser').value;
-
-        if(!pass) return alert("Enter password");
-
-        fetch('/api/pos/login', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({username: user, password: pass})
-        })
-        .then(r => r.json())
-        .then(data => {
-            if(data.success) {
-                posSettings = data.settings;
-                bootstrap.Modal.getInstance(document.getElementById('posLoginModal')).hide();
-                document.getElementById('posInterface').style.display = 'block';
-                loadCache(); // Load Items/Customers
-                document.getElementById('itemInput').focus();
-            } else {
-                alert("Login Failed: " + data.error);
-            }
-        });
-    }
 
     // --- 2. Client-Side Caching ---
     function loadCache() {
