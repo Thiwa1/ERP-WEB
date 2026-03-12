@@ -3148,9 +3148,11 @@ def save_purchase_order():
         supplier = request.form.get('supplier')
         po_number = request.form.get('po_number')
         delivery_date = request.form.get('delivery_date')
+        if not delivery_date:
+            delivery_date = None
         location = request.form.get('location')
         comments = request.form.get('comments')
-        vat_rate = float(request.form.get('vat_rate', 0))
+        vat_rate = parse_float(request.form.get('vat_rate', 0))
         items_json = request.form.get('items_json')
         items = json.loads(items_json) if items_json else []
 
@@ -3199,7 +3201,7 @@ def save_purchase_order():
             """
             batch_data = [(
                 po_id, item['item'], item['description'],
-                item['qty'], item['price'], item['unit']
+                parse_float(item.get('qty', 0)), parse_float(item.get('price', 0)), item['unit']
             ) for item in items]
 
             if batch_data:
@@ -8169,7 +8171,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
+            item['name'], parse_float(item.get('qty', 0)), parse_float(item.get('price', 0)), 1, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
             ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
@@ -8183,7 +8185,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
     for item in ctx.non_inv_items:
         # Add to batch for Invoice_Recode
         invoice_recode_batch.append((
-            item['name'], item['qty'], item['price'], 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
+            item['name'], parse_float(item.get('qty', 0)), parse_float(item.get('price', 0)), 0, 'Being account of customer sales', ctx.jv_no, ctx.current_user,
             ctx.customer_name, 1, ctx.outstanding_id, item['unit'], current_date
         ))
 
