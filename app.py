@@ -6305,7 +6305,7 @@ def pos_api_customers():
     return json.dumps(custs)
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
-@pos_login_required
+@login_required
 def pos_api_add_loyalty_customer():
     data = request.json
     name = data.get('name')
@@ -6387,7 +6387,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
             item['code'], item['name'], item['unit'],
             item['price_market'], item['price_special'], item['price_loyalty'],
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user_pk, settings.get('location'), action_date_str, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_timestamp, item['qty'], item['cost'],
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
         ))
