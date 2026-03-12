@@ -5037,6 +5037,7 @@ def supplier_aging():
                            })
 
 # --- Supplier Aging Report ---
+@app.route('/sales_summary_cashier', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
 def sales_summary_cashier():
@@ -5056,7 +5057,8 @@ def sales_summary_cashier():
     # and the error says "Truncated incorrect DOUBLE value: 'ADM001'", it means `RecodeUserId` column is numeric.
     # We should use `session['user_pk']` (the auto-inc ID) for filtering if RecodeUserId stores the ID.
 
-    cashier_name = session.get('username', 'Unknown')
+    res = db.execute_query("SELECT User_Name FROM pose_setting_table WHERE Id = %s", (current_user_pk,))
+    cashier_name = res[0]['User_Name'] if res else session.get('username', 'Unknown')
 
     # 2. Build Query
     query = """
@@ -5080,7 +5082,7 @@ def sales_summary_cashier():
             s.RecodeUserId,
             lt.User_Name as CashierName
         FROM pos_sales_invoice_01 s
-        LEFT JOIN Login_Table lt ON s.RecodeUserId = lt.id
+        LEFT JOIN pose_setting_table lt ON s.RecodeUserId = lt.Id
         WHERE DATE(s.AcctionDate) = %s
         AND s.Revers = 0
     """
@@ -5147,7 +5149,8 @@ def sales_summary_cashier():
                 r['QuntirySale'],
                 r['UnitPrice'],
                 r['Total_Value'],
-                r['AcctionDate'], # Formatted automatically or need strftime
+                r['AcctionDate'].strftime('%Y-%m-%d') if r['AcctionDate'] else '',
+                r['AcctionDate'].strftime('%H:%M') if hasattr(r['AcctionDate'], 'strftime') else '00:00',
                 r['jv']
             ])
 
