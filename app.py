@@ -4497,22 +4497,54 @@ def balance_sheet():
         GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
     """, (as_at_date,))
 
-    # Calculate Retained Earnings (Income - Expense - COGS)
-    income_res = db.execute_query("""
-        SELECT COALESCE(SUM(enty_values_CR - enty_values_DR), 0) as val
-        FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-        WHERE na.account_income = 1 AND ed.entry_effective_date <= %s
-    """, (as_at_date,))
-    income_val = income_res[0]['val'] if income_res else 0
+    # Calculate Retained Earnings (Income - Expense - COGS) matching legacy C# logic
+    retained_earnings_query = """
+        SELECT
+            na.account_name,
+            na.account_income,
+            na.account_expenses,
+            na.account_basment,
+            COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
+            COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
+        FROM
+            new_account_table na
+        LEFT JOIN
+            entry_details ed ON na.account_name = ed.account_name
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0
+        WHERE
+            (na.account_income = 1 OR na.account_expenses = 1)
+            AND na.account_active = 1
+        GROUP BY
+            na.account_name,
+            na.account_income,
+            na.account_expenses,
+            na.account_basment
+    """
+    retained_earnings_rows = db.execute_query(retained_earnings_query, (as_at_date,))
 
-    expense_res = db.execute_query("""
-        SELECT COALESCE(SUM(enty_values_DR - enty_values_CR), 0) as val
-        FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-        WHERE na.account_expenses = 1 AND ed.entry_effective_date <= %s
-    """, (as_at_date,))
-    expense_val = expense_res[0]['val'] if expense_res else 0
+    total_income = 0.0
+    total_expenses = 0.0
 
-    retained_earnings = float(income_val) - float(expense_val)
+    for row in retained_earnings_rows:
+        is_income = bool(row['account_income'])
+        is_expense = bool(row['account_expenses'])
+        basement = row['account_basment']
+        debit_total = float(row['total_dr'] or 0)
+        credit_total = float(row['total_cr'] or 0)
+
+        balance = 0.0
+        if basement == "DR":
+            balance = debit_total - credit_total
+        else:
+            balance = credit_total - debit_total
+
+        if is_income:
+            total_income += balance
+        elif is_expense:
+            total_expenses += balance
+
+    retained_earnings = total_income - total_expenses
 
     # Grouping
     grouped_assets = {}
