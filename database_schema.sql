@@ -120,7 +120,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`currency_table` (
   `is_base_currency` TINYINT DEFAULT 0,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `currency_code_UNIQUE` (`currency_code` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`new_account_table` (
   `id` INT NOT NULL AUTO_INCREMENT,
@@ -294,7 +296,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers` (
   `Is_Customer` TINYINT NULL,
   PRIMARY KEY (`sup_id`),
   UNIQUE INDEX `supplier_name_UNIQUE` (`supplier_name` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -320,7 +324,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suppliers_invoice_data` (
   CONSTRAINT `fk_suplier`
     FOREIGN KEY (`suppliers_invoice_buinding_supplier`)
     REFERENCES `Book_keeping`.`suppliers` (`sup_id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -338,7 +344,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book` (
     FOREIGN KEY (`cash_book_account_name`)
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -355,7 +363,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_voucher_no` (
     REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
     ON DELETE RESTRICT
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -392,7 +402,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_book_recode` (
     REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
     ON DELETE NO ACTION
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -407,7 +419,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_carogory` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `main_catogory_UNIQUE` (`main_catogory` ASC),
   UNIQUE INDEX `sub_catogory_UNIQUE` (`sub_catogory` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -444,7 +458,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventoy_items` (
     REFERENCES `Book_keeping`.`inventory_carogory` (`sub_catogory`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -456,7 +472,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_locations` (
   `inventory_locations_descriptions` VARCHAR(255) NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `inventory_locations_name_UNIQUE` (`inventory_locations_name` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -500,7 +518,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_recod` (
     REFERENCES `Book_keeping`.`inventory_locations` (`inventory_locations_name`)
     ON DELETE RESTRICT
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -521,7 +541,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`inventory_price_recod` (
     REFERENCES `Book_keeping`.`inventoy_items` (`id`)
     ON DELETE RESTRICT
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -535,7 +557,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book` (
   `bank_book_bank_name` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
   UNIQUE INDEX `bank_bookcol_account_name_UNIQUE` (`bank_bookcol_account_number` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -553,7 +577,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_voucher_no` (
     REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
     ON DELETE RESTRICT
     ON UPDATE RESTRICT)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -591,7 +617,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_recod` (
     REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
     ON DELETE NO ACTION
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -601,7 +629,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`suplier_suporting_1` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `salutation` VARCHAR(10) NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -611,7 +641,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`setup_check` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `setup_checked` INT NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -634,7 +666,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `customer_code_UNIQUE` (`customer_code` ASC),
   UNIQUE INDEX `customer_name_UNIQUE` (`customer_name` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -655,7 +689,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`customer_invoice_data` (
   PRIMARY KEY (`cos_id`),
   INDEX `key_to_cos_idx` (`cos_binding_cos` ASC),
   INDEX `key_jv_idx` (`cos_jv_n0` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -676,7 +712,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_reconciliation_recodes` (
   `Book_Balance` DOUBLE NULL,
   `Bank_statment_Balance` DOUBLE NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -691,7 +729,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`BankReconciliiationDitails` (
   `Text` VARCHAR(255) NULL,
   `Chq_No` VARCHAR(45) NULL,
   PRIMARY KEY (`Id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -710,7 +750,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`BS_Setup` (
   `BS_Text_line` VARCHAR(255) NULL,
   `BS_Text_Size` VARCHAR(255) NULL,
   PRIMARY KEY (`id`, `BS_LIne_Number`, `BS_Col_B`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -721,7 +763,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`New_BS_Format` (
   `Link` INT NULL,
   `Description` VARCHAR(255) NULL,
   PRIMARY KEY (`Id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -732,7 +776,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`New_PL_Format` (
   `Link` INT NULL,
   `Description` VARCHAR(255) NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -752,7 +798,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`PL_Setup` (
   `PL_Text_line` VARCHAR(255) NULL,
   `PL_Text_Size` VARCHAR(255) NULL,
   PRIMARY KEY (`Id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -777,7 +825,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`OP_NO_Table` (
   `VAT_Rate` VARCHAR(45) NULL,
   PRIMARY KEY (`id`),
   INDEX `Index_To_Recode_Table` (`id` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -799,7 +849,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`PO_Recode_Details` (
     REFERENCES `Book_keeping`.`OP_NO_Table` (`id`)
     ON DELETE RESTRICT
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -816,7 +868,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Login_Table` (
   PRIMARY KEY (`id`),
   UNIQUE INDEX `User_Name_UNIQUE` (`User_Name` ASC),
   UNIQUE INDEX `User_Code_UNIQUE` (`User_Code` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -829,7 +883,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`User_Rights` (
   `OP_Approved` TINYINT NULL,
   `Plus_Btn` TINYINT NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -841,7 +897,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Inventory_Productions` (
   `Delete_Or_Note` TINYINT NULL,
   `Effective_Date` DATE NULL,
   PRIMARY KEY (`ID`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -861,7 +919,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Oustanding` (
   `VAT_rate` DOUBLE NULL,
   `oustanding_delete` TINYINT NULL,
   PRIMARY KEY (`Id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -889,7 +949,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Recode` (
     REFERENCES `Book_keeping`.`suppliers` (`supplier_name`)
     ON DELETE NO ACTION
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -899,7 +961,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pos_Invoice_No` (
   `Id` BIGINT NOT NULL AUTO_INCREMENT,
   `IV_No` VARCHAR(255) NULL,
   PRIMARY KEY (`Id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -941,7 +1005,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Pose_Setting_Table` (
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -972,7 +1038,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`POS_Sales_Invoice_01` (
   `jv` BIGINT NULL,
   `Revers` TINYINT NULL DEFAULT 0,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -982,7 +1050,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Main_Customer_IV` (
   `id` INT NOT NULL AUTO_INCREMENT,
   `Genarated_Iv` VARCHAR(255) NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1001,7 +1071,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save` (
   `IF_VAT` TINYINT NULL,
   `VAT_Rate` DOUBLE NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1010,7 +1082,9 @@ ENGINE = InnoDB;
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`Invoice_Save_Id` (
   `id` INT NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1019,7 +1093,9 @@ ENGINE = InnoDB;
 CREATE TABLE IF NOT EXISTS `Book_keeping`.`Credit_Invoice_No` (
   `id` INT NOT NULL AUTO_INCREMENT,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1055,7 +1131,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_bank_payment_type` (
   `bank_cheque` VARCHAR(255) NULL,
   `JV` INT NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1072,7 +1150,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cash_recipt` (
     REFERENCES `Book_keeping`.`cash_book` (`cash_book_account_name`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1089,7 +1169,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_ecipt` (
     REFERENCES `Book_keeping`.`bank_book` (`bank_bookcol_account_number`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1101,7 +1183,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`license_Information` (
   `licence_date` DATE NULL,
   `last_logging_any` DATE NULL,
   PRIMARY KEY (`id`))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1120,7 +1204,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`Inventory_vorenty_period` (
     REFERENCES `Book_keeping`.`inventoy_items` (`inventoy_name`)
     ON DELETE NO ACTION
     ON UPDATE CASCADE)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
@@ -1164,7 +1250,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`adding_New` (
     REFERENCES `Book_keeping`.`new_account_table` (`account_name`)
     ON DELETE NO ACTION
     ON UPDATE NO ACTION)
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 USE `Book_keeping` ;
 
