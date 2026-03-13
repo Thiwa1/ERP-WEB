@@ -1,3 +1,8 @@
+import sys
+from unittest.mock import MagicMock
+if 'requests' not in sys.modules:
+    mock_requests = MagicMock()
+    sys.modules['requests'] = mock_requests
 
 import sys
 from unittest.mock import MagicMock
@@ -148,3 +153,7 @@ from unittest.mock import MagicMock
 if 'PyPDF2' not in sys.modules:
     mock_pypdf2 = MagicMock()
     sys.modules['PyPDF2'] = mock_pypdf2
+
+if 'requests' not in sys.modules:
+    mock_requests = MagicMock()
+    sys.modules['requests'] = mock_requests
