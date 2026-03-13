@@ -6233,6 +6233,122 @@ def add_pos_user():
 def pos():
     return render_template('pos.html')
 
+@app.route('/api/pos/login', methods=['POST'])
+def pos_api_login():
+    data = request.json or {}
+    company_name = data.get('company_name')
+    username = data.get('username')
+    password = data.get('password')
+
+    if not company_name or not username or not password:
+        return {'success': False, 'error': 'Company Name, Username, and Password are required'}, 400
+
+    try:
+        master_user_res = master_db.execute_query('''
+            SELECT t.db_name
+            FROM tenants t
+            WHERE t.company_name = %s
+        ''', (company_name,))
+
+        if master_user_res:
+            tenant_db_name = master_user_res[0]['db_name']
+        else:
+            return {'success': False, 'error': 'Company not found'}, 404
+    except Exception as e:
+        tenant_db_name = db.db_name
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        from database import is_safe_db_name
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        users = cursor.fetchall()
+
+        if not users:
+            return {'success': False, 'error': 'Invalid username or password'}, 401
+
+        user = users[0]
+        stored_password = user['Password']
+
+        verified = False
+        from werkzeug.security import check_password_hash, generate_password_hash
+        try:
+            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                if check_password_hash(stored_password, password):
+                    verified = True
+            elif stored_password == password:
+                verified = True
+                new_hash = generate_password_hash(password)
+                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                conn.commit()
+        except Exception:
+            if stored_password == password:
+                verified = True
+
+        if not verified:
+            return {'success': False, 'error': 'Invalid username or password'}, 401
+
+        session['db_name'] = tenant_db_name
+        session['username'] = username
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        cursor.execute('''
+            SELECT
+                i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
+                p.inventory_price_selling, p.inventory_price_profit_marging_comen,
+                p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
+            FROM inventoy_items i
+            LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        ''')
+        items = cursor.fetchall()
+
+        response_items = []
+        for r in items:
+            response_items.append({
+                'id': r['id'],
+                'name': r['inventoy_name'],
+                'code': r['inventoy_code'],
+                'barcode': r['inventoy_bach_code'],
+                'unit': r['inventoy_items_messurment_unit'],
+                'price_market': r['inventory_price_selling'],
+                'price_special': r['inventory_price_profit_marging_comen'],
+                'price_loyalty': r['inventory_price_for_Loyality_customer'],
+                'price_cost': r['inventory_price_purcharsing']
+            })
+
+        return {
+            'success': True,
+            'settings': {
+                'location': user['Select_Inventry_Location'],
+                'card_ac': user['Card_Control_AC'],
+                'cash_ac': user['Cash_Account'],
+                'market_price': user['Sales_with_market_price'],
+                'special_price': user['Sales_with_Special_price'],
+                'loyalty_price': user['Loyalty_Price'],
+                'vat_enable': user['VAT_Enable'],
+                'footer': user['Footer_Message'],
+                'top': user['Top_Message']
+            },
+            'items': response_items,
+            'db_name': tenant_db_name
+        }
+
+    except Exception as e:
+        import logging
+        logging.error(f"POS Login Error: {e}")
+        return {'success': False, 'error': 'Database error occurred'}, 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 @app.route('/api/pos/settings', methods=['GET'])
 @login_required
 def pos_api_settings():
@@ -6389,7 +6505,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
             item['code'], item['name'], item['unit'],
             item['price_market'], item['price_special'], item['price_loyalty'],
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user_pk, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_date_str, item['qty'], item['cost'],
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
         ))
@@ -6487,9 +6603,13 @@ def _post_pos_gl_entries(cursor, settings, payment, total_sale_value, total_cost
 
 
 @app.route('/pos/submit_sale', methods=['POST'])
+@app.route('/api/pos/submit', methods=['POST'])
 @login_required
 def submit_pos_sale():
     data = request.json
+
+    # Client is expected to save JSON locally as per requirement before sending
+
     cart = data.get('cart', [])
     payment = data.get('payment', {})
     customer = data.get('customer', {})
