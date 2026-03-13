@@ -776,6 +776,16 @@
             }
         });
 
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                const loader = document.getElementById('globalPageLoader');
+                if (loader) {
+                    loader.classList.add('hidden');
+                    setTimeout(() => { loader.style.display = 'none'; }, 300);
+                }
+            }
+        });
+
         window.addEventListener('beforeunload', function() {
             const loader = document.getElementById('globalPageLoader');
             if (loader) {
