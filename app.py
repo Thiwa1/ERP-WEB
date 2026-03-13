@@ -6497,22 +6497,32 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
     action_date_str = today_date.strftime('%Y-%m-%d')
 
     for item in cart:
-        total_sale_value += item['total']
-        total_cost_value += (item['cost'] * item['qty'])
+        qty = parse_float(item.get('qty', 0))
+        cost = parse_float(item.get('cost', 0))
+        total = parse_float(item.get('total', 0))
+
+        # If the frontend passes 'cost' as the total cost already, multiplying it by qty squares it.
+        # But we assume 'cost' is unit cost based on pos.html. Just to be safe and match legacy C#:
+        # Wait, if pos.html sends unit cost, then unit_cost * qty is correct.
+        total_item_cost = cost * qty
+
+        total_sale_value += total
+        total_cost_value += total_item_cost
 
         # Prepare pos_sales_invoice_01 params
         pos_sales_params.append((
-            item['code'], item['name'], item['unit'],
-            item['price_market'], item['price_special'], item['price_loyalty'],
+            item.get('code'), item.get('name'), item.get('unit'),
+            item.get('price_market'), item.get('price_special'), item.get('price_loyalty'),
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user_pk, settings.get('location'), action_date_str, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_date_str, qty, cost,
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-            invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            invoice_no, customer.get('loyalty_no', 0), total, jv_no
         ))
 
-        # Prepare Inventory Movement OUT params
+        # Prepare Inventory Movement OUT params.
+        # Legacy C# app and submit_invoice BOTH expect total cost in inventory_recod_unit_price
         inventory_params.append((
-            item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
+            item.get('name'), item.get('code'), today_date, qty, item.get('unit'), total_item_cost,
             current_user, jv_no, settings.get('location')
         ))
 
