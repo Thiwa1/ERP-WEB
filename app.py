@@ -5400,7 +5400,7 @@ def pos_reversal_process():
         conn.start_transaction()
 
         # 1. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 2. Mark POS Customer as Reversed/Deleted
         cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
@@ -5532,7 +5532,7 @@ def bank_payment_reversal_process():
         cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Supplier Outstanding (Bank Version)
         cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
@@ -5594,7 +5594,7 @@ def cash_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Supplier Outstanding
         cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
@@ -5657,7 +5657,7 @@ def direct_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Inventory In (Bring items out/mark deleted)
         # Note: The C# code called `Inventory_Items_Revers_IN`.
@@ -6376,12 +6376,16 @@ def send_sms_otp(mobile, code):
     url = "https://app.notify.lk/api/v1/send"
     params = {
         'user_id': os.getenv('NOTIFY_USER_ID', '13120'),
-        # Fallback to the requested demo key as authorized by user for non-live environment
-        'api_key': os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K'),
+        'api_key': os.getenv('NOTIFY_API_KEY'),
         'sender_id': os.getenv('NOTIFY_SENDER_ID', 'The Bunker'),
         'to': mobile,
         'message': f"Your POS login verification code is: {code}"
     }
+
+    if not params['api_key']:
+        logging.error("NOTIFY_API_KEY is not set. Skipping SMS delivery.")
+        return
+
     try:
         requests.get(url, params=params, timeout=5)
     except Exception as e:
@@ -6472,11 +6476,18 @@ def pos_web_login():
         ip_address = request.remote_addr
         user_agent = request.user_agent.string
 
-        cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s AND ip_address = %s AND user_agent = %s", (user['Id'], ip_address, user_agent))
-        device = cursor.fetchone()
+        cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s", (user['Id'],))
+        all_devices = cursor.fetchall()
 
-        if not device:
-            # New device - Require 2FA
+        device = next((d for d in all_devices if d['ip_address'] == ip_address and d['user_agent'] == user_agent), None)
+
+        if not all_devices:
+            # Very first login - register device seamlessly
+            cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)",
+                           (user['Id'], ip_address, user_agent, datetime.now()))
+            conn.commit()
+        elif not device:
+            # New device but user has previous devices - Require 2FA
             otp = ''.join(random.choices(string.digits, k=6))
             expires = datetime.now() + timedelta(minutes=10)
             cursor.execute("INSERT INTO pos_2fa_codes (user_id, code, expires_at) VALUES (%s, %s, %s)", (user['Id'], otp, expires))
@@ -6486,19 +6497,21 @@ def pos_web_login():
             mobile = user.get('Mobile_Number')
             if mobile:
                 send_sms_otp(mobile, otp)
+            else:
+                logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
 
             session['pending_pos_user_id'] = user['Id']
             session['pending_pos_company'] = company_name
             return render_template('pos_2fa.html')
+        else:
+            # Existing verified device
+            cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
+            conn.commit()
 
         if user.get('must_change_password'):
             session['pending_pos_user_id'] = user['Id']
             session['pending_pos_company'] = company_name
             return render_template('pos_reset_password.html')
-
-        # Existing verified device
-        cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
-        conn.commit()
 
         # Final Login Success
         session['db_name'] = tenant_db_name
@@ -6725,7 +6738,7 @@ def pos_api_add_loyalty_customer():
         cursor.execute(query, (
             name, str(customer_code), billing_address, delivery_address,
             email, 1, mobile, 1, 0,
-            datetime.utcnow(), amount_paid, 0
+            datetime.utcnow().strftime("%Y-%m-%d"), amount_paid, 0
         ))
 
         conn.commit()
