@@ -15,6 +15,9 @@ import time
 import knowledge_base
 import random # For mocking exchange rate
 import subprocess
+import requests
+import string
+from datetime import timedelta
 import mysql.connector
 import urllib.request
 import typing
@@ -6274,6 +6277,10 @@ def pos_api_login():
             return {'success': False, 'error': 'Invalid username or password'}, 401
 
         user = users[0]
+
+        if user.get('is_locked'):
+            return {'success': False, 'error': 'Account locked due to too many failed attempts. Contact admin.'}, 403
+
         stored_password = user['Password']
 
         verified = False
@@ -6292,7 +6299,19 @@ def pos_api_login():
                 verified = True
 
         if not verified:
-            return {'success': False, 'error': 'Invalid username or password'}, 401
+            fails = user.get('failed_attempts', 0) + 1
+            if fails >= 3:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                return {'success': False, 'error': 'Account locked due to too many failed attempts. Contact admin.'}, 403
+            else:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                return {'success': False, 'error': 'Invalid username or password'}, 401
+
+        # Successful login, reset attempts
+        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+        conn.commit()
 
         session['db_name'] = tenant_db_name
         session['username'] = username
@@ -6303,7 +6322,7 @@ def pos_api_login():
             SELECT
                 i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
                 p.inventory_price_selling, p.inventory_price_profit_marging_comen,
-                p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
+                p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
             FROM inventoy_items i
             LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
         ''')
@@ -6320,7 +6339,8 @@ def pos_api_login():
                 'price_market': r['inventory_price_selling'],
                 'price_special': r['inventory_price_profit_marging_comen'],
                 'price_loyalty': r['inventory_price_for_Loyality_customer'],
-                'price_cost': r['inventory_price_purcharsing']
+                'price_cost': r['inventory_price_purcharsing'],
+                'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
             })
 
         return {
@@ -6347,6 +6367,253 @@ def pos_api_login():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+
+
+
+# --- POS Web Login with Device Fingerprinting & 2FA ---
+def send_sms_otp(mobile, code):
+    url = "https://app.notify.lk/api/v1/send"
+    params = {
+        'user_id': os.getenv('NOTIFY_USER_ID', '13120'),
+        # Fallback to the requested demo key as authorized by user for non-live environment
+        'api_key': os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K'),
+        'sender_id': os.getenv('NOTIFY_SENDER_ID', 'The Bunker'),
+        'to': mobile,
+        'message': f"Your POS login verification code is: {code}"
+    }
+    try:
+        requests.get(url, params=params, timeout=5)
+    except Exception as e:
+        logging.error(f"Failed to send SMS: {e}")
+
+@app.route('/pos_login', methods=['GET', 'POST'])
+def pos_web_login():
+    if request.method == 'GET':
+        return render_template('pos_login.html')
+
+    company_name = request.form.get('company_name')
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not company_name or not username or not password:
+        flash('Company Name, Username, and Password are required', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    # Locate DB from company name in master DB
+    try:
+        master_user_res = master_db.execute_query('''
+            SELECT t.db_name
+            FROM tenants t
+            WHERE t.company_name = %s
+        ''', (company_name,))
+        if master_user_res:
+            tenant_db_name = master_user_res[0]['db_name']
+        else:
+            flash('Company not found', 'danger')
+            return redirect(url_for('pos_web_login'))
+    except Exception as e:
+        tenant_db_name = db.db_name
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        from database import is_safe_db_name
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        users = cursor.fetchall()
+
+        if not users:
+            flash('Invalid username or password', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        user = users[0]
+
+        if user.get('is_locked'):
+            flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        stored_password = user['Password']
+        verified = False
+        try:
+            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                if check_password_hash(stored_password, password):
+                    verified = True
+            elif stored_password == password:
+                verified = True
+                new_hash = generate_password_hash(password)
+                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                conn.commit()
+        except Exception:
+            if stored_password == password:
+                verified = True
+
+        if not verified:
+            fails = user.get('failed_attempts', 0) + 1
+            if fails >= 3:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+            else:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                flash('Invalid username or password', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        # Successful auth -> Reset failed attempts
+        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+        conn.commit()
+
+        # Check Device Fingerprint
+        ip_address = request.remote_addr
+        user_agent = request.user_agent.string
+
+        cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s AND ip_address = %s AND user_agent = %s", (user['Id'], ip_address, user_agent))
+        device = cursor.fetchone()
+
+        if not device:
+            # New device - Require 2FA
+            otp = ''.join(random.choices(string.digits, k=6))
+            expires = datetime.now() + timedelta(minutes=10)
+            cursor.execute("INSERT INTO pos_2fa_codes (user_id, code, expires_at) VALUES (%s, %s, %s)", (user['Id'], otp, expires))
+            conn.commit()
+
+            # Send SMS
+            mobile = user.get('Mobile_Number')
+            if mobile:
+                send_sms_otp(mobile, otp)
+
+            session['pending_pos_user_id'] = user['Id']
+            session['pending_pos_company'] = company_name
+            return render_template('pos_2fa.html')
+
+        if user.get('must_change_password'):
+            session['pending_pos_user_id'] = user['Id']
+            session['pending_pos_company'] = company_name
+            return render_template('pos_reset_password.html')
+
+        # Existing verified device
+        cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
+        conn.commit()
+
+        # Final Login Success
+        session['db_name'] = tenant_db_name
+        session['username'] = username
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        return redirect(url_for('pos'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/pos_verify_2fa', methods=['POST'])
+def pos_verify_2fa():
+    user_id = session.get('pending_pos_user_id')
+    company_name = session.get('pending_pos_company')
+    otp = request.form.get('otp')
+
+    if not user_id or not company_name:
+        flash('Session expired or invalid.', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    # Needs Tenant DB connection again to verify
+    try:
+        master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
+        tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
+    except:
+        tenant_db_name = db.db_name
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        from database import is_safe_db_name
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pos_2fa_codes WHERE user_id = %s AND code = %s AND is_used = 0 AND expires_at > %s", (user_id, otp, datetime.now()))
+        valid_code = cursor.fetchone()
+
+        if valid_code:
+            # Mark used
+            cursor.execute("UPDATE pos_2fa_codes SET is_used = 1 WHERE id = %s", (valid_code['id'],))
+
+            # Register device
+            ip_address = request.remote_addr
+            user_agent = request.user_agent.string
+            cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)", (user_id, ip_address, user_agent, datetime.now()))
+
+            # Fetch User to setup session
+            cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+            user = cursor.fetchone()
+            conn.commit()
+
+            # Since this is a new device, force password change immediately
+            cursor.execute("UPDATE pose_setting_table SET must_change_password = 1 WHERE Id = %s", (user_id,))
+            conn.commit()
+
+            return render_template('pos_reset_password.html')
+        else:
+            flash('Invalid or expired code.', 'danger')
+            return render_template('pos_2fa.html')
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/pos_reset_password', methods=['POST'])
+def pos_reset_password():
+    from werkzeug.security import generate_password_hash
+    user_id = session.get('pending_pos_user_id')
+    company_name = session.get('pending_pos_company')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    if not user_id or not company_name:
+        flash('Session expired or invalid.', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    if new_password != confirm_password:
+        flash('Passwords do not match.', 'danger')
+        return render_template('pos_reset_password.html')
+
+    try:
+        master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
+        tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
+    except:
+        tenant_db_name = db.db_name
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        from database import is_safe_db_name
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        new_hash = generate_password_hash(new_password)
+        cursor.execute("UPDATE pose_setting_table SET Password = %s, must_change_password = 0 WHERE Id = %s", (new_hash, user_id))
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+        user = cursor.fetchone()
+        conn.commit()
+
+        session['db_name'] = tenant_db_name
+        session['username'] = user['User_Name']
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        session.pop('pending_pos_user_id', None)
+        session.pop('pending_pos_company', None)
+
+        flash('Password updated successfully.', 'success')
+        return redirect(url_for('pos'))
+    finally:
+        cursor.close()
+        conn.close()
 
 
 @app.route('/api/pos/settings', methods=['GET'])
@@ -6384,7 +6651,7 @@ def pos_api_items():
         SELECT
             i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
             p.inventory_price_selling, p.inventory_price_profit_marging_comen,
-            p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
+            p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
         FROM inventoy_items i
         LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
         WHERE i.active = 1
@@ -6402,7 +6669,8 @@ def pos_api_items():
             'price_market': float(r['inventory_price_selling'] or 0),
             'price_special': float(r['inventory_price_profit_marging_comen'] or 0),
             'price_loyalty': float(r['inventory_price_for_Loyality_customer'] or 0),
-            'cost': float(r['inventory_price_purcharsing'] or 0)
+            'cost': float(r['inventory_price_purcharsing'] or 0),
+            'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
         })
     return json.dumps(items)
 
