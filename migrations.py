@@ -271,11 +271,11 @@ def _migrate_pos_security_features(cursor):
 
         if 'is_locked' not in pos_cols:
             print("Migrating: Adding is_locked to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN is_locked TINYINT(1) DEFAULT 0")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN is_locked TINYINT DEFAULT 0")
 
         if 'must_change_password' not in pos_cols:
             print("Migrating: Adding must_change_password to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN must_change_password TINYINT(1) DEFAULT 0")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN must_change_password TINYINT DEFAULT 0")
 
         if 'Mobile_Number' not in pos_cols:
             print("Migrating: Adding Mobile_Number to pose_setting_table")
@@ -312,7 +312,7 @@ def _migrate_pos_security_features(cursor):
                     user_id INT NOT NULL,
                     code VARCHAR(6) NOT NULL,
                     expires_at DATETIME NOT NULL,
-                    is_used TINYINT(1) DEFAULT 0
+                    is_used TINYINT DEFAULT 0
                 )
             """)
 

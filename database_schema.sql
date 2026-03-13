@@ -102,7 +102,9 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`cf_catogory` (
   `hold_level` INT NOT NULL,
   PRIMARY KEY (`id`),
   INDEX `cf` (`catogory_name` ASC))
-ENGINE = InnoDB;
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_unicode_ci;
 
 
 -- -----------------------------------------------------
