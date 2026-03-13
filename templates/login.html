@@ -357,6 +357,16 @@
             }
         });
 
+        // Hide loader when returning via back-forward cache (bfcache)
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                const loader = document.getElementById('globalPageLoader');
+                if (loader) {
+                    loader.classList.add('hidden');
+                }
+            }
+        });
+
         // Show loader before navigating away
         window.addEventListener('beforeunload', function() {
             const loader = document.getElementById('globalPageLoader');
