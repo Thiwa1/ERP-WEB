@@ -6092,6 +6092,205 @@ def submit_customer_receipt():
     return redirect(url_for('customer_receipt'))
 
 # --- Profit & Loss Report ---
+
+import ast
+import operator
+import re
+
+# Safe math evaluator
+def safe_eval_math(expr):
+    allowed_operators = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg
+    }
+
+    def _eval(node):
+        if isinstance(node, ast.Num):
+            return node.n
+        elif isinstance(node, ast.BinOp):
+            return allowed_operators[type(node.op)](_eval(node.left), _eval(node.right))
+        elif isinstance(node, ast.UnaryOp):
+            return allowed_operators[type(node.op)](_eval(node.operand))
+        else:
+            raise TypeError(f"Unsupported mathematical operation: {node}")
+
+    try:
+        parsed = ast.parse(expr, mode='eval')
+        return _eval(parsed.body)
+    except Exception:
+        return 0.0
+
+def _safe_eval_expression(expr, context_vars):
+    if not expr: return 0.0
+    # Replace variable names (alphabetic strings) with their float values
+    vars_in_expr = re.findall(r'[A-Za-z]+', expr)
+    eval_str = expr
+    for var in vars_in_expr:
+        val = context_vars.get(var, 0.0)
+        # Regex to safely replace whole words only
+        eval_str = re.sub(fr'\b{var}\b', str(val), eval_str)
+
+    # Use ast-based safe eval instead of Python's eval()
+    return safe_eval_math(eval_str)
+
+# Custom P&L Feature
+@app.route('/profit_loss_custom', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def profit_loss_custom():
+    formats = db.execute_query("SELECT id, Description FROM New_PL_Format")
+    accounts_rows = db.execute_query("SELECT account_name FROM new_account_table WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1")
+    accounts = [row['account_name'] for row in accounts_rows]
+    return render_template('profit_loss_custom.html', formats=formats, accounts=accounts)
+
+@app.route('/api/pl_custom/format', methods=['POST'])
+@login_required
+def pl_custom_create_format():
+    data = request.json
+    desc = data.get('description')
+    if not desc: return {'success': False, 'error': 'Description missing'}, 400
+    db.execute_query("INSERT INTO New_PL_Format (Description) VALUES (%s)", (desc,), commit=True)
+    return {'success': True}
+
+@app.route('/api/pl_custom/setup/<int:format_id>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def pl_custom_setup(format_id):
+    if request.method == 'GET':
+        rows = db.execute_query("SELECT * FROM PL_Setup WHERE PL_Report_ID = %s ORDER BY LENGTH(PL_LIne_Number), PL_LIne_Number", (str(format_id),))
+        return {'success': True, 'rows': rows}
+
+    elif request.method == 'DELETE':
+        db.execute_query("DELETE FROM PL_Setup WHERE PL_Report_ID = %s", (str(format_id),), commit=True)
+        return {'success': True}
+
+    elif request.method == 'POST':
+        data = request.json
+        rows = data.get('rows', [])
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            conn.start_transaction()
+            cursor.execute("DELETE FROM PL_Setup WHERE PL_Report_ID = %s", (str(format_id),))
+            for r in rows:
+                cursor.execute('''
+                    INSERT INTO PL_Setup (
+                        PL_Report_ID, PL_LIne_Number, PL_Text_Description, PL_Text_Colom,
+                        PL_Calqulation_instraction, PL_Rasior_instraction, PL_Text_Format,
+                        PL_Text_line, PL_Text_Size
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    str(format_id), r.get('PL_LIne_Number'), r.get('PL_Text_Description'), r.get('PL_Text_Colom'),
+                    r.get('PL_Calqulation_instraction'), r.get('PL_Rasior_instraction'), r.get('PL_Text_Format'),
+                    r.get('PL_Text_line'), r.get('PL_Text_Size')
+                ))
+            conn.commit()
+            return {'success': True}
+        except Exception as e:
+            conn.rollback()
+            return {'success': False, 'error': str(e)}, 500
+        finally:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/pl_custom/generate', methods=['POST'])
+@login_required
+def pl_custom_generate():
+    data = request.json
+    format_id = data.get('format_id')
+    prev_from = data.get('prev_from')
+    prev_to = data.get('prev_to')
+    curr_from = data.get('curr_from')
+    curr_to = data.get('curr_to')
+
+    rows = db.execute_query("SELECT * FROM PL_Setup WHERE PL_Report_ID = %s ORDER BY LENGTH(PL_LIne_Number), PL_LIne_Number", (str(format_id),))
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    results = []
+    prev_vars = {}
+    curr_vars = {}
+
+    try:
+        for r in rows:
+            line_no = r['PL_LIne_Number']
+            desc = r['PL_Text_Description']
+            account = r['PL_Text_Colom']
+            calc_instr = r['PL_Calqulation_instraction']
+            ratio_instr = r['PL_Rasior_instraction']
+
+            prev_val = 0.0
+            curr_val = 0.0
+
+            if account:
+                def get_balance(start, end):
+                    cursor.execute("SELECT account_basment, account_income, account_expenses FROM new_account_table WHERE account_name = %s", (account,))
+                    acc_info = cursor.fetchone()
+                    if not acc_info: return 0.0
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(enty_values_DR), 0) as dr, COALESCE(SUM(enty_values_CR), 0) as cr
+                        FROM entry_details
+                        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+                    ''', (account, start, end))
+                    b = cursor.fetchone()
+                    dr = float(b['dr'] or 0)
+                    cr = float(b['cr'] or 0)
+                    if acc_info['account_expenses'] == 1: return dr - cr
+                    elif acc_info['account_income'] == 1: return cr - dr
+                    else:
+                        if acc_info['account_basment'] == 'DR': return dr - cr
+                        else: return cr - dr
+
+                prev_val = get_balance(prev_from, prev_to)
+                curr_val = get_balance(curr_from, curr_to)
+
+            if calc_instr:
+                prev_val = _safe_eval_expression(calc_instr, prev_vars)
+                curr_val = _safe_eval_expression(calc_instr, curr_vars)
+
+            if line_no:
+                prev_vars[line_no] = prev_val
+                curr_vars[line_no] = curr_val
+
+            diff_pct = ""
+            if curr_val != 0 or prev_val != 0:
+                if prev_val == 0:
+                    val = ((curr_val - prev_val) / curr_val) * 100 if curr_val != 0 else 0
+                else:
+                    if curr_val == 0:
+                        val = ((curr_val - prev_val) / prev_val) * 100
+                    else:
+                        val = ((curr_val - prev_val) / curr_val) * 100
+                diff_pct = f"{val:.2f}"
+
+            ratio_pct = ""
+            if ratio_instr:
+                r_val = _safe_eval_expression(ratio_instr, curr_vars)
+                ratio_pct = f"{r_val:.2f}"
+
+            results.append({
+                'line': line_no,
+                'description': desc,
+                'account': account,
+                'prev_val': f"{prev_val:,.2f}" if prev_val != 0 else "",
+                'curr_val': f"{curr_val:,.2f}" if curr_val != 0 else "",
+                'diff': diff_pct,
+                'ratio': ratio_pct,
+                'format': r.get('PL_Text_Format'),
+                'line': r.get('PL_Text_line'),
+                'size': r.get('PL_Text_Size')
+            })
+        return {'success': True, 'results': results}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.route('/profit_loss', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Reports')
