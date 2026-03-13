@@ -96,9 +96,9 @@ THEMES = {
     },
     'pro_blue': {
         'name': 'Pro Sky Blue',
-        'primary': '#4188ff',
-        'secondary': '#649eff',
-        'accent': '#92bbff'
+        'primary': '#0070F2',
+        'secondary': '#4DB1FF',
+        'accent': '#0057D2'
     },
     'forest': {
         'name': 'Forest Green',
