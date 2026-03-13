@@ -1,3 +1,8 @@
+
+import sys
+from unittest.mock import MagicMock
+if 'requests' not in sys.modules:
+    sys.modules['requests'] = MagicMock()
 import sys
 from unittest.mock import MagicMock, patch
 import tests.mock_env
