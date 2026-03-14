@@ -5,6 +5,11 @@ from datetime import datetime, date
 from functools import wraps
 from jinja2 import pass_context
 from werkzeug.security import generate_password_hash, check_password_hash
+
+def is_safe_db_name(name):
+    import re
+    return bool(re.match(r'^[a-zA-Z0-9_]+$', str(name)))
+
 import csv
 import io
 import json
@@ -6793,7 +6798,6 @@ def pos_api_login():
     try:
         conn = db.get_connection()
         cursor = conn.cursor(dictionary=True)
-        from database import is_safe_db_name
         if tenant_db_name and is_safe_db_name(tenant_db_name):
             cursor.execute(f"USE `{tenant_db_name}`")
 
@@ -6951,7 +6955,6 @@ def pos_web_login():
     try:
         conn = db.get_connection()
         cursor = conn.cursor(dictionary=True)
-        from database import is_safe_db_name
         if tenant_db_name and is_safe_db_name(tenant_db_name):
             cursor.execute(f"USE `{tenant_db_name}`")
 
@@ -7072,7 +7075,6 @@ def pos_verify_2fa():
     conn = db.get_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        from database import is_safe_db_name
         if tenant_db_name and is_safe_db_name(tenant_db_name):
             cursor.execute(f"USE `{tenant_db_name}`")
 
@@ -7130,7 +7132,6 @@ def pos_reset_password():
     conn = db.get_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        from database import is_safe_db_name
         if tenant_db_name and is_safe_db_name(tenant_db_name):
             cursor.execute(f"USE `{tenant_db_name}`")
 
