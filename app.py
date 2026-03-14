@@ -7332,7 +7332,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
         # Legacy C# app and submit_invoice BOTH expect total cost in inventory_recod_unit_price
         inventory_params.append((
             item.get('name'), item.get('code'), today_date, qty, item.get('unit'), total_item_cost,
-            current_user, jv_no, settings.get('location')
+            current_user_pk, jv_no, settings.get('location')
         ))
 
     # Batch Insert into pos_sales_invoice_01
