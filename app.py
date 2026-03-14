@@ -4595,83 +4595,212 @@ def balance_sheet():
     return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data, totals=totals)
 
 # --- Cash Flow ---
-@app.route('/cash_flow')
+
+@app.route('/cash_flow', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
-def cash_flow():
+def cash_flow_view():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
 
-    if request.args.get('from_date'):
+@app.route('/api/cash_flow/generate', methods=['POST'])
+@login_required
+@has_permission('Access_Reports')
+def cash_flow_generate():
+    data = request.json
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
+    rec_only = data.get('rec_only', False)
+
+    rec_filter = " AND ed.entry_Rec = 1 " if rec_only else ""
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
         # 1. Net Profit
-        net_profit_res = db.execute_query("""
+        net_profit_query = f'''
             SELECT
-            (SELECT COALESCE(SUM(enty_values_CR - enty_values_DR), 0)
-             FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-             WHERE na.account_income = 1 AND entry_effective_date BETWEEN %s AND %s) -
-            (SELECT COALESCE(SUM(enty_values_DR - enty_values_CR), 0)
-             FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-             WHERE na.account_expenses = 1 AND entry_effective_date BETWEEN %s AND %s) as val
-        """, (from_date, to_date, from_date, to_date))
-        net_profit = net_profit_res[0]['val'] if net_profit_res else 0
+                (SELECT COALESCE(SUM(CASE
+                    WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                    WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                    ELSE 0 END), 0)
+                FROM entry_details ed
+                JOIN new_account_table a ON ed.account_name = a.account_name
+                WHERE a.account_income = 1
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND ed.entry_deleted = 0 {rec_filter}) -
+                (SELECT COALESCE(SUM(CASE
+                    WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                    WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                    ELSE 0 END), 0)
+                FROM entry_details ed
+                JOIN new_account_table a ON ed.account_name = a.account_name
+                WHERE a.account_expenses = 1
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND ed.entry_deleted = 0 {rec_filter}) as NetProfit
+        '''
+        cursor.execute(net_profit_query, (from_date, to_date, from_date, to_date))
+        net_profit_res = cursor.fetchone()
+        net_profit = float(net_profit_res['NetProfit']) if net_profit_res and net_profit_res['NetProfit'] is not None else 0.0
 
         # 2. Adjustments
-        adjustments = db.execute_query("""
-            SELECT na.account_name as description, SUM(CASE WHEN na.account_basment='CR' THEN (ed.enty_values_CR - ed.enty_values_DR) ELSE (ed.enty_values_DR - ed.enty_values_CR) END) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Adjustments' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        adj_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Adjustments'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(adj_query, (from_date, to_date))
+        adj_items = [dict(r) for r in cursor.fetchall()]
 
         # 3. Working Capital
-        working_capital = db.execute_query("""
-            SELECT na.account_name as description, SUM(CASE WHEN na.account_basment='DR' THEN (ed.enty_values_CR - ed.enty_values_DR) ELSE (ed.enty_values_CR - ed.enty_values_DR) END) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Changes In Working Capital' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        wc_query = f'''
+            SELECT a.account_name,
+                   a.account_assets,
+                   a.account_liabilities,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Changes In Working Capital'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, a.account_assets, a.account_liabilities, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(wc_query, (from_date, to_date))
+        wc_raw = cursor.fetchall()
+        wc_items = []
+        for r in wc_raw:
+            prefix = ""
+            if r['account_assets'] == 1:
+                prefix = "(Increase)/Decrease In "
+            elif r['account_liabilities'] == 1:
+                prefix = "Increase/(Decrease) In "
+
+            wc_items.append({
+                'Description': prefix + r['account_name'],
+                'Amount': float(r['Amount']),
+                'HoldLevel': r['HoldLevel'] or 0
+            })
 
         # 4. Investing
-        investing = db.execute_query("""
-            SELECT na.account_name as description, SUM((ed.enty_values_DR - ed.enty_values_CR) * -1) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Investing Activities' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        inv_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR) * -1
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR) * -1
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Investing Activities'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(inv_query, (from_date, to_date))
+        inv_items = [dict(r) for r in cursor.fetchall()]
 
         # 5. Financing
-        financing = db.execute_query("""
-            SELECT na.account_name as description, SUM((ed.enty_values_DR - ed.enty_values_CR) * -1) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Financing Activities' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        fin_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR) * -1
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Financing Activities'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(fin_query, (from_date, to_date))
+        fin_items = [dict(r) for r in cursor.fetchall()]
 
-        net_prof_val = float(net_profit or 0)
-        op_total = net_prof_val + sum(float(x['amount']) for x in adjustments) + sum(float(x['amount']) for x in working_capital)
-        inv_total = sum(float(x['amount']) for x in investing)
-        fin_total = sum(float(x['amount']) for x in financing)
+        # 6. Cash Balances
+        cash_begin_query = f'''
+            SELECT COALESCE(SUM(ed.enty_values_DR - ed.enty_values_CR), 0) as val
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date < %s
+            AND ed.entry_deleted = 0 {rec_filter}
+        '''
+        cursor.execute(cash_begin_query, (from_date,))
+        cash_begin = float(cursor.fetchone()['val'] or 0)
 
-        report_data = {
-            'net_profit': net_prof_val,
-            'adjustments': adjustments,
-            'working_capital': working_capital,
-            'investing': investing,
-            'financing': financing,
-            'totals': {
-                'operating': op_total,
-                'investing': inv_total,
-                'financing': fin_total,
-                'net_change': op_total + inv_total + fin_total
-            }
+        cash_end_query = f'''
+            SELECT COALESCE(SUM(ed.enty_values_DR - ed.enty_values_CR), 0) as val
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0 {rec_filter}
+        '''
+        cursor.execute(cash_end_query, (to_date,))
+        cash_end = float(cursor.fetchone()['val'] or 0)
+
+        # 7. Cash Accounts Breakdown
+        cash_acc_query = f'''
+            SELECT a.account_name as Description,
+                   SUM(ed.enty_values_DR - ed.enty_values_CR) as Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name
+        '''
+        cursor.execute(cash_acc_query, (to_date,))
+        cash_acc_items = [dict(r) for r in cursor.fetchall()]
+
+        data = {
+            'NetProfit': net_profit,
+            'AdjustmentItems': adj_items,
+            'WorkingCapitalItems': wc_items,
+            'InvestingItems': inv_items,
+            'FinancingItems': fin_items,
+            'CashBeginning': cash_begin,
+            'CashEnding': cash_end,
+            'CashAccounts': cash_acc_items
         }
-        return render_template('cash_flow.html', from_date=from_date, to_date=to_date, report_data=report_data)
 
-    return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
+        return {'success': True, 'data': data}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}
+
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # --- Inventory Balance ---

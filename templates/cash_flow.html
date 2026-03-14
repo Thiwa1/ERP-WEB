@@ -1,95 +1,272 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% block title %}Cash Flow Statement{% endblock %}
 
 {% block content %}
-<div class="container">
-    <h2 class="mb-4">Cash Flow Statement</h2>
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2 class="text-primary mb-0"><i class="fas fa-money-bill-wave me-2"></i>Cash Flow Statement</h2>
+            <p class="text-muted mb-0">Generate and analyze cash flow activities.</p>
+        </div>
+    </div>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-success text-white">Generate Report</div>
-        <div class="card-body">
-            <form method="GET" action="/cash_flow" class="row g-3">
-                <div class="col-md-4">
-                    <label class="form-label">From Date</label>
-                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
+    <!-- Filter Panel -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-header bg-primary text-white py-3">
+            <h5 class="mb-0 fw-bold">Report Configuration</h5>
+        </div>
+        <div class="card-body bg-light">
+            <form id="cfForm" class="row g-3 align-items-end">
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-primary">From Date</label>
+                    <input type="date" id="fromDate" name="from_date" class="form-control" value="{{ from_date }}">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label fw-bold text-primary">To Date</label>
+                    <input type="date" id="toDate" name="to_date" class="form-control" value="{{ to_date }}">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">To Date</label>
-                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
+                    <label class="form-label fw-bold text-primary">Filter</label>
+                    <div class="d-flex bg-white p-2 border rounded">
+                        <div class="form-check me-4">
+                            <input class="form-check-input" type="radio" name="recFilter" id="rbRecAll" value="0" checked>
+                            <label class="form-check-label" for="rbRecAll">All Transactions</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="recFilter" id="rbRecDone" value="1">
+                            <label class="form-check-label" for="rbRecDone">Reconciled Only</label>
+                        </div>
+                    </div>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">Generate</button>
+                <div class="col-md-2 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary flex-grow-1"><i class="fas fa-bolt me-2"></i>Generate</button>
+                    <button type="button" class="btn btn-success" onclick="exportCSV()"><i class="fas fa-file-csv"></i></button>
                 </div>
             </form>
         </div>
     </div>
 
-    {% if report_data %}
-    <div class="card shadow-sm">
-        <div class="card-header text-center fw-bold">
-            CASH FLOW STATEMENT<br>
-            <small>For the period {{ from_date }} to {{ to_date }}</small>
-        </div>
-        <div class="card-body">
-            <h5 class="text-primary border-bottom pb-2">OPERATING ACTIVITIES</h5>
-            <table class="table table-sm table-hover">
-                <tr>
-                    <td>Net Profit Before Tax</td>
-                    <td class="text-end fw-bold">{{ "{:,.2f}".format(report_data.net_profit) }}</td>
-                </tr>
-                <tr><td colspan="2" class="fw-bold text-muted ps-3">Adjustments</td></tr>
-                {% for item in report_data.adjustments %}
-                <tr>
-                    <td class="ps-4">{{ item.description }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr><td colspan="2" class="fw-bold text-muted ps-3">Working Capital Changes</td></tr>
-                {% for item in report_data.working_capital %}
-                <tr>
-                    <td class="ps-4">{{ item.description }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr class="table-light fw-bold">
-                    <td>Net Cash from Operating Activities</td>
-                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.operating) }}</td>
-                </tr>
-            </table>
+    <!-- Report Area -->
+    <div class="card shadow-sm border-0 d-none" id="reportCard">
+        <div class="card-body p-0">
+            <div class="text-center py-4 bg-white border-bottom">
+                <h4 class="fw-bold text-primary mb-1">CASH FLOW STATEMENT</h4>
+                <p class="text-muted fst-italic mb-0" id="reportPeriodText">For the period: </p>
+            </div>
 
-            <h5 class="text-primary border-bottom pb-2 mt-4">INVESTING ACTIVITIES</h5>
-            <table class="table table-sm table-hover">
-                {% for item in report_data.investing %}
-                <tr>
-                    <td class="ps-3">{{ item.description }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr class="table-light fw-bold">
-                    <td>Net Cash used in Investing Activities</td>
-                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.investing) }}</td>
-                </tr>
-            </table>
+            <div class="p-4 bg-white">
+                <div id="reportContent" class="table-responsive">
+                    <table class="table table-hover table-borderless align-middle" id="cfTable">
+                        <tbody id="cfTbody">
+                            <!-- Injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-            <h5 class="text-primary border-bottom pb-2 mt-4">FINANCING ACTIVITIES</h5>
-            <table class="table table-sm table-hover">
-                {% for item in report_data.financing %}
-                <tr>
-                    <td class="ps-3">{{ item.description }}</td>
-                    <td class="text-end">{{ "{:,.2f}".format(item.amount) }}</td>
-                </tr>
-                {% endfor %}
-                <tr class="table-light fw-bold">
-                    <td>Net Cash from Financing Activities</td>
-                    <td class="text-end">{{ "{:,.2f}".format(report_data.totals.financing) }}</td>
-                </tr>
-            </table>
-
-            <div class="alert alert-success mt-4 d-flex justify-content-between">
-                <strong>NET INCREASE/(DECREASE) IN CASH</strong>
-                <strong>{{ "{:,.2f}".format(report_data.totals.net_change) }}</strong>
+            <!-- Footer Summary -->
+            <div class="card-footer bg-light border-top py-4">
+                <div class="row align-items-center">
+                    <div class="col-md-8 text-end">
+                        <h5 class="fw-bold text-primary mb-0">NET INCREASE/(DECREASE) IN CASH:</h5>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="bg-white border rounded p-3 text-end shadow-sm">
+                            <h4 class="fw-bold mb-0" id="netChangeTotal">0.00</h4>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
-    {% endif %}
 </div>
+
+<script>
+    document.getElementById('cfForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate = document.getElementById('toDate').value;
+        const recFilter = document.querySelector('input[name="recFilter"]:checked').value;
+
+        if(!fromDate || !toDate) return alert("Please select both dates.");
+        if(fromDate > toDate) return alert("From Date cannot be after To Date.");
+
+        // Show loading state...
+        const btn = this.querySelector('button[type="submit"]');
+        const origText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Generating...';
+        btn.disabled = true;
+
+        fetch('/api/cash_flow/generate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                from_date: fromDate,
+                to_date: toDate,
+                rec_only: recFilter === '1'
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.innerHTML = origText;
+            btn.disabled = false;
+
+            if(!data.success) {
+                return alert("Error generating report: " + data.error);
+            }
+
+            renderReport(data.data, fromDate, toDate);
+        })
+        .catch(err => {
+            btn.innerHTML = origText;
+            btn.disabled = false;
+            alert("Network error occurred.");
+        });
+    });
+
+    function formatAmount(val) {
+        return Number(val).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    }
+
+    function createMainHeader(text) {
+        return `<tr style="background: rgba(43, 91, 128, 0.9); color: white;"><td colspan="2" class="fw-bold py-2 px-3">${text}</td></tr>`;
+    }
+
+    function createSubHeader(text) {
+        return `<tr class="bg-light"><td colspan="2" class="fw-semibold py-2 px-4 border-bottom">${text}</td></tr>`;
+    }
+
+    function createRow(desc, amount, isBold = false, isIndent = true) {
+        const fw = isBold ? 'fw-bold' : '';
+        const pl = isIndent ? 'ps-5' : 'ps-3';
+        return `<tr><td class="${fw} ${pl}">${desc}</td><td class="text-end ${fw} pe-4">${formatAmount(amount)}</td></tr>`;
+    }
+
+    function createTotalRow(desc, amount) {
+        return `<tr style="border-top: 2px solid #2b5b80;"><td class="fw-bold ps-4 py-3">${desc}</td><td class="text-end fw-bold pe-4 py-3">${formatAmount(amount)}</td></tr>`;
+    }
+
+    function createSpacer() {
+        return `<tr><td colspan="2" style="height: 20px;"></td></tr>`;
+    }
+
+    function renderReport(data, start, end) {
+        // Update header text
+        document.getElementById('reportPeriodText').textContent = `For the period: ${start} to ${end}`;
+
+        let html = '';
+
+        // 1. Operating Activities
+        html += createMainHeader("CASH FLOWS FROM OPERATING ACTIVITIES");
+        html += createRow("Net Profit After Taxation", data.NetProfit, false, true);
+
+        html += createSubHeader("Adjustments");
+        let adjTotal = 0;
+        data.AdjustmentItems.forEach(item => {
+            html += createRow(item.Description, item.Amount);
+            adjTotal += item.Amount;
+        });
+        let afterAdj = data.NetProfit + adjTotal;
+        html += createRow("", afterAdj, true, true); // Subtotal empty description but bold amount
+
+        html += createSubHeader("Changes In Working Capital");
+        let wcTotal = 0;
+        data.WorkingCapitalItems.forEach(item => {
+            html += createRow(item.Description, item.Amount);
+            wcTotal += item.Amount;
+        });
+
+        let netOp = afterAdj + wcTotal;
+        html += createRow("Cash Generated From Operation", netOp, false, true);
+        html += createTotalRow("Net Cash Flows From Operation", netOp);
+        html += createSpacer();
+
+        // 2. Investing Activities
+        html += createMainHeader("CASH FLOWS FROM INVESTING ACTIVITIES");
+        let netInv = 0;
+        data.InvestingItems.forEach(item => {
+            html += createRow(item.Description, item.Amount);
+            netInv += item.Amount;
+        });
+        html += createTotalRow("Net Cash Used In Investing Activities", netInv);
+        html += createSpacer();
+
+        // 3. Financing Activities
+        html += createMainHeader("CASH FLOWS FROM FINANCING ACTIVITIES");
+        let netFin = 0;
+        data.FinancingItems.forEach(item => {
+            html += createRow(item.Description, item.Amount);
+            netFin += item.Amount;
+        });
+        html += createTotalRow("Net Cash Flows From Financial Activities", netFin);
+        html += createSpacer();
+
+        // 4. Summary
+        let netChange = netOp + netInv + netFin;
+        html += createMainHeader("SUMMARY");
+        html += createRow("Net Increase/Decrease In Cash & Cash Equivalents", netChange);
+        html += createRow("Cash & Cash Equivalents At Beginning Of The Year", data.CashBeginning);
+        html += createRow("Cash & Cash Equivalents At End Of The Year", data.CashEnding);
+        html += createSpacer();
+
+        // 5. Analysis
+        html += createMainHeader("ANALYSIS OF CASH & CASH EQUIVALENTS");
+        data.CashAccounts.forEach(item => {
+            html += createRow(item.Description, item.Amount);
+        });
+        html += createTotalRow("Cash & Cash Equivalents At End Of The Year", data.CashEnding);
+
+        // Inject HTML
+        document.getElementById('cfTbody').innerHTML = html;
+
+        // Set Net Change at bottom
+        const netChangeEl = document.getElementById('netChangeTotal');
+        netChangeEl.textContent = formatAmount(netChange);
+        netChangeEl.className = netChange >= 0 ? "fw-bold mb-0 text-success" : "fw-bold mb-0 text-danger";
+
+        // Show report
+        document.getElementById('reportCard').classList.remove('d-none');
+    }
+
+    function exportCSV() {
+        const table = document.getElementById("cfTable");
+        if(!table || document.getElementById('reportCard').classList.contains('d-none')) {
+            return alert("Please generate a report first.");
+        }
+
+        let csv = "Cash Flow Statement\n";
+        csv += document.getElementById('reportPeriodText').textContent + "\n\n";
+        csv += "Description,Amount\n";
+
+        const rows = table.querySelectorAll('tr');
+        for (let i = 0; i < rows.length; i++) {
+            const cols = rows[i].querySelectorAll('td');
+            if (cols.length === 1) {
+                // Header or spacer
+                if(cols[0].textContent.trim() !== '') {
+                    csv += `"${cols[0].textContent.trim()}",\n`;
+                }
+            } else if (cols.length === 2) {
+                // Data row
+                let desc = cols[0].textContent.trim().replace(/"/g, '""');
+                let amt = cols[1].textContent.trim().replace(/,/g, '');
+                csv += `"${desc}",${amt}\n`;
+            }
+        }
+
+        let netChangeText = document.getElementById('netChangeTotal').textContent.replace(/,/g, '');
+        csv += `\n"Net Increase/(Decrease) in Cash",${netChangeText}\n`;
+
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        const url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `CashFlow_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.csv`);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+</script>
 {% endblock %}
