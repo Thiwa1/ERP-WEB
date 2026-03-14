@@ -88,10 +88,10 @@
 
         .sidebar-brand i {
             font-size: 1.5rem;
-            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            background: linear-gradient(135deg, var(--accent-color), #60a5fa);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 8px rgba(0, 112, 242, 0.4));
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
         }
 
         .sidebar-menu {
@@ -158,7 +158,7 @@
 
         .nav-link.active i {
             color: var(--accent-color);
-            filter: drop-shadow(0 0 8px rgba(0, 112, 242, 0.5));
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
         }
 
         /* Specifically style the pending approvals text */
@@ -205,14 +205,14 @@
 
         /* Add New Item Button - Professional Style */
         .btn-add-new-pro {
-            background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+            background: linear-gradient(135deg, var(--accent-color), #2563eb);
             color: white;
             border: none;
             padding: 12px 20px;
             border-radius: 8px;
             font-weight: 600;
             font-size: 0.9rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 112, 242, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.5);
             transition: all 0.3s ease;
             width: 100%;
             display: flex;
@@ -224,7 +224,7 @@
 
         .btn-add-new-pro:hover {
             transform: translateY(-1px);
-            box-shadow: 0 6px 8px -1px rgba(0, 112, 242, 0.6);
+            box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.6);
             color: white;
         }
 
@@ -415,7 +415,7 @@
         }
         .modal-pro .modal-title i {
             color: var(--accent-color);
-            filter: drop-shadow(0 0 8px rgba(0, 112, 242, 0.5));
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
             font-size: 1.2rem;
         }
         .modal-pro .btn-close-white {
@@ -844,3 +844,26 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
+<style>
+/* Base Tab Styling Fix for Light Mode */
+.nav-tabs {
+    border-bottom: 2px solid #E5E5E5;
+}
+.nav-tabs .nav-link {
+    color: #605E5C !important;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 10px 16px;
+    font-weight: 600;
+}
+.nav-tabs .nav-link:hover {
+    color: #201F1E !important;
+    border-bottom: 2px solid #C3CED5;
+    background: transparent;
+}
+.nav-tabs .nav-link.active {
+    color: #0070F2 !important;
+    border-bottom: 2px solid #0070F2 !important;
+    background: transparent !important;
+}
+</style>
