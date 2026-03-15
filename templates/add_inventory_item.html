@@ -4,7 +4,7 @@
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-boxes me-2"></i> MANAGE THE INVENTORY ITEMS</h4>
         </div>
     </div>
@@ -124,7 +124,7 @@
             <div class="col-md-3">
                 <!-- Image Section -->
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white text-center" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-dark text-center" style="background-color: var(--secondary-color);">
                         ITEM IMAGE
                     </div>
                     <div class="card-body text-center bg-white">
@@ -145,10 +145,10 @@
                     <a href="{{ url_for('add_inventory_item') }}" class="btn btn-secondary fw-bold py-2 shadow-sm">
                         <i class="fas fa-eraser me-2"></i> Clear Form
                     </a>
-                    <a href="{{ url_for('inventory_price_editing') }}" class="btn btn-info fw-bold py-2 shadow-sm text-white">
+                    <a href="{{ url_for('inventory_price_editing') }}" class="btn btn-info fw-bold py-2 shadow-sm text-dark">
                         <i class="fas fa-tags me-2"></i> Price Editing
                     </a>
-                    <a href="{{ url_for('inventory_category') }}" class="btn btn-warning fw-bold py-2 shadow-sm text-white">
+                    <a href="{{ url_for('inventory_category') }}" class="btn btn-warning fw-bold py-2 shadow-sm text-dark">
                         <i class="fas fa-folder-open me-2"></i> Categories
                     </a>
                 </div>

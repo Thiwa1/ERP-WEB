@@ -70,13 +70,13 @@
         <div class="card-body p-0">
             <div class="table-responsive">
                 <table class="table table-hover table-striped align-middle mb-0">
-                    <thead class="bg-dark text-white text-center">
+                    <thead class="bg-dark text-dark text-center">
                         <tr>
                             <th class="text-start p-3" style="width: 40%;">Description</th>
                             {% for p in periods %}
                             <th class="p-3">
                                 Period {{ loop.index }}<br>
-                                <small class="text-white-50 fw-normal" style="font-size: 0.8rem;">
+                                <small class="text-dark-50 fw-normal" style="font-size: 0.8rem;">
                                     {{ p.start }} to {{ p.end }}
                                 </small>
                             </th>
