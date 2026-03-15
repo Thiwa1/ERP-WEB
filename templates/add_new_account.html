@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid py-3">
     <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-contract me-2"></i> MANAGE THE NEW ACCOUNT</h4>
         </div>
     </div>
@@ -11,7 +11,7 @@
     <form method="POST" action="{{ url_for('add_new_account') }}">
         <!-- Account Type Selection -->
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
                 <i class="fas fa-check-circle me-2"></i> Select Account Type
             </div>
             <div class="card-body bg-white">
@@ -44,7 +44,7 @@
             <!-- Left Column: Account Details -->
             <div class="col-md-6 mb-4">
                 <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
                         <i class="fas fa-info-circle me-2"></i> Account Details
                     </div>
                     <div class="card-body bg-white">
@@ -88,7 +88,7 @@
             <!-- Right Column: Category Selection -->
             <div class="col-md-6 mb-4">
                 <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
                         <i class="fas fa-list-ul me-2"></i> Category Selection
                     </div>
                     <div class="card-body bg-white">
@@ -135,10 +135,10 @@
                 <button type="submit" name="action" value="add_sub_account" class="btn btn-secondary fw-bold px-4">
                     <i class="fas fa-level-down-alt me-1"></i> Sub Account
                 </button>
-                <a href="/chart_of_accounts" class="btn btn-info fw-bold px-4 text-white">
+                <a href="/chart_of_accounts" class="btn btn-info fw-bold px-4 text-dark">
                     <i class="fas fa-list me-1"></i> List Account
                 </a>
-                <a href="/cash_flow_categories" class="btn btn-warning fw-bold px-4 text-white">
+                <a href="/cash_flow_categories" class="btn btn-warning fw-bold px-4 text-dark">
                     <i class="fas fa-tags me-1"></i> CF Category
                 </a>
             </div>
