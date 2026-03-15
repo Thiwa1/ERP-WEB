@@ -43,7 +43,7 @@
             z-index: 1000;
             padding-top: 0;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-right:  1px solid #E5E5E5;
+            border-right: 1px solid rgba(255, 255, 255, 0.05);
             box-shadow: 5px 0 25px rgba(0,0,0,0.15);
             overflow-y: auto;
         }
@@ -109,7 +109,7 @@
         }
 
         .nav-link {
-            color: #605E5C; /* Muted base text */
+            color: rgba(255,255,255,0.85); /* Muted base text */
             padding: 10px 16px;
             border-radius: 8px; /* Modern rounded rectangles */
             margin-bottom: 4px;
@@ -125,21 +125,21 @@
 
         /* Hover Glow Effect */
         .nav-link:hover {
-            background-color: rgba(0,0,0,0.04);
-            color: #201F1E;
-            border-color: rgba(0,0,0,0.05);
+            background-color: rgba(255,255,255,0.04);
+            color: #f8fafc;
+            border-color: rgba(255,255,255,0.05);
             transform: translateX(4px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         /* Active State Pill */
         .nav-link.active {
-            background-color: rgba(0, 112, 242, 0.12) !important;
-            color: #0070F2 !important;
-            font-weight: 600 !important;
-            border-left: 3px solid #0070F2;
-            border-radius: 0 8px 8px 0;
-            padding-left: 13px;
+            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
+            color: #ffffff;
+            font-weight: 600;
+            border-left: 3px solid var(--accent-color);
+            border-radius: 0 8px 8px 0; /* Flat left side for active indicator */
+            padding-left: 13px; /* Compensate for border */
         }
 
         .nav-link i {
@@ -147,18 +147,18 @@
             text-align: left;
             margin-right: 12px;
             font-size: 1.1rem;
-            color: #605E5C;
+            color: rgba(255,255,255,0.7);
             transition: color 0.3s ease;
         }
 
         .nav-link:hover i {
-            color: #201F1E;
+            color: #ffffff;
             filter: drop-shadow(0 0 5px rgba(255,255,255,0.3));
         }
 
         .nav-link.active i {
-            color: #0070F2 !important;
-            filter: drop-shadow(0 0 8px rgba(0, 112, 242, 0.5));
+            color: var(--accent-color);
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
         }
 
         /* Specifically style the pending approvals text */
@@ -503,6 +503,71 @@
         .qa-theme-info .qa-header i { color: #06b6d4; }
         .qa-theme-purple .qa-header i { color: #8b5cf6; }
         .qa-theme-rose .qa-header i { color: #f43f5e; }
+
+
+        /* Light Mode Colors from Requirements */
+        :root {
+            --blue-7: #0070F2;
+            --blue-5: #4DB1FF;
+            --tint-tappable: #0070F2; /* Blue 7 */
+            --tint-tappable-light: #4DB1FF; /* Blue 5 */
+            --tint-2-text: #0057D2; /* Blue 8 - Tappable elements on less contrast backgrounds */
+            --tint-3-bg: rgba(0, 112, 242, 0.08); /* Blue 7, 8% - secondary tint button background */
+            --tint-tap-state: #0040B0; /* Blue 9 */
+        }
+
+        /* Override sidebar to use the specific colors */
+        .sidebar {
+            background: #ffffff !important;
+            border-right: 1px solid #e0e0e0;
+        }
+
+        /* Inactive text - Dark text for light mode sidebar */
+        .sidebar .nav-link {
+            color: #333333 !important;
+            opacity: 0.9;
+            border-radius: 6px;
+            margin-bottom: 2px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+        }
+
+        .sidebar .nav-link:hover {
+            background-color: rgba(0, 112, 242, 0.04) !important;
+            color: #000000 !important;
+            opacity: 1;
+        }
+
+        /* Active sidebar link uses the exact tinting specified by the user */
+        .sidebar .nav-link.active,
+        .sidebar .nav-item.active > .nav-link,
+        .sidebar .nav-link[aria-expanded="true"] {
+            background-color: var(--tint-3-bg) !important; /* Blue 7, 8% */
+            color: var(--tint-2-text) !important; /* #0057D2 Blue 8 */
+            font-weight: 600 !important;
+            border-left: 3px solid var(--tint-2-text) !important;
+            border-radius: 0 8px 8px 0;
+            padding-left: 13px;
+            opacity: 1;
+        }
+
+        .sidebar .nav-link.active:active,
+        .sidebar .nav-item.active > .nav-link:active {
+            color: var(--tint-tap-state) !important; /* Blue 9 */
+            border-left-color: var(--tint-tap-state) !important;
+        }
+
+        .sidebar .nav-link.active *,
+        .sidebar .nav-item.active > .nav-link *,
+        .sidebar .nav-link.active i,
+        .sidebar .nav-link.active svg {
+            color: var(--tint-2-text) !important;
+            fill: var(--tint-2-text) !important;
+        }
+
+        .sidebar-menu .menu-category {
+            color: #777777 !important;
+        }
 
     </style>
 </head>
