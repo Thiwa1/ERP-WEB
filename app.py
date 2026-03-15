@@ -91,10 +91,10 @@ app.config['SECRET_KEY'] = app.secret_key
 # Theme Configuration
 THEMES = {
     'default': {
-        'name': 'Professional (Default)',
-        'primary': '#0f172a',
-        'secondary': '#1e293b',
-        'accent': '#2563eb'
+        'name': 'Windows 11 Light',
+        'primary': '#0070F2',
+        'secondary': '#F3F3F3',
+        'accent': '#0070F2'
     },
     'ocean': {
         'name': 'Ocean Blue',
