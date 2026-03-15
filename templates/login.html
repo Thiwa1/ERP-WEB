@@ -325,7 +325,8 @@
                             <button type="submit" class="btn btn-login btn-loading">Sign In</button>
 
                             <div class="register-link">
-                                New to Suwin Accounting? <a href="{{ url_for('register') }}">Create an account</a>
+                                New to Suwin Accounting? <a href="{{ url_for('register') }}">Create an account</a><br><br>
+                                <a href="{{ url_for('pos_web_login') }}" class="text-decoration-none fw-bold" style="color: var(--primary-color);"><i class="fas fa-cash-register me-1"></i> Are you a cashier? Login to POS</a>
                             </div>
                         </form>
                     </div>
@@ -354,6 +355,16 @@
                 setTimeout(() => {
                     loader.classList.add('hidden');
                 }, 300); // Small delay to ensure smooth transition
+            }
+        });
+
+        // Hide loader when returning via back-forward cache (bfcache)
+        window.addEventListener('pageshow', function(event) {
+            if (event.persisted) {
+                const loader = document.getElementById('globalPageLoader');
+                if (loader) {
+                    loader.classList.add('hidden');
+                }
             }
         });
 

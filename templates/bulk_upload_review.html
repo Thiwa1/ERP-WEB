@@ -33,7 +33,7 @@
                                 <input type="text" class="form-control form-control-sm fw-bold" name="account_name[]" value="{{ row['Account Name'] }}" readonly>
                             </td>
                             <td>
-                                <select class="form-select form-select-sm" name="account_type[]" onchange="updateRowColor(this)">
+                                <select class="select2" name="account_type[]" style="width: 100%;" onchange="updateRowColor(this)">
                                     <option value="Asset" {% if row['Account Type'] == 'Asset' %}selected{% endif %}>Asset (BS)</option>
                                     <option value="Liability" {% if row['Account Type'] == 'Liability' %}selected{% endif %}>Liability (BS)</option>
                                     <option value="Equity" {% if row['Account Type'] == 'Equity' %}selected{% endif %}>Equity (BS)</option>
@@ -42,7 +42,7 @@
                                 </select>
                             </td>
                             <td>
-                                <select class="form-select form-select-sm select2" name="category[]">
+                                <select class="select2" name="category[]">
                                     <option value="">-- Select Category --</option>
                                     <optgroup label="Balance Sheet">
                                         {% for c in bs_cats %}
@@ -63,7 +63,7 @@
                                 </select>
                             </td>
                             <td>
-                                <select class="form-select form-select-sm" name="cf_category[]">
+                                <select class="select2" name="cf_category[]" style="width: 100%;">
                                     <option value="">-- Select CF --</option>
                                     {% for cf in cf_cats %}
                                     <option value="{{ cf.catogory_name }}" {% if row['Cash Flow Category'] == cf.catogory_name %}selected{% endif %}>{{ cf.catogory_name }}</option>
@@ -99,6 +99,7 @@
     </form>
 </div>
 
+
 <script>
     function updateRowColor(select) {
         const row = select.closest('tr');
@@ -106,5 +107,27 @@
         // Optional: Change visual cues based on type if needed
         // e.g., if (type === 'Income' || type === 'Expense') row.classList.add('table-info');
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        var form = document.querySelector('form');
+        if(form) {
+            form.addEventListener('submit', function(e) {
+                var actions = document.getElementsByName('action[]');
+                var categories = document.getElementsByName('category[]');
+
+                for(var i=0; i<actions.length; i++) {
+                    if(actions[i].value === 'save') {
+                        if(!categories[i].value) {
+                            alert('Please select a Category for all rows marked to be saved.');
+                            e.preventDefault();
+                            $(categories[i]).select2('open');
+                            return;
+                        }
+                    }
+                }
+            });
+        }
+    });
 </script>
+
 {% endblock %}

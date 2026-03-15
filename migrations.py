@@ -38,6 +38,7 @@ def run_migrations(conn):
         _migrate_cheque_print_settings(cursor)
         _migrate_proforma_invoice(cursor)
         _migrate_approval_workflow(cursor)
+        _migrate_pos_security_features(cursor)
         _migrate_password_length(cursor)
 
         conn.commit()
@@ -255,6 +256,69 @@ def _migrate_password_length(cursor):
         cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
     except Exception as e:
         print(f"Error migrating Password column length (Pose_Setting_Table): {e}")
+
+
+def _migrate_pos_security_features(cursor):
+    """10. POS Security & Expiry Date Updates."""
+    try:
+        # pose_setting_table: failed_attempts, is_locked
+        cursor.execute("SHOW COLUMNS FROM pose_setting_table")
+        pos_cols = [row[0] for row in cursor.fetchall()]
+
+        if 'failed_attempts' not in pos_cols:
+            print("Migrating: Adding failed_attempts to pose_setting_table")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN failed_attempts INT DEFAULT 0")
+
+        if 'is_locked' not in pos_cols:
+            print("Migrating: Adding is_locked to pose_setting_table")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN is_locked TINYINT DEFAULT 0")
+
+        if 'must_change_password' not in pos_cols:
+            print("Migrating: Adding must_change_password to pose_setting_table")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN must_change_password TINYINT DEFAULT 0")
+
+        if 'Mobile_Number' not in pos_cols:
+            print("Migrating: Adding Mobile_Number to pose_setting_table")
+            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN Mobile_Number VARCHAR(20) NULL")
+
+        # inventoy_items: expiry_date
+        cursor.execute("SHOW COLUMNS FROM inventoy_items")
+        inv_cols = [row[0] for row in cursor.fetchall()]
+        if 'expiry_date' not in inv_cols:
+            print("Migrating: Adding expiry_date to inventoy_items")
+            cursor.execute("ALTER TABLE inventoy_items ADD COLUMN expiry_date DATE NULL")
+
+        # pos_user_devices
+        cursor.execute("SHOW TABLES LIKE 'pos_user_devices'")
+        if not cursor.fetchone():
+            print("Migrating: Creating pos_user_devices table")
+            cursor.execute("""
+                CREATE TABLE pos_user_devices (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    ip_address VARCHAR(45) NOT NULL,
+                    user_agent VARCHAR(255) NOT NULL,
+                    last_login DATETIME NOT NULL
+                )
+            """)
+
+        # pos_2fa_codes
+        cursor.execute("SHOW TABLES LIKE 'pos_2fa_codes'")
+        if not cursor.fetchone():
+            print("Migrating: Creating pos_2fa_codes table")
+            cursor.execute("""
+                CREATE TABLE pos_2fa_codes (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    code VARCHAR(6) NOT NULL,
+                    expires_at DATETIME NOT NULL,
+                    is_used TINYINT DEFAULT 0
+                )
+            """)
+
+    except Exception as e:
+        print(f"Error migrating pos security features: {e}")
+
 
 def _migrate_approval_workflow(cursor):
     """9. Approval Workflow Updates."""

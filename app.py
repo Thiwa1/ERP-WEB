@@ -5,6 +5,11 @@ from datetime import datetime, date
 from functools import wraps
 from jinja2 import pass_context
 from werkzeug.security import generate_password_hash, check_password_hash
+
+def is_safe_db_name(name):
+    import re
+    return bool(re.match(r'^[a-zA-Z0-9_]+$', str(name)))
+
 import csv
 import io
 import json
@@ -15,6 +20,9 @@ import time
 import knowledge_base
 import random # For mocking exchange rate
 import subprocess
+import requests
+import string
+from datetime import timedelta
 import mysql.connector
 import urllib.request
 import typing
@@ -2285,27 +2293,36 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             count += 1
 
-        # Batch Update
+        # Process Updates row-by-row to skip failures
         if to_update:
-            cursor.executemany("""
-                UPDATE new_account_table SET
-                    account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                    account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                    account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                    cf_catogory=%s, account_basment=%s
-                WHERE id=%s
-            """, to_update)
+            for row in to_update:
+                try:
+                    cursor.execute("""
+                        UPDATE new_account_table SET
+                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                            cf_catogory=%s, account_basment=%s
+                        WHERE id=%s
+                    """, row)
+                except Exception as e:
+                    pass
 
-        # Batch Insert
+        # Process Inserts row-by-row to skip failures
         if to_insert:
-            cursor.executemany("""
-                INSERT INTO new_account_table (
-                    account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                    account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                    account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-            """, to_insert)
+            for row in to_insert:
+                try:
+                    cursor.execute("""
+                        INSERT INTO new_account_table (
+                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                    """, row)
+                except Exception as e:
+                    count -= 1
+                    pass
 
         _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
@@ -4494,22 +4511,54 @@ def balance_sheet():
         GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
     """, (as_at_date,))
 
-    # Calculate Retained Earnings (Income - Expense - COGS)
-    income_res = db.execute_query("""
-        SELECT COALESCE(SUM(enty_values_CR - enty_values_DR), 0) as val
-        FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-        WHERE na.account_income = 1 AND ed.entry_effective_date <= %s
-    """, (as_at_date,))
-    income_val = income_res[0]['val'] if income_res else 0
+    # Calculate Retained Earnings (Income - Expense - COGS) matching legacy C# logic
+    retained_earnings_query = """
+        SELECT
+            na.account_name,
+            na.account_income,
+            na.account_expenses,
+            na.account_basment,
+            COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
+            COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
+        FROM
+            new_account_table na
+        LEFT JOIN
+            entry_details ed ON na.account_name = ed.account_name
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0
+        WHERE
+            (na.account_income = 1 OR na.account_expenses = 1)
+            AND na.account_active = 1
+        GROUP BY
+            na.account_name,
+            na.account_income,
+            na.account_expenses,
+            na.account_basment
+    """
+    retained_earnings_rows = db.execute_query(retained_earnings_query, (as_at_date,))
 
-    expense_res = db.execute_query("""
-        SELECT COALESCE(SUM(enty_values_DR - enty_values_CR), 0) as val
-        FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-        WHERE na.account_expenses = 1 AND ed.entry_effective_date <= %s
-    """, (as_at_date,))
-    expense_val = expense_res[0]['val'] if expense_res else 0
+    total_income = 0.0
+    total_expenses = 0.0
 
-    retained_earnings = float(income_val) - float(expense_val)
+    for row in retained_earnings_rows:
+        is_income = bool(row['account_income'])
+        is_expense = bool(row['account_expenses'])
+        basement = row['account_basment']
+        debit_total = float(row['total_dr'] or 0)
+        credit_total = float(row['total_cr'] or 0)
+
+        balance = 0.0
+        if basement == "DR":
+            balance = debit_total - credit_total
+        else:
+            balance = credit_total - debit_total
+
+        if is_income:
+            total_income += balance
+        elif is_expense:
+            total_expenses += balance
+
+    retained_earnings = total_income - total_expenses
 
     # Grouping
     grouped_assets = {}
@@ -4560,83 +4609,212 @@ def balance_sheet():
     return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data, totals=totals)
 
 # --- Cash Flow ---
-@app.route('/cash_flow')
+
+@app.route('/cash_flow', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
-def cash_flow():
+def cash_flow_view():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
 
-    if request.args.get('from_date'):
+@app.route('/api/cash_flow/generate', methods=['POST'])
+@login_required
+@has_permission('Access_Reports')
+def cash_flow_generate():
+    data = request.json
+    from_date = data.get('from_date')
+    to_date = data.get('to_date')
+    rec_only = data.get('rec_only', False)
+
+    rec_filter = " AND ed.entry_Rec = 1 " if rec_only else ""
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
         # 1. Net Profit
-        net_profit_res = db.execute_query("""
+        net_profit_query = f'''
             SELECT
-            (SELECT COALESCE(SUM(enty_values_CR - enty_values_DR), 0)
-             FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-             WHERE na.account_income = 1 AND entry_effective_date BETWEEN %s AND %s) -
-            (SELECT COALESCE(SUM(enty_values_DR - enty_values_CR), 0)
-             FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-             WHERE na.account_expenses = 1 AND entry_effective_date BETWEEN %s AND %s) as val
-        """, (from_date, to_date, from_date, to_date))
-        net_profit = net_profit_res[0]['val'] if net_profit_res else 0
+                (SELECT COALESCE(SUM(CASE
+                    WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                    WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                    ELSE 0 END), 0)
+                FROM entry_details ed
+                JOIN new_account_table a ON ed.account_name = a.account_name
+                WHERE a.account_income = 1
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND ed.entry_deleted = 0 {rec_filter}) -
+                (SELECT COALESCE(SUM(CASE
+                    WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                    WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                    ELSE 0 END), 0)
+                FROM entry_details ed
+                JOIN new_account_table a ON ed.account_name = a.account_name
+                WHERE a.account_expenses = 1
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND ed.entry_deleted = 0 {rec_filter}) as NetProfit
+        '''
+        cursor.execute(net_profit_query, (from_date, to_date, from_date, to_date))
+        net_profit_res = cursor.fetchone()
+        net_profit = float(net_profit_res['NetProfit']) if net_profit_res and net_profit_res['NetProfit'] is not None else 0.0
 
         # 2. Adjustments
-        adjustments = db.execute_query("""
-            SELECT na.account_name as description, SUM(CASE WHEN na.account_basment='CR' THEN (ed.enty_values_CR - ed.enty_values_DR) ELSE (ed.enty_values_DR - ed.enty_values_CR) END) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Adjustments' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        adj_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Adjustments'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(adj_query, (from_date, to_date))
+        adj_items = [dict(r) for r in cursor.fetchall()]
 
         # 3. Working Capital
-        working_capital = db.execute_query("""
-            SELECT na.account_name as description, SUM(CASE WHEN na.account_basment='DR' THEN (ed.enty_values_CR - ed.enty_values_DR) ELSE (ed.enty_values_CR - ed.enty_values_DR) END) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Changes In Working Capital' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        wc_query = f'''
+            SELECT a.account_name,
+                   a.account_assets,
+                   a.account_liabilities,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Changes In Working Capital'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, a.account_assets, a.account_liabilities, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(wc_query, (from_date, to_date))
+        wc_raw = cursor.fetchall()
+        wc_items = []
+        for r in wc_raw:
+            prefix = ""
+            if r['account_assets'] == 1:
+                prefix = "(Increase)/Decrease In "
+            elif r['account_liabilities'] == 1:
+                prefix = "Increase/(Decrease) In "
+
+            wc_items.append({
+                'Description': prefix + r['account_name'],
+                'Amount': float(r['Amount']),
+                'HoldLevel': r['HoldLevel'] or 0
+            })
 
         # 4. Investing
-        investing = db.execute_query("""
-            SELECT na.account_name as description, SUM((ed.enty_values_DR - ed.enty_values_CR) * -1) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Investing Activities' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        inv_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR) * -1
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR) * -1
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Investing Activities'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(inv_query, (from_date, to_date))
+        inv_items = [dict(r) for r in cursor.fetchall()]
 
         # 5. Financing
-        financing = db.execute_query("""
-            SELECT na.account_name as description, SUM((ed.enty_values_DR - ed.enty_values_CR) * -1) as amount
-            FROM entry_details ed JOIN new_account_table na ON ed.account_name = na.account_name
-            JOIN cf_catogory cf ON na.cf_catogory = cf.catogory_name
-            WHERE cf.catogory_name = 'Financing Activities' AND entry_effective_date BETWEEN %s AND %s
-            GROUP BY na.account_name
-        """, (from_date, to_date))
+        fin_query = f'''
+            SELECT a.account_name as Description,
+                   cf.hold_level as HoldLevel,
+                   SUM(CASE
+                        WHEN a.account_basment = 'DR' THEN (ed.enty_values_DR - ed.enty_values_CR) * -1
+                        WHEN a.account_basment = 'CR' THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        ELSE 0 END) AS Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            JOIN cf_catogory cf ON a.cf_catogory = cf.catogory_name
+            WHERE cf.catogory_name = 'Financing Activities'
+            AND ed.entry_effective_date BETWEEN %s AND %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name, cf.hold_level
+            ORDER BY cf.hold_level
+        '''
+        cursor.execute(fin_query, (from_date, to_date))
+        fin_items = [dict(r) for r in cursor.fetchall()]
 
-        net_prof_val = float(net_profit or 0)
-        op_total = net_prof_val + sum(float(x['amount']) for x in adjustments) + sum(float(x['amount']) for x in working_capital)
-        inv_total = sum(float(x['amount']) for x in investing)
-        fin_total = sum(float(x['amount']) for x in financing)
+        # 6. Cash Balances
+        cash_begin_query = f'''
+            SELECT COALESCE(SUM(ed.enty_values_DR - ed.enty_values_CR), 0) as val
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date < %s
+            AND ed.entry_deleted = 0 {rec_filter}
+        '''
+        cursor.execute(cash_begin_query, (from_date,))
+        cash_begin = float(cursor.fetchone()['val'] or 0)
 
-        report_data = {
-            'net_profit': net_prof_val,
-            'adjustments': adjustments,
-            'working_capital': working_capital,
-            'investing': investing,
-            'financing': financing,
-            'totals': {
-                'operating': op_total,
-                'investing': inv_total,
-                'financing': fin_total,
-                'net_change': op_total + inv_total + fin_total
-            }
+        cash_end_query = f'''
+            SELECT COALESCE(SUM(ed.enty_values_DR - ed.enty_values_CR), 0) as val
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0 {rec_filter}
+        '''
+        cursor.execute(cash_end_query, (to_date,))
+        cash_end = float(cursor.fetchone()['val'] or 0)
+
+        # 7. Cash Accounts Breakdown
+        cash_acc_query = f'''
+            SELECT a.account_name as Description,
+                   SUM(ed.enty_values_DR - ed.enty_values_CR) as Amount
+            FROM entry_details ed
+            JOIN new_account_table a ON ed.account_name = a.account_name
+            WHERE (a.account_name IN (SELECT bank_bookcol_account_number FROM bank_book)
+                OR a.account_name IN (SELECT cash_book_account_name FROM cash_book))
+            AND ed.entry_effective_date <= %s
+            AND ed.entry_deleted = 0 {rec_filter}
+            GROUP BY a.account_name
+        '''
+        cursor.execute(cash_acc_query, (to_date,))
+        cash_acc_items = [dict(r) for r in cursor.fetchall()]
+
+        data = {
+            'NetProfit': net_profit,
+            'AdjustmentItems': adj_items,
+            'WorkingCapitalItems': wc_items,
+            'InvestingItems': inv_items,
+            'FinancingItems': fin_items,
+            'CashBeginning': cash_begin,
+            'CashEnding': cash_end,
+            'CashAccounts': cash_acc_items
         }
-        return render_template('cash_flow.html', from_date=from_date, to_date=to_date, report_data=report_data)
 
-    return render_template('cash_flow.html', from_date=from_date, to_date=to_date)
+        return {'success': True, 'data': data}
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}
+
+    finally:
+        cursor.close()
+        conn.close()
 
 
 # --- Inventory Balance ---
@@ -5397,7 +5575,7 @@ def pos_reversal_process():
         conn.start_transaction()
 
         # 1. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 2. Mark POS Customer as Reversed/Deleted
         cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
@@ -5529,7 +5707,7 @@ def bank_payment_reversal_process():
         cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Supplier Outstanding (Bank Version)
         cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
@@ -5591,7 +5769,7 @@ def cash_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Supplier Outstanding
         cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
@@ -5654,7 +5832,7 @@ def direct_payment_reversal_process():
         cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
 
         # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow()))
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
 
         # 3. Reverse Inventory In (Bring items out/mark deleted)
         # Note: The C# code called `Inventory_Items_Revers_IN`.
@@ -6057,6 +6235,372 @@ def submit_customer_receipt():
     return redirect(url_for('customer_receipt'))
 
 # --- Profit & Loss Report ---
+
+import ast
+import operator
+import re
+
+# Safe math evaluator
+def safe_eval_math(expr):
+    allowed_operators = {
+        ast.Add: operator.add,
+        ast.Sub: operator.sub,
+        ast.Mult: operator.mul,
+        ast.Div: operator.truediv,
+        ast.USub: operator.neg
+    }
+
+    def _eval(node):
+        if isinstance(node, ast.Constant):
+            if isinstance(node.value, (int, float)):
+                return node.value
+            raise TypeError("Only numbers are allowed")
+        elif getattr(ast, 'Num', None) and isinstance(node, getattr(ast, 'Num')):
+            return node.n
+        elif isinstance(node, ast.BinOp):
+            return allowed_operators[type(node.op)](_eval(node.left), _eval(node.right))
+        elif isinstance(node, ast.UnaryOp):
+            return allowed_operators[type(node.op)](_eval(node.operand))
+        else:
+            raise TypeError(f"Unsupported mathematical operation: {node}")
+
+    try:
+        parsed = ast.parse(expr, mode='eval')
+        return _eval(parsed.body)
+    except Exception:
+        return 0.0
+
+def _safe_eval_expression(expr, context_vars):
+    if not expr: return 0.0
+    # Replace variable names (alphabetic strings) with their float values
+    vars_in_expr = re.findall(r'[A-Za-z]+', expr)
+    eval_str = expr
+    for var in vars_in_expr:
+        val = context_vars.get(var, 0.0)
+        # Regex to safely replace whole words only
+        eval_str = re.sub(fr'\b{var}\b', str(val), eval_str)
+
+    # Use ast-based safe eval instead of Python's eval()
+    return safe_eval_math(eval_str)
+
+# Custom P&L Feature
+@app.route('/profit_loss_custom', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def profit_loss_custom():
+    formats = db.execute_query("SELECT id, Description FROM New_PL_Format")
+    accounts_rows = db.execute_query("SELECT account_name FROM new_account_table WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1")
+    accounts = [row['account_name'] for row in accounts_rows]
+    return render_template('profit_loss_custom.html', formats=formats, accounts=accounts)
+
+@app.route('/api/pl_custom/format', methods=['POST'])
+@login_required
+def pl_custom_create_format():
+    data = request.json
+    desc = data.get('description')
+    if not desc: return {'success': False, 'error': 'Description missing'}, 400
+    db.execute_query("INSERT INTO New_PL_Format (Description) VALUES (%s)", (desc,), commit=True)
+    return {'success': True}
+
+@app.route('/api/pl_custom/setup/<int:format_id>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def pl_custom_setup(format_id):
+    if request.method == 'GET':
+        rows = db.execute_query("SELECT * FROM PL_Setup WHERE PL_Report_ID = %s ORDER BY LENGTH(PL_LIne_Number), PL_LIne_Number", (str(format_id),))
+        return {'success': True, 'rows': rows}
+
+    elif request.method == 'DELETE':
+        db.execute_query("DELETE FROM PL_Setup WHERE PL_Report_ID = %s", (str(format_id),), commit=True)
+        return {'success': True}
+
+    elif request.method == 'POST':
+        data = request.json
+        rows = data.get('rows', [])
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            conn.start_transaction()
+            cursor.execute("DELETE FROM PL_Setup WHERE PL_Report_ID = %s", (str(format_id),))
+            for r in rows:
+                cursor.execute('''
+                    INSERT INTO PL_Setup (
+                        PL_Report_ID, PL_LIne_Number, PL_Text_Description, PL_Text_Colom,
+                        PL_Calqulation_instraction, PL_Rasior_instraction, PL_Text_Format,
+                        PL_Text_line, PL_Text_Size
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    str(format_id), r.get('PL_LIne_Number'), r.get('PL_Text_Description'), r.get('PL_Text_Colom'),
+                    r.get('PL_Calqulation_instraction'), r.get('PL_Rasior_instraction'), r.get('PL_Text_Format'),
+                    r.get('PL_Text_line'), r.get('PL_Text_Size')
+                ))
+            conn.commit()
+            return {'success': True}
+        except Exception as e:
+            conn.rollback()
+            return {'success': False, 'error': str(e)}, 500
+        finally:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/pl_custom/generate', methods=['POST'])
+@login_required
+def pl_custom_generate():
+    data = request.json
+    format_id = data.get('format_id')
+    prev_from = data.get('prev_from')
+    prev_to = data.get('prev_to')
+    curr_from = data.get('curr_from')
+    curr_to = data.get('curr_to')
+
+    rows = db.execute_query("SELECT * FROM PL_Setup WHERE PL_Report_ID = %s ORDER BY LENGTH(PL_LIne_Number), PL_LIne_Number", (str(format_id),))
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    results = []
+    prev_vars = {}
+    curr_vars = {}
+
+    try:
+        for r in rows:
+            line_no = r['PL_LIne_Number']
+            desc = r['PL_Text_Description']
+            account = r['PL_Text_Colom']
+            calc_instr = r['PL_Calqulation_instraction']
+            ratio_instr = r['PL_Rasior_instraction']
+
+            prev_val = 0.0
+            curr_val = 0.0
+
+            if account:
+                def get_balance(start, end):
+                    cursor.execute("SELECT account_basment, account_income, account_expenses FROM new_account_table WHERE account_name = %s", (account,))
+                    acc_info = cursor.fetchone()
+                    if not acc_info: return 0.0
+                    cursor.execute('''
+                        SELECT COALESCE(SUM(enty_values_DR), 0) as dr, COALESCE(SUM(enty_values_CR), 0) as cr
+                        FROM entry_details
+                        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+                    ''', (account, start, end))
+                    b = cursor.fetchone()
+                    dr = float(b['dr'] or 0)
+                    cr = float(b['cr'] or 0)
+                    if acc_info['account_expenses'] == 1: return dr - cr
+                    elif acc_info['account_income'] == 1: return cr - dr
+                    else:
+                        if acc_info['account_basment'] == 'DR': return dr - cr
+                        else: return cr - dr
+
+                prev_val = get_balance(prev_from, prev_to)
+                curr_val = get_balance(curr_from, curr_to)
+
+            if calc_instr:
+                prev_val = _safe_eval_expression(calc_instr, prev_vars)
+                curr_val = _safe_eval_expression(calc_instr, curr_vars)
+
+            if line_no:
+                prev_vars[line_no] = prev_val
+                curr_vars[line_no] = curr_val
+
+            diff_pct = ""
+            if curr_val != 0 or prev_val != 0:
+                if prev_val == 0:
+                    val = ((curr_val - prev_val) / curr_val) * 100 if curr_val != 0 else 0
+                else:
+                    if curr_val == 0:
+                        val = ((curr_val - prev_val) / prev_val) * 100
+                    else:
+                        val = ((curr_val - prev_val) / curr_val) * 100
+                diff_pct = f"{val:.2f}"
+
+            ratio_pct = ""
+            if ratio_instr:
+                r_val = _safe_eval_expression(ratio_instr, curr_vars)
+                ratio_pct = f"{r_val:.2f}"
+
+            results.append({
+                'line': line_no,
+                'description': desc,
+                'account': account,
+                'prev_val': f"{prev_val:,.2f}" if prev_val != 0 else "",
+                'curr_val': f"{curr_val:,.2f}" if curr_val != 0 else "",
+                'diff': diff_pct,
+                'ratio': ratio_pct,
+                'format': r.get('PL_Text_Format'),
+                'line': r.get('PL_Text_line'),
+                'size': r.get('PL_Text_Size')
+            })
+        return {'success': True, 'results': results}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
+
+@app.route('/balance_sheet_custom', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def balance_sheet_custom():
+    formats = db.execute_query("SELECT id, Description FROM New_BS_Format")
+    accounts_rows = db.execute_query("SELECT account_name FROM new_account_table WHERE (account_assets = 1 OR account_liabilities = 1 OR account_equity = 1) AND account_active = 1")
+    accounts = [row['account_name'] for row in accounts_rows]
+    accounts.append("Retained earnings")
+    return render_template('balance_sheet_custom.html', formats=formats, accounts=accounts)
+
+@app.route('/api/bs_custom/format', methods=['POST'])
+@login_required
+def bs_custom_create_format():
+    data = request.json
+    desc = data.get('description')
+    if not desc: return {'success': False, 'error': 'Description missing'}, 400
+    db.execute_query("INSERT INTO New_BS_Format (Description) VALUES (%s)", (desc,), commit=True)
+    return {'success': True}
+
+@app.route('/api/bs_custom/setup/<int:format_id>', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def bs_custom_setup(format_id):
+    if request.method == 'GET':
+        rows = db.execute_query("SELECT * FROM BS_Setup WHERE BS_Report_ID = %s ORDER BY LENGTH(BS_LIne_Number), BS_LIne_Number", (str(format_id),))
+        return {'success': True, 'rows': rows}
+
+    elif request.method == 'DELETE':
+        db.execute_query("DELETE FROM BS_Setup WHERE BS_Report_ID = %s", (str(format_id),), commit=True)
+        return {'success': True}
+
+    elif request.method == 'POST':
+        data = request.json
+        rows = data.get('rows', [])
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        try:
+            conn.start_transaction()
+            cursor.execute("DELETE FROM BS_Setup WHERE BS_Report_ID = %s", (str(format_id),))
+            for r in rows:
+                cursor.execute('''
+                    INSERT INTO BS_Setup (
+                        BS_Report_ID, BS_LIne_Number, BS_Text_Description, BS_Text_Colom,
+                        BS_Calqulation_instraction, BS_Text_Format, BS_Text_line, BS_Text_Size
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ''', (
+                    str(format_id), r.get('BS_LIne_Number'), r.get('BS_Text_Description'), r.get('BS_Text_Colom'),
+                    r.get('BS_Calqulation_instraction'), r.get('BS_Text_Format'), r.get('BS_Text_line'),
+                    r.get('BS_Text_Size')
+                ))
+            conn.commit()
+            return {'success': True}
+        except Exception as e:
+            conn.rollback()
+            return {'success': False, 'error': str(e)}, 500
+        finally:
+            cursor.close()
+            conn.close()
+
+@app.route('/api/bs_custom/generate', methods=['POST'])
+@login_required
+def bs_custom_generate():
+    data = request.json
+    format_id = data.get('format_id')
+    as_at_date = data.get('as_at_date')
+
+    rows = db.execute_query("SELECT * FROM BS_Setup WHERE BS_Report_ID = %s ORDER BY LENGTH(BS_LIne_Number), BS_LIne_Number", (str(format_id),))
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    results = []
+    vars_dict = {}
+
+    try:
+        for r in rows:
+            line_no = r['BS_LIne_Number']
+            desc = r['BS_Text_Description']
+            account = r['BS_Text_Colom']
+            calc_instr = r['BS_Calqulation_instraction']
+
+            amount = 0.0
+
+            if account:
+                if account == "Retained earnings":
+                    # Use existing retained earnings logic
+                    amount = calculate_retained_earnings(cursor, as_at_date)
+                else:
+                    cursor.execute("SELECT account_basment, account_assets, account_liabilities, account_equity FROM new_account_table WHERE account_name = %s", (account,))
+                    acc_info = cursor.fetchone()
+                    if acc_info:
+                        cursor.execute('''
+                            SELECT COALESCE(SUM(enty_values_DR), 0) as dr, COALESCE(SUM(enty_values_CR), 0) as cr
+                            FROM entry_details
+                            WHERE account_name = %s AND entry_effective_date <= %s AND entry_deleted = 0
+                        ''', (account, as_at_date))
+                        b = cursor.fetchone()
+                        if b:
+                            dr = float(b['dr'] or 0)
+                            cr = float(b['cr'] or 0)
+
+                            if acc_info['account_assets'] == 1:
+                                amount = dr - cr
+                            elif acc_info['account_liabilities'] == 1 or acc_info['account_equity'] == 1:
+                                amount = cr - dr
+                            else:
+                                if acc_info['account_basment'] == 'DR':
+                                    amount = dr - cr
+                                else:
+                                    amount = cr - dr
+
+            if calc_instr:
+                amount = _safe_eval_expression(calc_instr, vars_dict)
+
+            if line_no:
+                vars_dict[line_no] = amount
+
+            results.append({
+                'line': line_no,
+                'description': desc,
+                'account': account,
+                'amount': f"{amount:,.2f}" if amount != 0 else "",
+                'format': r.get('BS_Text_Format'),
+                'line': r.get('BS_Text_line'),
+                'size': r.get('BS_Text_Size')
+            })
+
+        return {'success': True, 'results': results}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        cursor.close()
+        conn.close()
+
+def calculate_retained_earnings(cursor, as_at_date):
+    # Same logic as Balance Sheet endpoint for Retained earnings
+    cursor.execute('''
+        SELECT
+            na.account_basment,
+            COALESCE(SUM(ed.enty_values_DR), 0) as dr,
+            COALESCE(SUM(ed.enty_values_CR), 0) as cr
+        FROM new_account_table na
+        JOIN entry_details ed ON na.account_name = ed.account_name
+        WHERE (na.account_income = 1 OR na.account_expenses = 1)
+          AND ed.entry_effective_date <= %s
+          AND na.account_active = 1
+          AND ed.entry_deleted = 0
+        GROUP BY na.account_basment
+    ''', (as_at_date,))
+
+    rows = cursor.fetchall()
+
+    total_retained_earnings = 0.0
+    for row in rows:
+        dr = float(row['dr'])
+        cr = float(row['cr'])
+        if row['account_basment'] == 'DR':
+            total_retained_earnings -= (dr - cr)
+        elif row['account_basment'] == 'CR':
+            total_retained_earnings += (cr - dr)
+
+    return total_retained_earnings
+
 @app.route('/profit_loss', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Reports')
@@ -6233,6 +6777,395 @@ def add_pos_user():
 def pos():
     return render_template('pos.html')
 
+@app.route('/api/pos/login', methods=['POST'])
+def pos_api_login():
+    data = request.json or {}
+    company_name = data.get('company_name')
+    username = data.get('username')
+    password = data.get('password')
+
+    if not company_name or not username or not password:
+        return {'success': False, 'error': 'Company Name, Username, and Password are required'}, 400
+
+    try:
+        master_user_res = master_db.execute_query('''
+            SELECT t.db_name
+            FROM tenants t
+            WHERE t.company_name = %s
+        ''', (company_name,))
+
+        if master_user_res:
+            tenant_db_name = master_user_res[0]['db_name']
+        else:
+            return {'success': False, 'error': 'Company not found'}, 404
+    except Exception as e:
+        tenant_db_name = db.db_name
+
+    conn = None
+    cursor = None
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        users = cursor.fetchall()
+
+        if not users:
+            return {'success': False, 'error': 'Invalid username or password'}, 401
+
+        user = users[0]
+
+        if user.get('is_locked'):
+            return {'success': False, 'error': 'Account locked due to too many failed attempts. Contact admin.'}, 403
+
+        stored_password = user['Password']
+
+        verified = False
+        from werkzeug.security import check_password_hash, generate_password_hash
+        try:
+            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                if check_password_hash(stored_password, password):
+                    verified = True
+            elif stored_password == password:
+                verified = True
+                new_hash = generate_password_hash(password)
+                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                conn.commit()
+        except Exception:
+            if stored_password == password:
+                verified = True
+
+        if not verified:
+            fails = user.get('failed_attempts', 0) + 1
+            if fails >= 3:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                return {'success': False, 'error': 'Account locked due to too many failed attempts. Contact admin.'}, 403
+            else:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                return {'success': False, 'error': 'Invalid username or password'}, 401
+
+        # Successful login, reset attempts
+        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+        conn.commit()
+
+        session['db_name'] = tenant_db_name
+        session['username'] = username
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        cursor.execute('''
+            SELECT
+                i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
+                p.inventory_price_selling, p.inventory_price_profit_marging_comen,
+                p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
+            FROM inventoy_items i
+            LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
+        ''')
+        items = cursor.fetchall()
+
+        response_items = []
+        for r in items:
+            response_items.append({
+                'id': r['id'],
+                'name': r['inventoy_name'],
+                'code': r['inventoy_code'],
+                'barcode': r['inventoy_bach_code'],
+                'unit': r['inventoy_items_messurment_unit'],
+                'price_market': r['inventory_price_selling'],
+                'price_special': r['inventory_price_profit_marging_comen'],
+                'price_loyalty': r['inventory_price_for_Loyality_customer'],
+                'price_cost': r['inventory_price_purcharsing'],
+                'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
+            })
+
+        return {
+            'success': True,
+            'settings': {
+                'location': user['Select_Inventry_Location'],
+                'card_ac': user['Card_Control_AC'],
+                'cash_ac': user['Cash_Account'],
+                'market_price': user['Sales_with_market_price'],
+                'special_price': user['Sales_with_Special_price'],
+                'loyalty_price': user['Loyalty_Price'],
+                'vat_enable': user['VAT_Enable'],
+                'footer': user['Footer_Message'],
+                'top': user['Top_Message']
+            },
+            'items': response_items,
+            'db_name': tenant_db_name
+        }
+
+    except Exception as e:
+        import logging
+        logging.error(f"POS Login Error: {e}")
+        return {'success': False, 'error': 'Database error occurred'}, 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+
+
+# --- POS Web Login with Device Fingerprinting & 2FA ---
+def send_sms_otp(mobile, code):
+    url = "https://app.notify.lk/api/v1/send"
+    params = {
+        'user_id': os.getenv('NOTIFY_USER_ID', '13120'),
+        'api_key': os.getenv('NOTIFY_API_KEY'),
+        'sender_id': os.getenv('NOTIFY_SENDER_ID', 'The Bunker'),
+        'to': mobile,
+        'message': f"Your POS login verification code is: {code}"
+    }
+
+    if not params['api_key']:
+        logging.error("NOTIFY_API_KEY is not set. Skipping SMS delivery.")
+        return
+
+    try:
+        requests.get(url, params=params, timeout=5)
+    except Exception as e:
+        logging.error(f"Failed to send SMS: {e}")
+
+@app.route('/pos_login', methods=['GET', 'POST'])
+def pos_web_login():
+    if request.method == 'GET':
+        return render_template('pos_login.html')
+
+    company_name = request.form.get('company_name')
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    if not company_name or not username or not password:
+        flash('Company Name, Username, and Password are required', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    # Locate DB from company name in master DB
+    try:
+        master_user_res = master_db.execute_query('''
+            SELECT t.db_name
+            FROM tenants t
+            WHERE t.company_name = %s
+        ''', (company_name,))
+        if master_user_res:
+            tenant_db_name = master_user_res[0]['db_name']
+        else:
+            flash('Company not found', 'danger')
+            return redirect(url_for('pos_web_login'))
+    except Exception as e:
+        tenant_db_name = db.db_name
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        users = cursor.fetchall()
+
+        if not users:
+            flash('Invalid username or password', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        user = users[0]
+
+        if user.get('is_locked'):
+            flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        stored_password = user['Password']
+        verified = False
+        try:
+            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                if check_password_hash(stored_password, password):
+                    verified = True
+            elif stored_password == password:
+                verified = True
+                new_hash = generate_password_hash(password)
+                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                conn.commit()
+        except Exception:
+            if stored_password == password:
+                verified = True
+
+        if not verified:
+            fails = user.get('failed_attempts', 0) + 1
+            if fails >= 3:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+            else:
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                conn.commit()
+                flash('Invalid username or password', 'danger')
+            return redirect(url_for('pos_web_login'))
+
+        # Successful auth -> Reset failed attempts
+        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+        conn.commit()
+
+        # Check Device Fingerprint
+        ip_address = request.remote_addr
+        user_agent = request.user_agent.string
+
+        cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s", (user['Id'],))
+        all_devices = cursor.fetchall()
+
+        device = next((d for d in all_devices if d['ip_address'] == ip_address and d['user_agent'] == user_agent), None)
+
+        if not all_devices:
+            # Very first login - register device seamlessly
+            cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)",
+                           (user['Id'], ip_address, user_agent, datetime.now()))
+            conn.commit()
+        elif not device:
+            # New device but user has previous devices - Require 2FA
+            otp = ''.join(random.choices(string.digits, k=6))
+            expires = datetime.now() + timedelta(minutes=10)
+            cursor.execute("INSERT INTO pos_2fa_codes (user_id, code, expires_at) VALUES (%s, %s, %s)", (user['Id'], otp, expires))
+            conn.commit()
+
+            # Send SMS
+            mobile = user.get('Mobile_Number')
+            if mobile:
+                send_sms_otp(mobile, otp)
+            else:
+                logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
+
+            session['pending_pos_user_id'] = user['Id']
+            session['pending_pos_company'] = company_name
+            return render_template('pos_2fa.html')
+        else:
+            # Existing verified device
+            cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
+            conn.commit()
+
+        if user.get('must_change_password'):
+            session['pending_pos_user_id'] = user['Id']
+            session['pending_pos_company'] = company_name
+            return render_template('pos_reset_password.html')
+
+        # Final Login Success
+        session['db_name'] = tenant_db_name
+        session['username'] = username
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        return redirect(url_for('pos'))
+
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+@app.route('/pos_verify_2fa', methods=['POST'])
+def pos_verify_2fa():
+    user_id = session.get('pending_pos_user_id')
+    company_name = session.get('pending_pos_company')
+    otp = request.form.get('otp')
+
+    if not user_id or not company_name:
+        flash('Session expired or invalid.', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    # Needs Tenant DB connection again to verify
+    try:
+        master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
+        tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
+    except:
+        tenant_db_name = db.db_name
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        cursor.execute("SELECT * FROM pos_2fa_codes WHERE user_id = %s AND code = %s AND is_used = 0 AND expires_at > %s", (user_id, otp, datetime.now()))
+        valid_code = cursor.fetchone()
+
+        if valid_code:
+            # Mark used
+            cursor.execute("UPDATE pos_2fa_codes SET is_used = 1 WHERE id = %s", (valid_code['id'],))
+
+            # Register device
+            ip_address = request.remote_addr
+            user_agent = request.user_agent.string
+            cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)", (user_id, ip_address, user_agent, datetime.now()))
+
+            # Fetch User to setup session
+            cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+            user = cursor.fetchone()
+            conn.commit()
+
+            # Since this is a new device, force password change immediately
+            cursor.execute("UPDATE pose_setting_table SET must_change_password = 1 WHERE Id = %s", (user_id,))
+            conn.commit()
+
+            return render_template('pos_reset_password.html')
+        else:
+            flash('Invalid or expired code.', 'danger')
+            return render_template('pos_2fa.html')
+    finally:
+        cursor.close()
+        conn.close()
+
+@app.route('/pos_reset_password', methods=['POST'])
+def pos_reset_password():
+    from werkzeug.security import generate_password_hash
+    user_id = session.get('pending_pos_user_id')
+    company_name = session.get('pending_pos_company')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    if not user_id or not company_name:
+        flash('Session expired or invalid.', 'danger')
+        return redirect(url_for('pos_web_login'))
+
+    if new_password != confirm_password:
+        flash('Passwords do not match.', 'danger')
+        return render_template('pos_reset_password.html')
+
+    try:
+        master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
+        tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
+    except:
+        tenant_db_name = db.db_name
+
+    conn = db.get_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        if tenant_db_name and is_safe_db_name(tenant_db_name):
+            cursor.execute(f"USE `{tenant_db_name}`")
+
+        new_hash = generate_password_hash(new_password)
+        cursor.execute("UPDATE pose_setting_table SET Password = %s, must_change_password = 0 WHERE Id = %s", (new_hash, user_id))
+
+        cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+        user = cursor.fetchone()
+        conn.commit()
+
+        session['db_name'] = tenant_db_name
+        session['username'] = user['User_Name']
+        session['user_id'] = user['User_Name']
+        session['user_pk'] = user['Id']
+
+        session.pop('pending_pos_user_id', None)
+        session.pop('pending_pos_company', None)
+
+        flash('Password updated successfully.', 'success')
+        return redirect(url_for('pos'))
+    finally:
+        cursor.close()
+        conn.close()
+
+
 @app.route('/api/pos/settings', methods=['GET'])
 @login_required
 def pos_api_settings():
@@ -6268,7 +7201,7 @@ def pos_api_items():
         SELECT
             i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
             p.inventory_price_selling, p.inventory_price_profit_marging_comen,
-            p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing
+            p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
         FROM inventoy_items i
         LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
         WHERE i.active = 1
@@ -6286,7 +7219,8 @@ def pos_api_items():
             'price_market': float(r['inventory_price_selling'] or 0),
             'price_special': float(r['inventory_price_profit_marging_comen'] or 0),
             'price_loyalty': float(r['inventory_price_for_Loyality_customer'] or 0),
-            'cost': float(r['inventory_price_purcharsing'] or 0)
+            'cost': float(r['inventory_price_purcharsing'] or 0),
+            'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
         })
     return json.dumps(items)
 
@@ -6341,7 +7275,7 @@ def pos_api_add_loyalty_customer():
         cursor.execute(query, (
             name, str(customer_code), billing_address, delivery_address,
             email, 1, mobile, 1, 0,
-            datetime.utcnow(), amount_paid, 0
+            datetime.utcnow().strftime("%Y-%m-%d"), amount_paid, 0
         ))
 
         conn.commit()
@@ -6381,23 +7315,33 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
     action_date_str = today_date.strftime('%Y-%m-%d')
 
     for item in cart:
-        total_sale_value += item['total']
-        total_cost_value += (item['cost'] * item['qty'])
+        qty = parse_float(item.get('qty', 0))
+        cost = parse_float(item.get('cost', 0))
+        total = parse_float(item.get('total', 0))
+
+        # If the frontend passes 'cost' as the total cost already, multiplying it by qty squares it.
+        # But we assume 'cost' is unit cost based on pos.html. Just to be safe and match legacy C#:
+        # Wait, if pos.html sends unit cost, then unit_cost * qty is correct.
+        total_item_cost = cost * qty
+
+        total_sale_value += total
+        total_cost_value += total_item_cost
 
         # Prepare pos_sales_invoice_01 params
         pos_sales_params.append((
-            item['code'], item['name'], item['unit'],
-            item['price_market'], item['price_special'], item['price_loyalty'],
+            item.get('code'), item.get('name'), item.get('unit'),
+            item.get('price_market'), item.get('price_special'), item.get('price_loyalty'),
             settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
-            current_user_pk, settings.get('location'), action_timestamp, item['qty'], item['cost'],
+            current_user_pk, settings.get('location'), action_date_str, qty, cost,
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
-            invoice_no, customer.get('loyalty_no', 0), item['total'], jv_no
+            invoice_no, customer.get('loyalty_no', 0), total, jv_no
         ))
 
-        # Prepare Inventory Movement OUT params
+        # Prepare Inventory Movement OUT params.
+        # Legacy C# app and submit_invoice BOTH expect total cost in inventory_recod_unit_price
         inventory_params.append((
-            item['name'], item['code'], today_date, item['qty'], item['unit'], item['cost'],
-            current_user, jv_no, settings.get('location')
+            item.get('name'), item.get('code'), today_date, qty, item.get('unit'), total_item_cost,
+            current_user_pk, jv_no, settings.get('location')
         ))
 
     # Batch Insert into pos_sales_invoice_01
@@ -6487,9 +7431,13 @@ def _post_pos_gl_entries(cursor, settings, payment, total_sale_value, total_cost
 
 
 @app.route('/pos/submit_sale', methods=['POST'])
+@app.route('/api/pos/submit', methods=['POST'])
 @login_required
 def submit_pos_sale():
     data = request.json
+
+    # Client is expected to save JSON locally as per requirement before sending
+
     cart = data.get('cart', [])
     payment = data.get('payment', {})
     customer = data.get('customer', {})
