@@ -2293,27 +2293,36 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             count += 1
 
-        # Batch Update
+        # Process Updates row-by-row to skip failures
         if to_update:
-            cursor.executemany("""
-                UPDATE new_account_table SET
-                    account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                    account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                    account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                    cf_catogory=%s, account_basment=%s
-                WHERE id=%s
-            """, to_update)
+            for row in to_update:
+                try:
+                    cursor.execute("""
+                        UPDATE new_account_table SET
+                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                            cf_catogory=%s, account_basment=%s
+                        WHERE id=%s
+                    """, row)
+                except Exception as e:
+                    pass
 
-        # Batch Insert
+        # Process Inserts row-by-row to skip failures
         if to_insert:
-            cursor.executemany("""
-                INSERT INTO new_account_table (
-                    account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                    account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                    account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                    cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-            """, to_insert)
+            for row in to_insert:
+                try:
+                    cursor.execute("""
+                        INSERT INTO new_account_table (
+                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                    """, row)
+                except Exception as e:
+                    count -= 1
+                    pass
 
         _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
@@ -7332,7 +7341,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
         # Legacy C# app and submit_invoice BOTH expect total cost in inventory_recod_unit_price
         inventory_params.append((
             item.get('name'), item.get('code'), today_date, qty, item.get('unit'), total_item_cost,
-            current_user, jv_no, settings.get('location')
+            current_user_pk, jv_no, settings.get('location')
         ))
 
     # Batch Insert into pos_sales_invoice_01
