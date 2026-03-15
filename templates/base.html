@@ -43,7 +43,7 @@
             z-index: 1000;
             padding-top: 0;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-right: 1px solid rgba(255, 255, 255, 0.05);
+            border-right:  1px solid #E5E5E5;
             box-shadow: 5px 0 25px rgba(0,0,0,0.15);
             overflow-y: auto;
         }
@@ -109,7 +109,7 @@
         }
 
         .nav-link {
-            color: rgba(255,255,255,0.85); /* Muted base text */
+            color: #605E5C; /* Muted base text */
             padding: 10px 16px;
             border-radius: 8px; /* Modern rounded rectangles */
             margin-bottom: 4px;
@@ -125,21 +125,21 @@
 
         /* Hover Glow Effect */
         .nav-link:hover {
-            background-color: rgba(255,255,255,0.04);
-            color: #f8fafc;
-            border-color: rgba(255,255,255,0.05);
+            background-color: rgba(0,0,0,0.04);
+            color: #201F1E;
+            border-color: rgba(0,0,0,0.05);
             transform: translateX(4px);
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
 
         /* Active State Pill */
         .nav-link.active {
-            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
-            color: #ffffff;
-            font-weight: 600;
-            border-left: 3px solid var(--accent-color);
-            border-radius: 0 8px 8px 0; /* Flat left side for active indicator */
-            padding-left: 13px; /* Compensate for border */
+            background-color: rgba(0, 112, 242, 0.12) !important;
+            color: #0070F2 !important;
+            font-weight: 600 !important;
+            border-left: 3px solid #0070F2;
+            border-radius: 0 8px 8px 0;
+            padding-left: 13px;
         }
 
         .nav-link i {
@@ -147,18 +147,18 @@
             text-align: left;
             margin-right: 12px;
             font-size: 1.1rem;
-            color: rgba(255,255,255,0.7);
+            color: #605E5C;
             transition: color 0.3s ease;
         }
 
         .nav-link:hover i {
-            color: #ffffff;
+            color: #201F1E;
             filter: drop-shadow(0 0 5px rgba(255,255,255,0.3));
         }
 
         .nav-link.active i {
-            color: var(--accent-color);
-            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+            color: #0070F2 !important;
+            filter: drop-shadow(0 0 8px rgba(0, 112, 242, 0.5));
         }
 
         /* Specifically style the pending approvals text */
