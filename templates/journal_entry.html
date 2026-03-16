@@ -4,7 +4,7 @@
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-book me-2"></i> JOURNAL ENTRY MANAGEMENT</h4>
         </div>
     </div>
@@ -14,7 +14,7 @@
 
         <!-- Top Section: Journal Info -->
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
                 <i class="fas fa-info-circle me-2"></i> Journal Information
             </div>
             <div class="card-body bg-white">
@@ -37,7 +37,7 @@
 
         <!-- Middle Section: Entry Grid -->
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+            <div class="card-header fw-bold text-dark d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
                 <span><i class="fas fa-list-ol me-2"></i> Journal Entries (Base Currency: {{ base_currency }})</span>
                 <button type="button" class="btn btn-sm btn-light fw-bold text-primary" onclick="addRow()">
                     <i class="fas fa-plus me-1"></i> Add Row
@@ -45,7 +45,7 @@
             </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-bordered table-striped mb-0" id="journalTable" style="min-width: 1200px;">
-                    <thead class="text-white" style="background-color: var(--primary-color);">
+                    <thead class="text-dark" style="background-color: var(--primary-color);">
                         <tr>
                             <th style="width: 15%">Account</th>
                             <th style="width: 15%">Sub Account</th>
@@ -94,7 +94,7 @@
                 </div>
                 <hr>
                 <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-info text-white fw-bold" onclick="toggleHistory()">
+                    <button type="button" class="btn btn-info text-dark fw-bold" onclick="toggleHistory()">
                         <i class="fas fa-history me-1"></i> History
                     </button>
                     <button type="submit" class="btn btn-primary fw-bold px-4" style="background-color: var(--accent-color); border: none;">
@@ -109,7 +109,7 @@
 
     <!-- History Section -->
     <div id="historySection" class="card shadow-sm border-0" style="display: none;">
-        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+        <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
             <i class="fas fa-history me-2"></i> Journal Entry History
         </div>
         <div class="card-body bg-white">
