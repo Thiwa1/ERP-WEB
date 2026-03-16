@@ -4437,7 +4437,11 @@ def inventory_price_editing():
         params = (search_pattern, search_pattern)
 
     items = db.execute_query(query, params)
-    return render_template('inventory_price_editing.html', items=items, search_query=search)
+
+    # Get all active items for the "Add New Price Tier" dropdown
+    all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
+
+    return render_template('inventory_price_editing.html', items=items, all_items=all_items, search_query=search)
 
 @app.route('/inventory_price_editing/update', methods=['POST'])
 @login_required
@@ -4837,7 +4841,38 @@ def cash_flow_generate():
         conn.close()
 
 
+
+@app.route('/add_new_price_tier', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def add_new_price_tier():
+    item_id = request.form.get('item_id')
+    cost_price = parse_float(request.form.get('cost_price', 0))
+    selling_price = parse_float(request.form.get('selling_price', 0))
+    special_price = parse_float(request.form.get('special_price', 0))
+    loyalty_price = parse_float(request.form.get('loyalty_price', 0))
+
+    if not item_id:
+        flash('Must select an inventory item', 'danger')
+        return redirect(url_for('inventory_price_editing'))
+
+    try:
+        query = '''
+            INSERT INTO inventory_price_recod (
+                id, inventory_price_link, inventory_price_purcharsing,
+                inventory_price_selling, inventory_price_profit_marging_comen,
+                inventory_price_for_Loyality_customer, created_date
+            ) VALUES (0, %s, %s, %s, %s, %s, %s)
+        '''
+        db.execute_query(query, (item_id, cost_price, selling_price, special_price, loyalty_price, date.today()), commit=True)
+        flash('New price tier added successfully!', 'success')
+    except Exception as e:
+        flash(f'Error adding new price tier: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_price_editing'))
+
 # --- Inventory Balance ---
+
 @app.route('/inventory_balance')
 @login_required
 @has_permission('Access_Inventory')
