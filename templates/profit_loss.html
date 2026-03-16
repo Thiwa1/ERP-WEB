@@ -1,9 +1,103 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+<style>
+    /* Pro Version P&L Styling */
+    .pl-title {
+        color: #1a73e8 !important; /* Bright Blue */
+        font-weight: 800 !important;
+        letter-spacing: 0.5px;
+    }
+
+    .pl-table {
+        background-color: white !important;
+        border-collapse: collapse !important;
+        border: none !important;
+    }
+    .pl-table th, .pl-table td {
+        border: none !important;
+    }
+
+    .pl-table-header th {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border-bottom: 1px solid #dee2e6 !important;
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+
+    .pl-income-header td {
+        background-color: #CDE3D5 !important; /* Light Green Background */
+        color: #1F8E68 !important; /* Dark Green Text */
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-category-row td {
+        background-color: #ffffff !important;
+        color: #6C757D !important;
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-income-row td {
+        background-color: #F8F9FA !important;
+        border-top: 3px solid #1F8E68 !important;
+        border-bottom: 3px solid #1F8E68 !important;
+        padding: 10px 15px !important;
+    }
+    .pl-income-row td:first-child {
+        border-left: 3px solid #1F8E68 !important;
+    }
+    .pl-income-row td:last-child {
+        border-right: 3px solid #1F8E68 !important;
+    }
+
+    .pl-expense-header td {
+        background-color: #EFD1D4 !important; /* Light Red Background */
+        color: #DC3545 !important; /* Dark Red Text */
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-expense-row td {
+        background-color: #F8F9FA !important;
+        border-top: 3px solid #DC3545 !important;
+        border-bottom: 3px solid #DC3545 !important;
+        padding: 10px 15px !important;
+    }
+    .pl-expense-row td:first-child {
+        border-left: 3px solid #DC3545 !important;
+    }
+    .pl-expense-row td:last-child {
+        border-right: 3px solid #DC3545 !important;
+    }
+
+    .pl-total-row td {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+
+    .pl-net-profit td {
+        background-color: #C3D6F3 !important; /* Light Blue Background */
+        color: #000000 !important; /* Black Text */
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+</style>
+
+
+
+
+
+
+
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="text-primary fw-bold">PROFIT & LOSS STATEMENT</h2>
+        <h2 class="text-primary fw-bold" style="color: #0d6efd !important;">PROFIT & LOSS STATEMENT</h2>
         <button class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
     </div>
 
@@ -69,14 +163,14 @@
     <div class="card shadow-lg border-0">
         <div class="card-body p-0">
             <div class="table-responsive">
-                <table class="table table-hover table-striped align-middle mb-0">
-                    <thead class="bg-dark text-dark text-center">
+                <table class="table pl-table mb-0">
+                    <thead class="pl-table-header text-center border-0">
                         <tr>
                             <th class="text-start p-3" style="width: 40%;">Description</th>
                             {% for p in periods %}
                             <th class="p-3">
                                 Period {{ loop.index }}<br>
-                                <small class="text-dark-50 fw-normal" style="font-size: 0.8rem;">
+                                <small class="text-muted fw-normal" style="font-size: 0.8rem;">
                                     {{ p.start }} to {{ p.end }}
                                 </small>
                             </th>
@@ -85,17 +179,17 @@
                     </thead>
                     <tbody>
                         <!-- INCOME SECTION -->
-                        <tr class="table-success">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-success text-uppercase ps-3">Income</td>
+                        <tr class="pl-income-header">
+                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3">Income</td>
                         </tr>
 
                         {% for cat in report_data.income_categories %}
                             <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="fw-bold text-secondary ps-4 bg-light">{{ cat.name }}</td>
+                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
                             </tr>
                             {% for acc in cat.accounts %}
-                            <tr>
-                                <td class="ps-5 border-start border-4 border-success">{{ acc.name }}</td>
+                            <tr class="pl-income-row">
+                                <td class="ps-5">{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
                                 <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
@@ -105,25 +199,25 @@
                         {% endfor %}
 
                         <!-- Total Income Row -->
-                        <tr class="fw-bold bg-warning bg-opacity-10 border-top border-bottom border-warning">
+                        <tr class="fw-bold pl-total-row">
                             <td class="text-end pe-3">TOTAL INCOME</td>
                             {% for val in report_data.total_income %}
-                            <td class="text-end text-success">{{ val|currency }}</td>
+                            <td class="text-end">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
                         <!-- EXPENSE SECTION -->
-                        <tr class="table-danger border-top border-2">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-danger text-uppercase ps-3 mt-4">Expenses</td>
+                        <tr class="pl-expense-header border-top border-2">
+                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3 mt-4">Expenses</td>
                         </tr>
 
                         {% for cat in report_data.expense_categories %}
                             <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="fw-bold text-secondary ps-4 bg-light">{{ cat.name }}</td>
+                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
                             </tr>
                             {% for acc in cat.accounts %}
-                            <tr>
-                                <td class="ps-5 border-start border-4 border-danger">{{ acc.name }}</td>
+                            <tr class="pl-expense-row">
+                                <td class="ps-5">{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
                                 <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
@@ -132,18 +226,18 @@
                         {% endfor %}
 
                         <!-- Total Expense Row -->
-                        <tr class="fw-bold bg-warning bg-opacity-10 border-top border-bottom border-warning">
+                        <tr class="fw-bold pl-total-row">
                             <td class="text-end pe-3">TOTAL EXPENSES</td>
                             {% for val in report_data.total_expense %}
-                            <td class="text-end text-danger">{{ val|currency }}</td>
+                            <td class="text-end">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
                         <!-- NET PROFIT -->
-                        <tr class="table-primary border-top border-3">
+                        <tr class="pl-net-profit border-top border-3">
                             <td class="fw-bold fs-5 text-end pe-3">NET PROFIT / (LOSS)</td>
                             {% for val in report_data.net_profit %}
-                            <td class="text-end fw-bold fs-5 {{ 'text-success' if val >= 0 else 'text-danger' }}">
+                            <td class="text-end fw-bold fs-5 text-dark">
                                 {{ val|currency }}
                             </td>
                             {% endfor %}
