@@ -7289,21 +7289,22 @@ def pos_api_settings():
 @pos_login_required
 def pos_api_items():
     # Fetch all active items with prices for caching
-    query = """
+    query = '''
         SELECT
-            i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
+            i.id, p.id as price_recod_id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
             p.inventory_price_selling, p.inventory_price_profit_marging_comen,
             p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
         FROM inventoy_items i
         LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
         WHERE i.active = 1
-    """
+    '''
     rows = db.execute_query(query)
 
     items = []
     for r in rows:
         items.append({
             'id': r['id'],
+            'price_id': r.get('price_recod_id'),
             'name': r['inventoy_name'],
             'code': r['inventoy_code'],
             'batch_code': r['inventoy_bach_code'],
