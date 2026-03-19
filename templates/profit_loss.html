@@ -183,6 +183,7 @@
                             <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3">Income</td>
                         </tr>
 
+
                         {% for cat in report_data.income_categories %}
                             <tr>
                                 <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
@@ -195,9 +196,13 @@
                                 {% endfor %}
                             </tr>
                             {% endfor %}
-                            <!-- Category Total (Optional, simpler to just list accounts) -->
+                            <tr class="fw-bold bg-light">
+                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
+                                {% for val in cat.total %}
+                                <td class="text-end text-muted">{{ val|currency }}</td>
+                                {% endfor %}
+                            </tr>
                         {% endfor %}
-
                         <!-- Total Income Row -->
                         <tr class="fw-bold pl-total-row">
                             <td class="text-end pe-3">TOTAL INCOME</td>
@@ -211,6 +216,7 @@
                             <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3 mt-4">Expenses</td>
                         </tr>
 
+
                         {% for cat in report_data.expense_categories %}
                             <tr>
                                 <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
@@ -223,8 +229,13 @@
                                 {% endfor %}
                             </tr>
                             {% endfor %}
+                            <tr class="fw-bold bg-light">
+                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
+                                {% for val in cat.total %}
+                                <td class="text-end text-muted">{{ val|currency }}</td>
+                                {% endfor %}
+                            </tr>
                         {% endfor %}
-
                         <!-- Total Expense Row -->
                         <tr class="fw-bold pl-total-row">
                             <td class="text-end pe-3">TOTAL EXPENSES</td>
