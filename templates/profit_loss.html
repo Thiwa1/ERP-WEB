@@ -96,14 +96,37 @@
 
 
 <div class="container-fluid">
+    <style>
+        .text-primary {
+            color: #0070F2 !important;
+        }
+        .btn-primary {
+            background-color: #0070F2 !important;
+            border-color: #0070F2 !important;
+            color: #fff !important;
+        }
+        .btn-primary:hover, .btn-primary:active, .btn-primary:focus {
+            background-color: #0057D2 !important;
+            border-color: #0057D2 !important;
+        }
+        .btn-outline-primary {
+            color: #0070F2 !important;
+            border-color: #0070F2 !important;
+            background-color: transparent;
+        }
+        .btn-outline-primary:hover, .btn-outline-primary:active, .btn-outline-primary:focus {
+            background-color: #0070F2 !important;
+            color: #fff !important;
+        }
+    </style>
     <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="text-primary fw-bold" style="color: #0d6efd !important;">PROFIT & LOSS STATEMENT</h2>
+        <h2 class="text-primary fw-bold" style="font-family: 'Segoe UI', 'Avenir Next', sans-serif;">PROFIT & LOSS STATEMENT</h2>
         <button class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
     </div>
 
     <!-- Controls -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-light fw-bold">Report Configuration</div>
+    <div class="card shadow-sm mb-4 border-0" style="background-color: #fff;">
+        <div class="card-header bg-light fw-bold border-bottom-0">Report Configuration</div>
         <div class="card-body">
             <form method="POST" action="/profit_loss" id="plForm">
                 <div id="periods-container">
@@ -151,7 +174,7 @@
                 </div>
 
                 <div class="mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-success" id="addPeriodBtn"><i class="bi bi-plus-circle"></i> Add Period</button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="addPeriodBtn"><i class="bi bi-plus-circle"></i> Add Period</button>
                     <button type="submit" class="btn btn-sm btn-primary px-4 ms-2">Generate Report</button>
                 </div>
             </form>
@@ -160,37 +183,98 @@
 
     <!-- Report -->
     {% if report_data %}
-    <div class="card shadow-lg border-0">
-        <div class="card-body p-0">
+    <style>
+        .pl-report-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: "Segoe UI", "Avenir Next", sans-serif;
+            color: #000;
+            font-size: 0.95rem;
+        }
+        .pl-report-table th, .pl-report-table td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .pl-report-table thead th {
+            background-color: #d8dce3;
+            font-weight: bold;
+            text-transform: uppercase;
+            text-align: right;
+            border-bottom: 2px solid #b0b5be;
+            color: #000;
+        }
+        .pl-report-table thead th:first-child {
+            text-align: left;
+        }
+        .pl-section-header {
+            background-color: #d8dce3;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .pl-category-header {
+            text-transform: uppercase;
+            padding-left: 20px !important;
+            font-weight: 600;
+            color: #333;
+            border-bottom: 1px dashed #e0e0e0;
+        }
+        .pl-account-row td:first-child {
+            padding-left: 40px !important;
+        }
+        .pl-total-row {
+            background-color: #eef0f3;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .pl-total-row td {
+            border-top: 1px solid #000;
+            border-bottom: 1px solid #000;
+        }
+        .pl-net-profit {
+            background-color: #d8dce3;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 1.05rem;
+        }
+        .pl-net-profit td {
+            border-top: 2px solid #000;
+            border-bottom: 4px double #000;
+        }
+        .pl-report-table td.text-end {
+            text-align: right;
+        }
+    </style>
+    <div class="card shadow-sm border-0 mb-5">
+        <div class="card-body p-4">
             <div class="table-responsive">
-                <table class="table pl-table mb-0">
-                    <thead class="pl-table-header text-center border-0">
+                <table class="pl-report-table">
+                    <thead>
                         <tr>
-                            <th class="text-start p-3" style="width: 40%;">Description</th>
+                            <th style="width: 40%;">Description</th>
                             {% for p in periods %}
-                            <th class="p-3">
+                            <th>
                                 Period {{ loop.index }}<br>
-                                <small class="text-muted fw-normal" style="font-size: 0.8rem;">
+                                <span style="font-size: 0.75rem; font-weight: normal; color: #555;">
                                     {{ p.start }} to {{ p.end }}
-                                </small>
+                                </span>
                             </th>
                             {% endfor %}
                         </tr>
                     </thead>
                     <tbody>
                         <!-- INCOME SECTION -->
-                        <tr class="pl-income-header">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3">Income</td>
+                        <tr class="pl-section-header">
+                            <td colspan="{{ periods|length + 1 }}">Income</td>
                         </tr>
 
 
                         {% for cat in report_data.income_categories %}
                             <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
+                                <td colspan="{{ periods|length + 1 }}" class="pl-category-header">{{ cat.name }}</td>
                             </tr>
                             {% for acc in cat.accounts %}
-                            <tr class="pl-income-row">
-                                <td class="ps-5">{{ acc.name }}</td>
+                            <tr class="pl-account-row">
+                                <td>{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
                                 <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
@@ -204,26 +288,26 @@
                             </tr>
                         {% endfor %}
                         <!-- Total Income Row -->
-                        <tr class="fw-bold pl-total-row">
-                            <td class="text-end pe-3">TOTAL INCOME</td>
+                        <tr class="pl-total-row">
+                            <td>Total Income</td>
                             {% for val in report_data.total_income %}
                             <td class="text-end">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
                         <!-- EXPENSE SECTION -->
-                        <tr class="pl-expense-header border-top border-2">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3 mt-4">Expenses</td>
+                        <tr class="pl-section-header">
+                            <td colspan="{{ periods|length + 1 }}" style="padding-top: 30px;">Expenses</td>
                         </tr>
 
 
                         {% for cat in report_data.expense_categories %}
                             <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
+                                <td colspan="{{ periods|length + 1 }}" class="pl-category-header">{{ cat.name }}</td>
                             </tr>
                             {% for acc in cat.accounts %}
-                            <tr class="pl-expense-row">
-                                <td class="ps-5">{{ acc.name }}</td>
+                            <tr class="pl-account-row">
+                                <td>{{ acc.name }}</td>
                                 {% for val in acc.amounts %}
                                 <td class="text-end">{{ val|currency }}</td>
                                 {% endfor %}
@@ -237,18 +321,18 @@
                             </tr>
                         {% endfor %}
                         <!-- Total Expense Row -->
-                        <tr class="fw-bold pl-total-row">
-                            <td class="text-end pe-3">TOTAL EXPENSES</td>
+                        <tr class="pl-total-row">
+                            <td>Total Expenses</td>
                             {% for val in report_data.total_expense %}
                             <td class="text-end">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
 
                         <!-- NET PROFIT -->
-                        <tr class="pl-net-profit border-top border-3">
-                            <td class="fw-bold fs-5 text-end pe-3">NET PROFIT / (LOSS)</td>
+                        <tr class="pl-net-profit">
+                            <td>Net Profit / (Loss)</td>
                             {% for val in report_data.net_profit %}
-                            <td class="text-end fw-bold fs-5 text-dark">
+                            <td class="text-end">
                                 {{ val|currency }}
                             </td>
                             {% endfor %}
