@@ -267,6 +267,7 @@
                             <td colspan="{{ periods|length + 1 }}">Income</td>
                         </tr>
 
+
                         {% for cat in report_data.income_categories %}
                             <tr>
                                 <td colspan="{{ periods|length + 1 }}" class="pl-category-header">{{ cat.name }}</td>
@@ -279,8 +280,13 @@
                                 {% endfor %}
                             </tr>
                             {% endfor %}
+                            <tr class="fw-bold bg-light">
+                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
+                                {% for val in cat.total %}
+                                <td class="text-end text-muted">{{ val|currency }}</td>
+                                {% endfor %}
+                            </tr>
                         {% endfor %}
-
                         <!-- Total Income Row -->
                         <tr class="pl-total-row">
                             <td>Total Income</td>
@@ -294,6 +300,7 @@
                             <td colspan="{{ periods|length + 1 }}" style="padding-top: 30px;">Expenses</td>
                         </tr>
 
+
                         {% for cat in report_data.expense_categories %}
                             <tr>
                                 <td colspan="{{ periods|length + 1 }}" class="pl-category-header">{{ cat.name }}</td>
@@ -306,8 +313,13 @@
                                 {% endfor %}
                             </tr>
                             {% endfor %}
+                            <tr class="fw-bold bg-light">
+                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
+                                {% for val in cat.total %}
+                                <td class="text-end text-muted">{{ val|currency }}</td>
+                                {% endfor %}
+                            </tr>
                         {% endfor %}
-
                         <!-- Total Expense Row -->
                         <tr class="pl-total-row">
                             <td>Total Expenses</td>

@@ -6826,6 +6826,78 @@ def add_pos_user():
     return redirect(url_for('pos_settings'))
 
 # --- Point of Sale (POS) ---
+
+@app.route('/cash_handover', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_POS')
+def cash_handover():
+    current_user_pk = session.get('user_pk')
+
+    # Get Cashier Name
+    res = db.execute_query("SELECT User_Name FROM pose_setting_table WHERE Id = %s", (current_user_pk,))
+    cashier_name = res[0]['User_Name'] if res else session.get('username', 'Unknown')
+
+    today_date = datetime.today().strftime('%Y-%m-%d')
+
+    # Calculate today's cash sales
+    query_cash = '''
+        SELECT COALESCE(SUM(Total_Value), 0) as cash_total
+        FROM pos_sales_invoice_01
+        WHERE DATE(AcctionDate) = %s AND RecodeUserId = %s AND PaymentMethord = 1 AND Revers = 0
+    '''
+    cash_res = db.execute_query(query_cash, (today_date, current_user_pk))
+    cash_expected = float(cash_res[0]['cash_total']) if cash_res else 0.0
+
+    if request.method == 'POST':
+        handover_amount = parse_float(request.form.get('handover_amount', '0'))
+        notes = request.form.get('notes', '')
+
+        # Save to DB
+        try:
+            # First ensure table exists
+            cursor = db.get_connection().cursor()
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS pos_cash_handover (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    cashier_id INT,
+                    handover_date DATE,
+                    expected_amount DECIMAL(18,2),
+                    actual_amount DECIMAL(18,2),
+                    difference DECIMAL(18,2),
+                    notes TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            db.get_connection().commit()
+
+            difference = handover_amount - cash_expected
+
+            db.execute_query('''
+                INSERT INTO pos_cash_handover
+                (cashier_id, handover_date, expected_amount, actual_amount, difference, notes)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            ''', (current_user_pk, today_date, cash_expected, handover_amount, difference, notes), commit=True)
+
+            flash(f'Cash handover of {handover_amount:,.2f} recorded successfully.', 'success')
+            return redirect(url_for('cash_handover'))
+        except Exception as e:
+            flash(f'Error recording handover: {e}', 'danger')
+
+    # Fetch previous handovers for this cashier today
+    try:
+        history = db.execute_query('''
+            SELECT * FROM pos_cash_handover
+            WHERE cashier_id = %s AND handover_date = %s
+            ORDER BY created_at DESC
+        ''', (current_user_pk, today_date))
+    except Exception:
+        history = []
+
+    return render_template('cash_handover.html',
+                           cashier_name=cashier_name,
+                           cash_expected=cash_expected,
+                           history=history,
+                           today_date=today_date)
 @app.route('/pos', methods=['GET'])
 @login_required
 @has_permission('Access_POS')
