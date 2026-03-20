@@ -128,6 +128,10 @@ class ProfitLossReportGenerator:
         income_categories = sorted(income_cats_dict.values(), key=lambda x: x['order'])
         expense_categories = sorted(expense_cats_dict.values(), key=lambda x: x['order'])
 
+
+        total_income = [0.0] * len(periods)
+        total_expense = [0.0] * len(periods)
+
         for cat in income_categories:
             cat['total'] = [0.0] * len(periods)
             for acc in cat['accounts']:
