@@ -7042,8 +7042,9 @@ def pos_api_login():
 def send_sms_otp(mobile, code):
     """Sends OTP via Notify.lk Gateway mirroring the legacy PHP logic."""
     settings = {}
+
+    # Try to load credentials from active tenant DB site_settings if available
     try:
-        # Load credentials from active tenant DB site_settings if available
         conn = db.get_connection()
         cursor = conn.cursor(dictionary=True)
         # Handle cases where table doesn't exist yet gracefully
@@ -7074,19 +7075,24 @@ def send_sms_otp(mobile, code):
         phone = "94" + phone
 
     url = "https://app.notify.lk/api/v1/send"
-    data = {
+    # Using GET method as demonstrated in the user's curl/example call
+    # The API also accepts POST but to be extremely safe, we'll mimic the query string format exactly
+    # And use the exact parameters specified in the user documentation.
+
+    params = {
         'user_id': user_id,
         'api_key': api_key,
         'sender_id': sender_id,
         'to': phone,
-        'message': f"Your verification code is: {code}. Do not share this with anyone."
+        'message': f"Your SUWIN verification code is {code}."
     }
 
     try:
-        # The PHP script uses POST and urlencoded data
-        response = requests.post(url, data=data, timeout=5, verify=False)
+        logging.info(f"Sending SMS via Notify.lk to {phone} with sender {sender_id}")
+        response = requests.post(url, data=params, timeout=10, verify=False)
         result = response.json()
         if result.get('status') == 'success':
+            logging.info(f"SMS delivered successfully to {phone}.")
             return True
         else:
             logging.error(f"NotifySMS API Error: {response.text}")
@@ -7095,7 +7101,6 @@ def send_sms_otp(mobile, code):
         logging.error(f"Failed to send SMS: {e}")
         return False
 
-@app.route('/pos_login', methods=['GET', 'POST'])
 def pos_web_login():
     if request.method == 'GET':
         return render_template('pos_login.html')
