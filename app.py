@@ -969,6 +969,10 @@ def add_customer():
 @app.route('/api/extract_vat_from_pdf', methods=['POST'])
 @login_required
 def extract_vat_from_pdf():
+    import io
+    import re
+    import PyPDF2
+
     if 'document' not in request.files:
         return jsonify({'success': False, 'message': 'No document uploaded'}), 400
 
@@ -1003,8 +1007,6 @@ def extract_vat_from_pdf():
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
         return jsonify({'success': False, 'message': 'Failed to process document'}), 500
-
-
 @app.route('/add_supplier', methods=['GET', 'POST'])
 @login_required
 def add_supplier():
