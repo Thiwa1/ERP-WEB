@@ -5051,10 +5051,9 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
+    cursor = db.transaction_cursor()
+    with cursor:
+        try:
             # Parse cleared items and their dates
             # Format: 'id|date' for deposits and payments
             cleared_deposits = request.form.getlist('cleared_deposits[]')
@@ -5085,7 +5084,6 @@ def process_reconciliation():
                 for p in uncleared_payments:
                     cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
 
-                conn.commit()
                 flash('Progress saved successfully!', 'success')
 
             elif action == 'process':
@@ -5190,11 +5188,9 @@ def process_reconciliation():
                         cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
                                      (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
 
-                conn.commit()
                 flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
 
         except Exception as e:
-            conn.rollback()
             flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
@@ -5262,10 +5258,9 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
-    try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
+    cursor = db.transaction_cursor()
+    with cursor:
+        try:
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
             if not cursor.fetchone():
@@ -5328,10 +5323,8 @@ def reverse_reconciliation():
             # Step 6: Delete Record
             cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
 
-            conn.commit()
             flash('Reconciliation reversed successfully!', 'success')
         except Exception as e:
-            conn.rollback()
             flash(f'Error reversing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
@@ -5933,6 +5926,13 @@ def pos_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('pos_reversal'))
+
         conn.start_transaction()
 
         # 1. Reverse JV Entries
@@ -6062,6 +6062,13 @@ def bank_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('bank_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Bank Transaction Reversal (Updates Bank Book Record)
@@ -6124,6 +6131,13 @@ def cash_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('cash_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -6187,6 +6201,13 @@ def direct_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('direct_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -7017,11 +7038,9 @@ def cash_handover():
 
         try:
             # Create table if it doesn't exist
-            try:
-                with db.get_connection() as conn:
-                    with conn.cursor(dictionary=True) as cursor:
-                        conn.start_transaction()
-                        cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+            cursor = db.transaction_cursor()
+            with cursor:
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
                 if not cursor.fetchone():
                     cursor.execute('''
                         CREATE TABLE cash_handover_logs (
@@ -7039,12 +7058,6 @@ def cash_handover():
                     INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
                     VALUES (%s, %s, %s, %s)
                 ''', (get_current_user_id(), handover_to, float(amount), notes))
-
-                conn.commit()
-
-            except Exception as inner_e:
-                conn.rollback()
-                raise inner_e
 
             flash('Cash handover recorded successfully.', 'success')
             return redirect(url_for('index'))
@@ -7550,12 +7563,9 @@ def pos_web_login():
             # Send SMS
             mobile = user.get('Mobile_Number')
             if mobile:
-                sms_sent = send_sms_otp(mobile, otp)
-                if not sms_sent:
-                    flash(f'DEVELOPMENT MODE (SMS Disabled): Your login OTP is {otp}', 'info')
+                send_sms_otp(mobile, otp)
             else:
                 logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
-                flash(f'DEVELOPMENT MODE (No Mobile Number): Your login OTP is {otp}', 'info')
 
             session['pending_pos_user_id'] = user['Id']
             session['pending_pos_company'] = company_name
@@ -8851,6 +8861,11 @@ def reverse_journal_entry():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
+        if cursor.fetchone()[0] > 0:
+            return {'error': 'This transaction is reconciled. To process, first remove the reconciliation.'}, 400
 
         # Check if already reversed or linked to bank rec (simplified check)
         # C# logic checks entry_deleted = 1

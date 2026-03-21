@@ -622,7 +622,8 @@
                 loyaltyCustomer = cust;
                 nameDisplay.innerText = cust.name;
                 nameDisplay.className = "mt-1 fw-bold text-success small";
-                recalculateCartPrices();
+                // Optionally show a non-intrusive toast instead of alert
+                // alert(`Loyalty Customer Identified: ${cust.name}`);
             } else {
                 loyaltyCustomer = null;
                 nameDisplay.innerText = "Not Found";
