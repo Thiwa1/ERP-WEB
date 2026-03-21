@@ -969,10 +969,6 @@ def add_customer():
 @app.route('/api/extract_vat_from_pdf', methods=['POST'])
 @login_required
 def extract_vat_from_pdf():
-    import io
-    import re
-    import PyPDF2
-
     if 'document' not in request.files:
         return jsonify({'success': False, 'message': 'No document uploaded'}), 400
 
@@ -1007,6 +1003,8 @@ def extract_vat_from_pdf():
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
         return jsonify({'success': False, 'message': 'Failed to process document'}), 500
+
+
 @app.route('/add_supplier', methods=['GET', 'POST'])
 @login_required
 def add_supplier():
@@ -6696,6 +6694,89 @@ def vat_report():
     report_data = generator.generate()
     return render_template('vat_report.html', **report_data)
 
+
+# --- Cash Handover ---
+@app.route('/cash_handover', methods=['GET', 'POST'])
+@login_required
+def cash_handover():
+    if request.method == 'POST':
+        # Retrieve form data
+        amount = request.form.get('amount')
+        notes = request.form.get('notes', '')
+        handover_to = request.form.get('handover_to')
+
+        if not amount or float(amount) <= 0:
+            flash('Please enter a valid amount.', 'danger')
+            return redirect(url_for('cash_handover'))
+
+        try:
+            # Create table if it doesn't exist
+            cursor = db.transaction_cursor()
+            with cursor:
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                if not cursor.fetchone():
+                    cursor.execute('''
+                        CREATE TABLE cash_handover_logs (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            handover_to VARCHAR(100),
+                            amount DECIMAL(15,2) NOT NULL,
+                            notes TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    ''')
+
+                # Insert the log
+                cursor.execute('''
+                    INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
+                    VALUES (%s, %s, %s, %s)
+                ''', (get_current_user_id(), handover_to, float(amount), notes))
+
+            flash('Cash handover recorded successfully.', 'success')
+            return redirect(url_for('index'))
+
+        except Exception as e:
+            flash(f'Error recording cash handover: {str(e)}', 'danger')
+            return redirect(url_for('cash_handover'))
+
+    # GET request
+    users = db.execute_query("SELECT id, username FROM Login_Table")
+    return render_template('cash_handover.html', users=users)
+
+
+# --- Cashier Day Sales Summary ---
+@app.route('/cashier_day_sales')
+@login_required
+@has_permission('Access_POS')
+def cashier_day_sales():
+    user_id = get_current_user_id()
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # Simple summary query: total sales by this user today
+    try:
+        sales_summary = db.execute_query('''
+            SELECT
+                COUNT(*) as total_invoices,
+                SUM(AcctionValue) as total_sales
+            FROM pos_sales_invoice_01
+            WHERE DATE(AcctionDate) = %s AND user_id = %s
+        ''', (today, user_id))
+
+        if not sales_summary or not sales_summary[0]:
+            summary = {'total_invoices': 0, 'total_sales': 0.00}
+        else:
+            summary = {
+                'total_invoices': sales_summary[0].get('total_invoices', 0) or 0,
+                'total_sales': float(sales_summary[0].get('total_sales', 0.00) or 0.00)
+            }
+
+    except Exception as e:
+        print(f"Error fetching day sales: {e}")
+        summary = {'total_invoices': 0, 'total_sales': 0.00}
+
+    return render_template('cashier_day_sales.html', summary=summary, date=today)
+
+
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
 @login_required
@@ -6787,7 +6868,15 @@ def pos_settings():
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
     accounts = db.execute_query("SELECT account_name FROM new_account_table") # For Card/Cash selection
 
+    # Fetch SMS Delivery Logs
+    sms_logs = []
+    try:
+        sms_logs = db.execute_query("SELECT * FROM sms_delivery_logs ORDER BY created_at DESC LIMIT 50")
+    except Exception as e:
+        print(f"Error fetching SMS logs: {e}")
+
     return render_template('pos_settings.html',
+                           sms_logs=sms_logs,
                            settings=current_settings,
                            pos_users=pos_users,
                            selected_user_id=int(selected_user_id) if selected_user_id else 0,
@@ -6828,78 +6917,6 @@ def add_pos_user():
     return redirect(url_for('pos_settings'))
 
 # --- Point of Sale (POS) ---
-
-@app.route('/cash_handover', methods=['GET', 'POST'])
-@login_required
-@has_permission('Access_POS')
-def cash_handover():
-    current_user_pk = session.get('user_pk')
-
-    # Get Cashier Name
-    res = db.execute_query("SELECT User_Name FROM pose_setting_table WHERE Id = %s", (current_user_pk,))
-    cashier_name = res[0]['User_Name'] if res else session.get('username', 'Unknown')
-
-    today_date = datetime.today().strftime('%Y-%m-%d')
-
-    # Calculate today's cash sales
-    query_cash = '''
-        SELECT COALESCE(SUM(Total_Value), 0) as cash_total
-        FROM pos_sales_invoice_01
-        WHERE DATE(AcctionDate) = %s AND RecodeUserId = %s AND PaymentMethord = 1 AND Revers = 0
-    '''
-    cash_res = db.execute_query(query_cash, (today_date, current_user_pk))
-    cash_expected = float(cash_res[0]['cash_total']) if cash_res else 0.0
-
-    if request.method == 'POST':
-        handover_amount = parse_float(request.form.get('handover_amount', '0'))
-        notes = request.form.get('notes', '')
-
-        # Save to DB
-        try:
-            # First ensure table exists
-            cursor = db.get_connection().cursor()
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS pos_cash_handover (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    cashier_id INT,
-                    handover_date DATE,
-                    expected_amount DECIMAL(18,2),
-                    actual_amount DECIMAL(18,2),
-                    difference DECIMAL(18,2),
-                    notes TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            db.get_connection().commit()
-
-            difference = handover_amount - cash_expected
-
-            db.execute_query('''
-                INSERT INTO pos_cash_handover
-                (cashier_id, handover_date, expected_amount, actual_amount, difference, notes)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            ''', (current_user_pk, today_date, cash_expected, handover_amount, difference, notes), commit=True)
-
-            flash(f'Cash handover of {handover_amount:,.2f} recorded successfully.', 'success')
-            return redirect(url_for('cash_handover'))
-        except Exception as e:
-            flash(f'Error recording handover: {e}', 'danger')
-
-    # Fetch previous handovers for this cashier today
-    try:
-        history = db.execute_query('''
-            SELECT * FROM pos_cash_handover
-            WHERE cashier_id = %s AND handover_date = %s
-            ORDER BY created_at DESC
-        ''', (current_user_pk, today_date))
-    except Exception:
-        history = []
-
-    return render_template('cash_handover.html',
-                           cashier_name=cashier_name,
-                           cash_expected=cash_expected,
-                           history=history,
-                           today_date=today_date)
 @app.route('/pos', methods=['GET'])
 @login_required
 @has_permission('Access_POS')
@@ -7077,9 +7094,6 @@ def send_sms_otp(mobile, code):
         phone = "94" + phone
 
     url = "https://app.notify.lk/api/v1/send"
-    # Using GET method as demonstrated in the user's curl/example call
-    # The API also accepts POST but to be extremely safe, we'll mimic the query string format exactly
-    # And use the exact parameters specified in the user documentation.
 
     params = {
         'user_id': user_id,
@@ -7091,9 +7105,25 @@ def send_sms_otp(mobile, code):
 
     try:
         logging.info(f"Sending SMS via Notify.lk to {phone} with sender {sender_id}")
-        response = requests.post(url, data=params, timeout=10, verify=False)
+        response = requests.get(url, params=params, timeout=10, verify=False)
         result = response.json()
-        if result.get('status') == 'success':
+
+        status_msg = result.get('status', 'failed')
+
+        # Log to DB if table exists
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO sms_delivery_logs (mobile, message, status, api_response) VALUES (%s, %s, %s, %s)",
+                           (phone, params['message'], status_msg, response.text))
+            conn.commit()
+        except Exception as log_err:
+            logging.error(f"Error logging SMS: {log_err}")
+        finally:
+            if 'cursor' in locals() and cursor: cursor.close()
+            if 'conn' in locals() and conn: conn.close()
+
+        if status_msg == 'success':
             logging.info(f"SMS delivered successfully to {phone}.")
             return True
         else:
@@ -7102,7 +7132,6 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
         return False
-
 @app.route('/pos_login', methods=['GET', 'POST'])
 def pos_web_login():
     if request.method == 'GET':
