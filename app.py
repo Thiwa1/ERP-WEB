@@ -91,10 +91,10 @@ app.config['SECRET_KEY'] = app.secret_key
 # Theme Configuration
 THEMES = {
     'default': {
-        'name': 'Windows 11 Light',
-        'primary': '#0070F2',
-        'secondary': '#F3F3F3',
-        'accent': '#0070F2'
+        'name': 'Professional (Default)',
+        'primary': '#0f172a',
+        'secondary': '#1e293b',
+        'accent': '#2563eb'
     },
     'ocean': {
         'name': 'Ocean Blue',
@@ -104,9 +104,9 @@ THEMES = {
     },
     'pro_blue': {
         'name': 'Pro Sky Blue',
-        'primary': '#0070F2',
-        'secondary': '#4DB1FF',
-        'accent': '#0057D2'
+        'primary': '#4188ff',
+        'secondary': '#649eff',
+        'accent': '#92bbff'
     },
     'forest': {
         'name': 'Forest Green',
@@ -1191,8 +1191,12 @@ def add_inventory_item():
             main_cat = request.form.get('main_category')
             sub_cat = request.form.get('sub_category')
             min_qty = parse_float(request.form.get('min_qty', 0))
-            selling_price = parse_float(request.form.get('selling_price', 0))
-            cost_price = parse_float(request.form.get('cost_price', 0))
+
+            # Prices are now arrays
+            cost_prices = request.form.getlist('cost_price[]')
+            selling_prices = request.form.getlist('selling_price[]')
+            special_prices = request.form.getlist('special_price[]')
+            loyalty_prices = request.form.getlist('loyalty_price[]')
 
             # 2. Handle Image
             img_data = None
@@ -1231,13 +1235,29 @@ def add_inventory_item():
                     ))
                     item_id = cursor.lastrowid
 
-                    # 4. Insert Price
-                    query_price = """
+                    # 4. Insert Prices
+                    query_price = '''
                         INSERT INTO inventory_price_recod (
-                            id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
-                        ) VALUES (0, %s, %s, %s, %s)
-                    """
-                    cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
+                            id, inventory_price_link, inventory_price_purcharsing,
+                            inventory_price_selling, inventory_price_profit_marging_comen,
+                            inventory_price_for_Loyality_customer, created_date
+                        ) VALUES (0, %s, %s, %s, %s, %s, %s)
+                    '''
+
+                    # If the user did not add any dynamic rows, the arrays might be empty.
+                    # Or there might be 1 default row.
+                    if cost_prices:
+                        for idx, cp in enumerate(cost_prices):
+                            c_val = parse_float(cp)
+                            # Handle potential IndexError if arrays are mismatched (shouldn't happen with proper frontend)
+                            s_val = parse_float(selling_prices[idx]) if idx < len(selling_prices) else 0.0
+                            sp_val = parse_float(special_prices[idx]) if idx < len(special_prices) else 0.0
+                            lp_val = parse_float(loyalty_prices[idx]) if idx < len(loyalty_prices) else 0.0
+
+                            cursor.execute(query_price, (item_id, c_val, s_val, sp_val, lp_val, today_date))
+                    else:
+                        # Fallback if no prices sent, just create a zeroed row
+                        cursor.execute(query_price, (item_id, 0.0, 0.0, 0.0, 0.0, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
 
@@ -4419,7 +4439,11 @@ def inventory_price_editing():
         params = (search_pattern, search_pattern)
 
     items = db.execute_query(query, params)
-    return render_template('inventory_price_editing.html', items=items, search_query=search)
+
+    # Get all active items for the "Add New Price Tier" dropdown
+    all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
+
+    return render_template('inventory_price_editing.html', items=items, all_items=all_items, search_query=search)
 
 @app.route('/inventory_price_editing/update', methods=['POST'])
 @login_required
@@ -4819,7 +4843,38 @@ def cash_flow_generate():
         conn.close()
 
 
+
+@app.route('/add_new_price_tier', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def add_new_price_tier():
+    item_id = request.form.get('item_id')
+    cost_price = parse_float(request.form.get('cost_price', 0))
+    selling_price = parse_float(request.form.get('selling_price', 0))
+    special_price = parse_float(request.form.get('special_price', 0))
+    loyalty_price = parse_float(request.form.get('loyalty_price', 0))
+
+    if not item_id:
+        flash('Must select an inventory item', 'danger')
+        return redirect(url_for('inventory_price_editing'))
+
+    try:
+        query = '''
+            INSERT INTO inventory_price_recod (
+                id, inventory_price_link, inventory_price_purcharsing,
+                inventory_price_selling, inventory_price_profit_marging_comen,
+                inventory_price_for_Loyality_customer, created_date
+            ) VALUES (0, %s, %s, %s, %s, %s, %s)
+        '''
+        db.execute_query(query, (item_id, cost_price, selling_price, special_price, loyalty_price, date.today()), commit=True)
+        flash('New price tier added successfully!', 'success')
+    except Exception as e:
+        flash(f'Error adding new price tier: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_price_editing'))
+
 # --- Inventory Balance ---
+
 @app.route('/inventory_balance')
 @login_required
 @has_permission('Access_Inventory')
@@ -7034,10 +7089,6 @@ def send_sms_otp(mobile, code):
         'message': f"Your SUWIN verification code is {code}."
     }
 
-    if not params['api_key']:
-        logging.error("NOTIFY_API_KEY is not set. Skipping SMS delivery.")
-        return
-
     try:
         logging.info(f"Sending SMS via Notify.lk to {phone} with sender {sender_id}")
         response = requests.post(url, data=params, timeout=10, verify=False)
@@ -7050,7 +7101,9 @@ def send_sms_otp(mobile, code):
             return False
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
+        return False
 
+@app.route('/pos_login', methods=['GET', 'POST'])
 def pos_web_login():
     if request.method == 'GET':
         return render_template('pos_login.html')

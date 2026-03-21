@@ -1,6 +1,100 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+<style>
+    /* Pro Version P&L Styling */
+    .pl-title {
+        color: #1a73e8 !important; /* Bright Blue */
+        font-weight: 800 !important;
+        letter-spacing: 0.5px;
+    }
+
+    .pl-table {
+        background-color: white !important;
+        border-collapse: collapse !important;
+        border: none !important;
+    }
+    .pl-table th, .pl-table td {
+        border: none !important;
+    }
+
+    .pl-table-header th {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        border-bottom: 1px solid #dee2e6 !important;
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+
+    .pl-income-header td {
+        background-color: #CDE3D5 !important; /* Light Green Background */
+        color: #1F8E68 !important; /* Dark Green Text */
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-category-row td {
+        background-color: #ffffff !important;
+        color: #6C757D !important;
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-income-row td {
+        background-color: #F8F9FA !important;
+        border-top: 3px solid #1F8E68 !important;
+        border-bottom: 3px solid #1F8E68 !important;
+        padding: 10px 15px !important;
+    }
+    .pl-income-row td:first-child {
+        border-left: 3px solid #1F8E68 !important;
+    }
+    .pl-income-row td:last-child {
+        border-right: 3px solid #1F8E68 !important;
+    }
+
+    .pl-expense-header td {
+        background-color: #EFD1D4 !important; /* Light Red Background */
+        color: #DC3545 !important; /* Dark Red Text */
+        font-weight: 800 !important;
+        padding: 10px 15px !important;
+    }
+
+    .pl-expense-row td {
+        background-color: #F8F9FA !important;
+        border-top: 3px solid #DC3545 !important;
+        border-bottom: 3px solid #DC3545 !important;
+        padding: 10px 15px !important;
+    }
+    .pl-expense-row td:first-child {
+        border-left: 3px solid #DC3545 !important;
+    }
+    .pl-expense-row td:last-child {
+        border-right: 3px solid #DC3545 !important;
+    }
+
+    .pl-total-row td {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+
+    .pl-net-profit td {
+        background-color: #C3D6F3 !important; /* Light Blue Background */
+        color: #000000 !important; /* Black Text */
+        font-weight: 800 !important;
+        padding: 15px !important;
+    }
+</style>
+
+
+
+
+
+
+
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="text-primary fw-bold" style="color: #0d6efd !important;">PROFIT & LOSS STATEMENT</h2>

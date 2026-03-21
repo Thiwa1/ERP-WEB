@@ -13,7 +13,7 @@
             </button>
             <form id="depreciationForm" class="d-flex gap-2">
                 <input type="month" name="month" class="form-control" required>
-                <button type="submit" class="btn btn-warning text-dark">
+                <button type="submit" class="btn btn-warning text-white">
                     <i class="fas fa-calculator"></i> Run Depreciation
                 </button>
             </form>
@@ -47,7 +47,7 @@
     <div class="modal-dialog modal-lg">
         <form action="/fixed_assets/add" method="POST">
             <div class="modal-content">
-                <div class="modal-header bg-primary text-dark">
+                <div class="modal-header bg-primary text-white">
                     <h5 class="modal-title">Add New Fixed Asset</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
@@ -190,7 +190,7 @@
                 const th = document.createElement('th');
                 th.textContent = col;
                 // Add specific styling for month columns if needed
-                if(col.includes('-') && col.length < 9) th.classList.add('bg-secondary', 'text-dark');
+                if(col.includes('-') && col.length < 9) th.classList.add('bg-secondary', 'text-white');
                 thead.appendChild(th);
             });
 
