@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold mb-0 text-dark"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i>Reconciliation Report</h2>
+        <a href="{{ url_for('bank_reconciliation_history', bank_account=rec.bank_accont_no) }}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Back to History</a>
+    </div>
+
+    {% if rec %}
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-primary text-white py-3">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-info-circle me-2"></i>Report Details</h5>
+                </div>
+                <div class="card-body bg-light">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-5 text-muted fw-bold">ID:</dt>
+                        <dd class="col-sm-7 fw-bold">#{{ rec.id }}</dd>
+
+                        <dt class="col-sm-5 text-muted fw-bold">Account:</dt>
+                        <dd class="col-sm-7 fw-bold text-primary">{{ rec.bank_accont_no }}</dd>
+
+                        <dt class="col-sm-5 text-muted fw-bold">Opening Date:</dt>
+                        <dd class="col-sm-7">{{ rec.opene_date.strftime('%Y-%m-%d') if rec.opene_date else 'N/A' }}</dd>
+
+                        <dt class="col-sm-5 text-muted fw-bold">Closing Date:</dt>
+                        <dd class="col-sm-7">{{ rec.closing_date.strftime('%Y-%m-%d') if rec.closing_date else 'N/A' }}</dd>
+                    </dl>
+                    <hr class="text-secondary opacity-50">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-6 text-muted fw-bold">Opening Balance:</dt>
+                        <dd class="col-sm-6 text-end">{{ rec.opene_balance|currency }}</dd>
+
+                        <dt class="col-sm-6 text-muted fw-bold">Closing Balance:</dt>
+                        <dd class="col-sm-6 text-end fw-bold">{{ rec.closing_balance|currency }}</dd>
+
+                        <dt class="col-sm-6 text-muted fw-bold mt-2 pt-2 border-top">Book Balance:</dt>
+                        <dd class="col-sm-6 text-end mt-2 pt-2 border-top">{{ rec.Book_Balance|currency }}</dd>
+
+                        <dt class="col-sm-6 text-muted fw-bold">Statement Balance:</dt>
+                        <dd class="col-sm-6 text-end fw-bold text-primary">{{ rec.Bank_statment_Balance|currency }}</dd>
+
+                        {% set diff = rec.closing_balance - rec.Bank_statment_Balance %}
+                        <dt class="col-sm-6 text-muted fw-bold mt-2 pt-2 border-top">Difference:</dt>
+                        <dd class="col-sm-6 text-end mt-2 pt-2 border-top fw-bold {% if diff|abs < 0.01 %}text-success{% else %}text-danger{% endif %}">{{ diff|currency }}</dd>
+                    </dl>
+                </div>
+                <div class="card-footer bg-white text-center">
+                    <button class="btn btn-outline-primary w-100 fw-bold" onclick="window.print()"><i class="fas fa-print me-2"></i>Print Report</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <!-- Uncleared Deposits -->
+            <div class="card shadow-sm border-0 mb-4">
+                <div class="card-header bg-success text-white py-3">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-down me-2"></i>Uncleared Deposits</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light text-muted">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Cheque No</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for d in deposits %}
+                                <tr>
+                                    <td class="fw-bold">#{{ d.Id }}</td>
+                                    <td>{{ d.entry_effective_date.strftime('%Y-%m-%d') if d.entry_effective_date else '-' }}</td>
+                                    <td>{{ d.Text }}</td>
+                                    <td>{{ d.Chq_No or '-' }}</td>
+                                    <td class="text-end text-success fw-bold">{{ d.Dr_Value|currency }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-3">No uncleared deposits</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Uncleared Payments -->
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-danger text-white py-3">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-arrow-up me-2"></i>Uncleared Payments</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light text-muted">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Date</th>
+                                    <th>Description</th>
+                                    <th>Cheque No</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for p in payments %}
+                                <tr>
+                                    <td class="fw-bold">#{{ p.Id }}</td>
+                                    <td>{{ p.entry_effective_date.strftime('%Y-%m-%d') if p.entry_effective_date else '-' }}</td>
+                                    <td>{{ p.Text }}</td>
+                                    <td>{{ p.Chq_No or '-' }}</td>
+                                    <td class="text-end text-danger fw-bold">{{ p.Cr_Value|currency }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="5" class="text-center text-muted py-3">No uncleared payments</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% else %}
+    <div class="alert alert-danger shadow-sm border-0">
+        <i class="fas fa-exclamation-triangle me-2"></i>Report not found or error loading data.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
