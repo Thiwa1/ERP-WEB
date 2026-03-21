@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2 class="fw-bold mb-0 text-dark"><i class="fas fa-history me-2 text-primary"></i>Reconciliation History</h2>
+        <a href="{{ url_for('bank_reconciliation') }}" class="btn btn-outline-primary"><i class="fas fa-arrow-left me-2"></i>Back to Reconcile</a>
+    </div>
+
+    <!-- Account Selection -->
+    <div class="card shadow-sm border-0 mb-4">
+        <div class="card-body bg-light rounded">
+            <form method="GET" action="{{ url_for('bank_reconciliation_history') }}" class="row g-3 align-items-end">
+                <div class="col-md-5">
+                    <label class="form-label fw-bold text-muted">Select Bank Account</label>
+                    <select name="bank_account" class="form-select select2 shadow-sm" required onchange="this.form.submit()">
+                        <option value="">-- Choose Account --</option>
+                        {% for acc in bank_accounts %}
+                        <option value="{{ acc.bank_bookcol_account_number }}" {% if selected_account == acc.bank_bookcol_account_number %}selected{% endif %}>
+                            {{ acc.bank_bookcol_account_number }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if selected_account %}
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-bottom py-3">
+            <h5 class="mb-0 fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i>History for {{ selected_account }}</h5>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light text-muted">
+                        <tr>
+                            <th>ID</th>
+                            <th>Period</th>
+                            <th class="text-end">Opening Bal</th>
+                            <th class="text-end">Closing Bal</th>
+                            <th class="text-end">Statement Bal</th>
+                            <th class="text-end">Difference</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for h in history %}
+                        <tr>
+                            <td class="fw-bold">#{{ h.id }}</td>
+                            <td>
+                                <div><small class="text-muted">From:</small> {{ h.opene_date.strftime('%Y-%m-%d') if h.opene_date else '-' }}</div>
+                                <div><small class="text-muted">To:</small> {{ h.closing_date.strftime('%Y-%m-%d') if h.closing_date else '-' }}</div>
+                            </td>
+                            <td class="text-end">{{ h.opene_balance|currency }}</td>
+                            <td class="text-end fw-bold">{{ h.closing_balance|currency }}</td>
+                            <td class="text-end">{{ h.Bank_statment_Balance|currency }}</td>
+                            <td class="text-end">
+                                {% set diff = h.closing_balance - h.Bank_statment_Balance %}
+                                <span class="{% if diff|abs < 0.01 %}text-success{% else %}text-danger{% endif %}">
+                                    {{ diff|currency }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <span class="badge {% if h.period_close_or_open == 1 %}bg-success{% else %}bg-warning{% endif %} rounded-pill">
+                                    {{ 'Closed' if h.period_close_or_open == 1 else 'Open' }}
+                                </span>
+                            </td>
+                            <td class="text-center">
+                                <a href="{{ url_for('bank_reconciliation_report', rec_id=h.id) }}" class="btn btn-sm btn-outline-primary" title="View Report">
+                                    <i class="fas fa-file-alt"></i>
+                                </a>
+                                <button type="button" class="btn btn-sm btn-outline-danger" title="Reverse Reconciliation" onclick="showReverseModal({{ h.id }}, '{{ h.closing_date.strftime('%Y-%m-%d') }}')">
+                                    <i class="fas fa-undo"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="8" class="text-center py-5 text-muted">
+                                <i class="fas fa-info-circle fa-2x mb-3 text-light"></i>
+                                <h5>No reconciliation history found</h5>
+                                <p>Reconciliations processed for this account will appear here.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Reversal Modal -->
+<div class="modal fade" id="reverseModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Reverse Reconciliation</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form action="{{ url_for('reverse_reconciliation') }}" method="POST">
+                <div class="modal-body">
+                    <p>Are you sure you want to reverse the reconciliation from <strong id="reverseDate"></strong>?</p>
+                    <p class="text-danger small"><i class="fas fa-info-circle me-1"></i>This will mark all associated transactions as uncleared.</p>
+
+                    <input type="hidden" name="rec_id" id="reverseId">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Reason for Reversal <span class="text-danger">*</span></label>
+                        <textarea name="reason" class="form-control" rows="3" required placeholder="Please provide a reason..."></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-danger"><i class="fas fa-undo me-2"></i>Confirm Reversal</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function showReverseModal(id, date) {
+    document.getElementById('reverseId').value = id;
+    document.getElementById('reverseDate').textContent = date;
+    new bootstrap.Modal(document.getElementById('reverseModal')).show();
+}
+</script>
+{% endblock %}
