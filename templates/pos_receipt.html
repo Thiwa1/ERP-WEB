@@ -99,6 +99,10 @@
             <div>DISCOUNT:</div>
             <div class="text-right">-{{ totals.savings|currency(symbol=False) }}</div>
         </div>
+        <div class="info-grid fw-bold" style="color: green;">
+            <div>TOTAL SAVINGS:</div>
+            <div class="text-right">{{ totals.savings|currency(symbol=False) }}</div>
+        </div>
         {% endif %}
 
         <div class="info-grid fw-bold" style="font-size: 14px; margin-top: 5px;">
@@ -110,6 +114,12 @@
     <div class="text-center fw-bold" style="margin-bottom: 10px;">
         PAYMENT METHOD: {{ payment_method }}
     </div>
+
+    {% if totals.savings > 0 %}
+    <div class="text-center fw-bold" style="color: green; margin-bottom: 10px;">
+        You saved {{ ((totals.savings / totals.original) * 100)|round|int }}% today!
+    </div>
+    {% endif %}
 
     <div class="footer">
         <div>Thank you for your business!</div>

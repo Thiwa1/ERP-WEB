@@ -622,18 +622,45 @@
                 loyaltyCustomer = cust;
                 nameDisplay.innerText = cust.name;
                 nameDisplay.className = "mt-1 fw-bold text-success small";
-                // Optionally show a non-intrusive toast instead of alert
-                // alert(`Loyalty Customer Identified: ${cust.name}`);
+
+                // Trigger price updates
+                if (currentItem) selectItem(currentItem);
+                updateCartPrices();
+
             } else {
                 loyaltyCustomer = null;
                 nameDisplay.innerText = "Not Found";
                 nameDisplay.className = "mt-1 fw-bold text-danger small";
+
+                // Revert price updates
+                if (currentItem) selectItem(currentItem);
+                updateCartPrices();
             }
         } else {
             loyaltyCustomer = null;
             nameDisplay.innerText = "-";
             nameDisplay.className = "mt-1 fw-bold text-warning small";
+
+            // Revert price updates
+            if (currentItem) selectItem(currentItem);
+            updateCartPrices();
         }
+    }
+
+    function updateCartPrices() {
+        if (cart.length === 0) return;
+
+        cart.forEach(item => {
+            let price = item.price_market;
+            if(posSettings.loyalty_active === 1 && loyaltyCustomer) price = item.price_loyalty;
+            else if(posSettings.special_active === 1) price = item.price_special;
+            else if(posSettings.market_active === 1) price = item.price_market;
+
+            item.price = price;
+            item.total = item.qty * price;
+        });
+
+        renderCart();
     }
 
     // --- 6. Payment & Submission ---

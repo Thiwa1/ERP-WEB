@@ -7710,9 +7710,9 @@ def pos_api_settings():
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
                 'cash_ac': settings['Cash_Account'],
-                'market_price': settings['Sales_with_market_price'],
-                'special_price': settings['Sales_with_Special_price'],
-                'loyalty_price': settings['Loyalty_Price'],
+                'market_active': settings['Sales_with_market_price'],
+                'special_active': settings['Sales_with_Special_price'],
+                'loyalty_active': settings['Loyalty_Price'],
                 'vat_enable': settings['VAT_Enable'],
                 'footer': settings['Footer_Message'],
                 'top': settings['Top_Message']
