@@ -131,7 +131,7 @@
                     </div>
 
                     <!-- Cart Table -->
-                    <div class="table-responsive flex-grow-1">
+                    <div class="table-responsive flex-grow-1" style="max-height: 450px; overflow-y: auto;">
                         <table class="table table-striped table-hover mb-0" id="cartTable">
                             <thead class="table-dark sticky-top">
                                 <tr>
@@ -593,6 +593,21 @@
 
     function removeFromCart(idx) {
         cart.splice(idx, 1);
+        renderCart();
+    }
+
+
+    function recalculateCartPrices() {
+        cart.forEach(item => {
+            let newPrice = item.price_market;
+            if (posSettings.loyalty_active === 1 && loyaltyCustomer) {
+                newPrice = item.price_loyalty;
+            } else if (posSettings.special_active === 1) {
+                newPrice = item.price_special;
+            }
+            item.price = newPrice;
+            item.total = item.qty * newPrice;
+        });
         renderCart();
     }
 
