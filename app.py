@@ -7035,9 +7035,12 @@ def pos_web_login():
             # Send SMS
             mobile = user.get('Mobile_Number')
             if mobile:
-                send_sms_otp(mobile, otp)
+                sms_sent = send_sms_otp(mobile, otp)
+                if not sms_sent:
+                    flash(f'DEVELOPMENT MODE (SMS Disabled): Your login OTP is {otp}', 'info')
             else:
                 logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
+                flash(f'DEVELOPMENT MODE (No Mobile Number): Your login OTP is {otp}', 'info')
 
             session['pending_pos_user_id'] = user['Id']
             session['pending_pos_company'] = company_name
