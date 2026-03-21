@@ -4967,35 +4967,67 @@ def bank_reconciliation():
     if bank_account:
         # Deposits (DR > 0, Not Reconciled)
         deposits = db.execute_query("""
-            SELECT id, entry_effective_date, entry_naration, enty_values_DR
-            FROM entry_details
-            WHERE account_name = %s AND enty_values_DR > 0 AND (entry_Rec = 0 OR entry_Rec IS NULL) AND entry_deleted = 0
-            ORDER BY entry_effective_date
+            SELECT
+                ed.entry_save,
+                ed.entry_date,
+                ed.id,
+                ed.entry_effective_date,
+                ed.entry_naration,
+                bbr.bank_book_chque_no,
+                ed.enty_values_DR
+            FROM entry_details ed
+            LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+            WHERE ed.account_name = %s
+            AND ed.enty_values_DR > 0
+            AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+            AND ed.entry_deleted = 0
+            ORDER BY ed.entry_effective_date
         """, (bank_account,))
 
         # Payments (CR > 0, Not Reconciled)
         payments = db.execute_query("""
-            SELECT id, entry_effective_date, entry_naration, enty_values_CR
-            FROM entry_details
-            WHERE account_name = %s AND enty_values_CR > 0 AND (entry_Rec = 0 OR entry_Rec IS NULL) AND entry_deleted = 0
-            ORDER BY entry_effective_date
+            SELECT
+                ed.entry_save,
+                ed.entry_date,
+                ed.id,
+                ed.entry_effective_date,
+                ed.entry_naration,
+                bbr.bank_book_chque_no,
+                ed.enty_values_CR
+            FROM entry_details ed
+            LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+            WHERE ed.account_name = %s
+            AND ed.enty_values_CR > 0
+            AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+            AND ed.entry_deleted = 0
+            ORDER BY ed.entry_effective_date
         """, (bank_account,))
 
-        # Book Balance logic (simplified version of procedure)
-        bb_res = db.execute_query("""
-            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
-            FROM entry_details
-            WHERE account_name = %s AND entry_effective_date <= %s
-        """, (bank_account, rec_date))
-        book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
+        # Book Balance logic
+        try:
+            bb_res = db.execute_query("CALL bank_book_balance(%s, %s)", (rec_date, bank_account))
+            book_balance = float(bb_res[0].get('bank_book_balance', 0)) if bb_res else 0
+        except Exception as e:
+            # Fallback
+            bb_res = db.execute_query("""
+                SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+                FROM entry_details
+                WHERE account_name = %s AND entry_effective_date <= %s
+            """, (bank_account, rec_date))
+            book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
 
-        # Opening Balance logic (simplified: sum of Reconciled items)
-        op_res = db.execute_query("""
-            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
-            FROM entry_details
-            WHERE account_name = %s AND entry_Rec = 1
-        """, (bank_account,))
-        opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
+        # Opening Balance logic
+        try:
+            op_res = db.execute_query("CALL bank_opening_balance(%s)", (bank_account,))
+            opening_balance = float(op_res[0].get('bank_opening_balance', 0)) if op_res else 0
+        except Exception as e:
+            # Fallback
+            op_res = db.execute_query("""
+                SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+                FROM entry_details
+                WHERE account_name = %s AND entry_Rec = 1
+            """, (bank_account,))
+            opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
 
     return render_template('bank_reconciliation.html',
                            bank_accounts=bank_accounts,
@@ -5010,26 +5042,293 @@ def bank_reconciliation():
 @app.route('/bank_reconciliation/process', methods=['POST'])
 @login_required
 def process_reconciliation():
+    action = request.form.get('action') # 'save' or 'process'
     bank_account = request.form.get('bank_account')
     rec_date = request.form.get('rec_date')
-    cleared_ids = request.form.getlist('cleared_ids[]')
+    statement_balance = request.form.get('statement_balance', 0)
 
-    if not bank_account or not rec_date:
-        flash('Missing required data', 'danger')
+    if not bank_account:
+        flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    if cleared_ids:
-        # Mark selected items as reconciled
-        placeholders = ', '.join(['%s'] * len(cleared_ids))
-        query = f"UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s WHERE id IN ({placeholders})"
-        params = [rec_date] + cleared_ids
-        db.execute_query(query, tuple(params), commit=True)
+    cursor = db.transaction_cursor()
+    with cursor:
+        try:
+            # Parse cleared items and their dates
+            # Format: 'id|date' for deposits and payments
+            cleared_deposits = request.form.getlist('cleared_deposits[]')
+            cleared_payments = request.form.getlist('cleared_payments[]')
 
-        flash(f'Reconciliation processed. {len(cleared_ids)} transactions cleared.', 'success')
-    else:
-        flash('No transactions selected to clear.', 'info')
+            uncleared_deposits = request.form.getlist('uncleared_deposits[]')
+            uncleared_payments = request.form.getlist('uncleared_payments[]')
+
+            if action == 'save':
+                # Save Progress
+                # Process cleared deposits
+                for d in cleared_deposits:
+                    parts = d.split('|')
+                    d_id = parts[0]
+                    d_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_id))
+
+                # Process cleared payments
+                for p in cleared_payments:
+                    parts = p.split('|')
+                    p_id = parts[0]
+                    p_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_id))
+
+                # Mark uncleared as entry_save = 0
+                for d in uncleared_deposits:
+                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
+                for p in uncleared_payments:
+                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
+
+                flash('Progress saved successfully!', 'success')
+
+            elif action == 'process':
+                if not rec_date:
+                    flash('Missing reconciliation date', 'danger')
+                    return redirect(url_for('bank_reconciliation', bank_account=bank_account))
+
+                # Calculate Opening Balance (Simplified for Python version as in original code)
+                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_Rec = 1", (bank_account,))
+                op_res = cursor.fetchone()
+                opening_balance = float(op_res['bal'] or 0) if op_res else 0
+
+                # Book Balance
+                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_effective_date <= %s", (bank_account, rec_date))
+                bb_res = cursor.fetchone()
+                book_balance = float(bb_res['bal'] or 0) if bb_res else 0
+
+                statement_balance = float(statement_balance)
+
+                # Get sums of cleared deposits/payments to calculate closing balance
+                cleared_dep_sum = 0
+                cleared_pay_sum = 0
+
+                # Clear Deposits
+                for d in cleared_deposits:
+                    parts = d.split('|')
+                    d_id = parts[0]
+                    d_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_date + " 00:00:00", d_id))
+                    cursor.execute("SELECT enty_values_DR FROM entry_details WHERE id = %s", (d_id,))
+                    cleared_dep_sum += float(cursor.fetchone()['enty_values_DR'] or 0)
+
+                # Clear Payments
+                for p in cleared_payments:
+                    parts = p.split('|')
+                    p_id = parts[0]
+                    p_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_date + " 00:00:00", p_id))
+                    cursor.execute("SELECT enty_values_CR FROM entry_details WHERE id = %s", (p_id,))
+                    cleared_pay_sum += float(cursor.fetchone()['enty_values_CR'] or 0)
+
+                closing_balance = opening_balance + cleared_dep_sum - cleared_pay_sum
+
+                # Get last closing date for opene_date
+                cursor.execute("SELECT MAX(closing_date) as cd FROM bank_reconciliation_recodes WHERE bank_accont_no = %s", (bank_account,))
+                last_cd_res = cursor.fetchone()
+                last_closing_date = last_cd_res['cd'] if last_cd_res and last_cd_res['cd'] else '2000-01-01'
+
+                # Check tables
+                cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_recodes'")
+                if not cursor.fetchone():
+                    cursor.execute('''CREATE TABLE bank_reconciliation_recodes (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        opene_date DATE,
+                        opene_balance DECIMAL(15,2),
+                        closing_date DATE,
+                        closing_balance DECIMAL(15,2),
+                        save_user INT,
+                        close_user INT,
+                        last_save_user INT,
+                        last_close_uer INT,
+                        period_close_or_open INT,
+                        bank_accont_no VARCHAR(100),
+                        Book_Balance DECIMAL(15,2),
+                        Bank_statment_Balance DECIMAL(15,2)
+                    )''')
+
+                cursor.execute("SHOW TABLES LIKE 'bankreconciliiationditails'")
+                if not cursor.fetchone():
+                    cursor.execute('''CREATE TABLE bankreconciliiationditails (
+                        Id INT AUTO_INCREMENT PRIMARY KEY,
+                        Key_to_Recode_Table INT,
+                        Transaktion_Id INT,
+                        Dr_Value DECIMAL(15,2),
+                        Cr_Value DECIMAL(15,2),
+                        Text TEXT,
+                        Chq_No VARCHAR(100)
+                    )''')
+
+                # Insert reconciliation record
+                cursor.execute('''
+                    INSERT INTO bank_reconciliation_recodes
+                    (opene_date, opene_balance, closing_date, closing_balance, save_user, close_user,
+                     period_close_or_open, bank_accont_no, Book_Balance, Bank_statment_Balance)
+                    VALUES (%s, %s, %s, %s, 0, %s, 1, %s, %s, %s)
+                ''', (last_closing_date, opening_balance, rec_date, closing_balance, get_current_user_id(), bank_account, book_balance, statement_balance))
+
+                rec_id = cursor.lastrowid
+
+                # Insert Uncleared Transactions into details table
+                for d in uncleared_deposits:
+                    cursor.execute("SELECT id, enty_values_DR, entry_naration FROM entry_details WHERE id = %s", (d,))
+                    detail = cursor.fetchone()
+                    if detail:
+                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                     (rec_id, detail['id'], detail['enty_values_DR'], 0, detail['entry_naration'], ''))
+
+                for p in uncleared_payments:
+                    cursor.execute("SELECT id, enty_values_CR, entry_naration FROM entry_details WHERE id = %s", (p,))
+                    detail = cursor.fetchone()
+                    if detail:
+                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                     (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
+
+                flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
+
+        except Exception as e:
+            flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
+
+@app.route('/bank_reconciliation/history', methods=['GET'])
+@login_required
+def bank_reconciliation_history():
+    bank_account = request.args.get('bank_account')
+
+    bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
+    history = []
+
+    if bank_account:
+        try:
+            history = db.execute_query('''
+                SELECT id, opene_date, opene_balance, closing_date, closing_balance,
+                       Book_Balance, Bank_statment_Balance, close_user, period_close_or_open
+                FROM bank_reconciliation_recodes
+                WHERE bank_accont_no = %s
+                ORDER BY closing_date DESC
+            ''', (bank_account,))
+        except:
+            history = []
+
+    return render_template('bank_reconciliation_history.html', bank_accounts=bank_accounts, selected_account=bank_account, history=history)
+
+@app.route('/bank_reconciliation/report/<int:rec_id>', methods=['GET'])
+@login_required
+def bank_reconciliation_report(rec_id):
+    rec = None
+    deposits = []
+    payments = []
+
+    try:
+        rec = db.execute_query("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+        if rec:
+            rec = rec[0]
+
+            deposits = db.execute_query('''
+                SELECT brd.Id, brd.Text, brd.Chq_No, brd.Dr_Value, ed.entry_effective_date
+                FROM bankreconciliiationditails brd
+                LEFT JOIN entry_details ed ON brd.Transaktion_Id = ed.id
+                WHERE brd.Key_to_Recode_Table = %s AND brd.Dr_Value > 0
+            ''', (rec_id,))
+
+            payments = db.execute_query('''
+                SELECT brd.Id, brd.Text, brd.Chq_No, brd.Cr_Value, ed.entry_effective_date
+                FROM bankreconciliiationditails brd
+                LEFT JOIN entry_details ed ON brd.Transaktion_Id = ed.id
+                WHERE brd.Key_to_Recode_Table = %s AND brd.Cr_Value > 0
+            ''', (rec_id,))
+
+    except Exception as e:
+        flash(f'Error loading report: {str(e)}', 'danger')
+
+    return render_template('bank_reconciliation_report.html', rec=rec, deposits=deposits, payments=payments)
+
+@app.route('/bank_reconciliation/reverse', methods=['POST'])
+@login_required
+def reverse_reconciliation():
+    rec_id = request.form.get('rec_id')
+    reason = request.form.get('reason')
+
+    if not rec_id or not reason:
+        flash('Missing reconciliation ID or reason', 'danger')
+        return redirect(url_for('bank_reconciliation_history'))
+
+    cursor = db.transaction_cursor()
+    with cursor:
+        try:
+            # Check tables
+            cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
+            if not cursor.fetchone():
+                cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    original_rec_id INT,
+                    bank_account VARCHAR(100),
+                    reversal_date DATETIME,
+                    reversed_by_user INT,
+                    opening_balance DECIMAL(15,2),
+                    closing_balance DECIMAL(15,2),
+                    reversal_reason TEXT
+                )''')
+
+            # Get Reconciliation details
+            cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+            rec = cursor.fetchone()
+            if not rec:
+                flash('Reconciliation record not found', 'danger')
+                return redirect(url_for('bank_reconciliation_history'))
+
+            account = rec['bank_accont_no']
+
+            # Step 1: Get all transaction IDs from details table
+            cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+            detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
+
+            # Step 2: Get cleared transaction IDs for this account and period
+            cursor.execute('''
+                SELECT id FROM entry_details
+                WHERE account_name = %s
+                AND entry_Rec = 1
+                AND entry_effective_date BETWEEN %s AND %s
+            ''', (account, rec['opene_date'], rec['closing_date']))
+            cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
+
+            # Combine and remove duplicates
+            all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
+
+            # Step 3: Un-reconcile all these transactions
+            if all_trans_ids:
+                format_strings = ','.join(['%s'] * len(all_trans_ids))
+                cursor.execute(f'''
+                    UPDATE entry_details
+                    SET entry_Rec = 0, entry_save = 0, entry_date = NULL
+                    WHERE id IN ({format_strings})
+                ''', tuple(all_trans_ids))
+
+            # Step 4: Log Reversal
+            cursor.execute('''
+                INSERT INTO bank_reconciliation_reversal_log
+                (original_rec_id, bank_account, reversal_date, reversed_by_user,
+                 opening_balance, closing_balance, reversal_reason)
+                VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+            ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
+
+            # Step 5: Delete Details
+            cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+
+            # Step 6: Delete Record
+            cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+
+            flash('Reconciliation reversed successfully!', 'success')
+        except Exception as e:
+            flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+
+    return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
+
 
 # --- Ledger View ---
 @app.route('/ledger_view')
