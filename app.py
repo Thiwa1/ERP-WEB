@@ -5051,8 +5051,7 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    cursor = db.transaction_cursor()
-    with cursor:
+    with db.transaction_cursor() as cursor:
         try:
             # Parse cleared items and their dates
             # Format: 'id|date' for deposits and payments
@@ -5258,8 +5257,7 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
-    cursor = db.transaction_cursor()
-    with cursor:
+    with db.transaction_cursor() as cursor:
         try:
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
@@ -7010,8 +7008,7 @@ def cash_handover():
 
         try:
             # Create table if it doesn't exist
-            cursor = db.transaction_cursor()
-            with cursor:
+            with db.transaction_cursor() as cursor:
                 cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
                 if not cursor.fetchone():
                     cursor.execute('''
@@ -7535,9 +7532,12 @@ def pos_web_login():
             # Send SMS
             mobile = user.get('Mobile_Number')
             if mobile:
-                send_sms_otp(mobile, otp)
+                sms_sent = send_sms_otp(mobile, otp)
+                if not sms_sent:
+                    flash(f'DEVELOPMENT MODE (SMS Disabled): Your login OTP is {otp}', 'info')
             else:
                 logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
+                flash(f'DEVELOPMENT MODE (No Mobile Number): Your login OTP is {otp}', 'info')
 
             session['pending_pos_user_id'] = user['Id']
             session['pending_pos_company'] = company_name
