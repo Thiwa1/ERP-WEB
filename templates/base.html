@@ -24,8 +24,8 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #2b2b2b; /* Dark Background for Windows 10 like */
-            color: #ffffff; /* Dark Slate text for high contrast */
+            background-color: #f1f5f9; /* Slate 100 - Professional Neutral */
+            color: #334155; /* Dark Slate text for high contrast */
             overflow-x: hidden;
         }
 
@@ -183,7 +183,7 @@
 
         /* Top Navbar */
         .top-navbar {
-            background-color: #333333;
+            background-color: white;
             padding: 15px 30px;
             margin: -20px -20px 20px -20px;
             border-bottom: 1px solid #e2e8f0;
@@ -455,7 +455,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #ffffff;
+            color: #334155;
             letter-spacing: 0.3px;
         }
         .qa-header i {
@@ -503,71 +503,6 @@
         .qa-theme-info .qa-header i { color: #06b6d4; }
         .qa-theme-purple .qa-header i { color: #8b5cf6; }
         .qa-theme-rose .qa-header i { color: #f43f5e; }
-
-
-        /* Light Mode Colors from Requirements */
-        :root {
-            --blue-7: #0070F2;
-            --blue-5: #4DB1FF;
-            --tint-tappable: #0070F2; /* Blue 7 */
-            --tint-tappable-light: #4DB1FF; /* Blue 5 */
-            --tint-2-text: #0057D2; /* Blue 8 - Tappable elements on less contrast backgrounds */
-            --tint-3-bg: rgba(0, 112, 242, 0.08); /* Blue 7, 8% - secondary tint button background */
-            --tint-tap-state: #0040B0; /* Blue 9 */
-        }
-
-        /* Override sidebar to use the specific colors */
-        .sidebar {
-            background: #1e1e1e !important;
-            border-right: 1px solid #e0e0e0;
-        }
-
-        /* Inactive text - Dark text for light mode sidebar */
-        .sidebar .nav-link {
-            color: #ffffff !important;
-            opacity: 0.9;
-            border-radius: 6px;
-            margin-bottom: 2px;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-
-        .sidebar .nav-link:hover {
-            background-color: rgba(0, 112, 242, 0.04) !important;
-            color: #ffffff !important;
-            opacity: 1;
-        }
-
-        /* Active sidebar link uses the exact tinting specified by the user */
-        .sidebar .nav-link.active,
-        .sidebar .nav-item.active > .nav-link,
-        .sidebar .nav-link[aria-expanded="true"] {
-            background-color: var(--tint-3-bg) !important; /* Blue 7, 8% */
-            color: var(--tint-2-text) !important; /* #0057D2 Blue 8 */
-            font-weight: 600 !important;
-            border-left: 3px solid var(--tint-2-text) !important;
-            border-radius: 0 8px 8px 0;
-            padding-left: 13px;
-            opacity: 1;
-        }
-
-        .sidebar .nav-link.active:active,
-        .sidebar .nav-item.active > .nav-link:active {
-            color: var(--tint-tap-state) !important; /* Blue 9 */
-            border-left-color: var(--tint-tap-state) !important;
-        }
-
-        .sidebar .nav-link.active *,
-        .sidebar .nav-item.active > .nav-link *,
-        .sidebar .nav-link.active i,
-        .sidebar .nav-link.active svg {
-            color: var(--tint-2-text) !important;
-            fill: var(--tint-2-text) !important;
-        }
-
-        .sidebar-menu .menu-category {
-            color: #777777 !important;
-        }
 
     </style>
 </head>
@@ -919,26 +854,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-<style>
-/* Base Tab Styling Fix for Light Mode */
-.nav-tabs {
-    border-bottom: 2px solid #E5E5E5;
-}
-.nav-tabs .nav-link {
-    color: #605E5C !important;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 16px;
-    font-weight: 600;
-}
-.nav-tabs .nav-link:hover {
-    color: #201F1E !important;
-    border-bottom: 2px solid #C3CED5;
-    background: transparent;
-}
-.nav-tabs .nav-link.active {
-    color: #0070F2 !important;
-    border-bottom: 2px solid #0070F2 !important;
-    background: transparent !important;
-}
-</style>
