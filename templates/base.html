@@ -24,8 +24,8 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #2b2b2b; /* Dark Background for Windows 10 like */
-            color: #ffffff; /* Dark Slate text for high contrast */
+            background-color: #f3f2f1; /* Windows 10 Light Background */
+            color: #201f1e; /* Windows 10 Light Text */
             overflow-x: hidden;
         }
 
@@ -75,9 +75,10 @@
         .sidebar-brand {
             font-size: 1.35rem;
             font-weight: 800;
-            background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: #201f1e; /* Dark text for light background */
+            /* removed white text gradient */
+            /* -webkit-background-clip: text; */
+            /* -webkit-text-fill-color: transparent; */
             text-decoration: none;
             display: flex;
             align-items: center;
@@ -88,10 +89,9 @@
 
         .sidebar-brand i {
             font-size: 1.5rem;
-            background: linear-gradient(135deg, var(--accent-color), #60a5fa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+            color: var(--blue-7); /* Blue 7 */
+            /* removed text gradient */
+            /* filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4)); */
         }
 
         .sidebar-menu {
@@ -183,7 +183,7 @@
 
         /* Top Navbar */
         .top-navbar {
-            background-color: #333333;
+            background-color: #ffffff;
             padding: 15px 30px;
             margin: -20px -20px 20px -20px;
             border-bottom: 1px solid #e2e8f0;
@@ -518,13 +518,13 @@
 
         /* Override sidebar to use the specific colors */
         .sidebar {
-            background: #1e1e1e !important;
+            background: #ffffff !important;
             border-right: 1px solid #e0e0e0;
         }
 
         /* Inactive text - Dark text for light mode sidebar */
         .sidebar .nav-link {
-            color: #ffffff !important;
+            color: #201f1e !important;
             opacity: 0.9;
             border-radius: 6px;
             margin-bottom: 2px;
@@ -534,7 +534,7 @@
 
         .sidebar .nav-link:hover {
             background-color: rgba(0, 112, 242, 0.04) !important;
-            color: #ffffff !important;
+            color: #0070F2 !important;
             opacity: 1;
         }
 
@@ -568,7 +568,6 @@
         .sidebar-menu .menu-category {
             color: #777777 !important;
         }
-
     </style>
 </head>
 <body>
@@ -941,4 +940,40 @@
     border-bottom: 2px solid #0070F2 !important;
     background: transparent !important;
 }
-</style>
+
+        /* Globals for Buttons and Links - Windows 10 Dark Mode context */
+        .btn-primary {
+            background-color: var(--blue-5, #4DB1FF) !important;
+            border-color: var(--blue-5, #4DB1FF) !important;
+            color: #ffffff !important;
+        }
+        .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
+            background-color: #1B90FF !important; /* Blue 6 */
+            border-color: #1B90FF !important;
+        }
+
+        a.text-primary, .text-primary {
+            color: var(--blue-5, #4DB1FF) !important;
+        }
+        a.text-primary:hover, a:hover {
+            color: #1B90FF !important;
+        }
+
+        /* Light mode contexts (e.g. sidebar or specific white cards if any) */
+        .sidebar .btn-primary, .bg-light .btn-primary, .card .btn-primary {
+            background-color: var(--blue-7, #0070F2) !important;
+            border-color: var(--blue-7, #0070F2) !important;
+        }
+        .sidebar .btn-primary:hover, .bg-light .btn-primary:hover, .card .btn-primary:hover {
+            background-color: #0040B0 !important; /* Blue 9 */
+            border-color: #0040B0 !important;
+        }
+
+        .sidebar a:not(.nav-link):not(.sidebar-brand), .bg-light a:not(.nav-link), .card a:not(.nav-link) {
+            color: var(--blue-7, #0070F2);
+        }
+        .sidebar a:not(.nav-link):not(.sidebar-brand):hover, .bg-light a:not(.nav-link):hover, .card a:not(.nav-link):hover {
+            color: #0040B0 !important;
+        }
+
+    </style>
