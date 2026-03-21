@@ -2,51 +2,9 @@
 
 {% block content %}
 <div class="container">
+    <h2 class="mb-4">Inventory Price Adjustment</h2>
 
-    <h2 class="mb-4 text-primary fw-bold">Inventory Price Adjustment</h2>
-
-    <!-- Add New Price Tier -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header bg-success text-white fw-bold">
-            <i class="fas fa-plus-circle me-1"></i> Add New Price Tier to Existing Item
-        </div>
-        <div class="card-body bg-light">
-            <form method="POST" action="/add_new_price_tier" class="row g-3">
-                <div class="col-md-3">
-                    <label class="form-label fw-bold text-success">Select Inventory Item</label>
-                    <select class="form-select select2" name="item_id" required>
-                        <option value="">-- Search Item --</option>
-                        {% for i in all_items %}
-                        <option value="{{ i.id }}">{{ i.inventoy_code }} - {{ i.inventoy_name }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">New Cost</label>
-                    <input type="number" step="0.01" name="cost_price" class="form-control" placeholder="0.00" required>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Market Price</label>
-                    <input type="number" step="0.01" name="selling_price" class="form-control" placeholder="0.00" required>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Special Price</label>
-                    <input type="number" step="0.01" name="special_price" class="form-control" placeholder="0.00">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Loyalty Price</label>
-                    <input type="number" step="0.01" name="loyalty_price" class="form-control" placeholder="0.00">
-                </div>
-                <div class="col-md-1 d-flex align-items-end">
-                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-save"></i> Add</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
-    <!-- Edit Existing Prices -->
     <div class="card shadow-sm mb-4">
-
         <div class="card-header bg-warning text-dark">Filter Options</div>
         <div class="card-body">
             <form method="GET" action="/inventory_price_editing" class="row g-3">
@@ -102,13 +60,4 @@
         </div>
     </div>
 </div>
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    $('.select2').select2({
-        theme: 'bootstrap-5',
-        width: '100%'
-    });
-});
-</script>
 {% endblock %}
