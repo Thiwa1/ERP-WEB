@@ -10,9 +10,9 @@
         body, html {
             height: 100%;
             margin: 0;
-            font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
-            background-color: #F3F3F3;
-            color: #201F1E;
+            font-family: 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: #f4f5f8;
+            color: #393a3d;
         }
 
         /* Navigation */
@@ -24,30 +24,30 @@
         .navbar-brand {
             font-weight: 700;
             font-size: 24px;
-            color: #0070F2;
+            color: #4188ff;
             display: flex;
             align-items: center;
             gap: 10px;
         }
         .navbar-brand i {
-            color: #0070F2; /* QuickBooks Green-ish */
+            color: #649eff; /* QuickBooks Green-ish */
         }
         .btn-outline-login {
-            border: 2px solid #0070F2;
-            color: #0070F2;
+            border: 2px solid #4188ff;
+            color: #4188ff;
             font-weight: 600;
             border-radius: 20px;
             padding: 6px 20px;
         }
         .btn-outline-login:hover {
-            background-color: #0057D2;
+            background-color: #4188ff;
             color: #fff;
         }
 
         /* Hero Section */
         .hero-section {
             background-color: #000;
-            /* background-image removed */ /* Use a similar gradient or the one from the example if accessible, fallback to color */
+            background-image: url('https://quickbooks.intuit.com/oidam/intuit/sbseg/en_us/quickbooks-online/web/image/fusion-gradient-background-desktop-2x.jpg'); /* Use a similar gradient or the one from the example if accessible, fallback to color */
             background-size: cover;
             background-position: center;
             min-height: 100vh; /* Full height including nav area effect */
@@ -61,33 +61,31 @@
 
         /* Fallback gradient if image fails */
         .hero-section {
-            background-color: #F3F3F3;
+            background: linear-gradient(135deg, #4188ff 0%, #103661 100%);
         }
 
         .hero-text h1 {
             font-size: 3rem;
             font-weight: 700;
-            color: #201F1E !important;
+            color: #ffffff;
             margin-bottom: 20px;
             line-height: 1.2;
         }
         .hero-text h1 span {
-            color: #0070F2;
-            background: none;
-            -webkit-text-fill-color: initial;
-
-
+            background: linear-gradient(89deg, #236CFF -10.76%, #23DEFF 29.73%, #53FB79 95.86%);
+            -webkit-text-fill-color: transparent;
+            -webkit-background-clip: text;
         }
         .hero-text p {
             font-size: 1.25rem;
-            color: #605E5C !important;
+            color: #ffffff;
             margin-bottom: 40px;
             opacity: 0.9;
         }
         .check-list {
             list-style: none;
             padding: 0;
-            color: #201F1E;
+            color: white;
             font-size: 1rem;
         }
         .check-list li {
@@ -96,7 +94,7 @@
             align-items: center;
         }
         .check-list li i {
-            color: #0070F2;
+            color: #5bef76;
             margin-right: 15px;
             font-size: 1.2rem;
         }
@@ -115,11 +113,11 @@
         }
         .register-header h3 {
             font-weight: 700;
-            color: #0070F2;
+            color: #4188ff;
         }
         .form-label {
             font-weight: 600;
-            color: #201F1E;
+            color: #393a3d;
             font-size: 0.9rem;
         }
         .form-control {
@@ -129,11 +127,11 @@
             background-color: #fff;
         }
         .form-control:focus {
-            border-color: #0070F2;
-            box-shadow: none;
+            border-color: #649eff;
+            box-shadow: 0 0 0 0.25rem rgba(44, 160, 28, 0.25);
         }
         .btn-register {
-            background-color: #0070F2; /* QuickBooks Green */
+            background-color: #649eff; /* QuickBooks Green */
             color: #fff;
             font-weight: 700;
             border: none;
@@ -145,7 +143,7 @@
             transition: background-color 0.3s;
         }
         .btn-register:hover {
-            background-color: #0057D2;
+            background-color: #4188ff;
             color: #fff;
         }
         .terms-text {
