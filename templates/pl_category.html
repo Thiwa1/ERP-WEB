@@ -4,7 +4,7 @@
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="row mb-4">
-        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-chart-line me-2"></i> MANAGE PROFIT & LOSS CATEGORY</h4>
         </div>
     </div>
@@ -13,13 +13,13 @@
         <!-- Left Column: Data Grid -->
         <div class="col-md-8 mb-4">
             <div class="card shadow-sm h-100 border-0">
-                <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                     <i class="fas fa-list me-2"></i> Existing Categories
                 </div>
                 <div class="card-body p-0 table-responsive">
                     <form id="deleteForm" method="POST" action="{{ url_for('delete_pl_category') }}">
                         <table class="table table-bordered table-striped table-hover mb-0">
-                            <thead class="text-dark" style="background-color: var(--secondary-color);">
+                            <thead class="text-white" style="background-color: var(--secondary-color);">
                                 <tr>
                                     <th style="width: 40px;" class="text-center">
                                         <input type="checkbox" id="selectAll" onclick="toggleSelectAll()">
@@ -44,7 +44,7 @@
                                     <td>{{ cat.create_date_time }}</td>
                                     <td>{{ cat.create_user_code }}</td>
                                     <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-info text-dark"
+                                        <button type="button" class="btn btn-sm btn-info text-white"
                                                 onclick="editCategory('{{ cat.id }}', '{{ cat.name_of_category }}', '{{ cat.holding_position }}')">
                                             <i class="fas fa-edit"></i>
                                         </button>
@@ -71,7 +71,7 @@
         <!-- Right Column: Form -->
         <div class="col-md-4 mb-4">
             <div class="card shadow-sm h-100 border-0">
-                <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                     <i class="fas fa-edit me-2"></i> Add / Edit Category
                 </div>
                 <div class="card-body bg-white">

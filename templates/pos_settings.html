@@ -4,14 +4,14 @@
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="row mb-4">
-        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-cogs me-2"></i> POINT OF SALE – SETTINGS PANEL</h4>
         </div>
     </div>
 
     <!-- User Management Section -->
     <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
             <i class="fas fa-users-cog me-2"></i> User Management
         </div>
         <div class="card-body bg-white">
@@ -40,7 +40,7 @@
             <!-- General Settings -->
             <div class="col-md-6">
                 <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-sliders-h me-2"></i> General Settings
                     </div>
                     <div class="card-body bg-white">
@@ -84,7 +84,7 @@
             <!-- Selling Price Settings -->
             <div class="col-md-6">
                 <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-tags me-2"></i> Selling Price & VAT
                     </div>
                     <div class="card-body bg-white">
@@ -111,7 +111,7 @@
             <!-- Messages & Image -->
             <div class="col-12">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-receipt me-2"></i> Receipt Configuration
                     </div>
                     <div class="card-body bg-white">
@@ -144,6 +144,64 @@
             </div>
         </div>
 
+        <!-- Advanced Options: SMS Delivery Report -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card shadow-sm mb-4 border-0">
+                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                        <div><i class="fas fa-sms me-2"></i> SMS Delivery Report (Advanced Options)</div>
+                        <button class="btn btn-sm btn-light fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#smsReportCollapse" aria-expanded="false" aria-controls="smsReportCollapse">
+                            Toggle View
+                        </button>
+                    </div>
+                    <div class="collapse" id="smsReportCollapse">
+                        <div class="card-body bg-white p-0">
+                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                                <table class="table table-hover table-striped mb-0 align-middle">
+                                    <thead class="table-light sticky-top">
+                                        <tr>
+                                            <th>Date & Time</th>
+                                            <th>Mobile No</th>
+                                            <th>Message</th>
+                                            <th>Status</th>
+                                            <th>API Response</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% if sms_logs %}
+                                            {% for log in sms_logs %}
+                                            <tr>
+                                                <td class="text-nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
+                                                <td class="text-nowrap fw-bold">{{ log.mobile }}</td>
+                                                <td><small class="text-muted">{{ log.message }}</small></td>
+                                                <td>
+                                                    {% if log.status == 'success' %}
+                                                        <span class="badge bg-success">Success</span>
+                                                    {% elif log.status == 'failed' %}
+                                                        <span class="badge bg-danger">Failed</span>
+                                                    {% else %}
+                                                        <span class="badge bg-warning">{{ log.status }}</span>
+                                                    {% endif %}
+                                                </td>
+                                                <td><small class="text-break" style="max-width: 250px; display: inline-block;">{{ log.api_response }}</small></td>
+                                            </tr>
+                                            {% endfor %}
+                                        {% else %}
+                                            <tr>
+                                                <td colspan="5" class="text-center text-muted py-4">
+                                                    <i class="fas fa-inbox fa-2x mb-2"></i><br>No SMS delivery logs available.
+                                                </td>
+                                            </tr>
+                                        {% endif %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
             <button type="submit" class="btn btn-primary btn-lg fw-bold px-5 shadow-sm" style="background-color: var(--accent-color); border: none;">
                 <i class="fas fa-save me-2"></i> SAVE ALL SETTINGS
@@ -156,7 +214,7 @@
 <div class="modal fade" id="newCashierModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-dark" style="background-color: var(--secondary-color);">
+            <div class="modal-header text-white" style="background-color: var(--secondary-color);">
                 <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Cashier Registration</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
