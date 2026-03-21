@@ -5051,8 +5051,7 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    cursor = db.transaction_cursor()
-    with cursor:
+    with db.transaction_cursor() as cursor:
         try:
             # Parse cleared items and their dates
             # Format: 'id|date' for deposits and payments
@@ -5258,8 +5257,7 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
-    cursor = db.transaction_cursor()
-    with cursor:
+    with db.transaction_cursor() as cursor:
         try:
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
@@ -7038,8 +7036,7 @@ def cash_handover():
 
         try:
             # Create table if it doesn't exist
-            cursor = db.transaction_cursor()
-            with cursor:
+            with db.transaction_cursor() as cursor:
                 cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
                 if not cursor.fetchone():
                     cursor.execute('''
