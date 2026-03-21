@@ -18,7 +18,7 @@
 <div class="modal fade" id="newCustomerModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white" style="background-color: #2C3E50;">
+            <div class="modal-header text-dark" style="background-color: #2C3E50;">
                 <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Registration of Loyalty Customer</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -55,26 +55,7 @@
     </div>
 </div>
 
-
-<!-- Price Selection Modal -->
-<div class="modal fade" id="priceSelectModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header bg-warning text-dark">
-                <h5 class="modal-title fw-bold"><i class="fas fa-tags me-2"></i> Select Price Variation</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body p-0">
-                <div class="list-group list-group-flush" id="priceVariationList">
-                    <!-- Dynamic Variations Injected Here -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
 <!-- Main POS Interface -->
-
 <div class="container-fluid py-3" id="posInterface">
 
     <!-- Top Bar -->
@@ -121,7 +102,7 @@
                                 <input type="number" class="form-control form-control-lg fw-bold text-end" id="itemPrice" readonly>
                             </div>
                             <div class="col-md-2 d-grid">
-                                <label class="form-label text-white">.</label>
+                                <label class="form-label text-dark">.</label>
                                 <button class="btn btn-primary fw-bold" onclick="addItemToCart()">ADD</button>
                             </div>
                         </div>
@@ -153,7 +134,7 @@
         <!-- Right: Totals & Payment -->
         <div class="col-md-4">
             <div class="card h-100 shadow-sm border-0" style="background-color: var(--primary-color);">
-                <div class="card-body text-white d-flex flex-column p-2">
+                <div class="card-body text-dark d-flex flex-column p-2">
                     <!-- Customer Info -->
                     <div class="mb-2 p-2 bg-white bg-opacity-10 rounded">
                         <label class="small text-uppercase text-light opacity-75 fw-bold">Customer (Loyalty)</label>
@@ -223,7 +204,7 @@
                                 </button>
                             </div>
                             <div class="col-6">
-                                <button class="btn btn-info text-white w-100 py-2 fw-bold" onclick="processPayment(2)">
+                                <button class="btn btn-info text-dark w-100 py-2 fw-bold" onclick="processPayment(2)">
                                     <i class="fas fa-credit-card me-1"></i> CARD
                                 </button>
                             </div>
@@ -420,37 +401,16 @@
         const matches = itemsCache.filter(i =>
             i.code.toLowerCase().includes(val) ||
             i.name.toLowerCase().includes(val)
-        );
-
-        // Group by code to show unique suggestions
-        const uniqueMatches = [];
-        const seenCodes = new Set();
-        for (const m of matches) {
-            if (!seenCodes.has(m.code)) {
-                seenCodes.add(m.code);
-                uniqueMatches.push(m);
-            }
-        }
-
-        const displayMatches = uniqueMatches.slice(0, 10);
+        ).slice(0, 10);
 
         suggestions.innerHTML = '';
-        if(displayMatches.length > 0) {
+        if(matches.length > 0) {
             suggestions.style.display = 'block';
-            displayMatches.forEach(item => {
+            matches.forEach(item => {
                 const a = document.createElement('a');
                 a.className = 'list-group-item list-group-item-action fw-bold';
                 a.innerHTML = `${item.name} <span class="badge bg-secondary float-end">${item.code}</span>`;
-                a.onclick = () => {
-                    // Check if there are other variations for this selected code
-                    const variations = itemsCache.filter(i => i.code === item.code);
-                    if(variations.length > 1) {
-                        showPriceVariations(variations);
-                    } else {
-                        selectItem(item);
-                        // don't auto add to cart for suggestions so user can adjust qty
-                    }
-                };
+                a.onclick = () => selectItem(item);
                 suggestions.appendChild(a);
             });
         } else {
@@ -458,59 +418,19 @@
         }
     });
 
-
-
     // Handle Barcode Scan (Enter key)
     itemInput.addEventListener('keypress', function(e) {
         if(e.key === 'Enter') {
             const val = this.value.toLowerCase();
-            const matches = itemsCache.filter(i => i.code.toLowerCase() === val || (i.batch_code && i.batch_code.toLowerCase() === val));
-
-            if(matches.length === 1) {
-                selectItem(matches[0]);
-                addItemToCart();
-            } else if(matches.length > 1) {
-                showPriceVariations(matches);
+            const item = itemsCache.find(i => i.code.toLowerCase() === val || i.batch_code === val);
+            if(item) {
+                selectItem(item);
+                addItemToCart(); // Auto add if scanned
             }
         }
     });
 
-    function showPriceVariations(matches) {
-        const list = document.getElementById('priceVariationList');
-        list.innerHTML = '';
-
-        matches.forEach(item => {
-            const btn = document.createElement('button');
-            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center py-3';
-
-            // Format what to display
-            let activePrice = item.price_market;
-            if(posSettings.loyalty_active === 1 && loyaltyCustomer) activePrice = item.price_loyalty;
-            else if(posSettings.special_active === 1) activePrice = item.price_special;
-            else if(posSettings.market_active === 1) activePrice = item.price_market;
-
-            btn.innerHTML = `
-                <div>
-                    <h6 class="mb-0 fw-bold text-primary">${item.name}</h6>
-                    <small class="text-muted">Cost: ${item.cost.toFixed(2)} | Code: ${item.code}</small>
-                </div>
-                <span class="badge bg-success rounded-pill fs-6">${activePrice.toFixed(2)}</span>
-            `;
-
-            btn.onclick = () => {
-                bootstrap.Modal.getInstance(document.getElementById('priceSelectModal')).hide();
-                selectItem(item);
-                addItemToCart();
-            };
-
-            list.appendChild(btn);
-        });
-
-        new bootstrap.Modal(document.getElementById('priceSelectModal')).show();
-    }
-
     function selectItem(item) {
-
         currentItem = item;
         document.getElementById('itemInput').value = item.code;
         document.getElementById('itemNameDisplay').innerText = item.name;
@@ -519,11 +439,11 @@
         // Pricing Logic (Matching C# logic)
         let price = item.price_market; // Default
 
-        if(posSettings.loyalty_active === 1 && loyaltyCustomer) {
+        if(posSettings.loyalty_price === 1 && loyaltyCustomer) {
             price = item.price_loyalty;
-        } else if (posSettings.special_active === 1) {
+        } else if (posSettings.special_price === 1) {
             price = item.price_special;
-        } else if (posSettings.market_active === 1) {
+        } else if (posSettings.market_price === 1) {
             price = item.price_market;
         }
 
@@ -599,25 +519,17 @@
     // --- 5. Customer Loyalty ---
     function checkLoyalty() {
         const mobile = document.getElementById('customerPhone').value;
-        const nameDisplay = document.getElementById('customerName');
-
         if(mobile.length > 9) {
             const cust = customersCache.find(c => c.mobile === mobile);
             if(cust) {
                 loyaltyCustomer = cust;
-                nameDisplay.innerText = cust.name;
-                nameDisplay.className = "mt-1 fw-bold text-success small";
-                // Optionally show a non-intrusive toast instead of alert
-                // alert(`Loyalty Customer Identified: ${cust.name}`);
+                document.getElementById('customerName').innerText = cust.name;
+                // Re-price cart if items already added? Ideally yes, but simplest is next item
+                alert(`Loyalty Customer Identified: ${cust.name}`);
             } else {
                 loyaltyCustomer = null;
-                nameDisplay.innerText = "Not Found";
-                nameDisplay.className = "mt-1 fw-bold text-danger small";
+                document.getElementById('customerName').innerText = "-";
             }
-        } else {
-            loyaltyCustomer = null;
-            nameDisplay.innerText = "-";
-            nameDisplay.className = "mt-1 fw-bold text-warning small";
         }
     }
 

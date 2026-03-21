@@ -2,18 +2,15 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="mb-0">Bank Reconciliation</h2>
-        <a href="/bank_reconciliation/history" class="btn btn-outline-primary"><i class="fas fa-history me-2"></i>History & Reports</a>
-    </div>
+    <h2 class="mb-4">Bank Reconciliation</h2>
 
     <div class="card shadow-sm mb-4">
-        <div class="card-header bg-dark text-white">Reconciliation Setup</div>
+        <div class="card-header bg-dark text-dark">Reconciliation Setup</div>
         <div class="card-body">
-            <form method="GET" action="/bank_reconciliation" class="row g-3" id="setupForm">
+            <form method="GET" action="/bank_reconciliation" class="row g-3">
                 <div class="col-md-4">
                     <label class="form-label">Bank Account</label>
-                    <select name="bank_account" class="form-select select2" onchange="document.getElementById('setupForm').submit()">
+                    <select name="bank_account" class="form-select" onchange="this.form.submit()">
                         <option value="">-- Select Account --</option>
                         {% for acc in bank_accounts %}
                         <option value="{{ acc.bank_bookcol_account_number }}" {% if selected_account == acc.bank_bookcol_account_number %}selected{% endif %}>
@@ -23,12 +20,12 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Reconciliation Date (To Date)</label>
-                    <input type="date" name="rec_date" class="form-control" value="{{ rec_date }}" onchange="document.getElementById('setupForm').submit()">
+                    <label class="form-label">Reconciliation Date</label>
+                    <input type="date" name="rec_date" class="form-control" value="{{ rec_date }}" onchange="this.form.submit()">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label">Bank Statement Balance</label>
-                    <input type="number" step="0.01" name="statement_balance" id="statementBalance" class="form-control" value="{{ statement_balance }}" form="processForm" onkeyup="calculateSummary()">
+                    <label class="form-label">Statement Balance</label>
+                    <input type="number" step="0.01" name="statement_balance" class="form-control" value="{{ statement_balance }}" form="processForm">
                 </div>
             </form>
         </div>
@@ -36,87 +33,36 @@
 
     {% if selected_account %}
     <form id="processForm" method="POST" action="/bank_reconciliation/process">
-        <input type="hidden" name="action" id="actionInput" value="process">
         <input type="hidden" name="bank_account" value="{{ selected_account }}">
         <input type="hidden" name="rec_date" value="{{ rec_date }}">
         <input type="hidden" name="book_balance" value="{{ book_balance }}">
-        <input type="hidden" name="opening_balance" id="openingBalance" value="{{ opening_balance }}">
+        <input type="hidden" name="opening_balance" value="{{ opening_balance }}">
 
         <div class="row">
-            <!-- Left Side: Grids -->
-            <div class="col-md-8">
-                <!-- Deposits -->
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
-                        <span>Uncleared Deposits / Receipts</span>
-                        <span class="badge bg-light text-success" id="clearedDepositsCount">0 Selected</span>
-                    </div>
-                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead class="table-light sticky-top">
+            <!-- Deposits -->
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-success text-dark">Uncleared Deposits</div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
                                 <tr>
-                                    <th class="text-center" style="width: 60px;">Clear</th>
-                                    <th>ID</th>
-                                    <th>Eff. Date</th>
-                                    <th>Description</th>
-                                    <th>Cheque No</th>
-                                    <th class="text-end pe-3">Amount</th>
+                                    <th>Select</th>
+                                    <th>Date</th>
+                                    <th>Desc</th>
+                                    <th>Amount</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for item in deposits %}
                                 <tr>
-                                    <td class="text-center align-middle">
-                                        <input type="checkbox" name="cleared_deposits[]" value="{{ item.id }}|{{ rec_date }}" class="form-check-input select-deposit select-transaction" data-amount="{{ item.enty_values_DR }}" {% if item.entry_save == 1 %}checked{% endif %}>
-                                        <input type="hidden" name="uncleared_deposits[]" value="{{ item.id }}" class="uncleared-deposit" {% if item.entry_save == 1 %}disabled{% endif %}>
+                                    <td>
+                                        <input type="checkbox" name="cleared_ids[]" value="{{ item.id }}" class="form-check-input">
                                     </td>
-                                    <td class="align-middle text-muted">#{{ item.id }}</td>
-                                    <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
-                                    <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
-                                    <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
-                                    <td class="text-end pe-3 fw-bold align-middle">{{ item.enty_values_DR|currency }}</td>
+                                    <td>{{ item.entry_effective_date }}</td>
+                                    <td>{{ item.entry_naration }}</td>
+                                    <td class="text-end">{{ item.enty_values_DR|currency }}</td>
                                 </tr>
-                                {% else %}
-                                <tr><td colspan="6" class="text-center text-muted py-3">No uncleared deposits found</td></tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Payments -->
-                <div class="card shadow-sm mb-4">
-                    <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
-                        <span>Uncleared Payments</span>
-                        <span class="badge bg-light text-danger" id="clearedPaymentsCount">0 Selected</span>
-                    </div>
-                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead class="table-light sticky-top">
-                                <tr>
-                                    <th class="text-center" style="width: 60px;">Clear</th>
-                                    <th>ID</th>
-                                    <th>Eff. Date</th>
-                                    <th>Description</th>
-                                    <th>Cheque No</th>
-                                    <th class="text-end pe-3">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for item in payments %}
-                                <tr>
-                                    <td class="text-center align-middle">
-                                        <input type="checkbox" name="cleared_payments[]" value="{{ item.id }}|{{ rec_date }}" class="form-check-input select-payment select-transaction" data-amount="{{ item.enty_values_CR }}" {% if item.entry_save == 1 %}checked{% endif %}>
-                                        <input type="hidden" name="uncleared_payments[]" value="{{ item.id }}" class="uncleared-payment" {% if item.entry_save == 1 %}disabled{% endif %}>
-                                    </td>
-                                    <td class="align-middle text-muted">#{{ item.id }}</td>
-                                    <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
-                                    <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
-                                    <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
-                                    <td class="text-end pe-3 fw-bold align-middle">{{ item.enty_values_CR|currency }}</td>
-                                </tr>
-                                {% else %}
-                                <tr><td colspan="6" class="text-center text-muted py-3">No uncleared payments found</td></tr>
                                 {% endfor %}
                             </tbody>
                         </table>
@@ -124,58 +70,51 @@
                 </div>
             </div>
 
-            <!-- Right Side: Summary -->
-            <div class="col-md-4">
-                <div class="card shadow border-0 sticky-top" style="top: 20px;">
-                    <div class="card-header bg-primary text-white text-center py-3">
-                        <h5 class="mb-0 fw-bold">Reconciliation Summary</h5>
+            <!-- Payments -->
+            <div class="col-md-6">
+                <div class="card shadow-sm mb-3">
+                    <div class="card-header bg-danger text-dark">Uncleared Payments</div>
+                    <div class="card-body p-0" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-sm table-striped mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Select</th>
+                                    <th>Date</th>
+                                    <th>Desc</th>
+                                    <th>Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in payments %}
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" name="cleared_ids[]" value="{{ item.id }}" class="form-check-input">
+                                    </td>
+                                    <td>{{ item.entry_effective_date }}</td>
+                                    <td>{{ item.entry_naration }}</td>
+                                    <td class="text-end">{{ item.enty_values_CR|currency }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="card-body">
-                        <dl class="row mb-0">
-                            <dt class="col-6 text-muted">Opening Balance:</dt>
-                            <dd class="col-6 text-end fw-bold">{{ opening_balance|currency }}</dd>
+                </div>
+            </div>
+        </div>
 
-                            <dt class="col-6 text-success">Cleared Deposits:</dt>
-                            <dd class="col-6 text-end text-success fw-bold" id="clearedDepositsTotal">$0.00</dd>
-
-                            <dt class="col-6 text-danger">Cleared Payments:</dt>
-                            <dd class="col-6 text-end text-danger fw-bold" id="clearedPaymentsTotal">$0.00</dd>
-
-                            <div class="col-12"><hr class="my-2"></div>
-
-                            <dt class="col-6 text-primary fs-5">Cleared Balance:</dt>
-                            <dd class="col-6 text-end text-primary fw-bold fs-5" id="clearedBalanceTotal">$0.00</dd>
-
-                            <div class="col-12"><hr class="my-3 border-2 border-dark"></div>
-
-                            <dt class="col-6 text-muted">Book Balance:</dt>
-                            <dd class="col-6 text-end">{{ book_balance|currency }}</dd>
-
-                            <dt class="col-6 text-muted">Statement Balance:</dt>
-                            <dd class="col-6 text-end fw-bold" id="summaryStatementBalance">$0.00</dd>
-
-                            <div class="col-12"><hr class="my-2 border-2 border-dark"></div>
-
-                            <dt class="col-6 fs-4">Difference:</dt>
-                            <dd class="col-6 text-end fw-bold fs-4" id="differenceTotal">$0.00</dd>
-                        </dl>
-
-                        <div class="mt-4 text-center">
-                            <div id="statusMessage" class="alert alert-warning py-2 mb-3 fw-bold">
-                                Select account and enter balance
-                            </div>
-                        </div>
+        <div class="card shadow-sm border-primary">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-3">
+                        <small class="text-muted">Opening Balance</small><br>
+                        <strong>{{ opening_balance|currency }}</strong>
                     </div>
-                    <div class="card-footer bg-white border-top-0 d-flex flex-column gap-2 p-3">
-                        <button type="button" class="btn btn-secondary w-100 fw-bold" id="saveProgressBtn">
-                            <i class="fas fa-save me-2"></i> Save Progress
-                        </button>
-                        <button type="submit" class="btn btn-primary w-100 btn-lg fw-bold" id="processBtn">
-                            <i class="fas fa-check-circle me-2"></i> Process Reconciliation
-                        </button>
-                        <button type="button" class="btn btn-outline-danger w-100 mt-2" onclick="clearSelections()">
-                            Clear Selections
-                        </button>
+                    <div class="col-md-3">
+                        <small class="text-muted">Book Balance ({{ rec_date }})</small><br>
+                        <strong>{{ book_balance|currency }}</strong>
+                    </div>
+                    <div class="col-md-6">
+                        <button type="submit" class="btn btn-primary w-100 btn-lg">Process Reconciliation</button>
                     </div>
                 </div>
             </div>
@@ -183,112 +122,4 @@
     </form>
     {% endif %}
 </div>
-
-<script>
-    // Format currency
-    const formatter = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD', // Or your currency
-    });
-
-    function calculateSummary() {
-        const opBal = parseFloat(document.getElementById('openingBalance').value) || 0;
-
-        let depSum = 0;
-        let depCount = 0;
-        document.querySelectorAll('.select-deposit:checked').forEach(cb => {
-            depSum += parseFloat(cb.getAttribute('data-amount')) || 0;
-            depCount++;
-        });
-
-        let paySum = 0;
-        let payCount = 0;
-        document.querySelectorAll('.select-payment:checked').forEach(cb => {
-            paySum += parseFloat(cb.getAttribute('data-amount')) || 0;
-            payCount++;
-        });
-
-        const clearedBal = opBal + depSum - paySum;
-        const stmtBal = parseFloat(document.getElementById('statementBalance').value) || 0;
-        const diff = clearedBal - stmtBal;
-
-        // Update UI
-        document.getElementById('clearedDepositsTotal').textContent = formatter.format(depSum);
-        document.getElementById('clearedPaymentsTotal').textContent = formatter.format(paySum);
-        document.getElementById('clearedBalanceTotal').textContent = formatter.format(clearedBal);
-        document.getElementById('summaryStatementBalance').textContent = formatter.format(stmtBal);
-
-        document.getElementById('clearedDepositsCount').textContent = `${depCount} Selected`;
-        document.getElementById('clearedPaymentsCount').textContent = `${payCount} Selected`;
-
-        const diffEl = document.getElementById('differenceTotal');
-        const statusEl = document.getElementById('statusMessage');
-        const processBtn = document.getElementById('processBtn');
-
-        diffEl.textContent = formatter.format(diff);
-
-        if (Math.abs(diff) < 0.01 && stmtBal !== 0) {
-            diffEl.className = 'col-6 text-end fw-bold fs-4 text-success';
-            statusEl.className = 'alert alert-success py-2 mb-3 fw-bold';
-            statusEl.textContent = 'Reconciliation balanced! Ready to process.';
-            processBtn.disabled = false;
-        } else {
-            diffEl.className = 'col-6 text-end fw-bold fs-4 text-danger';
-            statusEl.className = 'alert alert-danger py-2 mb-3 fw-bold';
-            statusEl.textContent = `Difference: ${formatter.format(Math.abs(diff))} - Review transactions`;
-            processBtn.disabled = true; // Optionally allow processing with difference? Usually not.
-        }
-    }
-
-    function clearSelections() {
-        document.querySelectorAll('.select-transaction').forEach(cb => {
-            cb.checked = false;
-            cb.dispatchEvent(new Event('change'));
-        });
-        calculateSummary();
-    }
-
-    document.addEventListener('DOMContentLoaded', function() {
-        // Toggle hidden inputs based on checkbox state
-        document.querySelectorAll('.select-deposit').forEach(cb => {
-            cb.addEventListener('change', function() {
-                this.parentElement.querySelector('.uncleared-deposit').disabled = this.checked;
-                calculateSummary();
-            });
-        });
-
-        document.querySelectorAll('.select-payment').forEach(cb => {
-            cb.addEventListener('change', function() {
-                this.parentElement.querySelector('.uncleared-payment').disabled = this.checked;
-                calculateSummary();
-            });
-        });
-
-        // Action Buttons
-        const saveProgressBtn = document.getElementById('saveProgressBtn');
-        const processBtn = document.getElementById('processBtn');
-        const actionInput = document.getElementById('actionInput');
-
-        if(saveProgressBtn) {
-            saveProgressBtn.addEventListener('click', function() {
-                actionInput.value = 'save';
-                document.getElementById('processForm').submit();
-            });
-        }
-
-        if(processBtn) {
-            processBtn.addEventListener('click', function() {
-                actionInput.value = 'process';
-                if(!confirm('Are you sure you want to process this reconciliation? This action will mark transactions as reconciled.')) {
-                    event.preventDefault();
-                }
-            });
-        }
-
-        // Initial calculation
-        if(document.getElementById('statementBalance')) {
-            calculateSummary();
-        }
-    });
-</script>
 {% endblock %}
