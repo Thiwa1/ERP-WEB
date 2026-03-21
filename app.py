@@ -5926,6 +5926,13 @@ def pos_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('pos_reversal'))
+
         conn.start_transaction()
 
         # 1. Reverse JV Entries
@@ -6055,6 +6062,13 @@ def bank_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('bank_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Bank Transaction Reversal (Updates Bank Book Record)
@@ -6117,6 +6131,13 @@ def cash_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('cash_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -6180,6 +6201,13 @@ def direct_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('direct_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -8833,6 +8861,11 @@ def reverse_journal_entry():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
+        if cursor.fetchone()[0] > 0:
+            return {'error': 'This transaction is reconciled. To process, first remove the reconciliation.'}, 400
 
         # Check if already reversed or linked to bank rec (simplified check)
         # C# logic checks entry_deleted = 1
