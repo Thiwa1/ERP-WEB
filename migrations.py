@@ -302,19 +302,6 @@ def _migrate_pos_security_features(cursor):
                 )
             """)
 
-
-        cursor.execute("SHOW TABLES LIKE 'sms_delivery_logs'")
-        if not cursor.fetchone():
-            cursor.execute('''
-                CREATE TABLE sms_delivery_logs (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    mobile VARCHAR(20),
-                    message TEXT,
-                    status VARCHAR(50),
-                    api_response TEXT,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
         # pos_2fa_codes
         cursor.execute("SHOW TABLES LIKE 'pos_2fa_codes'")
         if not cursor.fetchone():
