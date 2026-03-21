@@ -230,6 +230,14 @@
             </div>
         </div>
 
+        <!-- POS Main Tile -->
+        <div class="col">
+            <div class="main-category-tile" id="cat-pos" style="background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);" onclick="toggleCategory('collapsePOS')">
+                <i class="fas fa-cash-register main-icon"></i>
+                <span class="tile-title">Point of<br>Sale</span>
+            </div>
+        </div>
+
         <!-- Key Features Main Tile -->
         <div class="col">
             <div class="main-category-tile" id="cat-features" onclick="toggleCategory('collapseFeatures')">
@@ -256,6 +264,14 @@
             <div class="metro-group-title">Core Accounting</div>
             <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
                 <div class="col">
+                    <a href="/approvals" class="tile-link">
+                        <div class="tile" style="border-bottom: 3px solid #eab308;">
+                            <i class="fas fa-check-double text-warning"></i>
+                            <span>Pending<br>Approvals</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
                     <a href="/customer_receipt" class="tile-link">
                         <div class="tile">
                             <i class="fas fa-receipt"></i>
@@ -264,7 +280,7 @@
                     </a>
                 </div>
                 <div class="col">
-                    <a href="/cash_payments" class="tile-link">
+                    <a href="/cash_payment" class="tile-link">
                         <div class="tile">
                             <i class="fas fa-money-bill"></i>
                             <span>Cash<br>Payment</span>
@@ -288,10 +304,50 @@
                     </a>
                 </div>
                 <div class="col">
-                    <a href="/placeholder?title=Journal Entry" class="tile-link">
+                    <a href="/cheque_print_setup" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-print"></i>
+                            <span>Cheque Print<br>Setup</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/journal_entry" class="tile-link">
                         <div class="tile">
                             <i class="fas fa-book"></i>
                             <span>Journal<br>Entry (J/V)</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/fixed_assets" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-building"></i>
+                            <span>Fixed<br>Assets</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/create_bank_account" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-university"></i>
+                            <span>Create Bank<br>Account</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/create_cash_account" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <span>Create Cash<br>Account</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/add_new_account" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-invoice"></i>
+                            <span>Add New<br>Account</span>
                         </div>
                     </a>
                 </div>
@@ -304,6 +360,14 @@
         <div class="sub-modules-container" style="border-left-color: #107C10;">
             <div class="metro-group-title">Inventory & Services</div>
             <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
+                <div class="col">
+                    <a href="/inventory_balance" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-boxes"></i>
+                            <span>Inventory<br>Balance</span>
+                        </div>
+                    </a>
+                </div>
                 <div class="col">
                     <a href="/add_inventory_item" class="tile-link">
                         <div class="tile">
@@ -368,6 +432,22 @@
                         </div>
                     </a>
                 </div>
+                <div class="col">
+                    <a href="/inventory_trend_analysis" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-chart-line"></i>
+                            <span>Trend<br>Analysis</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/inventory_locations" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-warehouse"></i>
+                            <span>Inventory<br>Locations</span>
+                        </div>
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -377,14 +457,6 @@
         <div class="sub-modules-container" style="border-left-color: #E81123;">
             <div class="metro-group-title">Reversals & Adjustments</div>
             <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
-                <div class="col">
-                    <a href="/pos_reversal" class="tile-link">
-                        <div class="tile">
-                            <i class="fas fa-undo"></i>
-                            <span>POS<br>Reversal</span>
-                        </div>
-                    </a>
-                </div>
                 <div class="col">
                     <a href="/cash_payment_reversal" class="tile-link">
                         <div class="tile">
@@ -421,10 +493,10 @@
         </div>
     </div>
 
-    <!-- Features Sub-modules -->
-    <div class="collapse multi-collapse" id="collapseFeatures" data-bs-parent=".dashboard-container">
-        <div class="sub-modules-container" style="border-left-color: #6B69D6;">
-            <div class="metro-group-title">Key Features</div>
+    <!-- POS Sub-modules -->
+    <div class="collapse multi-collapse" id="collapsePOS" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #f59e0b;">
+            <div class="metro-group-title">Point of Sale</div>
             <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
                 <div class="col">
                     <a href="/pos" class="tile-link">
@@ -434,6 +506,47 @@
                         </div>
                     </a>
                 </div>
+                <div class="col">
+                    <a href="/pos_settings" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-cogs"></i>
+                            <span>POS<br>Settings</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/cash_handover" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-hand-holding-usd"></i>
+                            <span>Cash<br>Handover</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/warranty_period" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-shield-alt"></i>
+                            <span>Warranty<br>Period</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/pos_reversal" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-undo"></i>
+                            <span>POS<br>Reversal</span>
+                        </div>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Sub-modules -->
+    <div class="collapse multi-collapse" id="collapseFeatures" data-bs-parent=".dashboard-container">
+        <div class="sub-modules-container" style="border-left-color: #6B69D6;">
+            <div class="metro-group-title">Key Features</div>
+            <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
                 <div class="col">
                     <a href="/bank_reconciliation" class="tile-link">
                         <div class="tile">
@@ -476,28 +589,18 @@
             <div class="metro-group-title">Reports & Analysis</div>
             <div class="row row-dense row-cols-2 row-cols-sm-3 row-cols-md-4 row-cols-lg-6">
                 <div class="col">
-                    <a href="/placeholder?title=Load Report" class="tile-link">
+                    <a href="/ledger_view" class="tile-link">
                         <div class="tile">
-                            <i class="fas fa-file-alt"></i>
-                            <span>Load<br>Report</span>
+                            <i class="fas fa-book-open"></i>
+                            <span>Ledger<br>View</span>
                         </div>
-
-                <!-- Cash Handover -->
-                <div class="col-md-3">
-                    <a href="/cash_handover" class="tile-link">
-                        <div class="category-tile text-center h-100">
-                            <i class="fas fa-hand-holding-usd d-block"></i>
-                            <span class="d-block mt-3 tile-title">Cash Handover</span>
-                        </div>
-                    </a>
-                </div>
                     </a>
                 </div>
                 <div class="col">
-                    <a href="/sales_summary_cashier" class="tile-link">
+                    <a href="/trial_balance" class="tile-link">
                         <div class="tile">
-                            <i class="fas fa-file-invoice-dollar"></i>
-                            <span>Sales<br>Summary</span>
+                            <i class="fas fa-balance-scale-left"></i>
+                            <span>Trial<br>Balance</span>
                         </div>
                     </a>
                 </div>
@@ -518,22 +621,6 @@
                     </a>
                 </div>
                 <div class="col">
-                    <a href="/cash_flow" class="tile-link">
-                        <div class="tile">
-                            <i class="fas fa-money-bill-wave"></i>
-                            <span>Cash<br>Flow</span>
-                        </div>
-                    </a>
-                </div>
-                <div class="col">
-                    <a href="/trial_balance" class="tile-link">
-                        <div class="tile">
-                            <i class="fas fa-balance-scale-left"></i>
-                            <span>Trial<br>Balance</span>
-                        </div>
-                    </a>
-                </div>
-                <div class="col">
                     <a href="/profit_loss" class="tile-link">
                         <div class="tile">
                             <i class="fas fa-chart-pie"></i>
@@ -542,10 +629,26 @@
                     </a>
                 </div>
                 <div class="col">
+                    <a href="/cash_flow" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-money-bill-wave"></i>
+                            <span>Cash<br>Flow</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
                     <a href="/supplier_aging" class="tile-link">
                         <div class="tile">
                             <i class="fas fa-clock"></i>
                             <span>Aging<br>Reports</span>
+                        </div>
+                    </a>
+                </div>
+                <div class="col">
+                    <a href="/sales_summary_cashier" class="tile-link">
+                        <div class="tile">
+                            <i class="fas fa-file-invoice-dollar"></i>
+                            <span>Sales<br>Summary</span>
                         </div>
                     </a>
                 </div>
