@@ -2618,7 +2618,7 @@ def bulk_upload_tb():
                 return redirect(url_for('trial_balance'))
 
             except Exception as e:
-                if 'conn' in locals() and conn: conn.rollback()
+                if conn: conn.rollback()
                 flash(f'Error posting TB: {str(e)}', 'danger')
                 return redirect(url_for('bulk_upload_tb'))
 
@@ -5147,6 +5147,7 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
+    conn = None
     try:
         with db.get_connection() as conn:
             with conn.cursor(dictionary=True) as cursor:
@@ -5358,6 +5359,7 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
+    conn = None
     try:
         with db.get_connection() as conn:
             with conn.cursor(dictionary=True) as cursor:
@@ -7139,7 +7141,7 @@ def cash_handover():
                         conn.commit()
 
             except Exception as inner_e:
-                if 'conn' in locals() and conn: conn.rollback()
+                if conn: conn.rollback()
                 raise inner_e
 
             flash('Cash handover recorded successfully.', 'success')
@@ -7473,6 +7475,7 @@ def send_sms_otp(mobile, code):
     settings = {}
 
     # Try to load credentials from active tenant DB site_settings if available
+    conn = None
     try:
         with db.get_connection() as conn:
             with conn.cursor(dictionary=True) as cursor:
@@ -7485,8 +7488,8 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', '')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '28990')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'b0K0nL5kIuR9lM4xZ1aP')
     sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
 
     if not api_key or not user_id:
@@ -7567,6 +7570,7 @@ def pos_web_login():
     except Exception as e:
         tenant_db_name = db.db_name
 
+    conn = None
     try:
         with db.get_connection() as conn:
             with conn.cursor(dictionary=True) as cursor:
@@ -10303,7 +10307,7 @@ def import_initial_schema():
                 conn.commit()
             except Exception as ex:
                 logging.error(f"Failed to execute SQL file: {ex}")
-                if 'conn' in locals() and conn: conn.rollback()
+                if conn: conn.rollback()
         else:
             logging.warning("database_schema.sql not found.")
 

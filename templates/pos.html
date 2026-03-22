@@ -485,9 +485,9 @@
 
             // Format what to display
             let activePrice = item.price_market;
-            if(posSettings.loyalty_active === 1 && loyaltyCustomer) activePrice = item.price_loyalty;
-            else if(posSettings.special_active === 1) activePrice = item.price_special;
-            else if(posSettings.market_active === 1) activePrice = item.price_market;
+            if(posSettings.loyalty_price == 1 && loyaltyCustomer) activePrice = item.price_loyalty;
+            else if(posSettings.special_price == 1) activePrice = item.price_special;
+            else if(posSettings.market_price == 1) activePrice = item.price_market;
 
             btn.innerHTML = `
                 <div>
@@ -519,11 +519,11 @@
         // Pricing Logic (Matching C# logic)
         let price = item.price_market; // Default
 
-        if(posSettings.loyalty_active === 1 && loyaltyCustomer) {
+        if(posSettings.loyalty_price == 1 && loyaltyCustomer) {
             price = item.price_loyalty;
-        } else if (posSettings.special_active === 1) {
+        } else if (posSettings.special_price == 1) {
             price = item.price_special;
-        } else if (posSettings.market_active === 1) {
+        } else if (posSettings.market_price == 1) {
             price = item.price_market;
         }
 
@@ -600,9 +600,9 @@
     function recalculateCartPrices() {
         cart.forEach(item => {
             let newPrice = item.price_market;
-            if (posSettings.loyalty_active === 1 && loyaltyCustomer) {
+            if (posSettings.loyalty_price == 1 && loyaltyCustomer) {
                 newPrice = item.price_loyalty;
-            } else if (posSettings.special_active === 1) {
+            } else if (posSettings.special_price == 1) {
                 newPrice = item.price_special;
             }
             item.price = newPrice;
