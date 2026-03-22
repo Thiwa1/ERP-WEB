@@ -75,10 +75,9 @@
         .sidebar-brand {
             font-size: 1.35rem;
             font-weight: 800;
-            color: #201f1e; /* Dark text for light background */
-            /* removed white text gradient */
-            /* -webkit-background-clip: text; */
-            /* -webkit-text-fill-color: transparent; */
+            background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
             text-decoration: none;
             display: flex;
             align-items: center;
@@ -89,9 +88,10 @@
 
         .sidebar-brand i {
             font-size: 1.5rem;
-            color: var(--blue-7); /* Blue 7 */
-            /* removed text gradient */
-            /* filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4)); */
+            background: linear-gradient(135deg, var(--accent-color), #60a5fa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
         }
 
         .sidebar-menu {
@@ -550,15 +550,6 @@
 
                 <!-- Reversals -->
                 <div class="menu-category">Reversals</div>
-                <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> Cash Pay Reversal</a>
-                <a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> Bank Pay Reversal</a>
-                <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> Direct Pay Reversal</a>
-
-                <!-- Point of Sale -->
-                <div class="menu-category">Point of Sale</div>
-                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
-                <a href="/pos_settings" class="nav-link"><i class="fas fa-cogs"></i> POS Settings</a>
-                <a href="/cash_handover" class="nav-link"><i class="fas fa-hand-holding-usd"></i> Cash Handover</a>
                 <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> POS Reversal</a>
 
                 <!-- Inventory -->
@@ -573,6 +564,8 @@
                 <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> Inventory Transfer</a>
                 <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> Manufacturing</a>
                 <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> Trend Analysis</a>
+
+                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
 
                 <!-- Reports -->
                 <div class="menu-category">Reports</div>

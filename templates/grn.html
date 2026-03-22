@@ -48,7 +48,7 @@
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier List</label>
-                            <select class="form-select select2" name="supplier" required>
+                            <select class="form-select" name="supplier" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
                                 <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
@@ -74,7 +74,7 @@
                         <div class="row g-2 mb-2">
                             <div class="col-md-5">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Item Name</label>
-                                <select class="form-select select2" id="itemSelect">
+                                <select class="form-select" id="itemSelect">
                                     <option value="">Select Item</option>
                                     {% for item in items %}
                                     <option value="{{ item.inventoy_name }}" data-code="{{ item.inventoy_code }}" data-unit="{{ item.inventoy_items_messurment_unit }}">{{ item.inventoy_name }}</option>
@@ -109,7 +109,7 @@
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Job No</label>
-                                <select class="form-select select2" name="job_no">
+                                <select class="form-select" name="job_no">
                                     <option value="">Select Job</option>
                                     {% for job in jobs %}
                                     <option value="{{ job.job_number }}">{{ job.job_number }}</option>
@@ -118,7 +118,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Location</label>
-                                <select class="form-select select2" name="location" required>
+                                <select class="form-select" name="location" required>
                                     <option value="">Select Location</option>
                                     {% for loc in locations %}
                                     <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
