@@ -9182,6 +9182,12 @@ def system_backup():
         flash('Invalid database configuration', 'danger')
         return redirect(url_for('index'))
 
+    # Get the user's specific database name
+    db_name = get_session_db_name()
+    if not is_safe_db_name(db_name):
+        flash('Invalid database name', 'danger')
+        return redirect(url_for('index'))
+
     # Check for mysqldump
     if not shutil.which('mysqldump'):
         flash('mysqldump not found', 'danger')
@@ -9214,26 +9220,43 @@ def system_backup():
                 'mysqldump',
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
-                db_config['database']
+                db_name
             ]
 
-            # Run command
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, error = process.communicate()
+            def generate():
+                # Fix: We don't pipe stderr to avoid deadlocks when the buffer fills up.
+                # We can either redirect it to DEVNULL or capture it to a temporary file.
+                # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
+                # returning a streaming response means we can't easily send the error to the client anyway
+                # once the stream has started, and a 64KB stderr buffer would hang the process.
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                try:
+                    while True:
+                        chunk = process.stdout.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+                    process.wait()
+                    if process.returncode != 0:
+                        logging.error(f"Backup failed with return code {process.returncode}")
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                    # Secure cleanup
+                    if os.path.exists(defaults_file.name):
+                        os.remove(defaults_file.name)
 
-            if process.returncode != 0:
-                flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
-                return redirect(url_for('index'))
+            # We don't remove defaults_file in the outer finally block anymore,
+            # it is cleaned up by the generator when it completes or errors out.
 
-            # Return as file download
-            response = make_response(output)
-            response.headers['Content-Type'] = 'application/sql'
+            response = Response(stream_with_context(generate()), mimetype='application/sql')
             response.headers['Content-Disposition'] = f'attachment; filename={filename}'
             return response
-        finally:
-            # Secure cleanup
+
+        except Exception as e:
             if os.path.exists(defaults_file.name):
                 os.remove(defaults_file.name)
+            raise e
 
     except Exception as e:
         flash(f'Backup error: {str(e)}', 'danger')
