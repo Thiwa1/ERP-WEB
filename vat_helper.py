@@ -348,21 +348,33 @@ class VATReportGenerator:
         """
         sched07_rows = self.db.execute_query(query_sched07, (self.from_date, self.to_date))
 
+        # Optimize: Fetch all DR accounts for the relevant JVs in one go
+        jv_to_bank_acc = {}
+        if sched07_rows:
+            jvs = list(set([r['entry_jv'] for r in sched07_rows]))
+            # MySQL limits IN clause size, but for typical page sizes this is fine.
+            # If large, we might need chunking, but usually sched07 doesn't have 10k+ rows.
+            placeholders = ','.join(['%s'] * len(jvs))
+            dr_query = f"SELECT entry_jv, account_name FROM entry_details WHERE entry_jv IN ({placeholders}) AND enty_values_DR > 0"
+            all_dr_res = self.db.execute_query(dr_query, tuple(jvs))
+
+            if all_dr_res:
+                dr_accounts = list(set([dr['account_name'] for dr in all_dr_res]))
+                acc_placeholders = ','.join(['%s'] * len(dr_accounts))
+                bank_query = f"SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number IN ({acc_placeholders})"
+                all_bank_res = self.db.execute_query(bank_query, tuple(dr_accounts))
+
+                bank_accounts = set([b['bank_bookcol_account_number'] for b in all_bank_res])
+
+                # Map JV to first found bank account
+                for dr in all_dr_res:
+                    jv = dr['entry_jv']
+                    if jv not in jv_to_bank_acc and dr['account_name'] in bank_accounts:
+                        jv_to_bank_acc[jv] = dr['account_name']
+
         for r in sched07_rows:
-            nrfc_acc = ""
-            payment_date = ""
-
-            dr_res = self.db.execute_query("SELECT account_name FROM entry_details WHERE entry_jv = %s AND enty_values_DR > 0", (r['entry_jv'],))
-
-            for dr in dr_res:
-                chk_bank = self.db.execute_query("SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number = %s", (dr['account_name'],))
-                if chk_bank:
-                    nrfc_acc = dr['account_name']
-                    payment_date = str(r['date'])
-                    break
-
-            if not nrfc_acc:
-                payment_date = "Receivable"
+            nrfc_acc = jv_to_bank_acc.get(r['entry_jv'], "")
+            payment_date = str(r['date']) if nrfc_acc else "Receivable"
 
             schedule_07.append({
                 'invoice_no': r['invoice_no'],
