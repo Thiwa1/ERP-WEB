@@ -3,7 +3,7 @@
 {% block content %}
 <div class="container-fluid py-3">
     <div class="row mb-4">
-        <div class="col-12 text-dark p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
+        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
             <h4 class="mb-0 text-center fw-bold"><i class="fas fa-truck-loading me-2"></i> GOODS RECEIVED NOTE MANAGEMENT</h4>
         </div>
     </div>
@@ -13,7 +13,7 @@
             <!-- Left Panel: Item List -->
             <div class="col-md-7">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-list me-2"></i> Items Added
                     </div>
                     <div class="card-body p-0">
@@ -42,13 +42,13 @@
             <div class="col-md-5">
                 <!-- Supplier Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-user-tag me-2"></i> Supplier Selection
                     </div>
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier List</label>
-                            <select class="form-select" name="supplier" required>
+                            <select class="form-select select2" name="supplier" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
                                 <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
@@ -67,14 +67,14 @@
 
                 <!-- Item Entry Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-plus-circle me-2"></i> Item Entry
                     </div>
                     <div class="card-body bg-white">
                         <div class="row g-2 mb-2">
                             <div class="col-md-5">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Item Name</label>
-                                <select class="form-select" id="itemSelect">
+                                <select class="form-select select2" id="itemSelect">
                                     <option value="">Select Item</option>
                                     {% for item in items %}
                                     <option value="{{ item.inventoy_name }}" data-code="{{ item.inventoy_code }}" data-unit="{{ item.inventoy_items_messurment_unit }}">{{ item.inventoy_name }}</option>
@@ -102,14 +102,14 @@
 
                 <!-- Job & Location Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-map-marker-alt me-2"></i> Job & Location
                     </div>
                     <div class="card-body bg-white">
                         <div class="row g-2">
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Job No</label>
-                                <select class="form-select" name="job_no">
+                                <select class="form-select select2" name="job_no">
                                     <option value="">Select Job</option>
                                     {% for job in jobs %}
                                     <option value="{{ job.job_number }}">{{ job.job_number }}</option>
@@ -118,7 +118,7 @@
                             </div>
                             <div class="col-md-6">
                                 <label class="form-label fw-bold" style="color: var(--primary-color);">Location</label>
-                                <select class="form-select" name="location" required>
+                                <select class="form-select select2" name="location" required>
                                     <option value="">Select Location</option>
                                     {% for loc in locations %}
                                     <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
@@ -131,7 +131,7 @@
 
                 <!-- Invoice Details Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-file-alt me-2"></i> Invoice Details
                     </div>
                     <div class="card-body bg-white">
@@ -160,7 +160,7 @@
 
                 <!-- Totals Section -->
                 <div class="card shadow-sm border-0">
-                    <div class="card-header fw-bold text-dark" style="background-color: var(--secondary-color);">
+                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
                         <i class="fas fa-calculator me-2"></i> Totals & VAT
                     </div>
                     <div class="card-body bg-white">

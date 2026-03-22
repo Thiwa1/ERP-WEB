@@ -24,8 +24,8 @@
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f3f2f1; /* Windows 10 Light Background */
-            color: #201f1e; /* Windows 10 Light Text */
+            background-color: #f1f5f9; /* Slate 100 - Professional Neutral */
+            color: #334155; /* Dark Slate text for high contrast */
             overflow-x: hidden;
         }
 
@@ -183,7 +183,7 @@
 
         /* Top Navbar */
         .top-navbar {
-            background-color: #ffffff;
+            background-color: white;
             padding: 15px 30px;
             margin: -20px -20px 20px -20px;
             border-bottom: 1px solid #e2e8f0;
@@ -455,7 +455,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            color: #ffffff;
+            color: #334155;
             letter-spacing: 0.3px;
         }
         .qa-header i {
@@ -504,70 +504,6 @@
         .qa-theme-purple .qa-header i { color: #8b5cf6; }
         .qa-theme-rose .qa-header i { color: #f43f5e; }
 
-
-        /* Light Mode Colors from Requirements */
-        :root {
-            --blue-7: #0070F2;
-            --blue-5: #4DB1FF;
-            --tint-tappable: #0070F2; /* Blue 7 */
-            --tint-tappable-light: #4DB1FF; /* Blue 5 */
-            --tint-2-text: #0057D2; /* Blue 8 - Tappable elements on less contrast backgrounds */
-            --tint-3-bg: rgba(0, 112, 242, 0.08); /* Blue 7, 8% - secondary tint button background */
-            --tint-tap-state: #0040B0; /* Blue 9 */
-        }
-
-        /* Override sidebar to use the specific colors */
-        .sidebar {
-            background: #ffffff !important;
-            border-right: 1px solid #e0e0e0;
-        }
-
-        /* Inactive text - Dark text for light mode sidebar */
-        .sidebar .nav-link {
-            color: #201f1e !important;
-            opacity: 0.9;
-            border-radius: 6px;
-            margin-bottom: 2px;
-            transition: all 0.2s ease;
-            font-weight: 500;
-        }
-
-        .sidebar .nav-link:hover {
-            background-color: rgba(0, 112, 242, 0.04) !important;
-            color: #0070F2 !important;
-            opacity: 1;
-        }
-
-        /* Active sidebar link uses the exact tinting specified by the user */
-        .sidebar .nav-link.active,
-        .sidebar .nav-item.active > .nav-link,
-        .sidebar .nav-link[aria-expanded="true"] {
-            background-color: var(--tint-3-bg) !important; /* Blue 7, 8% */
-            color: var(--tint-2-text) !important; /* #0057D2 Blue 8 */
-            font-weight: 600 !important;
-            border-left: 3px solid var(--tint-2-text) !important;
-            border-radius: 0 8px 8px 0;
-            padding-left: 13px;
-            opacity: 1;
-        }
-
-        .sidebar .nav-link.active:active,
-        .sidebar .nav-item.active > .nav-link:active {
-            color: var(--tint-tap-state) !important; /* Blue 9 */
-            border-left-color: var(--tint-tap-state) !important;
-        }
-
-        .sidebar .nav-link.active *,
-        .sidebar .nav-item.active > .nav-link *,
-        .sidebar .nav-link.active i,
-        .sidebar .nav-link.active svg {
-            color: var(--tint-2-text) !important;
-            fill: var(--tint-2-text) !important;
-        }
-
-        .sidebar-menu .menu-category {
-            color: #777777 !important;
-        }
     </style>
 </head>
 <body>
@@ -614,6 +550,15 @@
 
                 <!-- Reversals -->
                 <div class="menu-category">Reversals</div>
+                <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> Cash Pay Reversal</a>
+                <a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> Bank Pay Reversal</a>
+                <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> Direct Pay Reversal</a>
+
+                <!-- Point of Sale -->
+                <div class="menu-category">Point of Sale</div>
+                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
+                <a href="/pos_settings" class="nav-link"><i class="fas fa-cogs"></i> POS Settings</a>
+                <a href="/cash_handover" class="nav-link"><i class="fas fa-hand-holding-usd"></i> Cash Handover</a>
                 <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> POS Reversal</a>
 
                 <!-- Inventory -->
@@ -628,8 +573,6 @@
                 <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> Inventory Transfer</a>
                 <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> Manufacturing</a>
                 <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> Trend Analysis</a>
-
-                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
 
                 <!-- Reports -->
                 <div class="menu-category">Reports</div>
@@ -918,62 +861,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-<style>
-/* Base Tab Styling Fix for Light Mode */
-.nav-tabs {
-    border-bottom: 2px solid #E5E5E5;
-}
-.nav-tabs .nav-link {
-    color: #605E5C !important;
-    border: none;
-    border-bottom: 2px solid transparent;
-    padding: 10px 16px;
-    font-weight: 600;
-}
-.nav-tabs .nav-link:hover {
-    color: #201F1E !important;
-    border-bottom: 2px solid #C3CED5;
-    background: transparent;
-}
-.nav-tabs .nav-link.active {
-    color: #0070F2 !important;
-    border-bottom: 2px solid #0070F2 !important;
-    background: transparent !important;
-}
-
-        /* Globals for Buttons and Links - Windows 10 Dark Mode context */
-        .btn-primary {
-            background-color: var(--blue-5, #4DB1FF) !important;
-            border-color: var(--blue-5, #4DB1FF) !important;
-            color: #ffffff !important;
-        }
-        .btn-primary:hover, .btn-primary:focus, .btn-primary:active {
-            background-color: #1B90FF !important; /* Blue 6 */
-            border-color: #1B90FF !important;
-        }
-
-        a.text-primary, .text-primary {
-            color: var(--blue-5, #4DB1FF) !important;
-        }
-        a.text-primary:hover, a:hover {
-            color: #1B90FF !important;
-        }
-
-        /* Light mode contexts (e.g. sidebar or specific white cards if any) */
-        .sidebar .btn-primary, .bg-light .btn-primary, .card .btn-primary {
-            background-color: var(--blue-7, #0070F2) !important;
-            border-color: var(--blue-7, #0070F2) !important;
-        }
-        .sidebar .btn-primary:hover, .bg-light .btn-primary:hover, .card .btn-primary:hover {
-            background-color: #0040B0 !important; /* Blue 9 */
-            border-color: #0040B0 !important;
-        }
-
-        .sidebar a:not(.nav-link):not(.sidebar-brand), .bg-light a:not(.nav-link), .card a:not(.nav-link) {
-            color: var(--blue-7, #0070F2);
-        }
-        .sidebar a:not(.nav-link):not(.sidebar-brand):hover, .bg-light a:not(.nav-link):hover, .card a:not(.nav-link):hover {
-            color: #0040B0 !important;
-        }
-
-    </style>

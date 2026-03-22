@@ -91,10 +91,10 @@ app.config['SECRET_KEY'] = app.secret_key
 # Theme Configuration
 THEMES = {
     'default': {
-        'name': 'Windows 11 Light',
-        'primary': '#0070F2',
-        'secondary': '#F3F3F3',
-        'accent': '#0070F2'
+        'name': 'Professional (Default)',
+        'primary': '#0f172a',
+        'secondary': '#1e293b',
+        'accent': '#2563eb'
     },
     'ocean': {
         'name': 'Ocean Blue',
@@ -104,9 +104,9 @@ THEMES = {
     },
     'pro_blue': {
         'name': 'Pro Sky Blue',
-        'primary': '#0070F2',
-        'secondary': '#4DB1FF',
-        'accent': '#0057D2'
+        'primary': '#4188ff',
+        'secondary': '#649eff',
+        'accent': '#92bbff'
     },
     'forest': {
         'name': 'Forest Green',
@@ -1189,8 +1189,12 @@ def add_inventory_item():
             main_cat = request.form.get('main_category')
             sub_cat = request.form.get('sub_category')
             min_qty = parse_float(request.form.get('min_qty', 0))
-            selling_price = parse_float(request.form.get('selling_price', 0))
-            cost_price = parse_float(request.form.get('cost_price', 0))
+
+            # Prices are now arrays
+            cost_prices = request.form.getlist('cost_price[]')
+            selling_prices = request.form.getlist('selling_price[]')
+            special_prices = request.form.getlist('special_price[]')
+            loyalty_prices = request.form.getlist('loyalty_price[]')
 
             # 2. Handle Image
             img_data = None
@@ -1229,13 +1233,29 @@ def add_inventory_item():
                     ))
                     item_id = cursor.lastrowid
 
-                    # 4. Insert Price
-                    query_price = """
+                    # 4. Insert Prices
+                    query_price = '''
                         INSERT INTO inventory_price_recod (
-                            id, inventory_price_link, inventory_price_selling, inventory_price_purcharsing, created_date
-                        ) VALUES (0, %s, %s, %s, %s)
-                    """
-                    cursor.execute(query_price, (item_id, selling_price, cost_price, today_date))
+                            id, inventory_price_link, inventory_price_purcharsing,
+                            inventory_price_selling, inventory_price_profit_marging_comen,
+                            inventory_price_for_Loyality_customer, created_date
+                        ) VALUES (0, %s, %s, %s, %s, %s, %s)
+                    '''
+
+                    # If the user did not add any dynamic rows, the arrays might be empty.
+                    # Or there might be 1 default row.
+                    if cost_prices:
+                        for idx, cp in enumerate(cost_prices):
+                            c_val = parse_float(cp)
+                            # Handle potential IndexError if arrays are mismatched (shouldn't happen with proper frontend)
+                            s_val = parse_float(selling_prices[idx]) if idx < len(selling_prices) else 0.0
+                            sp_val = parse_float(special_prices[idx]) if idx < len(special_prices) else 0.0
+                            lp_val = parse_float(loyalty_prices[idx]) if idx < len(loyalty_prices) else 0.0
+
+                            cursor.execute(query_price, (item_id, c_val, s_val, sp_val, lp_val, today_date))
+                    else:
+                        # Fallback if no prices sent, just create a zeroed row
+                        cursor.execute(query_price, (item_id, 0.0, 0.0, 0.0, 0.0, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
 
@@ -4417,7 +4437,11 @@ def inventory_price_editing():
         params = (search_pattern, search_pattern)
 
     items = db.execute_query(query, params)
-    return render_template('inventory_price_editing.html', items=items, search_query=search)
+
+    # Get all active items for the "Add New Price Tier" dropdown
+    all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
+
+    return render_template('inventory_price_editing.html', items=items, all_items=all_items, search_query=search)
 
 @app.route('/inventory_price_editing/update', methods=['POST'])
 @login_required
@@ -4817,7 +4841,38 @@ def cash_flow_generate():
         conn.close()
 
 
+
+@app.route('/add_new_price_tier', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def add_new_price_tier():
+    item_id = request.form.get('item_id')
+    cost_price = parse_float(request.form.get('cost_price', 0))
+    selling_price = parse_float(request.form.get('selling_price', 0))
+    special_price = parse_float(request.form.get('special_price', 0))
+    loyalty_price = parse_float(request.form.get('loyalty_price', 0))
+
+    if not item_id:
+        flash('Must select an inventory item', 'danger')
+        return redirect(url_for('inventory_price_editing'))
+
+    try:
+        query = '''
+            INSERT INTO inventory_price_recod (
+                id, inventory_price_link, inventory_price_purcharsing,
+                inventory_price_selling, inventory_price_profit_marging_comen,
+                inventory_price_for_Loyality_customer, created_date
+            ) VALUES (0, %s, %s, %s, %s, %s, %s)
+        '''
+        db.execute_query(query, (item_id, cost_price, selling_price, special_price, loyalty_price, date.today()), commit=True)
+        flash('New price tier added successfully!', 'success')
+    except Exception as e:
+        flash(f'Error adding new price tier: {str(e)}', 'danger')
+
+    return redirect(url_for('inventory_price_editing'))
+
 # --- Inventory Balance ---
+
 @app.route('/inventory_balance')
 @login_required
 @has_permission('Access_Inventory')
@@ -4912,35 +4967,67 @@ def bank_reconciliation():
     if bank_account:
         # Deposits (DR > 0, Not Reconciled)
         deposits = db.execute_query("""
-            SELECT id, entry_effective_date, entry_naration, enty_values_DR
-            FROM entry_details
-            WHERE account_name = %s AND enty_values_DR > 0 AND (entry_Rec = 0 OR entry_Rec IS NULL) AND entry_deleted = 0
-            ORDER BY entry_effective_date
+            SELECT
+                ed.entry_save,
+                ed.entry_date,
+                ed.id,
+                ed.entry_effective_date,
+                ed.entry_naration,
+                bbr.bank_book_chque_no,
+                ed.enty_values_DR
+            FROM entry_details ed
+            LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+            WHERE ed.account_name = %s
+            AND ed.enty_values_DR > 0
+            AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+            AND ed.entry_deleted = 0
+            ORDER BY ed.entry_effective_date
         """, (bank_account,))
 
         # Payments (CR > 0, Not Reconciled)
         payments = db.execute_query("""
-            SELECT id, entry_effective_date, entry_naration, enty_values_CR
-            FROM entry_details
-            WHERE account_name = %s AND enty_values_CR > 0 AND (entry_Rec = 0 OR entry_Rec IS NULL) AND entry_deleted = 0
-            ORDER BY entry_effective_date
+            SELECT
+                ed.entry_save,
+                ed.entry_date,
+                ed.id,
+                ed.entry_effective_date,
+                ed.entry_naration,
+                bbr.bank_book_chque_no,
+                ed.enty_values_CR
+            FROM entry_details ed
+            LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+            WHERE ed.account_name = %s
+            AND ed.enty_values_CR > 0
+            AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+            AND ed.entry_deleted = 0
+            ORDER BY ed.entry_effective_date
         """, (bank_account,))
 
-        # Book Balance logic (simplified version of procedure)
-        bb_res = db.execute_query("""
-            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
-            FROM entry_details
-            WHERE account_name = %s AND entry_effective_date <= %s
-        """, (bank_account, rec_date))
-        book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
+        # Book Balance logic
+        try:
+            bb_res = db.execute_query("CALL bank_book_balance(%s, %s)", (rec_date, bank_account))
+            book_balance = float(bb_res[0].get('bank_book_balance', 0)) if bb_res else 0
+        except Exception as e:
+            # Fallback
+            bb_res = db.execute_query("""
+                SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+                FROM entry_details
+                WHERE account_name = %s AND entry_effective_date <= %s
+            """, (bank_account, rec_date))
+            book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
 
-        # Opening Balance logic (simplified: sum of Reconciled items)
-        op_res = db.execute_query("""
-            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
-            FROM entry_details
-            WHERE account_name = %s AND entry_Rec = 1
-        """, (bank_account,))
-        opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
+        # Opening Balance logic
+        try:
+            op_res = db.execute_query("CALL bank_opening_balance(%s)", (bank_account,))
+            opening_balance = float(op_res[0].get('bank_opening_balance', 0)) if op_res else 0
+        except Exception as e:
+            # Fallback
+            op_res = db.execute_query("""
+                SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+                FROM entry_details
+                WHERE account_name = %s AND entry_Rec = 1
+            """, (bank_account,))
+            opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
 
     return render_template('bank_reconciliation.html',
                            bank_accounts=bank_accounts,
@@ -4955,26 +5042,291 @@ def bank_reconciliation():
 @app.route('/bank_reconciliation/process', methods=['POST'])
 @login_required
 def process_reconciliation():
+    action = request.form.get('action') # 'save' or 'process'
     bank_account = request.form.get('bank_account')
     rec_date = request.form.get('rec_date')
-    cleared_ids = request.form.getlist('cleared_ids[]')
+    statement_balance = request.form.get('statement_balance', 0)
 
-    if not bank_account or not rec_date:
-        flash('Missing required data', 'danger')
+    if not bank_account:
+        flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    if cleared_ids:
-        # Mark selected items as reconciled
-        placeholders = ', '.join(['%s'] * len(cleared_ids))
-        query = f"UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s WHERE id IN ({placeholders})"
-        params = [rec_date] + cleared_ids
-        db.execute_query(query, tuple(params), commit=True)
+    with db.transaction_cursor() as cursor:
+        try:
+            # Parse cleared items and their dates
+            # Format: 'id|date' for deposits and payments
+            cleared_deposits = request.form.getlist('cleared_deposits[]')
+            cleared_payments = request.form.getlist('cleared_payments[]')
 
-        flash(f'Reconciliation processed. {len(cleared_ids)} transactions cleared.', 'success')
-    else:
-        flash('No transactions selected to clear.', 'info')
+            uncleared_deposits = request.form.getlist('uncleared_deposits[]')
+            uncleared_payments = request.form.getlist('uncleared_payments[]')
+
+            if action == 'save':
+                # Save Progress
+                # Process cleared deposits
+                for d in cleared_deposits:
+                    parts = d.split('|')
+                    d_id = parts[0]
+                    d_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_id))
+
+                # Process cleared payments
+                for p in cleared_payments:
+                    parts = p.split('|')
+                    p_id = parts[0]
+                    p_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_id))
+
+                # Mark uncleared as entry_save = 0
+                for d in uncleared_deposits:
+                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
+                for p in uncleared_payments:
+                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
+
+                flash('Progress saved successfully!', 'success')
+
+            elif action == 'process':
+                if not rec_date:
+                    flash('Missing reconciliation date', 'danger')
+                    return redirect(url_for('bank_reconciliation', bank_account=bank_account))
+
+                # Calculate Opening Balance (Simplified for Python version as in original code)
+                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_Rec = 1", (bank_account,))
+                op_res = cursor.fetchone()
+                opening_balance = float(op_res['bal'] or 0) if op_res else 0
+
+                # Book Balance
+                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_effective_date <= %s", (bank_account, rec_date))
+                bb_res = cursor.fetchone()
+                book_balance = float(bb_res['bal'] or 0) if bb_res else 0
+
+                statement_balance = float(statement_balance)
+
+                # Get sums of cleared deposits/payments to calculate closing balance
+                cleared_dep_sum = 0
+                cleared_pay_sum = 0
+
+                # Clear Deposits
+                for d in cleared_deposits:
+                    parts = d.split('|')
+                    d_id = parts[0]
+                    d_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_date + " 00:00:00", d_id))
+                    cursor.execute("SELECT enty_values_DR FROM entry_details WHERE id = %s", (d_id,))
+                    cleared_dep_sum += float(cursor.fetchone()['enty_values_DR'] or 0)
+
+                # Clear Payments
+                for p in cleared_payments:
+                    parts = p.split('|')
+                    p_id = parts[0]
+                    p_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_date + " 00:00:00", p_id))
+                    cursor.execute("SELECT enty_values_CR FROM entry_details WHERE id = %s", (p_id,))
+                    cleared_pay_sum += float(cursor.fetchone()['enty_values_CR'] or 0)
+
+                closing_balance = opening_balance + cleared_dep_sum - cleared_pay_sum
+
+                # Get last closing date for opene_date
+                cursor.execute("SELECT MAX(closing_date) as cd FROM bank_reconciliation_recodes WHERE bank_accont_no = %s", (bank_account,))
+                last_cd_res = cursor.fetchone()
+                last_closing_date = last_cd_res['cd'] if last_cd_res and last_cd_res['cd'] else '2000-01-01'
+
+                # Check tables
+                cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_recodes'")
+                if not cursor.fetchone():
+                    cursor.execute('''CREATE TABLE bank_reconciliation_recodes (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        opene_date DATE,
+                        opene_balance DECIMAL(15,2),
+                        closing_date DATE,
+                        closing_balance DECIMAL(15,2),
+                        save_user INT,
+                        close_user INT,
+                        last_save_user INT,
+                        last_close_uer INT,
+                        period_close_or_open INT,
+                        bank_accont_no VARCHAR(100),
+                        Book_Balance DECIMAL(15,2),
+                        Bank_statment_Balance DECIMAL(15,2)
+                    )''')
+
+                cursor.execute("SHOW TABLES LIKE 'bankreconciliiationditails'")
+                if not cursor.fetchone():
+                    cursor.execute('''CREATE TABLE bankreconciliiationditails (
+                        Id INT AUTO_INCREMENT PRIMARY KEY,
+                        Key_to_Recode_Table INT,
+                        Transaktion_Id INT,
+                        Dr_Value DECIMAL(15,2),
+                        Cr_Value DECIMAL(15,2),
+                        Text TEXT,
+                        Chq_No VARCHAR(100)
+                    )''')
+
+                # Insert reconciliation record
+                cursor.execute('''
+                    INSERT INTO bank_reconciliation_recodes
+                    (opene_date, opene_balance, closing_date, closing_balance, save_user, close_user,
+                     period_close_or_open, bank_accont_no, Book_Balance, Bank_statment_Balance)
+                    VALUES (%s, %s, %s, %s, 0, %s, 1, %s, %s, %s)
+                ''', (last_closing_date, opening_balance, rec_date, closing_balance, get_current_user_id(), bank_account, book_balance, statement_balance))
+
+                rec_id = cursor.lastrowid
+
+                # Insert Uncleared Transactions into details table
+                for d in uncleared_deposits:
+                    cursor.execute("SELECT id, enty_values_DR, entry_naration FROM entry_details WHERE id = %s", (d,))
+                    detail = cursor.fetchone()
+                    if detail:
+                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                     (rec_id, detail['id'], detail['enty_values_DR'], 0, detail['entry_naration'], ''))
+
+                for p in uncleared_payments:
+                    cursor.execute("SELECT id, enty_values_CR, entry_naration FROM entry_details WHERE id = %s", (p,))
+                    detail = cursor.fetchone()
+                    if detail:
+                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                     (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
+
+                flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
+
+        except Exception as e:
+            flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
+
+@app.route('/bank_reconciliation/history', methods=['GET'])
+@login_required
+def bank_reconciliation_history():
+    bank_account = request.args.get('bank_account')
+
+    bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
+    history = []
+
+    if bank_account:
+        try:
+            history = db.execute_query('''
+                SELECT id, opene_date, opene_balance, closing_date, closing_balance,
+                       Book_Balance, Bank_statment_Balance, close_user, period_close_or_open
+                FROM bank_reconciliation_recodes
+                WHERE bank_accont_no = %s
+                ORDER BY closing_date DESC
+            ''', (bank_account,))
+        except:
+            history = []
+
+    return render_template('bank_reconciliation_history.html', bank_accounts=bank_accounts, selected_account=bank_account, history=history)
+
+@app.route('/bank_reconciliation/report/<int:rec_id>', methods=['GET'])
+@login_required
+def bank_reconciliation_report(rec_id):
+    rec = None
+    deposits = []
+    payments = []
+
+    try:
+        rec = db.execute_query("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+        if rec:
+            rec = rec[0]
+
+            deposits = db.execute_query('''
+                SELECT brd.Id, brd.Text, brd.Chq_No, brd.Dr_Value, ed.entry_effective_date
+                FROM bankreconciliiationditails brd
+                LEFT JOIN entry_details ed ON brd.Transaktion_Id = ed.id
+                WHERE brd.Key_to_Recode_Table = %s AND brd.Dr_Value > 0
+            ''', (rec_id,))
+
+            payments = db.execute_query('''
+                SELECT brd.Id, brd.Text, brd.Chq_No, brd.Cr_Value, ed.entry_effective_date
+                FROM bankreconciliiationditails brd
+                LEFT JOIN entry_details ed ON brd.Transaktion_Id = ed.id
+                WHERE brd.Key_to_Recode_Table = %s AND brd.Cr_Value > 0
+            ''', (rec_id,))
+
+    except Exception as e:
+        flash(f'Error loading report: {str(e)}', 'danger')
+
+    return render_template('bank_reconciliation_report.html', rec=rec, deposits=deposits, payments=payments)
+
+@app.route('/bank_reconciliation/reverse', methods=['POST'])
+@login_required
+def reverse_reconciliation():
+    rec_id = request.form.get('rec_id')
+    reason = request.form.get('reason')
+
+    if not rec_id or not reason:
+        flash('Missing reconciliation ID or reason', 'danger')
+        return redirect(url_for('bank_reconciliation_history'))
+
+    with db.transaction_cursor() as cursor:
+        try:
+            # Check tables
+            cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
+            if not cursor.fetchone():
+                cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    original_rec_id INT,
+                    bank_account VARCHAR(100),
+                    reversal_date DATETIME,
+                    reversed_by_user INT,
+                    opening_balance DECIMAL(15,2),
+                    closing_balance DECIMAL(15,2),
+                    reversal_reason TEXT
+                )''')
+
+            # Get Reconciliation details
+            cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+            rec = cursor.fetchone()
+            if not rec:
+                flash('Reconciliation record not found', 'danger')
+                return redirect(url_for('bank_reconciliation_history'))
+
+            account = rec['bank_accont_no']
+
+            # Step 1: Get all transaction IDs from details table
+            cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+            detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
+
+            # Step 2: Get cleared transaction IDs for this account and period
+            cursor.execute('''
+                SELECT id FROM entry_details
+                WHERE account_name = %s
+                AND entry_Rec = 1
+                AND entry_effective_date BETWEEN %s AND %s
+            ''', (account, rec['opene_date'], rec['closing_date']))
+            cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
+
+            # Combine and remove duplicates
+            all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
+
+            # Step 3: Un-reconcile all these transactions
+            if all_trans_ids:
+                format_strings = ','.join(['%s'] * len(all_trans_ids))
+                cursor.execute(f'''
+                    UPDATE entry_details
+                    SET entry_Rec = 0, entry_save = 0, entry_date = NULL
+                    WHERE id IN ({format_strings})
+                ''', tuple(all_trans_ids))
+
+            # Step 4: Log Reversal
+            cursor.execute('''
+                INSERT INTO bank_reconciliation_reversal_log
+                (original_rec_id, bank_account, reversal_date, reversed_by_user,
+                 opening_balance, closing_balance, reversal_reason)
+                VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+            ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
+
+            # Step 5: Delete Details
+            cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+
+            # Step 6: Delete Record
+            cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+
+            flash('Reconciliation reversed successfully!', 'success')
+        except Exception as e:
+            flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+
+    return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
+
 
 # --- Ledger View ---
 @app.route('/ledger_view')
@@ -5572,6 +5924,13 @@ def pos_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('pos_reversal'))
+
         conn.start_transaction()
 
         # 1. Reverse JV Entries
@@ -5701,6 +6060,13 @@ def bank_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('bank_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Bank Transaction Reversal (Updates Bank Book Record)
@@ -5763,6 +6129,13 @@ def cash_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('cash_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -5826,6 +6199,13 @@ def direct_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
+            return redirect(url_for('direct_payment_reversal'))
+
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -6639,6 +7019,88 @@ def vat_report():
     report_data = generator.generate()
     return render_template('vat_report.html', **report_data)
 
+
+# --- Cash Handover ---
+@app.route('/cash_handover', methods=['GET', 'POST'])
+@login_required
+def cash_handover():
+    if request.method == 'POST':
+        # Retrieve form data
+        amount = request.form.get('amount')
+        notes = request.form.get('notes', '')
+        handover_to = request.form.get('handover_to')
+
+        if not amount or float(amount) <= 0:
+            flash('Please enter a valid amount.', 'danger')
+            return redirect(url_for('cash_handover'))
+
+        try:
+            # Create table if it doesn't exist
+            with db.transaction_cursor() as cursor:
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                if not cursor.fetchone():
+                    cursor.execute('''
+                        CREATE TABLE cash_handover_logs (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            handover_to VARCHAR(100),
+                            amount DECIMAL(15,2) NOT NULL,
+                            notes TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    ''')
+
+                # Insert the log
+                cursor.execute('''
+                    INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
+                    VALUES (%s, %s, %s, %s)
+                ''', (get_current_user_id(), handover_to, float(amount), notes))
+
+            flash('Cash handover recorded successfully.', 'success')
+            return redirect(url_for('index'))
+
+        except Exception as e:
+            flash(f'Error recording cash handover: {str(e)}', 'danger')
+            return redirect(url_for('cash_handover'))
+
+    # GET request
+    users = db.execute_query("SELECT id, username FROM Login_Table")
+    return render_template('cash_handover.html', users=users)
+
+
+# --- Cashier Day Sales Summary ---
+@app.route('/cashier_day_sales')
+@login_required
+@has_permission('Access_POS')
+def cashier_day_sales():
+    user_id = get_current_user_id()
+    today = datetime.now().strftime('%Y-%m-%d')
+
+    # Simple summary query: total sales by this user today
+    try:
+        sales_summary = db.execute_query('''
+            SELECT
+                COUNT(*) as total_invoices,
+                SUM(AcctionValue) as total_sales
+            FROM pos_sales_invoice_01
+            WHERE DATE(AcctionDate) = %s AND user_id = %s
+        ''', (today, user_id))
+
+        if not sales_summary or not sales_summary[0]:
+            summary = {'total_invoices': 0, 'total_sales': 0.00}
+        else:
+            summary = {
+                'total_invoices': sales_summary[0].get('total_invoices', 0) or 0,
+                'total_sales': float(sales_summary[0].get('total_sales', 0.00) or 0.00)
+            }
+
+    except Exception as e:
+        print(f"Error fetching day sales: {e}")
+        summary = {'total_invoices': 0, 'total_sales': 0.00}
+
+    return render_template('cashier_day_sales.html', summary=summary, date=today)
+
+
 # --- POS Settings ---
 @app.route('/pos_settings', methods=['GET', 'POST'])
 @login_required
@@ -6730,7 +7192,15 @@ def pos_settings():
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
     accounts = db.execute_query("SELECT account_name FROM new_account_table") # For Card/Cash selection
 
+    # Fetch SMS Delivery Logs
+    sms_logs = []
+    try:
+        sms_logs = db.execute_query("SELECT * FROM sms_delivery_logs ORDER BY created_at DESC LIMIT 50")
+    except Exception as e:
+        print(f"Error fetching SMS logs: {e}")
+
     return render_template('pos_settings.html',
+                           sms_logs=sms_logs,
                            settings=current_settings,
                            pos_users=pos_users,
                            selected_user_id=int(selected_user_id) if selected_user_id else 0,
@@ -6913,24 +7383,79 @@ def pos_api_login():
 
 # --- POS Web Login with Device Fingerprinting & 2FA ---
 def send_sms_otp(mobile, code):
+    """Sends OTP via Notify.lk Gateway mirroring the legacy PHP logic."""
+    settings = {}
+
+    # Try to load credentials from active tenant DB site_settings if available
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        # Handle cases where table doesn't exist yet gracefully
+        try:
+            cursor.execute("SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN ('sms_user_id', 'sms_api_key', 'sms_sender_id')")
+            settings = {r['setting_key']: r['setting_value'] for r in cursor.fetchall()}
+        except Exception:
+            pass
+    except Exception as e:
+        logging.error(f"Settings Load Error: {e}")
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', '')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
+
+    if not api_key or not user_id:
+        logging.error("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
+        return False
+
+    # Format number like the PHP script
+    phone = str(mobile).strip().replace(" ", "").replace("-", "").replace("+", "")
+    if phone.startswith("0"):
+        phone = "94" + phone[1:]
+    elif not phone.startswith("94"):
+        phone = "94" + phone
+
     url = "https://app.notify.lk/api/v1/send"
+
     params = {
-        'user_id': os.getenv('NOTIFY_USER_ID', '13120'),
-        'api_key': os.getenv('NOTIFY_API_KEY'),
-        'sender_id': os.getenv('NOTIFY_SENDER_ID', 'The Bunker'),
-        'to': mobile,
-        'message': f"Your POS login verification code is: {code}"
+        'user_id': user_id,
+        'api_key': api_key,
+        'sender_id': sender_id,
+        'to': phone,
+        'message': f"Your SUWIN verification code is {code}."
     }
 
-    if not params['api_key']:
-        logging.error("NOTIFY_API_KEY is not set. Skipping SMS delivery.")
-        return
-
     try:
-        requests.get(url, params=params, timeout=5)
+        logging.info(f"Sending SMS via Notify.lk to {phone} with sender {sender_id}")
+        response = requests.get(url, params=params, timeout=10, verify=False)
+        result = response.json()
+
+        status_msg = result.get('status', 'failed')
+
+        # Log to DB if table exists
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO sms_delivery_logs (mobile, message, status, api_response) VALUES (%s, %s, %s, %s)",
+                           (phone, params['message'], status_msg, response.text))
+            conn.commit()
+        except Exception as log_err:
+            logging.error(f"Error logging SMS: {log_err}")
+        finally:
+            if 'cursor' in locals() and cursor: cursor.close()
+            if 'conn' in locals() and conn: conn.close()
+
+        if status_msg == 'success':
+            logging.info(f"SMS delivered successfully to {phone}.")
+            return True
+        else:
+            logging.error(f"NotifySMS API Error: {response.text}")
+            return False
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
-
+        return False
 @app.route('/pos_login', methods=['GET', 'POST'])
 def pos_web_login():
     if request.method == 'GET':
@@ -7182,9 +7707,9 @@ def pos_api_settings():
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
                 'cash_ac': settings['Cash_Account'],
-                'market_price': settings['Sales_with_market_price'],
-                'special_price': settings['Sales_with_Special_price'],
-                'loyalty_price': settings['Loyalty_Price'],
+                'market_active': settings['Sales_with_market_price'],
+                'special_active': settings['Sales_with_Special_price'],
+                'loyalty_active': settings['Loyalty_Price'],
                 'vat_enable': settings['VAT_Enable'],
                 'footer': settings['Footer_Message'],
                 'top': settings['Top_Message']
@@ -7197,21 +7722,22 @@ def pos_api_settings():
 @pos_login_required
 def pos_api_items():
     # Fetch all active items with prices for caching
-    query = """
+    query = '''
         SELECT
-            i.id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
+            i.id, p.id as price_recod_id, i.inventoy_name, i.inventoy_code, i.inventoy_bach_code, i.inventoy_items_messurment_unit,
             p.inventory_price_selling, p.inventory_price_profit_marging_comen,
             p.inventory_price_for_Loyality_customer, p.inventory_price_purcharsing, i.expiry_date
         FROM inventoy_items i
         LEFT JOIN inventory_price_recod p ON i.id = p.inventory_price_link
         WHERE i.active = 1
-    """
+    '''
     rows = db.execute_query(query)
 
     items = []
     for r in rows:
         items.append({
             'id': r['id'],
+            'price_id': r.get('price_recod_id'),
             'name': r['inventoy_name'],
             'code': r['inventoy_code'],
             'batch_code': r['inventoy_bach_code'],
@@ -8332,6 +8858,11 @@ def reverse_journal_entry():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Check if transaction is reconciled
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
+        if cursor.fetchone()[0] > 0:
+            return {'error': 'This transaction is reconciled. To process, first remove the reconciliation.'}, 400
 
         # Check if already reversed or linked to bank rec (simplified check)
         # C# logic checks entry_deleted = 1
