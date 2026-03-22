@@ -1428,6 +1428,102 @@ def delete_cash_flow_category():
 
     return redirect(url_for('cash_flow_categories'))
 
+
+# --- Edit Account ---
+@app.route('/edit_account/<int:account_id>', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def edit_account(account_id):
+    if request.method == 'POST':
+        account_name = request.form.get('account_name')
+        currency_code = request.form.get('currency_code', 'LKR')
+
+        if not account_name:
+            flash('Please enter an account name', 'danger')
+            return redirect(url_for('edit_account', account_id=account_id))
+
+        bs_cat_val = request.form.get('bs_category')
+        pl_cat_val = request.form.get('income_category')
+        cf_cat = request.form.get('cf_category')
+
+        if (not bs_cat_val or bs_cat_val == "") and (not pl_cat_val or pl_cat_val == ""):
+            flash('Please select a category', 'danger')
+            return redirect(url_for('edit_account', account_id=account_id))
+
+        bs_name = None
+        bs_pos = None
+        if bs_cat_val:
+            parts = bs_cat_val.split(',')
+            bs_name = parts[0]
+            if len(parts) > 1:
+                bs_pos = parts[1]
+
+        pl_name = None
+        pl_pos = None
+        if pl_cat_val:
+            parts = pl_cat_val.split(',')
+            pl_name = parts[0]
+            if len(parts) > 1:
+                pl_pos = parts[1]
+
+        is_income = 1 if 'income' in request.form.getlist('account_type') else 0
+        is_expense = 1 if 'expense' in request.form.getlist('account_type') else 0
+        is_liability = 1 if 'liability' in request.form.getlist('account_type') else 0
+        is_equity = 1 if 'equity' in request.form.getlist('account_type') else 0
+        is_asset = 1 if 'asset' in request.form.getlist('account_type') else 0
+
+        query = """
+            UPDATE new_account_table SET
+                account_name = %s,
+                account_hold_possion_PL = %s,
+                account_hold_possion_Balace_Sheet = %s,
+                account_name_of_catogory_PL = %s,
+                account_name_of_catogory_Balace_sheet = %s,
+                account_income = %s,
+                account_expenses = %s,
+                account_assets = %s,
+                account_liabilities = %s,
+                account_equity = %s,
+                cf_catogory = %s,
+                currency_code = %s
+            WHERE id = %s
+        """
+        params = (
+            account_name, pl_pos, bs_pos, pl_name, bs_name,
+            is_income, is_expense, is_asset, is_liability, is_equity,
+            cf_cat, currency_code, account_id
+        )
+
+        try:
+            db.execute_query(query, params, commit=True)
+            flash('Account updated successfully!', 'success')
+            return redirect(url_for('chart_of_accounts'))
+        except Exception as e:
+            flash(f'Error updating account: {str(e)}', 'danger')
+
+    # GET request
+    account = db.execute_query("SELECT * FROM new_account_table WHERE id = %s", (account_id,))
+    if not account:
+        flash('Account not found', 'danger')
+        return redirect(url_for('chart_of_accounts'))
+
+    account = account[0]
+
+    # Pre-fetch lookup data
+    bs_categories = db.execute_query("SELECT name_of_category, holding_position FROM balace_sheet_catogory")
+    pl_categories = db.execute_query("SELECT name_of_category, holding_position FROM pl_catogory")
+    cf_categories = db.execute_query("SELECT catogory_name FROM cf_catogorys")
+    currencies = db.execute_query("SELECT currency_code, currency_name FROM multi_currency")
+    existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
+
+    return render_template('edit_account.html',
+                           account=account,
+                           bs_categories=bs_categories,
+                           pl_categories=pl_categories,
+                           cf_categories=cf_categories,
+                           currencies=currencies,
+                           existing_accounts=existing_accounts)
+
 # --- Chart of Accounts ---
 @app.route('/chart_of_accounts')
 @login_required
@@ -5054,142 +5150,145 @@ def process_reconciliation():
     with db.transaction_cursor() as cursor:
         try:
             # Parse cleared items and their dates
-            # Format: 'id|date' for deposits and payments
-            cleared_deposits = request.form.getlist('cleared_deposits[]')
-            cleared_payments = request.form.getlist('cleared_payments[]')
+                # Format: 'id|date' for deposits and payments
+                cleared_deposits = request.form.getlist('cleared_deposits[]')
+                cleared_payments = request.form.getlist('cleared_payments[]')
 
-            uncleared_deposits = request.form.getlist('uncleared_deposits[]')
-            uncleared_payments = request.form.getlist('uncleared_payments[]')
+                uncleared_deposits = request.form.getlist('uncleared_deposits[]')
+                uncleared_payments = request.form.getlist('uncleared_payments[]')
 
-            if action == 'save':
-                # Save Progress
-                # Process cleared deposits
-                for d in cleared_deposits:
-                    parts = d.split('|')
-                    d_id = parts[0]
-                    d_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_id))
+                if action == 'save':
+                    # Save Progress
+                    # Process cleared deposits
+                    for d in cleared_deposits:
+                        parts = d.split('|')
+                        d_id = parts[0]
+                        d_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_id))
 
-                # Process cleared payments
-                for p in cleared_payments:
-                    parts = p.split('|')
-                    p_id = parts[0]
-                    p_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-                    cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_id))
+                    # Process cleared payments
+                    for p in cleared_payments:
+                        parts = p.split('|')
+                        p_id = parts[0]
+                        p_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                        cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_id))
 
-                # Mark uncleared as entry_save = 0
-                for d in uncleared_deposits:
-                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
-                for p in uncleared_payments:
-                    cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
+                    # Mark uncleared as entry_save = 0
+                    for d in uncleared_deposits:
+                        cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
+                    for p in uncleared_payments:
+                        cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
 
-                flash('Progress saved successfully!', 'success')
+                    conn.commit()
+                    flash('Progress saved successfully!', 'success')
 
-            elif action == 'process':
-                if not rec_date:
-                    flash('Missing reconciliation date', 'danger')
-                    return redirect(url_for('bank_reconciliation', bank_account=bank_account))
+                elif action == 'process':
+                    if not rec_date:
+                        flash('Missing reconciliation date', 'danger')
+                        return redirect(url_for('bank_reconciliation', bank_account=bank_account))
 
-                # Calculate Opening Balance (Simplified for Python version as in original code)
-                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_Rec = 1", (bank_account,))
-                op_res = cursor.fetchone()
-                opening_balance = float(op_res['bal'] or 0) if op_res else 0
+                    # Calculate Opening Balance (Simplified for Python version as in original code)
+                    cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_Rec = 1", (bank_account,))
+                    op_res = cursor.fetchone()
+                    opening_balance = float(op_res['bal'] or 0) if op_res else 0
 
-                # Book Balance
-                cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_effective_date <= %s", (bank_account, rec_date))
-                bb_res = cursor.fetchone()
-                book_balance = float(bb_res['bal'] or 0) if bb_res else 0
+                    # Book Balance
+                    cursor.execute("SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal FROM entry_details WHERE account_name = %s AND entry_effective_date <= %s", (bank_account, rec_date))
+                    bb_res = cursor.fetchone()
+                    book_balance = float(bb_res['bal'] or 0) if bb_res else 0
 
-                statement_balance = float(statement_balance)
+                    statement_balance = float(statement_balance)
 
-                # Get sums of cleared deposits/payments to calculate closing balance
-                cleared_dep_sum = 0
-                cleared_pay_sum = 0
+                    # Get sums of cleared deposits/payments to calculate closing balance
+                    cleared_dep_sum = 0
+                    cleared_pay_sum = 0
 
-                # Clear Deposits
-                for d in cleared_deposits:
-                    parts = d.split('|')
-                    d_id = parts[0]
-                    d_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
-                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_date + " 00:00:00", d_id))
-                    cursor.execute("SELECT enty_values_DR FROM entry_details WHERE id = %s", (d_id,))
-                    cleared_dep_sum += float(cursor.fetchone()['enty_values_DR'] or 0)
+                    # Clear Deposits
+                    for d in cleared_deposits:
+                        parts = d.split('|')
+                        d_id = parts[0]
+                        d_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                        cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_date + " 00:00:00", d_id))
+                        cursor.execute("SELECT enty_values_DR FROM entry_details WHERE id = %s", (d_id,))
+                        cleared_dep_sum += float(cursor.fetchone()['enty_values_DR'] or 0)
 
-                # Clear Payments
-                for p in cleared_payments:
-                    parts = p.split('|')
-                    p_id = parts[0]
-                    p_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
-                    cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_date + " 00:00:00", p_id))
-                    cursor.execute("SELECT enty_values_CR FROM entry_details WHERE id = %s", (p_id,))
-                    cleared_pay_sum += float(cursor.fetchone()['enty_values_CR'] or 0)
+                    # Clear Payments
+                    for p in cleared_payments:
+                        parts = p.split('|')
+                        p_id = parts[0]
+                        p_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                        cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_date + " 00:00:00", p_id))
+                        cursor.execute("SELECT enty_values_CR FROM entry_details WHERE id = %s", (p_id,))
+                        cleared_pay_sum += float(cursor.fetchone()['enty_values_CR'] or 0)
 
-                closing_balance = opening_balance + cleared_dep_sum - cleared_pay_sum
+                    closing_balance = opening_balance + cleared_dep_sum - cleared_pay_sum
 
-                # Get last closing date for opene_date
-                cursor.execute("SELECT MAX(closing_date) as cd FROM bank_reconciliation_recodes WHERE bank_accont_no = %s", (bank_account,))
-                last_cd_res = cursor.fetchone()
-                last_closing_date = last_cd_res['cd'] if last_cd_res and last_cd_res['cd'] else '2000-01-01'
+                    # Get last closing date for opene_date
+                    cursor.execute("SELECT MAX(closing_date) as cd FROM bank_reconciliation_recodes WHERE bank_accont_no = %s", (bank_account,))
+                    last_cd_res = cursor.fetchone()
+                    last_closing_date = last_cd_res['cd'] if last_cd_res and last_cd_res['cd'] else '2000-01-01'
 
-                # Check tables
-                cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_recodes'")
-                if not cursor.fetchone():
-                    cursor.execute('''CREATE TABLE bank_reconciliation_recodes (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        opene_date DATE,
-                        opene_balance DECIMAL(15,2),
-                        closing_date DATE,
-                        closing_balance DECIMAL(15,2),
-                        save_user INT,
-                        close_user INT,
-                        last_save_user INT,
-                        last_close_uer INT,
-                        period_close_or_open INT,
-                        bank_accont_no VARCHAR(100),
-                        Book_Balance DECIMAL(15,2),
-                        Bank_statment_Balance DECIMAL(15,2)
-                    )''')
+                    # Check tables
+                    cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_recodes'")
+                    if not cursor.fetchone():
+                        cursor.execute('''CREATE TABLE bank_reconciliation_recodes (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            opene_date DATE,
+                            opene_balance DECIMAL(15,2),
+                            closing_date DATE,
+                            closing_balance DECIMAL(15,2),
+                            save_user INT,
+                            close_user INT,
+                            last_save_user INT,
+                            last_close_uer INT,
+                            period_close_or_open INT,
+                            bank_accont_no VARCHAR(100),
+                            Book_Balance DECIMAL(15,2),
+                            Bank_statment_Balance DECIMAL(15,2)
+                        )''')
 
-                cursor.execute("SHOW TABLES LIKE 'bankreconciliiationditails'")
-                if not cursor.fetchone():
-                    cursor.execute('''CREATE TABLE bankreconciliiationditails (
-                        Id INT AUTO_INCREMENT PRIMARY KEY,
-                        Key_to_Recode_Table INT,
-                        Transaktion_Id INT,
-                        Dr_Value DECIMAL(15,2),
-                        Cr_Value DECIMAL(15,2),
-                        Text TEXT,
-                        Chq_No VARCHAR(100)
-                    )''')
+                    cursor.execute("SHOW TABLES LIKE 'bankreconciliiationditails'")
+                    if not cursor.fetchone():
+                        cursor.execute('''CREATE TABLE bankreconciliiationditails (
+                            Id INT AUTO_INCREMENT PRIMARY KEY,
+                            Key_to_Recode_Table INT,
+                            Transaktion_Id INT,
+                            Dr_Value DECIMAL(15,2),
+                            Cr_Value DECIMAL(15,2),
+                            Text TEXT,
+                            Chq_No VARCHAR(100)
+                        )''')
 
-                # Insert reconciliation record
-                cursor.execute('''
-                    INSERT INTO bank_reconciliation_recodes
-                    (opene_date, opene_balance, closing_date, closing_balance, save_user, close_user,
-                     period_close_or_open, bank_accont_no, Book_Balance, Bank_statment_Balance)
-                    VALUES (%s, %s, %s, %s, 0, %s, 1, %s, %s, %s)
-                ''', (last_closing_date, opening_balance, rec_date, closing_balance, get_current_user_id(), bank_account, book_balance, statement_balance))
+                    # Insert reconciliation record
+                    cursor.execute('''
+                        INSERT INTO bank_reconciliation_recodes
+                        (opene_date, opene_balance, closing_date, closing_balance, save_user, close_user,
+                         period_close_or_open, bank_accont_no, Book_Balance, Bank_statment_Balance)
+                        VALUES (%s, %s, %s, %s, 0, %s, 1, %s, %s, %s)
+                    ''', (last_closing_date, opening_balance, rec_date, closing_balance, get_current_user_id(), bank_account, book_balance, statement_balance))
 
-                rec_id = cursor.lastrowid
+                    rec_id = cursor.lastrowid
 
-                # Insert Uncleared Transactions into details table
-                for d in uncleared_deposits:
-                    cursor.execute("SELECT id, enty_values_DR, entry_naration FROM entry_details WHERE id = %s", (d,))
-                    detail = cursor.fetchone()
-                    if detail:
-                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
-                                     (rec_id, detail['id'], detail['enty_values_DR'], 0, detail['entry_naration'], ''))
+                    # Insert Uncleared Transactions into details table
+                    for d in uncleared_deposits:
+                        cursor.execute("SELECT id, enty_values_DR, entry_naration FROM entry_details WHERE id = %s", (d,))
+                        detail = cursor.fetchone()
+                        if detail:
+                            cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                         (rec_id, detail['id'], detail['enty_values_DR'], 0, detail['entry_naration'], ''))
 
-                for p in uncleared_payments:
-                    cursor.execute("SELECT id, enty_values_CR, entry_naration FROM entry_details WHERE id = %s", (p,))
-                    detail = cursor.fetchone()
-                    if detail:
-                        cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
-                                     (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
+                    for p in uncleared_payments:
+                        cursor.execute("SELECT id, enty_values_CR, entry_naration FROM entry_details WHERE id = %s", (p,))
+                        detail = cursor.fetchone()
+                        if detail:
+                            cursor.execute("INSERT INTO bankreconciliiationditails (Key_to_Recode_Table, Transaktion_Id, Dr_Value, Cr_Value, Text, Chq_No) VALUES (%s, %s, %s, %s, %s, %s)",
+                                         (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
 
-                flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
+                    conn.commit()
+                    flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
 
         except Exception as e:
+            conn.rollback()
             flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
@@ -5323,6 +5422,7 @@ def reverse_reconciliation():
 
             flash('Reconciliation reversed successfully!', 'success')
         except Exception as e:
+            conn.rollback()
             flash(f'Error reversing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
@@ -5924,13 +6024,6 @@ def pos_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-
-        # Check if transaction is reconciled
-        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
-        if cursor.fetchone()[0] > 0:
-            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
-            return redirect(url_for('pos_reversal'))
-
         conn.start_transaction()
 
         # 1. Reverse JV Entries
@@ -6060,13 +6153,6 @@ def bank_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-
-        # Check if transaction is reconciled
-        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
-        if cursor.fetchone()[0] > 0:
-            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
-            return redirect(url_for('bank_payment_reversal'))
-
         conn.start_transaction()
 
         # 1. Bank Transaction Reversal (Updates Bank Book Record)
@@ -6129,13 +6215,6 @@ def cash_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-
-        # Check if transaction is reconciled
-        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
-        if cursor.fetchone()[0] > 0:
-            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
-            return redirect(url_for('cash_payment_reversal'))
-
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -6199,13 +6278,6 @@ def direct_payment_reversal_process():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-
-        # Check if transaction is reconciled
-        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
-        if cursor.fetchone()[0] > 0:
-            flash("This transaction is reconciled. To process, first remove the reconciliation.", "danger")
-            return redirect(url_for('direct_payment_reversal'))
-
         conn.start_transaction()
 
         # 1. Update Reversal (Cash Book)
@@ -7050,11 +7122,11 @@ def cash_handover():
                         )
                     ''')
 
-                # Insert the log
-                cursor.execute('''
-                    INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
-                    VALUES (%s, %s, %s, %s)
-                ''', (get_current_user_id(), handover_to, float(amount), notes))
+                        conn.commit()
+
+            except Exception as inner_e:
+                conn.rollback()
+                raise inner_e
 
             flash('Cash handover recorded successfully.', 'success')
             return redirect(url_for('index'))
@@ -7388,26 +7460,23 @@ def send_sms_otp(mobile, code):
 
     # Try to load credentials from active tenant DB site_settings if available
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor(dictionary=True)
-        # Handle cases where table doesn't exist yet gracefully
-        try:
-            cursor.execute("SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN ('sms_user_id', 'sms_api_key', 'sms_sender_id')")
-            settings = {r['setting_key']: r['setting_value'] for r in cursor.fetchall()}
-        except Exception:
-            pass
+        with db.get_connection() as conn:
+            with conn.cursor(dictionary=True) as cursor:
+                # Handle cases where table doesn't exist yet gracefully
+                try:
+                    cursor.execute("SELECT setting_key, setting_value FROM site_settings WHERE setting_key IN ('sms_user_id', 'sms_api_key', 'sms_sender_id')")
+                    settings = {r['setting_key']: r['setting_value'] for r in cursor.fetchall()}
+                except Exception:
+                    pass
     except Exception as e:
-        logging.error(f"Settings Load Error: {e}")
-    finally:
-        if 'cursor' in locals() and cursor: cursor.close()
-        if 'conn' in locals() and conn: conn.close()
+        logging.warning(f"Settings Load Error (Ignored): {e}")
 
     user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '')
     api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', '')
     sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
 
     if not api_key or not user_id:
-        logging.error("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
+        logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
         return False
 
     # Format number like the PHP script
@@ -7484,110 +7553,111 @@ def pos_web_login():
     except Exception as e:
         tenant_db_name = db.db_name
 
-    conn = None
-    cursor = None
     try:
-        conn = db.get_connection()
-        cursor = conn.cursor(dictionary=True)
-        if tenant_db_name and is_safe_db_name(tenant_db_name):
-            cursor.execute(f"USE `{tenant_db_name}`")
+        with db.get_connection() as conn:
+            with conn.cursor(dictionary=True) as cursor:
+                if tenant_db_name and is_safe_db_name(tenant_db_name):
+                    cursor.execute(f"USE `{tenant_db_name}`")
 
-        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
-        users = cursor.fetchall()
+                cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+                users = cursor.fetchall()
 
-        if not users:
-            flash('Invalid username or password', 'danger')
-            return redirect(url_for('pos_web_login'))
+                if not users:
+                    flash('Invalid username or password', 'danger')
+                    return redirect(url_for('pos_web_login'))
 
-        user = users[0]
+                user = users[0]
 
-        if user.get('is_locked'):
-            flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
-            return redirect(url_for('pos_web_login'))
+                if user.get('is_locked'):
+                    flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+                    return redirect(url_for('pos_web_login'))
 
-        stored_password = user['Password']
-        verified = False
-        try:
-            if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
-                if check_password_hash(stored_password, password):
-                    verified = True
-            elif stored_password == password:
-                verified = True
-                new_hash = generate_password_hash(password)
-                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                stored_password = user['Password']
+                verified = False
+                try:
+                    if stored_password.startswith('scrypt:') or stored_password.startswith('pbkdf2:'):
+                        if check_password_hash(stored_password, password):
+                            verified = True
+                    elif stored_password == password:
+                        verified = True
+                        new_hash = generate_password_hash(password)
+                        cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                        conn.commit()
+                except Exception:
+                    if stored_password == password:
+                        verified = True
+
+                if not verified:
+                    fails = user.get('failed_attempts', 0) + 1
+                    if fails >= 3:
+                        cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                        conn.commit()
+                        flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
+                    else:
+                        cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                        conn.commit()
+                        flash('Invalid username or password', 'danger')
+                    return redirect(url_for('pos_web_login'))
+
+                # Successful auth -> Reset failed attempts
+                cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
                 conn.commit()
-        except Exception:
-            if stored_password == password:
-                verified = True
 
-        if not verified:
-            fails = user.get('failed_attempts', 0) + 1
-            if fails >= 3:
-                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
-                conn.commit()
-                flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
-            else:
-                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
-                conn.commit()
-                flash('Invalid username or password', 'danger')
-            return redirect(url_for('pos_web_login'))
+                # Check Device Fingerprint
+                ip_address = request.remote_addr
+                user_agent = request.user_agent.string
 
-        # Successful auth -> Reset failed attempts
-        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
-        conn.commit()
+                cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s", (user['Id'],))
+                all_devices = cursor.fetchall()
 
-        # Check Device Fingerprint
-        ip_address = request.remote_addr
-        user_agent = request.user_agent.string
+                device = next((d for d in all_devices if d['ip_address'] == ip_address and d['user_agent'] == user_agent), None)
 
-        cursor.execute("SELECT * FROM pos_user_devices WHERE user_id = %s", (user['Id'],))
-        all_devices = cursor.fetchall()
+                if not all_devices:
+                    # Very first login - register device seamlessly
+                    cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)",
+                                   (user['Id'], ip_address, user_agent, datetime.now()))
+                    conn.commit()
+                elif not device:
+                    # New device but user has previous devices - Require 2FA
+                    otp = ''.join(random.choices(string.digits, k=6))
+                    expires = datetime.now() + timedelta(minutes=10)
+                    cursor.execute("INSERT INTO pos_2fa_codes (user_id, code, expires_at) VALUES (%s, %s, %s)", (user['Id'], otp, expires))
+                    conn.commit()
 
-        device = next((d for d in all_devices if d['ip_address'] == ip_address and d['user_agent'] == user_agent), None)
+                    # Send SMS
+                    mobile = user.get('Mobile_Number')
+                    if mobile:
+                        sms_sent = send_sms_otp(mobile, otp)
+                        if not sms_sent:
+                            flash(f'DEVELOPMENT MODE (SMS Disabled): Your login OTP is {otp}', 'info')
+                    else:
+                        logging.warning(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
+                        flash(f'DEVELOPMENT MODE (No Mobile Number): Your login OTP is {otp}', 'info')
 
-        if not all_devices:
-            # Very first login - register device seamlessly
-            cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)",
-                           (user['Id'], ip_address, user_agent, datetime.now()))
-            conn.commit()
-        elif not device:
-            # New device but user has previous devices - Require 2FA
-            otp = ''.join(random.choices(string.digits, k=6))
-            expires = datetime.now() + timedelta(minutes=10)
-            cursor.execute("INSERT INTO pos_2fa_codes (user_id, code, expires_at) VALUES (%s, %s, %s)", (user['Id'], otp, expires))
-            conn.commit()
+                    session['pending_pos_user_id'] = user['Id']
+                    session['pending_pos_company'] = company_name
+                    return render_template('pos_2fa.html')
+                else:
+                    # Existing verified device
+                    cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
+                    conn.commit()
 
-            # Send SMS
-            mobile = user.get('Mobile_Number')
-            if mobile:
-                send_sms_otp(mobile, otp)
-            else:
-                logging.error(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
+                if user.get('must_change_password'):
+                    session['pending_pos_user_id'] = user['Id']
+                    session['pending_pos_company'] = company_name
+                    return render_template('pos_reset_password.html')
 
-            session['pending_pos_user_id'] = user['Id']
-            session['pending_pos_company'] = company_name
-            return render_template('pos_2fa.html')
-        else:
-            # Existing verified device
-            cursor.execute("UPDATE pos_user_devices SET last_login = %s WHERE id = %s", (datetime.now(), device['id']))
-            conn.commit()
+                # Final Login Success
+                session['db_name'] = tenant_db_name
+                session['username'] = username
+                session['user_id'] = user['User_Name']
+                session['user_pk'] = user['Id']
 
-        if user.get('must_change_password'):
-            session['pending_pos_user_id'] = user['Id']
-            session['pending_pos_company'] = company_name
-            return render_template('pos_reset_password.html')
-
-        # Final Login Success
-        session['db_name'] = tenant_db_name
-        session['username'] = username
-        session['user_id'] = user['User_Name']
-        session['user_pk'] = user['Id']
-
-        return redirect(url_for('pos'))
-
-    finally:
-        if cursor: cursor.close()
-        if conn: conn.close()
+                return redirect(url_for('pos'))
+    except Exception as e:
+        logging.error(f"POS Login DB Error: {e}")
+        flash('An error occurred during login', 'danger')
+        return redirect(url_for('pos_web_login'))
 
 @app.route('/pos_verify_2fa', methods=['POST'])
 def pos_verify_2fa():
@@ -8858,11 +8928,6 @@ def reverse_journal_entry():
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
-
-        # Check if transaction is reconciled
-        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
-        if cursor.fetchone()[0] > 0:
-            return {'error': 'This transaction is reconciled. To process, first remove the reconciliation.'}, 400
 
         # Check if already reversed or linked to bank rec (simplified check)
         # C# logic checks entry_deleted = 1

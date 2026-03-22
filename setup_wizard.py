@@ -48,6 +48,11 @@ def setup_database_and_user(config, cursor):
     app_user = config['app_user']
     app_pass = config['app_pass']
 
+    # Prefix DB name with db_suport_name (sri_) if needed
+    db_suport_name = "sri"
+    if not app_db_name.startswith(f"{db_suport_name}_"):
+        app_db_name = f"{db_suport_name}_{app_db_name}"
+
     print(f"Creating Database '{app_db_name}'...")
     cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{app_db_name}`")
 
