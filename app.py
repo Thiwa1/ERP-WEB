@@ -65,7 +65,6 @@ import PyPDF2
 import io
 
 import migrations
-import secrets
 
 app = flask.Flask(__name__)
 
