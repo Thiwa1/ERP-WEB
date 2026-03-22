@@ -9757,6 +9757,19 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
     current_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Pre-fetch warranty periods for all items in batch
+    warranty_map = {}
+    if ctx.inv_items:
+        item_names = list(set([item.get('name') for item in ctx.inv_items if item.get('name')]))
+        if item_names:
+            format_strings = ','.join(['%s'] * len(item_names))
+            ctx.cursor.execute(f"""
+                SELECT name, yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name IN ({format_strings})
+            """, tuple(item_names))
+            for row in ctx.cursor.fetchall():
+                warranty_map[row[0]] = (row[1], row[2], row[3])
+
     # Inventory Items
     for item in ctx.inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
@@ -9766,11 +9779,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        ctx.cursor.execute("""
-            SELECT yeas_, month, date_ FROM inventory_vorenty_period
-            WHERE name = %s LIMIT 1
-        """, (item['name'],))
-        w_res = ctx.cursor.fetchone()
+        w_res = warranty_map.get(item.get('name'))
         if w_res:
             try:
                 years, months, days = w_res
