@@ -26,6 +26,9 @@ class TestDatabase(unittest.TestCase):
         self.config = {'user': 'root', 'password': 'password', 'host': 'localhost', 'database': 'test_db'}
         self.db = Database(self.config)
 
+    def tearDown(self):
+        mock_mysql_connector.connect.side_effect = None
+
     def test_init(self):
         """Test that Database initializes correctly."""
         self.assertEqual(self.db.config, self.config)
