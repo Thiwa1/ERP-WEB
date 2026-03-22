@@ -1,6 +1,5 @@
 import mysql.connector
 import os
-import sys
 import subprocess
 
 import getpass
