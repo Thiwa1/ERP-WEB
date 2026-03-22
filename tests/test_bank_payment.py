@@ -20,12 +20,9 @@ def route_side_effect(*args, **kwargs):
 mock_app_instance.route.side_effect = route_side_effect
 
 # Fix @app.context_processor
-def context_processor_side_effect(*args, **kwargs):
-    if args and callable(args[0]):
-        return args[0]
-    def decorator(f):
-        return f
-    return decorator
+def context_processor_side_effect(f):
+    return f
+
 mock_app_instance.context_processor.side_effect = context_processor_side_effect
 
 # Fix @app.template_filter
