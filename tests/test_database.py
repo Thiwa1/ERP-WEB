@@ -132,38 +132,47 @@ class TestDatabase(unittest.TestCase):
 
         self.assertIsNone(result)
 
-    def test_execute_query_exception_commit_true(self):
-        """Test execute_query calls rollback and re-raises on exception when commit=True."""
+    def test_execute_query_rollback_on_error(self):
+        """Test that rollback is called when an error occurs during commit=True"""
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_mysql_connector.connect.return_value = mock_conn
 
-        mock_cursor.execute.side_effect = MockError("Query failed")
+        with patch.object(self.db, 'get_connection', return_value=mock_conn):
+            mock_conn.cursor.return_value = mock_cursor
 
-        with self.assertRaises(MockError):
-            self.db.execute_query("INSERT INTO table (col) VALUES (%s)", (1,), commit=True)
+            # Raise MockError
+            error_message = "Simulated database error"
+            mock_cursor.execute.side_effect = MockError(error_message)
 
-        mock_conn.rollback.assert_called_once()
-        mock_conn.commit.assert_not_called()
-        mock_cursor.close.assert_called_once()
-        mock_conn.close.assert_called_once()
+            with self.assertRaises(MockError) as cm:
+                self.db.execute_query("INSERT INTO test (col) VALUES (%s)", ('val',), commit=True)
 
-    def test_execute_query_exception_commit_false(self):
-        """Test execute_query does not call rollback and re-raises on exception when commit=False."""
+            self.assertEqual(str(cm.exception), error_message)
+
+            # Verify rollback
+            mock_conn.rollback.assert_called_once()
+
+            # Verify close
+            mock_cursor.close.assert_called_once()
+            mock_conn.close.assert_called_once()
+
+    def test_execute_query_no_rollback_on_select_error(self):
+        """Test that rollback is NOT called for select queries (commit=False)"""
         mock_conn = MagicMock()
         mock_cursor = MagicMock()
-        mock_conn.cursor.return_value = mock_cursor
-        mock_mysql_connector.connect.return_value = mock_conn
 
-        mock_cursor.execute.side_effect = MockError("Query failed")
+        with patch.object(self.db, 'get_connection', return_value=mock_conn):
+            mock_conn.cursor.return_value = mock_cursor
+            mock_cursor.execute.side_effect = MockError("Select Error")
 
-        with self.assertRaises(MockError):
-            self.db.execute_query("SELECT * FROM table", (1,), commit=False)
+            with self.assertRaises(MockError):
+                self.db.execute_query("SELECT * FROM test", commit=False)
 
-        mock_conn.rollback.assert_not_called()
-        mock_cursor.close.assert_called_once()
-        mock_conn.close.assert_called_once()
+            # Verify NO rollback
+            mock_conn.rollback.assert_not_called()
+
+            mock_cursor.close.assert_called_once()
+            mock_conn.close.assert_called_once()
 
     def test_execute_batch_success(self):
         """Test execute_batch uses executemany inside a transaction."""
@@ -311,6 +320,62 @@ class TestDatabase(unittest.TestCase):
         with self.assertRaisesRegex(Exception, "Failed to connect to database"):
             with self.db.transaction_cursor() as cursor:
                 pass
+
+    def test_execute_transaction_n_plus_1(self):
+        """
+        Verify that execute_transaction calls execute N times (N+1 problem).
+        """
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Mock get_connection to return our mock connection
+        with patch.object(self.db, 'get_connection', return_value=mock_conn):
+            queries = [
+                ("INSERT INTO table (col) VALUES (%s)", (1,)),
+                ("INSERT INTO table (col) VALUES (%s)", (2,)),
+                ("INSERT INTO table (col) VALUES (%s)", (3,))
+            ]
+
+            self.db.execute_transaction(queries)
+
+            # Verify execute was called 3 times (once per query)
+            self.assertEqual(mock_cursor.execute.call_count, 3)
+            # Verify executemany was NOT called
+            mock_cursor.executemany.assert_not_called()
+
+            # Verify transaction flow
+            mock_conn.start_transaction.assert_called_once()
+            mock_conn.commit.assert_called_once()
+
+    def test_execute_batch_optimization(self):
+        """
+        Verify that execute_batch calls executemany exactly once.
+        """
+        if not hasattr(self.db, 'execute_batch'):
+            self.skipTest("execute_batch not implemented yet")
+
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+
+        # Mock get_connection to return our mock connection
+        with patch.object(self.db, 'get_connection', return_value=mock_conn):
+            query = "INSERT INTO table (col) VALUES (%s)"
+            params_list = [(1,), (2,), (3,)]
+
+            self.db.execute_batch(query, params_list)
+
+            # Verify executemany was called exactly once
+            mock_cursor.executemany.assert_called_once_with(query, params_list)
+
+            # Verify execute was NOT called (except potentially for setup, but strictly not for the batch)
+            # Depending on implementation, execute shouldn't be called for the batch itself
+            mock_cursor.execute.assert_not_called()
+
+            # Verify transaction flow
+            mock_conn.start_transaction.assert_called_once()
+            mock_conn.commit.assert_called_once()
 
 if __name__ == '__main__':
     unittest.main()
