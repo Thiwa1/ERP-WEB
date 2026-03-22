@@ -186,10 +186,16 @@
 
 <script>
     // Format currency
-    const formatter = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD', // Or your currency
-    });
+    const companyCurrency = "{{ company_currency }}";
+    const formatter = {
+        format: function(value) {
+            let valStr = Number(value).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            if(companyCurrency) {
+                return companyCurrency + " " + valStr;
+            }
+            return valStr;
+        }
+    };
 
     function calculateSummary() {
         const opBal = parseFloat(document.getElementById('openingBalance').value) || 0;
