@@ -2618,7 +2618,7 @@ def bulk_upload_tb():
                 return redirect(url_for('trial_balance'))
 
             except Exception as e:
-                conn.rollback()
+                if 'conn' in locals() and conn: conn.rollback()
                 flash(f'Error posting TB: {str(e)}', 'danger')
                 return redirect(url_for('bulk_upload_tb'))
 
@@ -5147,9 +5147,11 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    with db.transaction_cursor() as cursor:
-        try:
-            # Parse cleared items and their dates
+    try:
+        with db.get_connection() as conn:
+            with conn.cursor(dictionary=True) as cursor:
+                conn.start_transaction()
+                # Parse cleared items and their dates
                 # Format: 'id|date' for deposits and payments
                 cleared_deposits = request.form.getlist('cleared_deposits[]')
                 cleared_payments = request.form.getlist('cleared_payments[]')
@@ -5287,7 +5289,7 @@ def process_reconciliation():
                     conn.commit()
                     flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
 
-        except Exception as e:
+    except Exception as e:
             conn.rollback()
             flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
@@ -5356,8 +5358,10 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
-    with db.transaction_cursor() as cursor:
-        try:
+    try:
+        with db.get_connection() as conn:
+            with conn.cursor(dictionary=True) as cursor:
+                conn.start_transaction()
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
             if not cursor.fetchone():
@@ -5420,8 +5424,9 @@ def reverse_reconciliation():
             # Step 6: Delete Record
             cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
 
+            conn.commit()
             flash('Reconciliation reversed successfully!', 'success')
-        except Exception as e:
+    except Exception as e:
             conn.rollback()
             flash(f'Error reversing reconciliation: {str(e)}', 'danger')
 
@@ -7108,24 +7113,33 @@ def cash_handover():
 
         try:
             # Create table if it doesn't exist
-            with db.transaction_cursor() as cursor:
-                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
-                if not cursor.fetchone():
-                    cursor.execute('''
-                        CREATE TABLE cash_handover_logs (
-                            id INT AUTO_INCREMENT PRIMARY KEY,
-                            user_id INT NOT NULL,
-                            handover_to VARCHAR(100),
-                            amount DECIMAL(15,2) NOT NULL,
-                            notes TEXT,
-                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                        )
-                    ''')
+            try:
+                with db.get_connection() as conn:
+                    with conn.cursor(dictionary=True) as cursor:
+                        conn.start_transaction()
+                        cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                        if not cursor.fetchone():
+                            cursor.execute('''
+                                CREATE TABLE cash_handover_logs (
+                                    id INT AUTO_INCREMENT PRIMARY KEY,
+                                    user_id INT NOT NULL,
+                                    handover_to VARCHAR(100),
+                                    amount DECIMAL(15,2) NOT NULL,
+                                    notes TEXT,
+                                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                                )
+                            ''')
+
+                        # Insert the log
+                        cursor.execute('''
+                            INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
+                            VALUES (%s, %s, %s, %s)
+                        ''', (get_current_user_id(), handover_to, float(amount), notes))
 
                         conn.commit()
 
             except Exception as inner_e:
-                conn.rollback()
+                if 'conn' in locals() and conn: conn.rollback()
                 raise inner_e
 
             flash('Cash handover recorded successfully.', 'success')
@@ -7777,9 +7791,9 @@ def pos_api_settings():
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
                 'cash_ac': settings['Cash_Account'],
-                'market_active': settings['Sales_with_market_price'],
-                'special_active': settings['Sales_with_Special_price'],
-                'loyalty_active': settings['Loyalty_Price'],
+                'market_price': settings['Sales_with_market_price'],
+                'special_price': settings['Sales_with_Special_price'],
+                'loyalty_price': settings['Loyalty_Price'],
                 'vat_enable': settings['VAT_Enable'],
                 'footer': settings['Footer_Message'],
                 'top': settings['Top_Message']
@@ -10289,7 +10303,7 @@ def import_initial_schema():
                 conn.commit()
             except Exception as ex:
                 logging.error(f"Failed to execute SQL file: {ex}")
-                conn.rollback()
+                if 'conn' in locals() and conn: conn.rollback()
         else:
             logging.warning("database_schema.sql not found.")
 
