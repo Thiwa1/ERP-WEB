@@ -33,7 +33,17 @@ class TestBankCashCreation(unittest.TestCase):
         self.patchers.append(p_user)
 
         # FIX: Patch Session to satisfy login_required
-        p_sess = patch.dict('app.session', {'user_id': 1, 'user_pk': 1, 'username': 'admin'})
+        # We need to mock the entire app.session dictionary interface including get, __getitem__, __contains__, etc.
+        # However, patch.dict works differently on flask.session. We can just mock dict methods on a MagicMock and patch app.session
+        mock_session_obj = MagicMock()
+        session_data = {'user_id': 1, 'user_pk': 1, 'username': 'admin'}
+        mock_session_obj.get.side_effect = session_data.get
+        mock_session_obj.__getitem__.side_effect = session_data.__getitem__
+        mock_session_obj.__contains__.side_effect = session_data.__contains__
+        mock_session_obj.__setitem__.side_effect = session_data.__setitem__
+        mock_session_obj.__delitem__.side_effect = session_data.__delitem__
+
+        p_sess = patch('app.session', mock_session_obj)
         self.mock_session = p_sess.start()
         self.patchers.append(p_sess)
 
@@ -135,7 +145,7 @@ class TestBankCashCreation(unittest.TestCase):
         mock_cursor = MagicMock()
         mock_conn.cursor.return_value = mock_cursor
 
-        mock_cursor.fetchone.side_effect = [None, [3], None]
+        mock_cursor.fetchone.side_effect = [None, [3, 'Current assets'], None]
 
         app_module.create_cash_account()
 
@@ -187,10 +197,10 @@ class TestBankCashCreation(unittest.TestCase):
 
                         # Setup fetchone calls
                         # 1. Check GL Exists? -> None
-                        # 2. Check Category? -> [3]
+                        # 2. Check Category? -> [3, 'Current assets']
                         # 3. Check Bank Exists? (Not in this route logic explicitly, maybe inside logic?)
 
-                        mock_cursor.fetchone.side_effect = [None, [3], None]
+                        mock_cursor.fetchone.side_effect = [None, [3, 'Current assets'], None]
 
                         app_module.create_bank_account()
 
@@ -214,51 +224,6 @@ class TestBankCashCreation(unittest.TestCase):
 
                         self.assertTrue(gl_insert, "Should insert into GL")
                         self.assertTrue(bank_insert, "Should insert into Bank Book")
-
-    def test_create_cash_account_route(self):
-         with patch('app.request') as mock_request:
-            mock_request.method = 'POST'
-
-            form_mock = MagicMock()
-            form_mock.get.side_effect = lambda k, d=None: {
-                'account_name': 'Petty Cash 2'
-            }.get(k, d)
-            mock_request.form = form_mock
-
-            with patch('app.check_permission', return_value=True):
-                with patch('app.flash') as mock_flash:
-                    with patch('app.redirect') as mock_redirect:
-                        # Mock DB connection
-                        mock_conn = MagicMock()
-                        self.mock_db.get_connection.return_value = mock_conn
-                        mock_cursor = MagicMock()
-                        mock_conn.cursor.return_value = mock_cursor
-
-                        # 1. Acc Exists? -> None
-                        # 2. Cat Pos? -> [3, 'Current assets']
-                        mock_cursor.fetchone.side_effect = [None, [3, 'Current assets'], None]
-
-                        app_module.create_cash_account()
-
-                        # Verify Inserts
-                        gl_insert = False
-                        cash_insert = False
-
-                        for call in mock_cursor.execute.call_args_list:
-                            args = call[0]
-                            query = args[0]
-
-                            if "INSERT INTO new_account_table" in query:
-                                params = args[1]
-                                if params[0] == 'Petty Cash 2': gl_insert = True
-
-                            if "INSERT INTO cash_book" in query:
-                                params = args[1]
-                                if params[0] == 'Petty Cash 2':
-                                    cash_insert = True
-
-                        self.assertTrue(gl_insert, "Should insert into GL")
-                        self.assertTrue(cash_insert, "Should insert into Cash Book")
 
 if __name__ == '__main__':
     unittest.main()
