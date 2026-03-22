@@ -196,6 +196,8 @@ def setup_master_db():
             del temp_config['database']
 
         try:
+            if not is_safe_db_name(MASTER_DB_NAME):
+                raise ValueError(f"Invalid database name: {MASTER_DB_NAME}")
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
             if not is_safe_db_name(MASTER_DB_NAME):
@@ -236,6 +238,8 @@ def setup_master_db():
 
         # Check if default DB has Login_Table
         try:
+            if not is_safe_db_name(default_db_name):
+                raise ValueError(f"Invalid database name: {default_db_name}")
             try:
                 default_conn = mysql.connector.connect(**temp_config)
                 default_cursor = default_conn.cursor()
@@ -371,6 +375,8 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
+        if not is_safe_db_name(db_name):
+            raise ValueError(f"Invalid database name: {db_name}")
         try:
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
@@ -10216,6 +10222,8 @@ def create_db_if_missing():
             cursor = conn_root.cursor()
 
             db_name = db_config.get('database', 'Book_keeping')
+            if not is_safe_db_name(db_name):
+                raise ValueError(f"Invalid database name: {db_name}")
             logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
             if not is_safe_db_name(db_name):
                 raise ValueError("Invalid database name")
