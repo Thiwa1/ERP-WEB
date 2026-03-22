@@ -38,6 +38,9 @@ import tempfile
 # Global cache for categories
 _category_cache = {}
 
+# Global cache for POS items
+_pos_items_cache = {}
+
 def get_cached_categories(db):
     global _category_cache
     if not _category_cache:
@@ -50,6 +53,10 @@ def get_cached_categories(db):
 def clear_category_cache():
     global _category_cache
     _category_cache.clear()
+
+def clear_pos_items_cache():
+    global _pos_items_cache
+    _pos_items_cache.pop(get_session_db_name(), None)
 
 import services
 from num2words import num2words
@@ -1269,6 +1276,7 @@ def add_inventory_item():
                         cursor.execute(query_price, (item_id, 0.0, 0.0, 0.0, 0.0, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
+                clear_pos_items_cache()
 
             except Exception as e:
                 flash(f'Database Error: {str(e)}', 'danger')
@@ -4594,6 +4602,7 @@ def update_inventory_prices():
             """, (link_id, market_prices[i], spm_prices[i], loyalty_prices[i]), commit=True)
 
     flash('Prices updated successfully', 'success')
+    clear_pos_items_cache()
     return redirect(url_for('inventory_price_editing'))
 
 # --- Balance Sheet ---
@@ -4973,6 +4982,7 @@ def add_new_price_tier():
         '''
         db.execute_query(query, (item_id, cost_price, selling_price, special_price, loyalty_price, date.today()), commit=True)
         flash('New price tier added successfully!', 'success')
+        clear_pos_items_cache()
     except Exception as e:
         flash(f'Error adding new price tier: {str(e)}', 'danger')
 
@@ -7847,6 +7857,16 @@ def pos_api_settings():
 @app.route('/api/pos/items', methods=['GET'])
 @pos_login_required
 def pos_api_items():
+    global _pos_items_cache
+    db_name = get_session_db_name()
+    current_time = time.time()
+
+    # Check cache (5 minutes TTL = 300 seconds)
+    if db_name in _pos_items_cache:
+        cached_data = _pos_items_cache[db_name]
+        if current_time - cached_data['timestamp'] < 300:
+            return cached_data['data']
+
     # Fetch all active items with prices for caching
     query = '''
         SELECT
@@ -7874,7 +7894,14 @@ def pos_api_items():
             'cost': float(r['inventory_price_purcharsing'] or 0),
             'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
         })
-    return json.dumps(items)
+
+    result = json.dumps(items)
+    _pos_items_cache[db_name] = {
+        'timestamp': current_time,
+        'data': result
+    }
+
+    return result
 
 # Global cache for pos customers
 pos_customers_cache = {'data': None, 'timestamp': 0}
