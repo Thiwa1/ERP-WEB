@@ -26,6 +26,9 @@ class TestDatabase(unittest.TestCase):
         self.config = {'user': 'root', 'password': 'password', 'host': 'localhost', 'database': 'test_db'}
         self.db = Database(self.config)
 
+    def tearDown(self):
+        mock_mysql_connector.connect.side_effect = None
+
     def test_init(self):
         """Test that Database initializes correctly."""
         self.assertEqual(self.db.config, self.config)
@@ -129,6 +132,39 @@ class TestDatabase(unittest.TestCase):
 
         self.assertIsNone(result)
 
+    def test_execute_query_exception_commit_true(self):
+        """Test execute_query calls rollback and re-raises on exception when commit=True."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        mock_cursor.execute.side_effect = MockError("Query failed")
+
+        with self.assertRaises(MockError):
+            self.db.execute_query("INSERT INTO table (col) VALUES (%s)", (1,), commit=True)
+
+        mock_conn.rollback.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_execute_query_exception_commit_false(self):
+        """Test execute_query does not call rollback and re-raises on exception when commit=False."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        mock_cursor.execute.side_effect = MockError("Query failed")
+
+        with self.assertRaises(MockError):
+            self.db.execute_query("SELECT * FROM table", (1,), commit=False)
+
+        mock_conn.rollback.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
     def test_execute_batch_success(self):
         """Test execute_batch uses executemany inside a transaction."""
         mock_conn = MagicMock()
@@ -156,6 +192,27 @@ class TestDatabase(unittest.TestCase):
         result = self.db.execute_batch("INSERT INTO table (col) VALUES (%s)", [(1,)])
 
         self.assertFalse(result)
+
+    def test_execute_batch_exception(self):
+        """Test execute_batch calls rollback and re-raises on exception."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        mock_cursor.executemany.side_effect = MockError("Batch failed")
+
+        query = "INSERT INTO table (col) VALUES (%s)"
+        params_list = [(1,), (2,)]
+
+        with self.assertRaises(MockError):
+            self.db.execute_batch(query, params_list)
+
+        mock_conn.start_transaction.assert_called_once()
+        mock_conn.rollback.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
 
     def test_execute_transaction_success(self):
         """Test execute_transaction executes a list of queries sequentially inside a transaction."""
@@ -188,6 +245,72 @@ class TestDatabase(unittest.TestCase):
         result = self.db.execute_transaction([("SELECT 1", None)])
 
         self.assertFalse(result)
+
+    def test_execute_transaction_exception(self):
+        """Test execute_transaction calls rollback and re-raises on exception."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        mock_cursor.execute.side_effect = MockError("Transaction failed")
+
+        queries = [
+            ("INSERT INTO table (col) VALUES (%s)", (1,)),
+            ("UPDATE table SET col = %s", (2,))
+        ]
+
+        with self.assertRaises(MockError):
+            self.db.execute_transaction(queries)
+
+        mock_conn.start_transaction.assert_called_once()
+        mock_conn.rollback.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_transaction_cursor_success(self):
+        """Test transaction_cursor yields a cursor, starts transaction and commits on success."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        with self.db.transaction_cursor() as cursor:
+            self.assertEqual(cursor, mock_cursor)
+            mock_conn.start_transaction.assert_called_once()
+            cursor.execute("INSERT INTO table (col) VALUES (%s)", (1,))
+
+        mock_conn.commit.assert_called_once()
+        mock_conn.rollback.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_transaction_cursor_exception(self):
+        """Test transaction_cursor calls rollback and re-raises on exception."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        with self.assertRaises(MockError):
+            with self.db.transaction_cursor() as cursor:
+                self.assertEqual(cursor, mock_cursor)
+                mock_conn.start_transaction.assert_called_once()
+                raise MockError("Transaction failed")
+
+        mock_conn.rollback.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_transaction_cursor_connection_fail(self):
+        """Test transaction_cursor raises an exception if get_connection fails."""
+        mock_mysql_connector.connect.side_effect = MockError("Connection failed")
+
+        with self.assertRaisesRegex(Exception, "Failed to connect to database"):
+            with self.db.transaction_cursor() as cursor:
+                pass
 
 if __name__ == '__main__':
     unittest.main()
