@@ -6328,19 +6328,46 @@ def get_reversal_details():
     jv = request.args.get('jv')
     if not jv: return {'error': 'No JV'}, 400
 
-    query = "SELECT account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv = %s"
-    rows = db.execute_query(query, (jv,))
+    jv_list = [j.strip() for j in str(jv).split(',') if j.strip()]
+    if not jv_list: return {'error': 'No valid JV'}, 400
 
-    text = f"Journal Voucher {jv} Details:\n" + "-"*30 + "\n"
-    for r in rows:
-        text += f"{r['account_name']}: DR {r['enty_values_DR']} | CR {r['enty_values_CR']}\n"
+    format_strings = ','.join(['%s'] * len(jv_list))
 
-    text += "\nInventory Items (if any):\n"
-    inv_rows = db.execute_query("SELECT inventoy_name, inventory_recod_moument_in FROM inventory_recod WHERE JV_No = %s", (jv,))
-    for r in inv_rows:
-        text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
+    query = f"SELECT entry_jv, account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv IN ({format_strings})"
+    rows = db.execute_query(query, tuple(jv_list))
 
-    return {'details': text}
+    inv_query = f"SELECT JV_No, inventoy_name, inventory_recod_moument_in FROM inventory_recod WHERE JV_No IN ({format_strings})"
+    inv_rows = db.execute_query(inv_query, tuple(jv_list))
+
+    entries_by_jv = {}
+    items_by_jv = {}
+
+    if rows:
+        for r in rows:
+            j = str(r.get('entry_jv', ''))
+            if j not in entries_by_jv:
+                entries_by_jv[j] = []
+            entries_by_jv[j].append(r)
+
+    if inv_rows:
+        for r in inv_rows:
+            j = str(r.get('JV_No', ''))
+            if j not in items_by_jv:
+                items_by_jv[j] = []
+            items_by_jv[j].append(r)
+
+    text = ""
+    for j in jv_list:
+        text += f"Journal Voucher {j} Details:\n" + "-"*30 + "\n"
+        for r in entries_by_jv.get(j, []):
+            text += f"{r['account_name']}: DR {r['enty_values_DR']} | CR {r['enty_values_CR']}\n"
+
+        text += "\nInventory Items (if any):\n"
+        for r in items_by_jv.get(j, []):
+            text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
+        text += "\n"
+
+    return {'details': text.strip()}
 
 # --- Customer Receipt (Accounts Receivable) ---
 @app.route('/customer_receipt')
@@ -7849,9 +7876,19 @@ def pos_api_items():
         })
     return json.dumps(items)
 
+# Global cache for pos customers
+pos_customers_cache = {'data': None, 'timestamp': 0}
+
 @app.route('/api/pos/customers', methods=['GET'])
 @pos_login_required
 def pos_api_customers():
+    global pos_customers_cache
+    current_time = time.time()
+
+    # Cache duration: 60 seconds
+    if pos_customers_cache['data'] and (current_time - pos_customers_cache['timestamp'] < 60):
+        return pos_customers_cache['data']
+
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
     rows = db.execute_query(query)
@@ -7863,7 +7900,12 @@ def pos_api_customers():
             'name': r['customer_name'],
             'mobile': r['Mobile_nimber']
         })
-    return json.dumps(custs)
+
+    cached_data = json.dumps(custs)
+    pos_customers_cache['data'] = cached_data
+    pos_customers_cache['timestamp'] = current_time
+
+    return cached_data
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
 @login_required
@@ -9742,6 +9784,19 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
     current_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Pre-fetch warranty periods for all items in batch
+    warranty_map = {}
+    if ctx.inv_items:
+        item_names = list(set([item.get('name') for item in ctx.inv_items if item.get('name')]))
+        if item_names:
+            format_strings = ','.join(['%s'] * len(item_names))
+            ctx.cursor.execute(f"""
+                SELECT name, yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name IN ({format_strings})
+            """, tuple(item_names))
+            for row in ctx.cursor.fetchall():
+                warranty_map[row[0]] = (row[1], row[2], row[3])
+
     # Inventory Items
     for item in ctx.inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
@@ -9751,11 +9806,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        ctx.cursor.execute("""
-            SELECT yeas_, month, date_ FROM inventory_vorenty_period
-            WHERE name = %s LIMIT 1
-        """, (item['name'],))
-        w_res = ctx.cursor.fetchone()
+        w_res = warranty_map.get(item.get('name'))
         if w_res:
             try:
                 years, months, days = w_res
