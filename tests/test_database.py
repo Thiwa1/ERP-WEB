@@ -26,6 +26,9 @@ class TestDatabase(unittest.TestCase):
         self.config = {'user': 'root', 'password': 'password', 'host': 'localhost', 'database': 'test_db'}
         self.db = Database(self.config)
 
+    def tearDown(self):
+        mock_mysql_connector.connect.side_effect = None
+
     def test_init(self):
         """Test that Database initializes correctly."""
         self.assertEqual(self.db.config, self.config)
@@ -188,6 +191,57 @@ class TestDatabase(unittest.TestCase):
         result = self.db.execute_transaction([("SELECT 1", None)])
 
         self.assertFalse(result)
+
+    def test_transaction_cursor_success(self):
+        """Test commit is called on success."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        with self.db.transaction_cursor() as cursor:
+            cursor.execute("SELECT 1")
+
+        mock_mysql_connector.connect.assert_called()
+        mock_conn.cursor.assert_called()
+        mock_conn.start_transaction.assert_called_once()
+        mock_cursor.execute.assert_called_with("SELECT 1")
+        mock_conn.commit.assert_called_once()
+        mock_conn.rollback.assert_not_called()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_transaction_cursor_exception(self):
+        """Test rollback is called on exception."""
+        mock_conn = MagicMock()
+        mock_cursor = MagicMock()
+        mock_conn.cursor.return_value = mock_cursor
+        mock_mysql_connector.connect.return_value = mock_conn
+
+        with self.assertRaises(ValueError):
+            with self.db.transaction_cursor() as cursor:
+                cursor.execute("SELECT 1")
+                raise ValueError("Boom")
+
+        mock_conn.start_transaction.assert_called_once()
+        mock_conn.commit.assert_not_called()
+        mock_conn.rollback.assert_called_once()
+        mock_cursor.close.assert_called_once()
+        mock_conn.close.assert_called_once()
+
+    def test_transaction_cursor_connection_failure(self):
+        """Test handling when get_connection fails."""
+        mock_mysql_connector.connect.side_effect = MockError("Connection Failed")
+
+        try:
+            # When get_connection raises Error, it is caught in get_connection and returns None.
+            # Then transaction_cursor raises Exception("Failed to connect...")
+            with self.assertRaises(Exception) as cm:
+                with self.db.transaction_cursor() as cursor:
+                    pass
+            self.assertIn("Failed to connect", str(cm.exception))
+        finally:
+            mock_mysql_connector.connect.side_effect = None
 
 if __name__ == '__main__':
     unittest.main()
