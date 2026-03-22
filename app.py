@@ -1548,14 +1548,21 @@ def edit_account(account_id):
 @login_required
 @has_permission('Access_Accounting')
 def chart_of_accounts():
-    accounts = db.execute_query("SELECT * FROM new_account_table WHERE account_active = 1")
-    pl_count = 0
-    bs_count = 0
-    for a in accounts:
-        if a['account_name_of_catogory_PL']:
-            pl_count += 1
-        if a['account_name_of_catogory_Balace_sheet']:
-            bs_count += 1
+    accounts = db.execute_query("""
+        SELECT *,
+            SUM(CASE WHEN account_name_of_catogory_PL IS NOT NULL AND account_name_of_catogory_PL != '' THEN 1 ELSE 0 END) OVER() as computed_pl_count,
+            SUM(CASE WHEN account_name_of_catogory_Balace_sheet IS NOT NULL AND account_name_of_catogory_Balace_sheet != '' THEN 1 ELSE 0 END) OVER() as computed_bs_count
+        FROM new_account_table
+        WHERE account_active = 1
+    """)
+
+    if accounts:
+        pl_count = int(accounts[0]['computed_pl_count'] or 0)
+        bs_count = int(accounts[0]['computed_bs_count'] or 0)
+    else:
+        pl_count = 0
+        bs_count = 0
+
     return render_template('chart_of_accounts.html', accounts=accounts, total_accounts=len(accounts), pl_count=pl_count, bs_count=bs_count)
 
 # --- Add New Account ---
