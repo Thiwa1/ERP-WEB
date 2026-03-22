@@ -1,6 +1,5 @@
 import time
 import os
-import random
 from unittest.mock import MagicMock
 
 # Set mock db
