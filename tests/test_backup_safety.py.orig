@@ -58,14 +58,10 @@ class TestBackupSafety(unittest.TestCase):
         # Mock mysqldump existence
         mock_which.return_value = '/usr/bin/mysqldump'
 
-        app_module.get_session_db_name = MagicMock(return_value='test_db')
-        app_module.is_safe_db_name = MagicMock(return_value=True)
-
         # Mock subprocess
         with patch('subprocess.Popen') as mock_popen:
             process_mock = MagicMock()
             process_mock.communicate.return_value = (b'SQL DUMP CONTENT', b'')
-            process_mock.stdout.read.side_effect = [b'SQL DUMP CONTENT', b'']
             process_mock.returncode = 0
             mock_popen.return_value = process_mock
 
@@ -75,51 +71,33 @@ class TestBackupSafety(unittest.TestCase):
                 response = app_module.system_backup()
 
                 # Verify logic
-                # Because it's a generator now, it doesn't run Popen until generated
-                app_module.Response.assert_called()
-                args, kwargs = app_module.Response.call_args
-
-                app_module.stream_with_context.assert_called()
-                generator = app_module.stream_with_context.call_args[0][0]
-                list(generator)
-
                 mock_popen.assert_called()
                 args = mock_popen.call_args[0][0]
                 self.assertIn('mysqldump', args)
+
+                # Check response
+                app_module.make_response.assert_called_with(b'SQL DUMP CONTENT')
 
     @patch('shutil.which')
     def test_backup_success_with_ip_host(self, mock_which):
         # Mock mysqldump existence
         mock_which.return_value = '/usr/bin/mysqldump'
-        app_module.get_session_db_name = MagicMock(return_value='test_db')
-        app_module.is_safe_db_name = MagicMock(return_value=True)
 
         # Mock subprocess
         with patch('subprocess.Popen') as mock_popen:
             process_mock = MagicMock()
             process_mock.communicate.return_value = (b'SQL DUMP CONTENT', b'')
-            process_mock.stdout.read.side_effect = [b'SQL DUMP CONTENT', b'']
             process_mock.returncode = 0
             mock_popen.return_value = process_mock
 
             # Setup db_config with IP address
             with patch.dict(app_module.db_config, {'user': 'root', 'host': '127.0.0.1', 'database': 'test_db', 'password': 'pass'}):
                 # Call function
-                response = app_module.system_backup()
+                app_module.system_backup()
 
                 # Verify logic
-                # Because it's a generator now, it doesn't run Popen until generated
-                app_module.Response.assert_called()
-                args, kwargs = app_module.Response.call_args
-
-                # app.stream_with_context wrappers return a MagicMock because stream_with_context is mocked
-                # if so, we can't easily iterate over the generator. Let's just check stream_with_context was called
-                # and call the generator passed to it directly
-                app_module.stream_with_context.assert_called()
-                generator = app_module.stream_with_context.call_args[0][0]
-                list(generator)
-
                 mock_popen.assert_called()
+                app_module.make_response.assert_called_with(b'SQL DUMP CONTENT')
 
     def test_backup_invalid_config_injection(self):
         # Suspicious config
@@ -140,9 +118,6 @@ class TestBackupSafety(unittest.TestCase):
     @patch('shutil.which')
     def test_backup_missing_mysqldump(self, mock_which):
         mock_which.return_value = None
-
-        app_module.get_session_db_name = MagicMock(return_value='test_db')
-        app_module.is_safe_db_name = MagicMock(return_value=True)
 
         with patch('subprocess.Popen') as mock_popen:
             with patch.dict(app_module.db_config, {'user': 'root', 'host': 'localhost', 'database': 'test_db', 'password': ''}):

@@ -65,7 +65,6 @@ import PyPDF2
 import io
 
 import migrations
-import secrets
 
 app = flask.Flask(__name__)
 
@@ -196,8 +195,12 @@ def setup_master_db():
             del temp_config['database']
 
         try:
+            if not is_safe_db_name(MASTER_DB_NAME):
+                raise ValueError(f"Invalid database name: {MASTER_DB_NAME}")
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
+            if not is_safe_db_name(MASTER_DB_NAME):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
             cursor.close()
             conn.close()
@@ -234,9 +237,13 @@ def setup_master_db():
 
         # Check if default DB has Login_Table
         try:
+            if not is_safe_db_name(default_db_name):
+                raise ValueError(f"Invalid database name: {default_db_name}")
             try:
                 default_conn = mysql.connector.connect(**temp_config)
                 default_cursor = default_conn.cursor()
+                if not is_safe_db_name(default_db_name):
+                    raise ValueError("Invalid database name")
                 default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
                 default_cursor.close()
                 default_conn.close()
@@ -367,9 +374,13 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
+        if not is_safe_db_name(db_name):
+            raise ValueError(f"Invalid database name: {db_name}")
         try:
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
+            if not is_safe_db_name(db_name):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
             cursor.close()
             conn.close()
@@ -9170,6 +9181,12 @@ def system_backup():
         flash('Invalid database configuration', 'danger')
         return redirect(url_for('index'))
 
+    # Get the user's specific database name
+    db_name = get_session_db_name()
+    if not is_safe_db_name(db_name):
+        flash('Invalid database name', 'danger')
+        return redirect(url_for('index'))
+
     # Check for mysqldump
     if not shutil.which('mysqldump'):
         flash('mysqldump not found', 'danger')
@@ -9202,26 +9219,43 @@ def system_backup():
                 'mysqldump',
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
-                db_config['database']
+                db_name
             ]
 
-            # Run command
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, error = process.communicate()
+            def generate():
+                # Fix: We don't pipe stderr to avoid deadlocks when the buffer fills up.
+                # We can either redirect it to DEVNULL or capture it to a temporary file.
+                # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
+                # returning a streaming response means we can't easily send the error to the client anyway
+                # once the stream has started, and a 64KB stderr buffer would hang the process.
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                try:
+                    while True:
+                        chunk = process.stdout.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+                    process.wait()
+                    if process.returncode != 0:
+                        logging.error(f"Backup failed with return code {process.returncode}")
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                    # Secure cleanup
+                    if os.path.exists(defaults_file.name):
+                        os.remove(defaults_file.name)
 
-            if process.returncode != 0:
-                flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
-                return redirect(url_for('index'))
+            # We don't remove defaults_file in the outer finally block anymore,
+            # it is cleaned up by the generator when it completes or errors out.
 
-            # Return as file download
-            response = make_response(output)
-            response.headers['Content-Type'] = 'application/sql'
+            response = Response(stream_with_context(generate()), mimetype='application/sql')
             response.headers['Content-Disposition'] = f'attachment; filename={filename}'
             return response
-        finally:
-            # Secure cleanup
+
+        except Exception as e:
             if os.path.exists(defaults_file.name):
                 os.remove(defaults_file.name)
+            raise e
 
     except Exception as e:
         flash(f'Backup error: {str(e)}', 'danger')
@@ -10210,7 +10244,11 @@ def create_db_if_missing():
             cursor = conn_root.cursor()
 
             db_name = db_config.get('database', 'Book_keeping')
+            if not is_safe_db_name(db_name):
+                raise ValueError(f"Invalid database name: {db_name}")
             logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+            if not is_safe_db_name(db_name):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
             conn_root.commit()
             cursor.close()
@@ -10373,4 +10411,4 @@ def initialize_app():
         app_initialized = True
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(port=5000)
