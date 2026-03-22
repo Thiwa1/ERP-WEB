@@ -21,6 +21,28 @@ except ImportError:
     mock_flask = MagicMock()
     sys.modules['flask'] = mock_flask
 
+    # Mock jinja2
+    mock_jinja = MagicMock()
+    mock_jinja.pass_context = lambda f: f
+    sys.modules['jinja2'] = mock_jinja
+
+    # Mock werkzeug
+    mock_werkzeug = MagicMock()
+    sys.modules['werkzeug'] = mock_werkzeug
+    sys.modules['werkzeug.security'] = mock_werkzeug
+
+    # Mock num2words
+    sys.modules['num2words'] = MagicMock()
+
+    # Mock dotenv
+    sys.modules['dotenv'] = MagicMock()
+
+    # Mock PyPDF2
+    sys.modules['PyPDF2'] = MagicMock()
+
+    # Mock requests
+    sys.modules['requests'] = MagicMock()
+
     # Mock Flask Globals
     mock_request = MagicMock()
     mock_session = {}
@@ -95,6 +117,9 @@ except ImportError:
 
     mock_flask.Flask = MockFlaskObj
 
+import os
+os.environ['SECRET_KEY'] = 'test-secret-key-for-mock-env'
+
 # Import app after potential mocking
 import app
 
@@ -112,12 +137,20 @@ class TestLogin(unittest.TestCase):
         self.mock_db = self.db_patcher.start()
         self.mock_db.last_error = None
 
+        self.master_db_patcher = patch('app.master_db')
+        self.mock_master_db = self.master_db_patcher.start()
+        self.mock_master_db.last_error = None
+
+        # By default, mock master db returning no users so it falls through to legacy
+        self.mock_master_db.execute_query.return_value = []
+
         # Reset session for Sandbox (Flask handles this automatically in client)
         if IS_SANDBOX:
             app.session.clear()
 
     def tearDown(self):
         self.db_patcher.stop()
+        self.master_db_patcher.stop()
 
     def test_login_page_loads(self):
         """Test GET /login renders login template."""
@@ -184,8 +217,26 @@ class TestLogin(unittest.TestCase):
                 self.assertEqual(session['user_pk'], 99)
                 # Redirect usually loads index page content
 
+    def test_master_login_db_error(self):
+        """Test login when Master DB query raises an Exception, ensuring it falls back to legacy."""
+        self.mock_master_db.execute_query.side_effect = Exception("Master DB Connection Refused")
+
+        # Ensure legacy DB succeeds so we know it fell through
+        user = {'id': 99, 'User_Code': 'ADMIN', 'Password': 'realpassword'}
+        self.mock_db.execute_query.return_value = [user]
+
+        with self.client:
+            response = self.client.post('/login', data={'username': 'user', 'password': 'realpassword'}, follow_redirects=True)
+
+            if IS_SANDBOX:
+                self.assertEqual(app.session['user_id'], 'ADMIN')
+                self.assertIn(b'REDIRECT:/index', response.data)
+            else:
+                from flask import session
+                self.assertEqual(session['user_id'], 'ADMIN')
+
     def test_login_db_error(self):
-        """Test login when DB connection fails."""
+        """Test login when legacy DB connection fails."""
         self.mock_db.execute_query.return_value = None
         self.mock_db.last_error = "Connection Refused"
 
