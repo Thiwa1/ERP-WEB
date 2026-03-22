@@ -705,20 +705,24 @@ class VATReportGenerator:
         sched07_amd_rows = self.db.execute_query(query_sched07_amd, (self.from_date, self.to_date))
         schedule_07_amendment = []
 
+        nrfc_map = {}
+        if sched07_amd_rows:
+            jvs = [str(r['entry_jv']) for r in sched07_amd_rows]
+            placeholders = ','.join(['%s'] * len(jvs))
+            query_nrfc = f"""
+                SELECT ed.entry_jv, ed.account_name
+                FROM entry_details ed
+                JOIN bank_book b ON ed.account_name = b.bank_bookcol_account_number
+                WHERE ed.enty_values_DR > 0 AND ed.entry_jv IN ({placeholders})
+            """
+            nrfc_res = self.db.execute_query(query_nrfc, tuple(jvs))
+            for row in nrfc_res:
+                if row['entry_jv'] not in nrfc_map:
+                    nrfc_map[row['entry_jv']] = row['account_name']
+
         for r in sched07_amd_rows:
-            nrfc_acc = ""
-            payment_date = ""
-
-            dr_res = self.db.execute_query("SELECT account_name FROM entry_details WHERE entry_jv = %s AND enty_values_DR > 0", (r['entry_jv'],))
-            for dr in dr_res:
-                chk_bank = self.db.execute_query("SELECT bank_bookcol_account_number FROM bank_book WHERE bank_bookcol_account_number = %s", (dr['account_name'],))
-                if chk_bank:
-                    nrfc_acc = dr['account_name']
-                    payment_date = str(r['date'])
-                    break
-
-            if not nrfc_acc:
-                payment_date = "Receivable"
+            nrfc_acc = nrfc_map.get(r['entry_jv'], "")
+            payment_date = str(r['date']) if nrfc_acc else "Receivable"
 
             schedule_07_amendment.append({
                 'indicator': 'A',
