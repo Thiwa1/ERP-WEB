@@ -250,7 +250,9 @@ class MockFlask:
     def context_processor(self, f):
         return f
 
-    def template_filter(self, name=None):
+    def template_filter(self, *args, **kwargs):
+        if args and callable(args[0]):
+            return args[0]
         def decorator(f):
             return f
         return decorator
