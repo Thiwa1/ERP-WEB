@@ -9,7 +9,7 @@ mock_app_instance = MagicMock()
 mock_app_instance.config = {}
 mock_app_instance.secret_key = 'test_secret'
 
-# Fix @app.route decorator to return the function
+# Mock @app.route decorator to return the function
 def route_side_effect(*args, **kwargs):
     if args and callable(args[0]):
         return args[0]
