@@ -7849,9 +7849,19 @@ def pos_api_items():
         })
     return json.dumps(items)
 
+# Global cache for pos customers
+pos_customers_cache = {'data': None, 'timestamp': 0}
+
 @app.route('/api/pos/customers', methods=['GET'])
 @pos_login_required
 def pos_api_customers():
+    global pos_customers_cache
+    current_time = time.time()
+
+    # Cache duration: 60 seconds
+    if pos_customers_cache['data'] and (current_time - pos_customers_cache['timestamp'] < 60):
+        return pos_customers_cache['data']
+
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
     rows = db.execute_query(query)
@@ -7863,7 +7873,12 @@ def pos_api_customers():
             'name': r['customer_name'],
             'mobile': r['Mobile_nimber']
         })
-    return json.dumps(custs)
+
+    cached_data = json.dumps(custs)
+    pos_customers_cache['data'] = cached_data
+    pos_customers_cache['timestamp'] = current_time
+
+    return cached_data
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
 @login_required
