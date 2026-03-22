@@ -5147,10 +5147,8 @@ def process_reconciliation():
         flash('Missing bank account', 'danger')
         return redirect(url_for('bank_reconciliation'))
 
-    try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
+    with db.transaction_cursor() as cursor:
+        try:
             # Parse cleared items and their dates
                 # Format: 'id|date' for deposits and payments
                 cleared_deposits = request.form.getlist('cleared_deposits[]')
@@ -5358,74 +5356,71 @@ def reverse_reconciliation():
         flash('Missing reconciliation ID or reason', 'danger')
         return redirect(url_for('bank_reconciliation_history'))
 
-    try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
-                # Check tables
-                cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
-                if not cursor.fetchone():
-                    cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        original_rec_id INT,
-                        bank_account VARCHAR(100),
-                        reversal_date DATETIME,
-                        reversed_by_user INT,
-                        opening_balance DECIMAL(15,2),
-                        closing_balance DECIMAL(15,2),
-                        reversal_reason TEXT
-                    )''')
+    with db.transaction_cursor() as cursor:
+        try:
+            # Check tables
+            cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
+            if not cursor.fetchone():
+                cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    original_rec_id INT,
+                    bank_account VARCHAR(100),
+                    reversal_date DATETIME,
+                    reversed_by_user INT,
+                    opening_balance DECIMAL(15,2),
+                    closing_balance DECIMAL(15,2),
+                    reversal_reason TEXT
+                )''')
 
-                # Get Reconciliation details
-                cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
-                rec = cursor.fetchone()
-                if not rec:
-                    flash('Reconciliation record not found', 'danger')
-                    return redirect(url_for('bank_reconciliation_history'))
+            # Get Reconciliation details
+            cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+            rec = cursor.fetchone()
+            if not rec:
+                flash('Reconciliation record not found', 'danger')
+                return redirect(url_for('bank_reconciliation_history'))
 
-                account = rec['bank_accont_no']
+            account = rec['bank_accont_no']
 
-                # Step 1: Get all transaction IDs from details table
-                cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
-                detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
+            # Step 1: Get all transaction IDs from details table
+            cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+            detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
 
-                # Step 2: Get cleared transaction IDs for this account and period
-                cursor.execute('''
-                    SELECT id FROM entry_details
-                    WHERE account_name = %s
-                    AND entry_Rec = 1
-                    AND entry_effective_date BETWEEN %s AND %s
-                ''', (account, rec['opene_date'], rec['closing_date']))
-                cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
+            # Step 2: Get cleared transaction IDs for this account and period
+            cursor.execute('''
+                SELECT id FROM entry_details
+                WHERE account_name = %s
+                AND entry_Rec = 1
+                AND entry_effective_date BETWEEN %s AND %s
+            ''', (account, rec['opene_date'], rec['closing_date']))
+            cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
 
-                # Combine and remove duplicates
-                all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
+            # Combine and remove duplicates
+            all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
 
-                # Step 3: Un-reconcile all these transactions
-                if all_trans_ids:
-                    format_strings = ','.join(['%s'] * len(all_trans_ids))
-                    cursor.execute(f'''
-                        UPDATE entry_details
-                        SET entry_Rec = 0, entry_save = 0, entry_date = NULL
-                        WHERE id IN ({format_strings})
-                    ''', tuple(all_trans_ids))
+            # Step 3: Un-reconcile all these transactions
+            if all_trans_ids:
+                format_strings = ','.join(['%s'] * len(all_trans_ids))
+                cursor.execute(f'''
+                    UPDATE entry_details
+                    SET entry_Rec = 0, entry_save = 0, entry_date = NULL
+                    WHERE id IN ({format_strings})
+                ''', tuple(all_trans_ids))
 
-                # Step 4: Log Reversal
-                cursor.execute('''
-                    INSERT INTO bank_reconciliation_reversal_log
-                    (original_rec_id, bank_account, reversal_date, reversed_by_user,
-                     opening_balance, closing_balance, reversal_reason)
-                    VALUES (%s, %s, NOW(), %s, %s, %s, %s)
-                ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
+            # Step 4: Log Reversal
+            cursor.execute('''
+                INSERT INTO bank_reconciliation_reversal_log
+                (original_rec_id, bank_account, reversal_date, reversed_by_user,
+                 opening_balance, closing_balance, reversal_reason)
+                VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+            ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
 
-                # Step 5: Delete Details
-                cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+            # Step 5: Delete Details
+            cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
 
-                # Step 6: Delete Record
-                cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+            # Step 6: Delete Record
+            cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
 
-                conn.commit()
-                flash('Reconciliation reversed successfully!', 'success')
+            flash('Reconciliation reversed successfully!', 'success')
         except Exception as e:
             conn.rollback()
             flash(f'Error reversing reconciliation: {str(e)}', 'danger')
@@ -7113,28 +7108,19 @@ def cash_handover():
 
         try:
             # Create table if it doesn't exist
-            try:
-                with db.get_connection() as conn:
-                    with conn.cursor(dictionary=True) as cursor:
-                        conn.start_transaction()
-                        cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
-                        if not cursor.fetchone():
-                            cursor.execute('''
-                                CREATE TABLE cash_handover_logs (
-                                id INT AUTO_INCREMENT PRIMARY KEY,
-                                user_id INT NOT NULL,
-                                handover_to VARCHAR(100),
-                                amount DECIMAL(15,2) NOT NULL,
-                                notes TEXT,
-                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                            )
-                            ''')
-
-                        # Insert the log
-                        cursor.execute('''
-                            INSERT INTO cash_handover_logs (user_id, handover_to, amount, notes)
-                            VALUES (%s, %s, %s, %s)
-                        ''', (get_current_user_id(), handover_to, float(amount), notes))
+            with db.transaction_cursor() as cursor:
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                if not cursor.fetchone():
+                    cursor.execute('''
+                        CREATE TABLE cash_handover_logs (
+                            id INT AUTO_INCREMENT PRIMARY KEY,
+                            user_id INT NOT NULL,
+                            handover_to VARCHAR(100),
+                            amount DECIMAL(15,2) NOT NULL,
+                            notes TEXT,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        )
+                    ''')
 
                         conn.commit()
 
@@ -7791,9 +7777,9 @@ def pos_api_settings():
                 'location': settings['Select_Inventry_Location'],
                 'card_ac': settings['Card_Control_AC'],
                 'cash_ac': settings['Cash_Account'],
-                'market_price': settings['Sales_with_market_price'],
-                'special_price': settings['Sales_with_Special_price'],
-                'loyalty_price': settings['Loyalty_Price'],
+                'market_active': settings['Sales_with_market_price'],
+                'special_active': settings['Sales_with_Special_price'],
+                'loyalty_active': settings['Loyalty_Price'],
                 'vat_enable': settings['VAT_Enable'],
                 'footer': settings['Footer_Message'],
                 'top': settings['Top_Message']
