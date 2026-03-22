@@ -259,9 +259,10 @@
         fetch(`/api/get_item_prices/${itemId}`)
             .then(res => res.json())
             .then(data => {
-                if (data && data.length > 0) {
+                const prices = data[itemId];
+                if (prices && prices.length > 0) {
                     // Default to first price found
-                    document.getElementById('invPrice').value = data[0];
+                    document.getElementById('invPrice').value = prices[0];
                 } else {
                     document.getElementById('invPrice').value = '0.00';
                 }

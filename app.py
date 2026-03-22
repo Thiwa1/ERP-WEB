@@ -9709,20 +9709,30 @@ def invoice_creating():
                            inventory_items=items,
                            today_date=today_date)
 
-@app.route('/api/get_item_prices/<int:item_id>')
+@app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
-def api_get_item_prices(item_id):
+def api_get_item_prices(item_ids):
     # Fetch all prices (selling, special, etc) for selection logic if multiple
     # Simplified: Returning selling price. If multiple pricing structure exists in `inventory_price_recod`, adjust here.
-    # The WPF code checks `inventory_price_selling` and `inventory_price_purcharsing`.
-    # It seems to check count. If multiple rows for same link?
-    # Schema suggests `inventory_price_link` is FK to item.
-    # WPF code: SELECT ... FROM inventory_price_recod WHERE inventory_price_link = ...
-    # If count > 1, show selection.
+    # Accepts comma-separated item IDs to avoid N+1 query problems.
 
-    prices = db.execute_query("SELECT inventory_price_selling FROM inventory_price_recod WHERE inventory_price_link = %s", (item_id,))
-    price_list = [p['inventory_price_selling'] for p in prices]
-    return json.dumps(price_list)
+    ids = [i.strip() for i in item_ids.split(',') if i.strip().isdigit()]
+    if not ids:
+        return json.dumps({})
+
+    placeholders = ', '.join(['%s'] * len(ids))
+    query = f"SELECT inventory_price_link, inventory_price_selling FROM inventory_price_recod WHERE inventory_price_link IN ({placeholders})"
+
+    prices = db.execute_query(query, tuple(ids))
+
+    price_dict = {}
+    for p in prices:
+        link_id = str(p['inventory_price_link'])
+        if link_id not in price_dict:
+            price_dict[link_id] = []
+        price_dict[link_id].append(p['inventory_price_selling'])
+
+    return json.dumps(price_dict)
 
 def calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat):
     total_sales = 0
