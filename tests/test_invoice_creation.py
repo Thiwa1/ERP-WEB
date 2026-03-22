@@ -37,6 +37,7 @@ sys.modules["werkzeug.security"] = MagicMock()
 sys.modules["dotenv"] = MagicMock()
 sys.modules["num2words"] = MagicMock()
 sys.modules["PyPDF2"] = MagicMock()
+sys.modules["requests"] = MagicMock()
 from datetime import date, datetime
 import os
 sys.modules["cryptography"] = MagicMock()

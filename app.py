@@ -7849,9 +7849,19 @@ def pos_api_items():
         })
     return json.dumps(items)
 
+# Global cache for pos customers
+pos_customers_cache = {'data': None, 'timestamp': 0}
+
 @app.route('/api/pos/customers', methods=['GET'])
 @pos_login_required
 def pos_api_customers():
+    global pos_customers_cache
+    current_time = time.time()
+
+    # Cache duration: 60 seconds
+    if pos_customers_cache['data'] and (current_time - pos_customers_cache['timestamp'] < 60):
+        return pos_customers_cache['data']
+
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
     rows = db.execute_query(query)
@@ -7863,7 +7873,12 @@ def pos_api_customers():
             'name': r['customer_name'],
             'mobile': r['Mobile_nimber']
         })
-    return json.dumps(custs)
+
+    cached_data = json.dumps(custs)
+    pos_customers_cache['data'] = cached_data
+    pos_customers_cache['timestamp'] = current_time
+
+    return cached_data
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
 @login_required
@@ -9742,6 +9757,19 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
     current_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Pre-fetch warranty periods for all items in batch
+    warranty_map = {}
+    if ctx.inv_items:
+        item_names = list(set([item.get('name') for item in ctx.inv_items if item.get('name')]))
+        if item_names:
+            format_strings = ','.join(['%s'] * len(item_names))
+            ctx.cursor.execute(f"""
+                SELECT name, yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name IN ({format_strings})
+            """, tuple(item_names))
+            for row in ctx.cursor.fetchall():
+                warranty_map[row[0]] = (row[1], row[2], row[3])
+
     # Inventory Items
     for item in ctx.inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
@@ -9751,11 +9779,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        ctx.cursor.execute("""
-            SELECT yeas_, month, date_ FROM inventory_vorenty_period
-            WHERE name = %s LIMIT 1
-        """, (item['name'],))
-        w_res = ctx.cursor.fetchone()
+        w_res = warranty_map.get(item.get('name'))
         if w_res:
             try:
                 years, months, days = w_res
