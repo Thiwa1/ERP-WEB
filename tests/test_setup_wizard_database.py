@@ -8,9 +8,11 @@ mock_mysql = MagicMock()
 class MockMySQLError(Exception):
     pass
 
-mock_mysql.connector.Error = MockMySQLError
+mock_mysql_connector = MagicMock()
+mock_mysql_connector.Error = MockMySQLError
 sys.modules['mysql'] = mock_mysql
-sys.modules['mysql.connector'] = mock_mysql
+sys.modules['mysql.connector'] = mock_mysql_connector
+mock_mysql.connector = mock_mysql_connector
 
 import setup_wizard
 
@@ -30,9 +32,9 @@ class TestSetupWizardDatabase(unittest.TestCase):
 
         # Verify exact sequence of execute calls
         expected_calls = [
-            call("CREATE DATABASE IF NOT EXISTS `test_db`"),
+            call("CREATE DATABASE IF NOT EXISTS `sri_test_db`"),
             call("CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
-            call("GRANT ALL PRIVILEGES ON `test_db`.* TO 'test_user'@'%'"),
+            call("GRANT ALL PRIVILEGES ON `sri_test_db`.* TO 'test_user'@'%'"),
             call("FLUSH PRIVILEGES")
         ]
         self.mock_cursor.execute.assert_has_calls(expected_calls, any_order=False)
@@ -43,7 +45,7 @@ class TestSetupWizardDatabase(unittest.TestCase):
         # Set up a side effect to raise an error only on the CREATE USER statement
         def execute_side_effect(query, *args, **kwargs):
             if query.startswith("CREATE USER IF NOT EXISTS"):
-                raise mock_mysql.connector.Error("User already exists")
+                raise setup_wizard.mysql.connector.Error("User already exists")
             return None
 
         self.mock_cursor.execute.side_effect = execute_side_effect
@@ -52,10 +54,10 @@ class TestSetupWizardDatabase(unittest.TestCase):
 
         # Verify that ALTER USER was called instead of failing
         expected_calls = [
-            call("CREATE DATABASE IF NOT EXISTS `test_db`"),
+            call("CREATE DATABASE IF NOT EXISTS `sri_test_db`"),
             call("CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
             call("ALTER USER 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
-            call("GRANT ALL PRIVILEGES ON `test_db`.* TO 'test_user'@'%'"),
+            call("GRANT ALL PRIVILEGES ON `sri_test_db`.* TO 'test_user'@'%'"),
             call("FLUSH PRIVILEGES")
         ]
         self.mock_cursor.execute.assert_has_calls(expected_calls, any_order=False)
