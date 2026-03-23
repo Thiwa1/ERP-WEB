@@ -8202,7 +8202,8 @@ def run_schema_migrations(target_db_conn=None):
             try:
                 cursor.execute("SELECT id FROM migrations WHERE migration_name = %s", (name,))
                 return cursor.fetchone() is not None
-            except:
+            except mysql.connector.Error as e:
+                logging.error(f"Error checking migration {name}: {e}")
                 return False
 
         def record_migration(name):
