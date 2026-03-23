@@ -3995,19 +3995,28 @@ def warranty_save():
         cursor = conn.cursor()
         conn.start_transaction()
 
+        insert_params = []
+        update_params = []
+
         for i in range(len(ids)):
             wid = int(ids[i])
             if wid == 0: # Insert
-                cursor.execute("""
-                    INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
-                    VALUES (%s, %s, %s, %s)
-                """, (years[i], months[i], days[i], names[i]))
+                insert_params.append((years[i], months[i], days[i], names[i]))
             else: # Update
-                cursor.execute("""
-                    UPDATE inventory_vorenty_period
-                    SET yeas_ = %s, month = %s, date_ = %s, name = %s
-                    WHERE id = %s
-                """, (years[i], months[i], days[i], names[i], wid))
+                update_params.append((years[i], months[i], days[i], names[i], wid))
+
+        if insert_params:
+            cursor.executemany("""
+                INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
+                VALUES (%s, %s, %s, %s)
+            """, insert_params)
+
+        if update_params:
+            cursor.executemany("""
+                UPDATE inventory_vorenty_period
+                SET yeas_ = %s, month = %s, date_ = %s, name = %s
+                WHERE id = %s
+            """, update_params)
 
         conn.commit()
         cursor.close()
