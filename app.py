@@ -9005,6 +9005,8 @@ def save_journal_entry():
             jv_no = cursor.lastrowid
 
             # 2. Insert Entries
+            entry_records = []
+            today_date = datetime.now().date()
             for e in entries:
                 # Handle sub account
                 sub_code = 0
@@ -9021,19 +9023,22 @@ def save_journal_entry():
                 fc_amt = parse_float(e.get('fc_amount', 0))
                 rate = parse_float(e.get('rate', 1))
 
-                cursor.execute("""
+                entry_records.append((
+                    e['account'], e['dr'], e['cr'],
+                    entry_date, today_date, e['narration'],
+                    current_user, jv_no, sub_code, job_no,
+                    curr_code, fc_amt, rate
+                ))
+
+            if entry_records:
+                cursor.executemany("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR,
                         entry_effective_date, entry_create_date, entry_naration,
                         entry_create_user, entry_jv, entry_sub_account_code, entry_job_number,
                         currency_code, fc_amount, exchange_rate
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    e['account'], e['dr'], e['cr'],
-                    entry_date, datetime.now().date(), e['narration'],
-                    current_user, jv_no, sub_code, job_no,
-                    curr_code, fc_amt, rate
-                ))
+                """, entry_records)
 
             conn.commit()
             flash(f'Journal Entry created successfully. System JV: {jv_no}', 'success')
