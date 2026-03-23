@@ -95,11 +95,11 @@ class TestJournalEntrySave(unittest.TestCase):
 
             # 2. Details
             detail_inserts = 0
-            for call in mock_cursor.execute.call_args_list:
+            for call in mock_cursor.executemany.call_args_list:
                 args = call[0]
                 if "INSERT INTO entry_details" in args[0]:
-                    detail_inserts += 1
-            self.assertEqual(detail_inserts, 2, "Should insert 2 entry details")
+                    detail_inserts += len(args[1])
+            self.assertEqual(detail_inserts, 2, "Should insert 2 entry details via executemany")
 
     def test_save_journal_entry_unbalanced(self):
         with patch('app.check_permission', return_value=True):
