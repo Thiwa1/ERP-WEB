@@ -7168,8 +7168,10 @@ def cash_handover():
             return redirect(url_for('cash_handover'))
 
     # GET request
-    users = db.execute_query("SELECT id, username FROM Login_Table")
-    return render_template('cash_handover.html', users=users)
+    users = db.execute_query("SELECT id, User_Name as username FROM Login_Table")
+    cashier_name = session.get('username', 'Cashier')
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    return render_template('cash_handover.html', users=users, cashier_name=cashier_name, today_date=today_date)
 
 
 # --- Cashier Day Sales Summary ---
