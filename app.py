@@ -2435,36 +2435,42 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             count += 1
 
-        # Process Updates row-by-row to skip failures
+        # Process Updates as a batch (using IGNORE to skip failures without aborting the batch)
         if to_update:
-            for row in to_update:
-                try:
-                    cursor.execute("""
-                        UPDATE new_account_table SET
-                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                            cf_catogory=%s, account_basment=%s
-                        WHERE id=%s
-                    """, row)
-                except Exception as e:
-                    pass
+            try:
+                cursor.executemany("""
+                    UPDATE IGNORE new_account_table SET
+                        account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                        account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                        account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                        cf_catogory=%s, account_basment=%s
+                    WHERE id=%s
+                """, to_update)
+            except Exception as e:
+                pass
 
-        # Process Inserts row-by-row to skip failures
+        # Process Inserts as a batch (using IGNORE to skip failures without aborting the batch)
         if to_insert:
-            for row in to_insert:
-                try:
-                    cursor.execute("""
-                        INSERT INTO new_account_table (
-                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-                    """, row)
-                except Exception as e:
-                    count -= 1
-                    pass
+            try:
+                cursor.executemany("""
+                    INSERT IGNORE INTO new_account_table (
+                        account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                        account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                        cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                """, to_insert)
+
+                # cursor.rowcount will tell us how many rows were actually inserted
+                # We subtract the ones that failed (were ignored) from the count
+                successful_inserts = cursor.rowcount
+                failed_inserts = len(to_insert) - successful_inserts
+                if failed_inserts > 0:
+                    count -= failed_inserts
+            except Exception as e:
+                # If the entire batch fails for some other reason, revert all of them
+                count -= len(to_insert)
+                pass
 
         _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
