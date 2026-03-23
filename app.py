@@ -24,7 +24,6 @@ import requests
 import string
 from datetime import timedelta
 import mysql.connector
-import urllib.request
 import typing
 from dataclasses import dataclass
 
@@ -8853,26 +8852,26 @@ def get_exchange_rate():
             return {'rate': cached_data['rate']}
 
     try:
-        # Use urllib instead of requests to avoid external dependency if not installed
         url = f"https://api.exchangerate-api.com/v4/latest/{from_curr}"
-        with urllib.request.urlopen(url) as response:
-            data = json.loads(response.read().decode())
-            rate = data.get('rates', {}).get(to_curr)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        rate = data.get('rates', {}).get(to_curr)
 
-            if rate is not None:
-                # Update cache
-                exchange_rate_cache[cache_key] = {
-                    'rate': float(rate),
-                    'timestamp': current_time
-                }
+        if rate is not None:
+            # Update cache
+            exchange_rate_cache[cache_key] = {
+                'rate': float(rate),
+                'timestamp': current_time
+            }
 
-                # Also cache the reverse if possible (1/rate)
-                exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
-                    'rate': 1.0 / float(rate),
-                    'timestamp': current_time
-                }
+            # Also cache the reverse if possible (1/rate)
+            exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
+                'rate': 1.0 / float(rate),
+                'timestamp': current_time
+            }
 
-                return {'rate': float(rate)}
+            return {'rate': float(rate)}
 
     except Exception as e:
         print(f"Exchange Rate API Error: {e}")
