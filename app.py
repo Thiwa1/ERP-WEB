@@ -7171,7 +7171,56 @@ def cash_handover():
     users = db.execute_query("SELECT id, User_Name as username FROM Login_Table")
     cashier_name = session.get('username', 'Cashier')
     today_date = datetime.now().strftime('%Y-%m-%d')
-    return render_template('cash_handover.html', users=users, cashier_name=cashier_name, today_date=today_date)
+    user_id = get_current_user_id()
+
+    cash_expected = 0.0
+    history = []
+
+    conn = None
+    try:
+        conn = db.get_connection()
+        if conn:
+            with conn.cursor(dictionary=True) as cursor:
+                # Get Expected Cash
+                cursor.execute('''
+                    SELECT SUM(Total_Value) as total_cash
+                    FROM pos_sales_invoice_01
+                    WHERE PaymentMethord = 1
+                      AND DATE(AcctionDate) = %s
+                      AND RecodeUserId = %s
+                ''', (today_date, user_id))
+                res = cursor.fetchone()
+                if res and res['total_cash']:
+                    cash_expected = float(res['total_cash'])
+
+                # Ensure table exists for history
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                if cursor.fetchone():
+                    cursor.execute('''
+                        SELECT amount as actual_amount, notes, created_at, amount - %s as difference
+                        FROM cash_handover_logs
+                        WHERE DATE(created_at) = %s AND user_id = %s
+                        ORDER BY created_at DESC
+                    ''', (cash_expected, today_date, user_id))
+
+                    for row in cursor.fetchall():
+                        history.append({
+                            'expected_amount': cash_expected,
+                            'actual_amount': float(row['actual_amount']),
+                            'difference': float(row['actual_amount']) - cash_expected,
+                            'notes': row['notes'],
+                            'created_at': row['created_at']
+                        })
+    except Exception as e:
+        logging.error(f"Error fetching cash handover info: {e}")
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except:
+                pass
+
+    return render_template('cash_handover.html', users=users, cashier_name=cashier_name, today_date=today_date, cash_expected=cash_expected, history=history)
 
 
 # --- Cashier Day Sales Summary ---
@@ -7187,9 +7236,9 @@ def cashier_day_sales():
         sales_summary = db.execute_query('''
             SELECT
                 COUNT(*) as total_invoices,
-                SUM(AcctionValue) as total_sales
+                SUM(Total_Value) as total_sales
             FROM pos_sales_invoice_01
-            WHERE DATE(AcctionDate) = %s AND user_id = %s
+            WHERE DATE(AcctionDate) = %s AND RecodeUserId = %s
         ''', (today, user_id))
 
         if not sales_summary or not sales_summary[0]:
