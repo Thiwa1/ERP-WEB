@@ -152,10 +152,12 @@ db_suport_name = "sri"
 
 # Force prefix onto database name to handle shared hosting constraints
 _raw_db_name = os.environ.get('DB_NAME', 'Book_keeping')
-if _raw_db_name.startswith(f"{db_suport_name}_"):
+if _raw_db_name and _raw_db_name.startswith(f"{db_suport_name}_"):
     _final_db_name = _raw_db_name
-else:
+elif db_suport_name:
     _final_db_name = f"{db_suport_name}_{_raw_db_name}"
+else:
+    _final_db_name = _raw_db_name
 
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
@@ -171,7 +173,7 @@ if not db_config['user']:
     print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
-MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master"
+MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master" if db_suport_name else "Book_keeping_Master"
 
 def get_session_db_name():
     """Returns the correct database name based on session."""
@@ -355,7 +357,7 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
     import re
 
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"{db_suport_name}_{safe_name}"
+    db_name = f"{db_suport_name}_{safe_name}" if db_suport_name else safe_name
 
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
@@ -3485,6 +3487,7 @@ def add_new_user():
         flash('Passwords do not match', 'danger')
         return redirect(url_for('admin_users'))
 
+    conn = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -5149,7 +5152,8 @@ def process_reconciliation():
 
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 conn.start_transaction()
                 # Parse cleared items and their dates
@@ -5361,9 +5365,9 @@ def reverse_reconciliation():
 
     conn = None
     try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
+        conn = db.get_connection()
+        with conn.cursor(dictionary=True) as cursor:
+            conn.start_transaction()
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
             if not cursor.fetchone():
@@ -5429,8 +5433,18 @@ def reverse_reconciliation():
             conn.commit()
             flash('Reconciliation reversed successfully!', 'success')
     except Exception as e:
-            conn.rollback()
-            flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+        if conn and conn.is_connected():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
 
@@ -7113,10 +7127,12 @@ def cash_handover():
             flash('Please enter a valid amount.', 'danger')
             return redirect(url_for('cash_handover'))
 
+        conn = None
         try:
             # Create table if it doesn't exist
             try:
-                with db.get_connection() as conn:
+                conn = db.get_connection()
+                if conn:
                     with conn.cursor(dictionary=True) as cursor:
                         conn.start_transaction()
                         cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
@@ -7477,7 +7493,8 @@ def send_sms_otp(mobile, code):
     # Try to load credentials from active tenant DB site_settings if available
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 # Handle cases where table doesn't exist yet gracefully
                 try:
@@ -7487,10 +7504,16 @@ def send_sms_otp(mobile, code):
                     pass
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '28990')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'b0K0nL5kIuR9lM4xZ1aP')
-    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '13120')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'The Bunker')
 
     if not api_key or not user_id:
         logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
@@ -7572,7 +7595,8 @@ def pos_web_login():
 
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 if tenant_db_name and is_safe_db_name(tenant_db_name):
                     cursor.execute(f"USE `{tenant_db_name}`")
@@ -7676,6 +7700,12 @@ def pos_web_login():
         logging.error(f"POS Login DB Error: {e}")
         flash('An error occurred during login', 'danger')
         return redirect(url_for('pos_web_login'))
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/pos_verify_2fa', methods=['POST'])
 def pos_verify_2fa():

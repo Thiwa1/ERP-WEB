@@ -627,11 +627,13 @@
                 loyaltyCustomer = null;
                 nameDisplay.innerText = "Not Found";
                 nameDisplay.className = "mt-1 fw-bold text-danger small";
+                recalculateCartPrices();
             }
         } else {
             loyaltyCustomer = null;
             nameDisplay.innerText = "-";
             nameDisplay.className = "mt-1 fw-bold text-warning small";
+            recalculateCartPrices();
         }
     }
 
