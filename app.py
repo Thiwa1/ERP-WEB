@@ -492,7 +492,7 @@ def inject_globals():
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
         globals_dict['company_currency'] = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
-    except:
+    except Exception:
         globals_dict['company_currency'] = 'LKR'
 
     # Theme
@@ -501,7 +501,7 @@ def inject_globals():
         theme_key = res[0]['setting_value'] if res else 'default'
         globals_dict['current_theme'] = THEMES.get(theme_key, THEMES['default'])
         globals_dict['theme_key'] = theme_key
-    except:
+    except Exception:
         globals_dict['current_theme'] = THEMES['default']
         globals_dict['theme_key'] = 'default'
 
@@ -3047,7 +3047,7 @@ def cash_payment_submit():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_payment += amount
-            except:
+            except Exception:
                 continue
 
     if not payments:
@@ -5366,7 +5366,7 @@ def bank_reconciliation_history():
                 WHERE bank_accont_no = %s
                 ORDER BY closing_date DESC
             ''', (bank_account,))
-        except:
+        except Exception:
             history = []
 
     return render_template('bank_reconciliation_history.html', bank_accounts=bank_accounts, selected_account=bank_account, history=history)
@@ -6649,7 +6649,7 @@ def submit_customer_receipt():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_receipt += amount
-            except:
+            except Exception:
                 pass
 
     if total_receipt <= 0:
@@ -7771,7 +7771,7 @@ def pos_verify_2fa():
     try:
         master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
         tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
-    except:
+    except Exception:
         tenant_db_name = db.db_name
 
     conn = db.get_connection()
@@ -7828,7 +7828,7 @@ def pos_reset_password():
     try:
         master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
         tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
-    except:
+    except Exception:
         tenant_db_name = db.db_name
 
     conn = db.get_connection()
@@ -8227,7 +8227,7 @@ def run_schema_migrations(target_db_conn=None):
             try:
                 cursor.execute("SELECT id FROM migrations WHERE migration_name = %s", (name,))
                 return cursor.fetchone() is not None
-            except:
+            except Exception:
                 return False
 
         def record_migration(name):
