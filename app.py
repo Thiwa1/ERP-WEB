@@ -7562,9 +7562,9 @@ def send_sms_otp(mobile, code):
             except Exception:
                 pass
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '13120')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K')
-    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'The Bunker')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID')
 
     if not api_key or not user_id:
         logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
