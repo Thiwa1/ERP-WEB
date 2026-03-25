@@ -77,12 +77,12 @@ class TestWarrantySave(unittest.TestCase):
         self.assertTrue(self.mock_conn.start_transaction.called)
 
         # Verify insert execution
-        self.assertEqual(self.mock_cursor.executemany.call_count, 1)
-        args, kwargs = self.mock_cursor.executemany.call_args
+        self.assertEqual(self.mock_cursor.execute.call_count, 1)
+        args, kwargs = self.mock_cursor.execute.call_args
         query = args[0]
         params = args[1]
         self.assertIn('INSERT INTO inventory_vorenty_period', query)
-        self.assertEqual(params, [('1', '0', '0', 'Item 1')])
+        self.assertEqual(params, ('1', '0', '0', 'Item 1'))
 
         self.assertTrue(self.mock_conn.commit.called)
         self.assertTrue(self.mock_cursor.close.called)
@@ -111,12 +111,12 @@ class TestWarrantySave(unittest.TestCase):
 
         # Assertions
         # Verify update execution
-        self.assertEqual(self.mock_cursor.executemany.call_count, 1)
-        args, kwargs = self.mock_cursor.executemany.call_args
+        self.assertEqual(self.mock_cursor.execute.call_count, 1)
+        args, kwargs = self.mock_cursor.execute.call_args
         query = args[0]
         params = args[1]
         self.assertIn('UPDATE inventory_vorenty_period', query)
-        self.assertEqual(params, [('2', '6', '15', 'Item 2', 5)])
+        self.assertEqual(params, ('2', '6', '15', 'Item 2', 5))
 
         self.assertTrue(self.mock_conn.commit.called)
         self.actual_flash_mock.assert_called_once_with('Warranty data saved successfully', 'success')
@@ -139,17 +139,17 @@ class TestWarrantySave(unittest.TestCase):
         res = app_module.warranty_save()
 
         # Assertions
-        self.assertEqual(self.mock_cursor.executemany.call_count, 2)
+        self.assertEqual(self.mock_cursor.execute.call_count, 2)
 
         # Call 1 (Insert)
-        args1, kwargs1 = self.mock_cursor.executemany.call_args_list[0]
+        args1, kwargs1 = self.mock_cursor.execute.call_args_list[0]
         self.assertIn('INSERT INTO inventory_vorenty_period', args1[0])
-        self.assertEqual(args1[1], [('1', '0', '0', 'New Item')])
+        self.assertEqual(args1[1], ('1', '0', '0', 'New Item'))
 
         # Call 2 (Update)
-        args2, kwargs2 = self.mock_cursor.executemany.call_args_list[1]
+        args2, kwargs2 = self.mock_cursor.execute.call_args_list[1]
         self.assertIn('UPDATE inventory_vorenty_period', args2[0])
-        self.assertEqual(args2[1], [('3', '0', '0', 'Existing Item', 10)])
+        self.assertEqual(args2[1], ('3', '0', '0', 'Existing Item', 10))
 
         self.assertTrue(self.mock_conn.commit.called)
         self.actual_flash_mock.assert_called_once_with('Warranty data saved successfully', 'success')
@@ -168,15 +168,15 @@ class TestWarrantySave(unittest.TestCase):
         self.actual_request_mock.form = MagicMock()
         self.actual_request_mock.form.getlist.side_effect = lambda k: form_data.get(k, [])
 
-        # Make cursor.executemany raise an exception
-        self.mock_cursor.executemany.side_effect = Exception("DB Error")
+        # Make cursor.execute raise an exception
+        self.mock_cursor.execute.side_effect = Exception("DB Error")
 
         # Execute
         res = app_module.warranty_save()
 
         # Assertions
         # Verify execution was attempted
-        self.assertEqual(self.mock_cursor.executemany.call_count, 1)
+        self.assertEqual(self.mock_cursor.execute.call_count, 1)
 
         # Verify commit was not called
         self.assertFalse(self.mock_conn.commit.called)
