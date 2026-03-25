@@ -2000,177 +2000,104 @@
     </div>
 
     <!-- Quick Actions Modal -->
-    <div class="modal fade modal-pro win11-modal-container" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-        <div class="modal-dialog modal-dialog-centered win11-dialog">
-            <div class="modal-content win11-content">
-                <div class="win11-search-container">
-                    <i class="fas fa-search search-icon"></i>
-                    <input type="text" id="qaSearch" class="win11-search-input" placeholder="Search for apps, settings, and documents" autofocus>
-                    <button type="button" class="btn-close win11-close-btn" data-bs-dismiss="modal" aria-label="Close"></button>
+    <div class="modal fade modal-pro" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-bolt"></i> QUICK ACTIONS</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
+                <div class="modal-body">
+                    <div class="row g-4">
+                        <!-- Column 1: Setup & Accounting -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
+                            <!-- Company Setup -->
+                            <div class="qa-card qa-theme-primary">
+                                <div class="qa-header">
+                                    <i class="fas fa-building"></i> Company Setup
+                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/company_profile" class="qa-item"><i class="fas fa-id-card"></i> Setup Company Profile</a></li>
+                                    <li><a href="/create_bank_account" class="qa-item"><i class="fas fa-university"></i> Create Bank Account</a></li>
+                                    <li><a href="/create_cash_account" class="qa-item"><i class="fas fa-money-bill-wave"></i> Create Cash Account</a></li>
+                                    <li><a href="/job_management" class="qa-item"><i class="fas fa-briefcase"></i> Create New Jobs</a></li>
+                                    <li><a href="/tax_settings" class="qa-item"><i class="fas fa-percent"></i> Tax Settings (WHT)</a></li>
+                                    <li><a href="/control_panel" class="qa-item"><i class="fas fa-sliders-h"></i> System Control Panel</a></li>
+                                    <li><a href="/admin/users" class="qa-item"><i class="fas fa-user-plus"></i> Add New User</a></li>
+                                </ul>
+                            </div>
 
-                <div class="modal-body win11-body">
-                    <!-- Pinned Section -->
-                    <div class="win11-section">
-                        <div class="win11-section-header">
-                            <h6>Pinned</h6>
-                            <button class="win11-btn-small">All <i class="fas fa-chevron-right ms-1"></i></button>
+                            <!-- Accounting -->
+                            <div class="qa-card qa-theme-purple">
+                                <div class="qa-header">
+                                    <i class="fas fa-book-open"></i> Accounting
+                                </div>
+                                <ul class="qa-list">
+                                    <li><a href="/balance_sheet_category" class="qa-item"><i class="fas fa-balance-scale"></i> Balance Sheet Category</a></li>
+                                    <li><a href="/pl_category" class="qa-item"><i class="fas fa-chart-pie"></i> P&L Category</a></li>
+                                    <li><a href="/cash_flow_categories" class="qa-item"><i class="fas fa-stream"></i> Cash Flow Category</a></li>
+                                    <li><a href="/add_new_account" class="qa-item"><i class="fas fa-file-invoice"></i> Create New Account</a></li>
+                                    <li><a href="/cheque_print_setup" class="qa-item"><i class="fas fa-print"></i> Cheque Print Setup</a></li>
+                                    <li><a href="/bulk_upload_gl" class="qa-item"><i class="fas fa-file-upload"></i> Bulk Upload GL</a></li>
+                                    <li><a href="/bulk_upload_tb" class="qa-item"><i class="fas fa-file-csv"></i> Bulk Upload TB</a></li>
+                                </ul>
+                            </div>
                         </div>
 
-                        <div class="win11-grid">
-                            <a href="/company_profile" class="win11-app-item">
-                                <div class="win11-icon-box bg-primary-light">
-                                    <i class="fas fa-id-card text-primary"></i>
+                        <!-- Column 2: Entities & Inventory -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
+                            <!-- Suppliers & Customer -->
+                            <div class="qa-card qa-theme-success">
+                                <div class="qa-header">
+                                    <i class="fas fa-users"></i> Suppliers & Customers
                                 </div>
-                                <span>Company Profile</span>
-                            </a>
-                            <a href="/create_bank_account" class="win11-app-item">
-                                <div class="win11-icon-box bg-info-light">
-                                    <i class="fas fa-university text-info"></i>
-                                </div>
-                                <span>Bank Account</span>
-                            </a>
-                            <a href="/create_cash_account" class="win11-app-item">
-                                <div class="win11-icon-box bg-success-light">
-                                    <i class="fas fa-money-bill-wave text-success"></i>
-                                </div>
-                                <span>Cash Account</span>
-                            </a>
-                            <a href="/tax_settings" class="win11-app-item">
-                                <div class="win11-icon-box bg-danger-light">
-                                    <i class="fas fa-percent text-danger"></i>
-                                </div>
-                                <span>Tax Settings</span>
-                            </a>
-                            <a href="/control_panel" class="win11-app-item">
-                                <div class="win11-icon-box bg-secondary-light">
-                                    <i class="fas fa-sliders-h text-secondary"></i>
-                                </div>
-                                <span>Control Panel</span>
-                            </a>
-                            <a href="/admin/users" class="win11-app-item">
-                                <div class="win11-icon-box bg-warning-light">
-                                    <i class="fas fa-user-plus text-warning"></i>
-                                </div>
-                                <span>Add User</span>
-                            </a>
+                                <ul class="qa-list">
+                                    <li><a href="/add_customer" class="qa-item"><i class="fas fa-user-tag"></i> Create New Customer</a></li>
+                                    <li><a href="/add_supplier" class="qa-item"><i class="fas fa-truck"></i> Create New Supplier</a></li>
+                                </ul>
+                            </div>
 
-                            <!-- Accounting items -->
-                            <a href="/balance_sheet_category" class="win11-app-item">
-                                <div class="win11-icon-box bg-purple-light">
-                                    <i class="fas fa-balance-scale text-purple"></i>
+                            <!-- Inventory Management -->
+                            <div class="qa-card qa-theme-info">
+                                <div class="qa-header">
+                                    <i class="fas fa-boxes"></i> Inventory Management
                                 </div>
-                                <span>BS Category</span>
-                            </a>
-                            <a href="/pl_category" class="win11-app-item">
-                                <div class="win11-icon-box bg-teal-light">
-                                    <i class="fas fa-chart-pie text-teal"></i>
+                                <ul class="qa-list">
+                                    <li><a href="/inventory_locations" class="qa-item"><i class="fas fa-warehouse"></i> Create Inventory House</a></li>
+                                    <li><a href="/add_inventory_item" class="qa-item"><i class="fas fa-box"></i> Create Inventory Items</a></li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <!-- Column 3: POS & Backup -->
+                        <div class="col-md-4 d-flex flex-column gap-4">
+                            <!-- Point of Sales -->
+                            <div class="qa-card qa-theme-warning">
+                                <div class="qa-header">
+                                    <i class="fas fa-cash-register"></i> Point of Sales
                                 </div>
-                                <span>P&L Category</span>
-                            </a>
-                            <a href="/add_new_account" class="win11-app-item">
-                                <div class="win11-icon-box bg-primary-light">
-                                    <i class="fas fa-file-invoice text-primary"></i>
+                                <ul class="qa-list">
+                                    <li><a href="/pos_settings" class="qa-item"><i class="fas fa-cogs"></i> POS Settings</a></li>
+                                    <li><a href="/warranty_period" class="qa-item"><i class="fas fa-shield-alt"></i> Warranty Period</a></li>
+                                </ul>
+                            </div>
+
+                            <!-- System Backup -->
+                            <div class="qa-card qa-theme-rose">
+                                <div class="qa-header">
+                                    <i class="fas fa-server"></i> System
                                 </div>
-                                <span>New Account</span>
-                            </a>
-                            <a href="/inventory_locations" class="win11-app-item">
-                                <div class="win11-icon-box bg-warning-light">
-                                    <i class="fas fa-warehouse text-warning"></i>
-                                </div>
-                                <span>Inventory House</span>
-                            </a>
-                            <a href="/create_job" class="win11-app-item">
-                                <div class="win11-icon-box bg-dark-light">
-                                    <i class="fas fa-tools text-dark"></i>
-                                </div>
-                                <span>Create Job</span>
-                            </a>
-                            <a href="/cheque_print_setup" class="win11-app-item">
-                                <div class="win11-icon-box bg-secondary-light">
-                                    <i class="fas fa-print text-secondary"></i>
-                                </div>
-                                <span>Cheque Print</span>
-                            </a>
-                            <a href="/bulk_upload_gl" class="win11-app-item">
-                                <div class="win11-icon-box bg-success-light">
-                                    <i class="fas fa-file-upload text-success"></i>
-                                </div>
-                                <span>Bulk GL</span>
-                            </a>
-                            <a href="/bulk_upload_tb" class="win11-app-item">
-                                <div class="win11-icon-box bg-info-light">
-                                    <i class="fas fa-file-csv text-info"></i>
-                                </div>
-                                <span>Bulk TB</span>
-                            </a>
+                                <ul class="qa-list">
+                                    <li><a href="/system_backup" class="qa-item"><i class="fas fa-download"></i> System Backup</a></li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
-
-                    <!-- Recommended Section -->
-                    <div class="win11-section mt-4">
-                        <div class="win11-section-header">
-                            <h6>Recommended</h6>
-                            <button class="win11-btn-small">More <i class="fas fa-chevron-right ms-1"></i></button>
-                        </div>
-
-                        <div class="win11-list-grid">
-                            <a href="/add_customer" class="win11-list-item">
-                                <div class="win11-list-icon bg-success-light">
-                                    <i class="fas fa-user-tag text-success"></i>
-                                </div>
-                                <div class="win11-list-text">
-                                    <div class="win11-list-title">Create Customer</div>
-                                    <div class="win11-list-subtitle">Recently added</div>
-                                </div>
-                            </a>
-                            <a href="/add_supplier" class="win11-list-item">
-                                <div class="win11-list-icon bg-danger-light">
-                                    <i class="fas fa-truck text-danger"></i>
-                                </div>
-                                <div class="win11-list-text">
-                                    <div class="win11-list-title">Create Supplier</div>
-                                    <div class="win11-list-subtitle">10m ago</div>
-                                </div>
-                            </a>
-                            <a href="/add_inventory_item" class="win11-list-item">
-                                <div class="win11-list-icon bg-info-light">
-                                    <i class="fas fa-box text-info"></i>
-                                </div>
-                                <div class="win11-list-text">
-                                    <div class="win11-list-title">Create Inventory</div>
-                                    <div class="win11-list-subtitle">11h ago</div>
-                                </div>
-                            </a>
-                            <a href="/system_backup" class="win11-list-item">
-                                <div class="win11-list-icon bg-secondary-light">
-                                    <i class="fas fa-server text-secondary"></i>
-                                </div>
-                                <div class="win11-list-text">
-                                    <div class="win11-list-title">System Backup</div>
-                                    <div class="win11-list-subtitle">Saturday at 7:46 PM</div>
-                                </div>
-                            </a>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Footer -->
-                <div class="win11-footer">
-                    <div class="win11-user-profile">
-                        <div class="win11-avatar">
-                            <i class="fas fa-user"></i>
-                            <span class="win11-status-dot"></span>
-                        </div>
-                        <span class="win11-username">Admin User</span>
-                    </div>
-                    <a href="/logout" class="win11-power-btn" title="Sign Out">
-                        <i class="fas fa-power-off"></i>
-                    </a>
                 </div>
             </div>
         </div>
     </div>
+
     <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
