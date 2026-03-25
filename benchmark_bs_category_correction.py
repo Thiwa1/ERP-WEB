@@ -1,5 +1,4 @@
 import time
-import random
 
 class MockCursor:
     def __init__(self):

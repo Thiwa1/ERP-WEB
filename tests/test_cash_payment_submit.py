@@ -41,7 +41,14 @@ import app as app_module
 # So `cash_payment_submit` BECOMES a MagicMock because `app.route` mock replaced it!
 
 # FIX: `mock_app.route` should behave like a pass-through decorator.
-# This is already handled by `tests/mock_env.py` which correctly mocks Flask.Flask().route.
+def route_side_effect(*args, **kwargs):
+    if args and callable(args[0]):
+        return args[0]
+    def decorator(f):
+        return f
+    return decorator
+
+mock_app.route.side_effect = route_side_effect
 
 class TestCashPaymentSubmit(unittest.TestCase):
     def setUp(self):

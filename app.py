@@ -24,7 +24,6 @@ import requests
 import string
 from datetime import timedelta
 import mysql.connector
-import urllib.request
 import typing
 from dataclasses import dataclass
 
@@ -38,6 +37,9 @@ import tempfile
 # Global cache for categories
 _category_cache = {}
 
+# Global cache for POS items
+_pos_items_cache = {}
+
 def get_cached_categories(db):
     global _category_cache
     if not _category_cache:
@@ -50,6 +52,10 @@ def get_cached_categories(db):
 def clear_category_cache():
     global _category_cache
     _category_cache.clear()
+
+def clear_pos_items_cache():
+    global _pos_items_cache
+    _pos_items_cache.pop(get_session_db_name(), None)
 
 import services
 from num2words import num2words
@@ -65,7 +71,6 @@ import PyPDF2
 import io
 
 import migrations
-import secrets
 
 app = flask.Flask(__name__)
 
@@ -198,8 +203,12 @@ def setup_master_db():
             del temp_config['database']
 
         try:
+            if not is_safe_db_name(MASTER_DB_NAME):
+                raise ValueError(f"Invalid database name: {MASTER_DB_NAME}")
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
+            if not is_safe_db_name(MASTER_DB_NAME):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS {MASTER_DB_NAME}")
             cursor.close()
             conn.close()
@@ -236,9 +245,13 @@ def setup_master_db():
 
         # Check if default DB has Login_Table
         try:
+            if not is_safe_db_name(default_db_name):
+                raise ValueError(f"Invalid database name: {default_db_name}")
             try:
                 default_conn = mysql.connector.connect(**temp_config)
                 default_cursor = default_conn.cursor()
+                if not is_safe_db_name(default_db_name):
+                    raise ValueError("Invalid database name")
                 default_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{default_db_name}`")
                 default_cursor.close()
                 default_conn.close()
@@ -369,9 +382,13 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
         # Create DB
         temp_config = db_config.copy()
         if 'database' in temp_config: del temp_config['database']
+        if not is_safe_db_name(db_name):
+            raise ValueError(f"Invalid database name: {db_name}")
         try:
             conn = mysql.connector.connect(**temp_config)
             cursor = conn.cursor()
+            if not is_safe_db_name(db_name):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
             cursor.close()
             conn.close()
@@ -476,7 +493,7 @@ def inject_globals():
     try:
         res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
         globals_dict['company_currency'] = res[0]['company_curency'] if res and res[0]['company_curency'] else 'LKR'
-    except:
+    except Exception:
         globals_dict['company_currency'] = 'LKR'
 
     # Theme
@@ -485,7 +502,7 @@ def inject_globals():
         theme_key = res[0]['setting_value'] if res else 'default'
         globals_dict['current_theme'] = THEMES.get(theme_key, THEMES['default'])
         globals_dict['theme_key'] = theme_key
-    except:
+    except Exception:
         globals_dict['current_theme'] = THEMES['default']
         globals_dict['theme_key'] = 'default'
 
@@ -1260,6 +1277,7 @@ def add_inventory_item():
                         cursor.execute(query_price, (item_id, 0.0, 0.0, 0.0, 0.0, today_date))
 
                 flash('Inventory Item created successfully!', 'success')
+                clear_pos_items_cache()
 
             except Exception as e:
                 flash(f'Database Error: {str(e)}', 'danger')
@@ -1531,14 +1549,21 @@ def edit_account(account_id):
 @login_required
 @has_permission('Access_Accounting')
 def chart_of_accounts():
-    accounts = db.execute_query("SELECT * FROM new_account_table WHERE account_active = 1")
-    pl_count = 0
-    bs_count = 0
-    for a in accounts:
-        if a['account_name_of_catogory_PL']:
-            pl_count += 1
-        if a['account_name_of_catogory_Balace_sheet']:
-            bs_count += 1
+    accounts = db.execute_query("""
+        SELECT *,
+            SUM(CASE WHEN account_name_of_catogory_PL IS NOT NULL AND account_name_of_catogory_PL != '' THEN 1 ELSE 0 END) OVER() as computed_pl_count,
+            SUM(CASE WHEN account_name_of_catogory_Balace_sheet IS NOT NULL AND account_name_of_catogory_Balace_sheet != '' THEN 1 ELSE 0 END) OVER() as computed_bs_count
+        FROM new_account_table
+        WHERE account_active = 1
+    """)
+
+    if accounts:
+        pl_count = int(accounts[0]['computed_pl_count'] or 0)
+        bs_count = int(accounts[0]['computed_bs_count'] or 0)
+    else:
+        pl_count = 0
+        bs_count = 0
+
     return render_template('chart_of_accounts.html', accounts=accounts, total_accounts=len(accounts), pl_count=pl_count, bs_count=bs_count)
 
 # --- Add New Account ---
@@ -2359,6 +2384,7 @@ def save_bulk_gl_accounts(form_data, current_user):
 
         to_update = []
         to_insert = []
+        seen_names = set()
 
         # For Sub-Ledgers
         potential_banks = []
@@ -2369,6 +2395,10 @@ def save_bulk_gl_accounts(form_data, current_user):
             if actions[i] == 'skip': continue
 
             name = names[i]
+
+            # Deduplicate items by account name first
+            if name in seen_names: continue
+            seen_names.add(name)
             acc_type = types[i]
             cat_val = cats[i]
             cf = cfs[i]
@@ -2411,36 +2441,56 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             count += 1
 
-        # Process Updates row-by-row to skip failures
+        # Process Updates in bulk, fallback to row-by-row to skip failures
         if to_update:
-            for row in to_update:
-                try:
-                    cursor.execute("""
-                        UPDATE new_account_table SET
-                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                            cf_catogory=%s, account_basment=%s
-                        WHERE id=%s
-                    """, row)
-                except Exception as e:
-                    pass
+            try:
+                cursor.executemany("""
+                    UPDATE new_account_table SET
+                        account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                        account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                        account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                        cf_catogory=%s, account_basment=%s
+                    WHERE id=%s
+                """, to_update)
+            except Exception:
+                for row in to_update:
+                    try:
+                        cursor.execute("""
+                            UPDATE new_account_table SET
+                                account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                                account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                                account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                                cf_catogory=%s, account_basment=%s
+                            WHERE id=%s
+                        """, row)
+                    except Exception:
+                        pass
 
-        # Process Inserts row-by-row to skip failures
+        # Process Inserts in bulk, fallback to row-by-row to skip failures
         if to_insert:
-            for row in to_insert:
-                try:
-                    cursor.execute("""
-                        INSERT INTO new_account_table (
-                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-                    """, row)
-                except Exception as e:
-                    count -= 1
-                    pass
+            try:
+                cursor.executemany("""
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                        account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                        cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                """, to_insert)
+            except Exception:
+                for row in to_insert:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO new_account_table (
+                                account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                                account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                                account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                                cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                        """, row)
+                    except Exception:
+                        count -= 1
+                        pass
 
         _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
@@ -2998,7 +3048,7 @@ def cash_payment_submit():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_payment += amount
-            except:
+            except Exception:
                 continue
 
     if not payments:
@@ -3947,19 +3997,28 @@ def warranty_save():
         cursor = conn.cursor()
         conn.start_transaction()
 
+        insert_params = []
+        update_params = []
+
         for i in range(len(ids)):
             wid = int(ids[i])
             if wid == 0: # Insert
-                cursor.execute("""
-                    INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
-                    VALUES (%s, %s, %s, %s)
-                """, (years[i], months[i], days[i], names[i]))
+                insert_params.append((years[i], months[i], days[i], names[i]))
             else: # Update
-                cursor.execute("""
-                    UPDATE inventory_vorenty_period
-                    SET yeas_ = %s, month = %s, date_ = %s, name = %s
-                    WHERE id = %s
-                """, (years[i], months[i], days[i], names[i], wid))
+                update_params.append((years[i], months[i], days[i], names[i], wid))
+
+        if insert_params:
+            cursor.executemany("""
+                INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
+                VALUES (%s, %s, %s, %s)
+            """, insert_params)
+
+        if update_params:
+            cursor.executemany("""
+                UPDATE inventory_vorenty_period
+                SET yeas_ = %s, month = %s, date_ = %s, name = %s
+                WHERE id = %s
+            """, update_params)
 
         conn.commit()
         cursor.close()
@@ -4586,6 +4645,7 @@ def update_inventory_prices():
             """, (link_id, market_prices[i], spm_prices[i], loyalty_prices[i]), commit=True)
 
     flash('Prices updated successfully', 'success')
+    clear_pos_items_cache()
     return redirect(url_for('inventory_price_editing'))
 
 # --- Balance Sheet ---
@@ -4965,6 +5025,7 @@ def add_new_price_tier():
         '''
         db.execute_query(query, (item_id, cost_price, selling_price, special_price, loyalty_price, date.today()), commit=True)
         flash('New price tier added successfully!', 'success')
+        clear_pos_items_cache()
     except Exception as e:
         flash(f'Error adding new price tier: {str(e)}', 'danger')
 
@@ -5317,7 +5378,7 @@ def bank_reconciliation_history():
                 WHERE bank_accont_no = %s
                 ORDER BY closing_date DESC
             ''', (bank_account,))
-        except:
+        except Exception:
             history = []
 
     return render_template('bank_reconciliation_history.html', bank_accounts=bank_accounts, selected_account=bank_account, history=history)
@@ -6331,19 +6392,46 @@ def get_reversal_details():
     jv = request.args.get('jv')
     if not jv: return {'error': 'No JV'}, 400
 
-    query = "SELECT account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv = %s"
-    rows = db.execute_query(query, (jv,))
+    jv_list = [j.strip() for j in str(jv).split(',') if j.strip()]
+    if not jv_list: return {'error': 'No valid JV'}, 400
 
-    text = f"Journal Voucher {jv} Details:\n" + "-"*30 + "\n"
-    for r in rows:
-        text += f"{r['account_name']}: DR {r['enty_values_DR']} | CR {r['enty_values_CR']}\n"
+    format_strings = ','.join(['%s'] * len(jv_list))
 
-    text += "\nInventory Items (if any):\n"
-    inv_rows = db.execute_query("SELECT inventoy_name, inventory_recod_moument_in FROM inventory_recod WHERE JV_No = %s", (jv,))
-    for r in inv_rows:
-        text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
+    query = f"SELECT entry_jv, account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv IN ({format_strings})"
+    rows = db.execute_query(query, tuple(jv_list))
 
-    return {'details': text}
+    inv_query = f"SELECT JV_No, inventoy_name, inventory_recod_moument_in FROM inventory_recod WHERE JV_No IN ({format_strings})"
+    inv_rows = db.execute_query(inv_query, tuple(jv_list))
+
+    entries_by_jv = {}
+    items_by_jv = {}
+
+    if rows:
+        for r in rows:
+            j = str(r.get('entry_jv', ''))
+            if j not in entries_by_jv:
+                entries_by_jv[j] = []
+            entries_by_jv[j].append(r)
+
+    if inv_rows:
+        for r in inv_rows:
+            j = str(r.get('JV_No', ''))
+            if j not in items_by_jv:
+                items_by_jv[j] = []
+            items_by_jv[j].append(r)
+
+    text = ""
+    for j in jv_list:
+        text += f"Journal Voucher {j} Details:\n" + "-"*30 + "\n"
+        for r in entries_by_jv.get(j, []):
+            text += f"{r['account_name']}: DR {r['enty_values_DR']} | CR {r['enty_values_CR']}\n"
+
+        text += "\nInventory Items (if any):\n"
+        for r in items_by_jv.get(j, []):
+            text += f"{r['inventoy_name']}: Qty {r['inventory_recod_moument_in']}\n"
+        text += "\n"
+
+    return {'details': text.strip()}
 
 # --- Customer Receipt (Accounts Receivable) ---
 @app.route('/customer_receipt')
@@ -6583,7 +6671,7 @@ def submit_customer_receipt():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_receipt += amount
-            except:
+            except Exception:
                 pass
 
     if total_receipt <= 0:
@@ -7772,7 +7860,7 @@ def pos_verify_2fa():
     try:
         master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
         tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
-    except:
+    except Exception:
         tenant_db_name = db.db_name
 
     conn = db.get_connection()
@@ -7829,7 +7917,7 @@ def pos_reset_password():
     try:
         master_user_res = master_db.execute_query('SELECT db_name FROM tenants WHERE company_name = %s', (company_name,))
         tenant_db_name = master_user_res[0]['db_name'] if master_user_res else db.db_name
-    except:
+    except Exception:
         tenant_db_name = db.db_name
 
     conn = db.get_connection()
@@ -7890,6 +7978,16 @@ def pos_api_settings():
 @app.route('/api/pos/items', methods=['GET'])
 @pos_login_required
 def pos_api_items():
+    global _pos_items_cache
+    db_name = get_session_db_name()
+    current_time = time.time()
+
+    # Check cache (5 minutes TTL = 300 seconds)
+    if db_name in _pos_items_cache:
+        cached_data = _pos_items_cache[db_name]
+        if current_time - cached_data['timestamp'] < 300:
+            return cached_data['data']
+
     # Fetch all active items with prices for caching
     query = '''
         SELECT
@@ -7917,11 +8015,28 @@ def pos_api_items():
             'cost': float(r['inventory_price_purcharsing'] or 0),
             'expiry_date': str(r.get('expiry_date')) if r.get('expiry_date') else None
         })
-    return json.dumps(items)
+
+    result = json.dumps(items)
+    _pos_items_cache[db_name] = {
+        'timestamp': current_time,
+        'data': result
+    }
+
+    return result
+
+# Global cache for pos customers
+pos_customers_cache = {'data': None, 'timestamp': 0}
 
 @app.route('/api/pos/customers', methods=['GET'])
 @pos_login_required
 def pos_api_customers():
+    global pos_customers_cache
+    current_time = time.time()
+
+    # Cache duration: 60 seconds
+    if pos_customers_cache['data'] and (current_time - pos_customers_cache['timestamp'] < 60):
+        return pos_customers_cache['data']
+
     # Fetch customers for caching
     query = "SELECT id, customer_name, Mobile_nimber FROM customer WHERE Compay_Or_Not = 0 OR Compay_Or_Not IS NULL"
     rows = db.execute_query(query)
@@ -7933,7 +8048,12 @@ def pos_api_customers():
             'name': r['customer_name'],
             'mobile': r['Mobile_nimber']
         })
-    return json.dumps(custs)
+
+    cached_data = json.dumps(custs)
+    pos_customers_cache['data'] = cached_data
+    pos_customers_cache['timestamp'] = current_time
+
+    return cached_data
 
 @app.route('/api/pos/add_loyalty_customer', methods=['POST'])
 @login_required
@@ -8196,7 +8316,7 @@ def run_schema_migrations(target_db_conn=None):
             try:
                 cursor.execute("SELECT id FROM migrations WHERE migration_name = %s", (name,))
                 return cursor.fetchone() is not None
-            except:
+            except Exception:
                 return False
 
         def record_migration(name):
@@ -8813,26 +8933,26 @@ def get_exchange_rate():
             return {'rate': cached_data['rate']}
 
     try:
-        # Use urllib instead of requests to avoid external dependency if not installed
         url = f"https://api.exchangerate-api.com/v4/latest/{from_curr}"
-        with urllib.request.urlopen(url) as response:
-            data = json.loads(response.read().decode())
-            rate = data.get('rates', {}).get(to_curr)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        rate = data.get('rates', {}).get(to_curr)
 
-            if rate is not None:
-                # Update cache
-                exchange_rate_cache[cache_key] = {
-                    'rate': float(rate),
-                    'timestamp': current_time
-                }
+        if rate is not None:
+            # Update cache
+            exchange_rate_cache[cache_key] = {
+                'rate': float(rate),
+                'timestamp': current_time
+            }
 
-                # Also cache the reverse if possible (1/rate)
-                exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
-                    'rate': 1.0 / float(rate),
-                    'timestamp': current_time
-                }
+            # Also cache the reverse if possible (1/rate)
+            exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
+                'rate': 1.0 / float(rate),
+                'timestamp': current_time
+            }
 
-                return {'rate': float(rate)}
+            return {'rate': float(rate)}
 
     except Exception as e:
         print(f"Exchange Rate API Error: {e}")
@@ -8936,6 +9056,8 @@ def save_journal_entry():
             jv_no = cursor.lastrowid
 
             # 2. Insert Entries
+            entry_records = []
+            today_date = datetime.now().date()
             for e in entries:
                 # Handle sub account
                 sub_code = 0
@@ -8952,19 +9074,22 @@ def save_journal_entry():
                 fc_amt = parse_float(e.get('fc_amount', 0))
                 rate = parse_float(e.get('rate', 1))
 
-                cursor.execute("""
+                entry_records.append((
+                    e['account'], e['dr'], e['cr'],
+                    entry_date, today_date, e['narration'],
+                    current_user, jv_no, sub_code, job_no,
+                    curr_code, fc_amt, rate
+                ))
+
+            if entry_records:
+                cursor.executemany("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR,
                         entry_effective_date, entry_create_date, entry_naration,
                         entry_create_user, entry_jv, entry_sub_account_code, entry_job_number,
                         currency_code, fc_amount, exchange_rate
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    e['account'], e['dr'], e['cr'],
-                    entry_date, datetime.now().date(), e['narration'],
-                    current_user, jv_no, sub_code, job_no,
-                    curr_code, fc_amt, rate
-                ))
+                """, entry_records)
 
             conn.commit()
             flash(f'Journal Entry created successfully. System JV: {jv_no}', 'success')
@@ -9251,6 +9376,12 @@ def system_backup():
         flash('Invalid database configuration', 'danger')
         return redirect(url_for('index'))
 
+    # Get the user's specific database name
+    db_name = get_session_db_name()
+    if not is_safe_db_name(db_name):
+        flash('Invalid database name', 'danger')
+        return redirect(url_for('index'))
+
     # Check for mysqldump or mariadb-dump
     dump_cmd = shutil.which('mysqldump')
     if not dump_cmd:
@@ -9287,26 +9418,43 @@ def system_backup():
                 dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
-                db_config['database']
+                db_name
             ]
 
-            # Run command
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            output, error = process.communicate()
+            def generate():
+                # Fix: We don't pipe stderr to avoid deadlocks when the buffer fills up.
+                # We can either redirect it to DEVNULL or capture it to a temporary file.
+                # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
+                # returning a streaming response means we can't easily send the error to the client anyway
+                # once the stream has started, and a 64KB stderr buffer would hang the process.
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                try:
+                    while True:
+                        chunk = process.stdout.read(8192)
+                        if not chunk:
+                            break
+                        yield chunk
+                    process.wait()
+                    if process.returncode != 0:
+                        logging.error(f"Backup failed with return code {process.returncode}")
+                finally:
+                    if process.poll() is None:
+                        process.kill()
+                    # Secure cleanup
+                    if os.path.exists(defaults_file.name):
+                        os.remove(defaults_file.name)
 
-            if process.returncode != 0:
-                flash(f'Backup failed: {error.decode("utf-8")}', 'danger')
-                return redirect(url_for('index'))
+            # We don't remove defaults_file in the outer finally block anymore,
+            # it is cleaned up by the generator when it completes or errors out.
 
-            # Return as file download
-            response = make_response(output)
-            response.headers['Content-Type'] = 'application/sql'
+            response = Response(stream_with_context(generate()), mimetype='application/sql')
             response.headers['Content-Disposition'] = f'attachment; filename={filename}'
             return response
-        finally:
-            # Secure cleanup
+
+        except Exception as e:
             if os.path.exists(defaults_file.name):
                 os.remove(defaults_file.name)
+            raise e
 
     except Exception as e:
         flash(f'Backup error: {str(e)}', 'danger')
@@ -9691,20 +9839,30 @@ def invoice_creating():
                            inventory_items=items,
                            today_date=today_date)
 
-@app.route('/api/get_item_prices/<int:item_id>')
+@app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
-def api_get_item_prices(item_id):
+def api_get_item_prices(item_ids):
     # Fetch all prices (selling, special, etc) for selection logic if multiple
     # Simplified: Returning selling price. If multiple pricing structure exists in `inventory_price_recod`, adjust here.
-    # The WPF code checks `inventory_price_selling` and `inventory_price_purcharsing`.
-    # It seems to check count. If multiple rows for same link?
-    # Schema suggests `inventory_price_link` is FK to item.
-    # WPF code: SELECT ... FROM inventory_price_recod WHERE inventory_price_link = ...
-    # If count > 1, show selection.
+    # Accepts comma-separated item IDs to avoid N+1 query problems.
 
-    prices = db.execute_query("SELECT inventory_price_selling FROM inventory_price_recod WHERE inventory_price_link = %s", (item_id,))
-    price_list = [p['inventory_price_selling'] for p in prices]
-    return json.dumps(price_list)
+    ids = [i.strip() for i in item_ids.split(',') if i.strip().isdigit()]
+    if not ids:
+        return json.dumps({})
+
+    placeholders = ', '.join(['%s'] * len(ids))
+    query = f"SELECT inventory_price_link, inventory_price_selling FROM inventory_price_recod WHERE inventory_price_link IN ({placeholders})"
+
+    prices = db.execute_query(query, tuple(ids))
+
+    price_dict = {}
+    for p in prices:
+        link_id = str(p['inventory_price_link'])
+        if link_id not in price_dict:
+            price_dict[link_id] = []
+        price_dict[link_id].append(p['inventory_price_selling'])
+
+    return json.dumps(price_dict)
 
 def calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat):
     total_sales = 0
@@ -9793,6 +9951,19 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
 
     current_date = datetime.now().strftime('%Y-%m-%d')
 
+    # Pre-fetch warranty periods for all items in batch
+    warranty_map = {}
+    if ctx.inv_items:
+        item_names = list(set([item.get('name') for item in ctx.inv_items if item.get('name')]))
+        if item_names:
+            format_strings = ','.join(['%s'] * len(item_names))
+            ctx.cursor.execute(f"""
+                SELECT name, yeas_, month, date_ FROM inventory_vorenty_period
+                WHERE name IN ({format_strings})
+            """, tuple(item_names))
+            for row in ctx.cursor.fetchall():
+                warranty_map[row[0]] = (row[1], row[2], row[3])
+
     # Inventory Items
     for item in ctx.inv_items:
         # Add to invoice_recode (Note: WPF code uses table `invoice_recode` - wait, schema says `Invoice_Recode`)
@@ -9802,11 +9973,7 @@ def process_invoice_items_batch(ctx: InvoiceBatchContext):
         # Warranty Logic (Preserved but optimized to only run query)
         # Fetch warranty period for item
         w_end_date = None
-        ctx.cursor.execute("""
-            SELECT yeas_, month, date_ FROM inventory_vorenty_period
-            WHERE name = %s LIMIT 1
-        """, (item['name'],))
-        w_res = ctx.cursor.fetchone()
+        w_res = warranty_map.get(item.get('name'))
         if w_res:
             try:
                 years, months, days = w_res
@@ -10295,7 +10462,11 @@ def create_db_if_missing():
             cursor = conn_root.cursor()
 
             db_name = db_config.get('database', 'Book_keeping')
+            if not is_safe_db_name(db_name):
+                raise ValueError(f"Invalid database name: {db_name}")
             logging.warning(f"Database '{db_name}' not found or connection failed. Attempting to create...")
+            if not is_safe_db_name(db_name):
+                raise ValueError("Invalid database name")
             cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
             conn_root.commit()
             cursor.close()
@@ -10458,4 +10629,4 @@ def initialize_app():
         app_initialized = True
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    app.run(port=5000)
