@@ -1,23 +1,17 @@
 import sys
-import os
 from unittest.mock import MagicMock
 
 # Mock missing modules
 sys.modules['flask'] = MagicMock()
-sys.modules['flask_socketio'] = MagicMock()
 sys.modules['mysql'] = MagicMock()
 sys.modules['mysql.connector'] = MagicMock()
-sys.modules['dotenv'] = MagicMock()
-sys.modules['werkzeug'] = MagicMock()
-sys.modules['werkzeug.security'] = MagicMock()
-sys.modules['PyPDF2'] = MagicMock()
-sys.modules['requests'] = MagicMock()
-sys.modules['num2words'] = MagicMock()
-sys.modules['jinja2'] = MagicMock()
 
-os.environ['SECRET_KEY'] = 'test-key'
-sys.path.append('.')
-
+# Now run the test
 import unittest
-from tests import benchmark_warranty_save
-unittest.main(module=benchmark_warranty_save)
+# We need to manually patch app.py imports inside the test file or before import
+# Since the test file imports app, we need to ensure app.py can be imported.
+# But app.py imports flask at top level.
+# So we mock it here before importing the test module.
+
+from tests import benchmark_inventory_transfer
+unittest.main(module=benchmark_inventory_transfer)

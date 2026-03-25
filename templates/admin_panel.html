@@ -83,7 +83,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="editUser(event, {{ user.id }})"><i class="fas fa-edit"></i></button>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="editUser({{ user.id }})"><i class="fas fa-edit"></i></button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -217,9 +217,9 @@
         });
     }
 
-    function editUser(e, userId) {
+    function editUser(userId) {
         // Prevent row click event
-        e.stopPropagation();
+        event.stopPropagation();
 
         showLoading('Fetching User Details...');
 

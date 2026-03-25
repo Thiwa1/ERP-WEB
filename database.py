@@ -18,9 +18,7 @@ class Database:
                 if dynamic_db:
                     config['database'] = dynamic_db
 
-            conn = mysql.connector.connect(**config)
-            conn.ping(reconnect=True, attempts=3, delay=2)
-            return conn
+            return mysql.connector.connect(**config)
         except mysql.connector.Error as err:
             self.last_error = str(err)
             print(f"Error connecting to database: {err}")
