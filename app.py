@@ -9382,14 +9382,14 @@ def system_backup():
         flash('Invalid database name', 'danger')
         return redirect(url_for('index'))
 
-    # Check for mysqldump or mariadb-dump
+    # Attempt to find the dump binary
     dump_cmd = shutil.which('mysqldump')
     if not dump_cmd:
         dump_cmd = shutil.which('mariadb-dump')
 
+    # Fallback to string name if shutil.which fails due to PATH issues on some hosts
     if not dump_cmd:
-        flash('mysqldump or mariadb-dump not found on server', 'danger')
-        return redirect(url_for('index'))
+        dump_cmd = 'mysqldump'
 
     try:
         filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
