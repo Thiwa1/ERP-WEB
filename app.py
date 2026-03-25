@@ -3747,9 +3747,13 @@ def job_management():
     jobs = db.execute_query("SELECT * FROM jobs_unit ORDER BY job_number DESC")
     return render_template('job_management.html', jobs=jobs)
 
+@app.route('/create_job', methods=['GET', 'POST'])
 @app.route('/jobs/create', methods=['POST'])
 @login_required
 def create_job():
+    if request.method == 'GET':
+        return render_template('add_new_job.html')
+
     job_no = request.form.get('job_no')
     description = request.form.get('job_description')
 
