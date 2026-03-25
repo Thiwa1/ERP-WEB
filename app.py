@@ -995,7 +995,9 @@ def extract_vat_from_pdf():
         return jsonify({'success': False, 'message': 'No selected file'}), 400
 
     if not file.filename.lower().endswith('.pdf'):
-        return jsonify({'success': False, 'message': 'Only PDF files are supported'}), 400
+        # They uploaded an image. Let's just say we can't extract it for now,
+        # but don't crash.
+        return jsonify({'success': False, 'message': 'Only PDF files are supported. Images not yet supported by AI Scan.'}), 400
 
     try:
         # Read PDF content
@@ -1020,7 +1022,7 @@ def extract_vat_from_pdf():
 
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
-        return jsonify({'success': False, 'message': 'Failed to process document'}), 500
+        return jsonify({'success': False, 'message': 'Failed to process document: ' + str(e)}), 500
 
 
 @app.route('/add_supplier', methods=['GET', 'POST'])
@@ -9267,10 +9269,14 @@ def system_backup():
         flash('Invalid database name', 'danger')
         return redirect(url_for('index'))
 
-    # Check for mysqldump
-    if not shutil.which('mysqldump'):
-        flash('mysqldump not found', 'danger')
-        return redirect(url_for('index'))
+    # Attempt to find the dump binary
+    dump_cmd = shutil.which('mysqldump')
+    if not dump_cmd:
+        dump_cmd = shutil.which('mariadb-dump')
+
+    # Fallback to string name if shutil.which fails due to PATH issues on some hosts
+    if not dump_cmd:
+        dump_cmd = 'mysqldump'
 
     try:
         filename = f"backup_{date.today().strftime('%Y%m%d')}.sql"
