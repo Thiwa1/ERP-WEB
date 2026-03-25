@@ -24,7 +24,6 @@ import requests
 import string
 from datetime import timedelta
 import mysql.connector
-import urllib.request
 import typing
 from dataclasses import dataclass
 
@@ -158,10 +157,12 @@ db_suport_name = "sri"
 
 # Force prefix onto database name to handle shared hosting constraints
 _raw_db_name = os.environ.get('DB_NAME', 'Book_keeping')
-if _raw_db_name.startswith(f"{db_suport_name}_"):
+if _raw_db_name and _raw_db_name.startswith(f"{db_suport_name}_"):
     _final_db_name = _raw_db_name
-else:
+elif db_suport_name:
     _final_db_name = f"{db_suport_name}_{_raw_db_name}"
+else:
+    _final_db_name = _raw_db_name
 
 db_config = {
     'user': os.environ.get('DB_USER', 'root'),
@@ -177,7 +178,7 @@ if not db_config['user']:
     print("Warning: DB_USER not set in environment variables.")
 
 db = Database(db_config)
-MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master"
+MASTER_DB_NAME = f"{db_suport_name}_Book_keeping_Master" if db_suport_name else "Book_keeping_Master"
 
 def get_session_db_name():
     """Returns the correct database name based on session."""
@@ -369,7 +370,7 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
     import re
 
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
-    db_name = f"{db_suport_name}_{safe_name}"
+    db_name = f"{db_suport_name}_{safe_name}" if db_suport_name else safe_name
 
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
@@ -2383,6 +2384,7 @@ def save_bulk_gl_accounts(form_data, current_user):
 
         to_update = []
         to_insert = []
+        seen_names = set()
 
         # For Sub-Ledgers
         potential_banks = []
@@ -2393,6 +2395,10 @@ def save_bulk_gl_accounts(form_data, current_user):
             if actions[i] == 'skip': continue
 
             name = names[i]
+
+            # Deduplicate items by account name first
+            if name in seen_names: continue
+            seen_names.add(name)
             acc_type = types[i]
             cat_val = cats[i]
             cf = cfs[i]
@@ -2435,36 +2441,56 @@ def save_bulk_gl_accounts(form_data, current_user):
 
             count += 1
 
-        # Process Updates row-by-row to skip failures
+        # Process Updates in bulk, fallback to row-by-row to skip failures
         if to_update:
-            for row in to_update:
-                try:
-                    cursor.execute("""
-                        UPDATE new_account_table SET
-                            account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
-                            account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
-                            account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
-                            cf_catogory=%s, account_basment=%s
-                        WHERE id=%s
-                    """, row)
-                except Exception as e:
-                    pass
+            try:
+                cursor.executemany("""
+                    UPDATE new_account_table SET
+                        account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                        account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                        account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                        cf_catogory=%s, account_basment=%s
+                    WHERE id=%s
+                """, to_update)
+            except Exception:
+                for row in to_update:
+                    try:
+                        cursor.execute("""
+                            UPDATE new_account_table SET
+                                account_hold_possion_PL=%s, account_hold_possion_Balace_Sheet=%s,
+                                account_name_of_catogory_PL=%s, account_name_of_catogory_Balace_sheet=%s,
+                                account_income=%s, account_expenses=%s, account_assets=%s, account_liabilities=%s, account_equity=%s,
+                                cf_catogory=%s, account_basment=%s
+                            WHERE id=%s
+                        """, row)
+                    except Exception:
+                        pass
 
-        # Process Inserts row-by-row to skip failures
+        # Process Inserts in bulk, fallback to row-by-row to skip failures
         if to_insert:
-            for row in to_insert:
-                try:
-                    cursor.execute("""
-                        INSERT INTO new_account_table (
-                            account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
-                            account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
-                            account_income, account_expenses, account_assets, account_liabilities, account_equity,
-                            cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
-                    """, row)
-                except Exception as e:
-                    count -= 1
-                    pass
+            try:
+                cursor.executemany("""
+                    INSERT INTO new_account_table (
+                        account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                        account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                        account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                        cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                """, to_insert)
+            except Exception:
+                for row in to_insert:
+                    try:
+                        cursor.execute("""
+                            INSERT INTO new_account_table (
+                                account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                                account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                                account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                                cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s, 'LKR')
+                        """, row)
+                    except Exception:
+                        count -= 1
+                        pass
 
         _process_bulk_gl_subledgers(cursor, potential_banks, potential_cash, today, current_user)
 
@@ -3022,7 +3048,7 @@ def cash_payment_submit():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_payment += amount
-            except (ValueError, TypeError):
+            except Exception:
                 continue
 
     if not payments:
@@ -3511,6 +3537,7 @@ def add_new_user():
         flash('Passwords do not match', 'danger')
         return redirect(url_for('admin_users'))
 
+    conn = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -3974,19 +4001,28 @@ def warranty_save():
         cursor = conn.cursor()
         conn.start_transaction()
 
+        insert_params = []
+        update_params = []
+
         for i in range(len(ids)):
             wid = int(ids[i])
             if wid == 0: # Insert
-                cursor.execute("""
-                    INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
-                    VALUES (%s, %s, %s, %s)
-                """, (years[i], months[i], days[i], names[i]))
+                insert_params.append((years[i], months[i], days[i], names[i]))
             else: # Update
-                cursor.execute("""
-                    UPDATE inventory_vorenty_period
-                    SET yeas_ = %s, month = %s, date_ = %s, name = %s
-                    WHERE id = %s
-                """, (years[i], months[i], days[i], names[i], wid))
+                update_params.append((years[i], months[i], days[i], names[i], wid))
+
+        if insert_params:
+            cursor.executemany("""
+                INSERT INTO inventory_vorenty_period (yeas_, month, date_, name)
+                VALUES (%s, %s, %s, %s)
+            """, insert_params)
+
+        if update_params:
+            cursor.executemany("""
+                UPDATE inventory_vorenty_period
+                SET yeas_ = %s, month = %s, date_ = %s, name = %s
+                WHERE id = %s
+            """, update_params)
 
         conn.commit()
         cursor.close()
@@ -5181,7 +5217,8 @@ def process_reconciliation():
 
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 conn.start_transaction()
                 # Parse cleared items and their dates
@@ -5393,9 +5430,9 @@ def reverse_reconciliation():
 
     conn = None
     try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
+        conn = db.get_connection()
+        with conn.cursor(dictionary=True) as cursor:
+            conn.start_transaction()
             # Check tables
             cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
             if not cursor.fetchone():
@@ -5461,8 +5498,18 @@ def reverse_reconciliation():
             conn.commit()
             flash('Reconciliation reversed successfully!', 'success')
     except Exception as e:
-            conn.rollback()
-            flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+        if conn and conn.is_connected():
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
 
@@ -6628,7 +6675,7 @@ def submit_customer_receipt():
                 if amount > 0:
                     payments.append({'id': inv_id, 'amount': amount})
                     total_receipt += amount
-            except (ValueError, TypeError):
+            except Exception:
                 pass
 
     if total_receipt <= 0:
@@ -7172,10 +7219,12 @@ def cash_handover():
             flash('Please enter a valid amount.', 'danger')
             return redirect(url_for('cash_handover'))
 
+        conn = None
         try:
             # Create table if it doesn't exist
             try:
-                with db.get_connection() as conn:
+                conn = db.get_connection()
+                if conn:
                     with conn.cursor(dictionary=True) as cursor:
                         conn.start_transaction()
                         cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
@@ -7211,8 +7260,59 @@ def cash_handover():
             return redirect(url_for('cash_handover'))
 
     # GET request
-    users = db.execute_query("SELECT id, username FROM Login_Table")
-    return render_template('cash_handover.html', users=users)
+    users = db.execute_query("SELECT id, User_Name as username FROM Login_Table")
+    cashier_name = session.get('username', 'Cashier')
+    today_date = datetime.now().strftime('%Y-%m-%d')
+    user_id = get_current_user_id()
+
+    cash_expected = 0.0
+    history = []
+
+    conn = None
+    try:
+        conn = db.get_connection()
+        if conn:
+            with conn.cursor(dictionary=True) as cursor:
+                # Get Expected Cash
+                cursor.execute('''
+                    SELECT SUM(Total_Value) as total_cash
+                    FROM pos_sales_invoice_01
+                    WHERE PaymentMethord = 1
+                      AND DATE(AcctionDate) = %s
+                      AND RecodeUserId = %s
+                ''', (today_date, user_id))
+                res = cursor.fetchone()
+                if res and res['total_cash']:
+                    cash_expected = float(res['total_cash'])
+
+                # Ensure table exists for history
+                cursor.execute("SHOW TABLES LIKE 'cash_handover_logs'")
+                if cursor.fetchone():
+                    cursor.execute('''
+                        SELECT amount as actual_amount, notes, created_at, amount - %s as difference
+                        FROM cash_handover_logs
+                        WHERE DATE(created_at) = %s AND user_id = %s
+                        ORDER BY created_at DESC
+                    ''', (cash_expected, today_date, user_id))
+
+                    for row in cursor.fetchall():
+                        history.append({
+                            'expected_amount': cash_expected,
+                            'actual_amount': float(row['actual_amount']),
+                            'difference': float(row['actual_amount']) - cash_expected,
+                            'notes': row['notes'],
+                            'created_at': row['created_at']
+                        })
+    except Exception as e:
+        logging.error(f"Error fetching cash handover info: {e}")
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except:
+                pass
+
+    return render_template('cash_handover.html', users=users, cashier_name=cashier_name, today_date=today_date, cash_expected=cash_expected, history=history)
 
 
 # --- Cashier Day Sales Summary ---
@@ -7228,9 +7328,9 @@ def cashier_day_sales():
         sales_summary = db.execute_query('''
             SELECT
                 COUNT(*) as total_invoices,
-                SUM(AcctionValue) as total_sales
+                SUM(Total_Value) as total_sales
             FROM pos_sales_invoice_01
-            WHERE DATE(AcctionDate) = %s AND user_id = %s
+            WHERE DATE(AcctionDate) = %s AND RecodeUserId = %s
         ''', (today, user_id))
 
         if not sales_summary or not sales_summary[0]:
@@ -7536,7 +7636,8 @@ def send_sms_otp(mobile, code):
     # Try to load credentials from active tenant DB site_settings if available
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 # Handle cases where table doesn't exist yet gracefully
                 try:
@@ -7546,10 +7647,16 @@ def send_sms_otp(mobile, code):
                     pass
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '28990')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'b0K0nL5kIuR9lM4xZ1aP')
-    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID')
 
     if not api_key or not user_id:
         logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
@@ -7631,7 +7738,8 @@ def pos_web_login():
 
     conn = None
     try:
-        with db.get_connection() as conn:
+        conn = db.get_connection()
+        if conn:
             with conn.cursor(dictionary=True) as cursor:
                 if tenant_db_name and is_safe_db_name(tenant_db_name):
                     cursor.execute(f"USE `{tenant_db_name}`")
@@ -7735,6 +7843,12 @@ def pos_web_login():
         logging.error(f"POS Login DB Error: {e}")
         flash('An error occurred during login', 'danger')
         return redirect(url_for('pos_web_login'))
+    finally:
+        if conn and conn.is_connected():
+            try:
+                conn.close()
+            except Exception:
+                pass
 
 @app.route('/pos_verify_2fa', methods=['POST'])
 def pos_verify_2fa():
@@ -8823,26 +8937,26 @@ def get_exchange_rate():
             return {'rate': cached_data['rate']}
 
     try:
-        # Use urllib instead of requests to avoid external dependency if not installed
         url = f"https://api.exchangerate-api.com/v4/latest/{from_curr}"
-        with urllib.request.urlopen(url) as response:
-            data = json.loads(response.read().decode())
-            rate = data.get('rates', {}).get(to_curr)
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        rate = data.get('rates', {}).get(to_curr)
 
-            if rate is not None:
-                # Update cache
-                exchange_rate_cache[cache_key] = {
-                    'rate': float(rate),
-                    'timestamp': current_time
-                }
+        if rate is not None:
+            # Update cache
+            exchange_rate_cache[cache_key] = {
+                'rate': float(rate),
+                'timestamp': current_time
+            }
 
-                # Also cache the reverse if possible (1/rate)
-                exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
-                    'rate': 1.0 / float(rate),
-                    'timestamp': current_time
-                }
+            # Also cache the reverse if possible (1/rate)
+            exchange_rate_cache[f"{to_curr}_{from_curr}"] = {
+                'rate': 1.0 / float(rate),
+                'timestamp': current_time
+            }
 
-                return {'rate': float(rate)}
+            return {'rate': float(rate)}
 
     except Exception as e:
         print(f"Exchange Rate API Error: {e}")
@@ -8946,6 +9060,8 @@ def save_journal_entry():
             jv_no = cursor.lastrowid
 
             # 2. Insert Entries
+            entry_records = []
+            today_date = datetime.now().date()
             for e in entries:
                 # Handle sub account
                 sub_code = 0
@@ -8962,19 +9078,22 @@ def save_journal_entry():
                 fc_amt = parse_float(e.get('fc_amount', 0))
                 rate = parse_float(e.get('rate', 1))
 
-                cursor.execute("""
+                entry_records.append((
+                    e['account'], e['dr'], e['cr'],
+                    entry_date, today_date, e['narration'],
+                    current_user, jv_no, sub_code, job_no,
+                    curr_code, fc_amt, rate
+                ))
+
+            if entry_records:
+                cursor.executemany("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR,
                         entry_effective_date, entry_create_date, entry_naration,
                         entry_create_user, entry_jv, entry_sub_account_code, entry_job_number,
                         currency_code, fc_amount, exchange_rate
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    e['account'], e['dr'], e['cr'],
-                    entry_date, datetime.now().date(), e['narration'],
-                    current_user, jv_no, sub_code, job_no,
-                    curr_code, fc_amt, rate
-                ))
+                """, entry_records)
 
             conn.commit()
             flash(f'Journal Entry created successfully. System JV: {jv_no}', 'success')
@@ -9267,9 +9386,13 @@ def system_backup():
         flash('Invalid database name', 'danger')
         return redirect(url_for('index'))
 
-    # Check for mysqldump
-    if not shutil.which('mysqldump'):
-        flash('mysqldump not found', 'danger')
+    # Check for mysqldump or mariadb-dump
+    dump_cmd = shutil.which('mysqldump')
+    if not dump_cmd:
+        dump_cmd = shutil.which('mariadb-dump')
+
+    if not dump_cmd:
+        flash('mysqldump or mariadb-dump not found on server', 'danger')
         return redirect(url_for('index'))
 
     try:
@@ -9296,7 +9419,7 @@ def system_backup():
             # Since we are in python, we can pipe output to string or file.
 
             cmd = [
-                'mysqldump',
+                dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
                 db_name
