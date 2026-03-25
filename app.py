@@ -9251,9 +9251,13 @@ def system_backup():
         flash('Invalid database configuration', 'danger')
         return redirect(url_for('index'))
 
-    # Check for mysqldump
-    if not shutil.which('mysqldump'):
-        flash('mysqldump not found', 'danger')
+    # Check for mysqldump or mariadb-dump
+    dump_cmd = shutil.which('mysqldump')
+    if not dump_cmd:
+        dump_cmd = shutil.which('mariadb-dump')
+
+    if not dump_cmd:
+        flash('mysqldump or mariadb-dump not found on server', 'danger')
         return redirect(url_for('index'))
 
     try:
@@ -9280,7 +9284,7 @@ def system_backup():
             # Since we are in python, we can pipe output to string or file.
 
             cmd = [
-                'mysqldump',
+                dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
                 db_config['database']
