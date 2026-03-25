@@ -9411,7 +9411,7 @@ def system_backup():
             # Since we are in python, we can pipe output to string or file.
 
             cmd = [
-                'mysqldump',
+                dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
                 db_name
