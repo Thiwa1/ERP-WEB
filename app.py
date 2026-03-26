@@ -995,9 +995,7 @@ def extract_vat_from_pdf():
         return jsonify({'success': False, 'message': 'No selected file'}), 400
 
     if not file.filename.lower().endswith('.pdf'):
-        # They uploaded an image. Let's just say we can't extract it for now,
-        # but don't crash.
-        return jsonify({'success': False, 'message': 'Only PDF files are supported. Images not yet supported by AI Scan.'}), 400
+        return jsonify({'success': False, 'message': 'Only PDF files are supported'}), 400
 
     try:
         # Read PDF content
@@ -1022,7 +1020,7 @@ def extract_vat_from_pdf():
 
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
-        return jsonify({'success': False, 'message': 'Failed to process document: ' + str(e)}), 500
+        return jsonify({'success': False, 'message': 'Failed to process document'}), 500
 
 
 @app.route('/add_supplier', methods=['GET', 'POST'])
