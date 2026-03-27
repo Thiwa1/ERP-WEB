@@ -633,110 +633,218 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Quick Actions Modal (Win10 Style) -->
+    <!-- Quick Actions Modal (Win11 Style) -->
     <style>
-        .win10-modal-dialog { max-width: 850px; }
-        .win10-modal-content {
-            background: #202020; color: #ffffff; border: 1px solid #333;
-            border-radius: 0; display: flex; flex-direction: row; height: 550px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        .win11-modal-dialog { max-width: 650px; }
+        .win11-modal-content {
+            background: rgba(243, 243, 243, 0.95); backdrop-filter: blur(20px);
+            border: 1px solid rgba(0,0,0,0.1); border-radius: 12px;
+            display: flex; flex-direction: column; height: auto; min-height: 600px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15); color: #202020;
+            padding: 24px;
         }
-        .win10-sidebar { width: 48px; background: #181818; display: flex; flex-direction: column; align-items: center; padding-top: 10px; border-right: 1px solid #333; }
-        .win10-sidebar-icon { color: #fff; padding: 15px 0; width: 100%; text-align: center; cursor: pointer; transition: background 0.2s; }
-        .win10-sidebar-icon:hover { background: rgba(255, 255, 255, 0.1); }
-        .win10-main-content { flex-grow: 1; padding: 20px 30px; display: flex; flex-direction: column; overflow-y: auto; }
-        .win10-search-box { background: #fff; border-radius: 0; padding: 8px 15px; display: flex; align-items: center; margin-bottom: 25px; border: 2px solid transparent; border-bottom: 2px solid #0078D7; }
-        .win10-search-box input { border: none; background: transparent; width: 100%; margin-left: 10px; outline: none; color: #000; }
-        .win10-search-box i { color: #666; }
-        .win10-layout { display: flex; gap: 30px; }
-        .win10-groups { flex: 2; display: flex; flex-direction: column; gap: 25px; }
-        .win10-recents { flex: 1; border-left: 1px solid #333; padding-left: 20px; }
-        .win10-category-title { font-size: 14px; font-weight: 500; margin-bottom: 12px; color: #fff; letter-spacing: 0.5px; }
-        .win10-tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 10px; }
-        .win10-tile { background: #0078D7; color: #fff; text-decoration: none; padding: 15px; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: transform 0.1s, filter 0.2s; height: 100px; cursor: pointer; border: 2px solid transparent; position: relative; }
-        .win10-tile:hover { filter: brightness(1.2); border-color: rgba(255,255,255,0.3); color: #fff; }
-        .win10-tile:active { transform: scale(0.96); }
-        .win10-tile i { font-size: 28px; margin-bottom: 10px; }
-        .win10-tile span { font-size: 12px; text-align: center; line-height: 1.2; }
-        .tile-blue { background: #0078D7; } .tile-green { background: #107C10; } .tile-orange { background: #D83B01; } .tile-purple { background: #5C2D91; } .tile-teal { background: #008272; } .tile-red { background: #E81123; }
-        .win10-recent-list { display: flex; flex-direction: column; gap: 5px; }
-        .win10-recent-item { display: flex; align-items: center; padding: 10px 12px; color: #fff; text-decoration: none; transition: background 0.2s; border-radius: 4px; }
-        .win10-recent-item:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
-        .win10-recent-item i { width: 30px; font-size: 16px; text-align: center; }
+
+        .win11-search-box {
+            background: #ffffff; border-radius: 20px; padding: 10px 18px;
+            display: flex; align-items: center; border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); margin-bottom: 24px;
+            transition: box-shadow 0.2s;
+        }
+        .win11-search-box:focus-within {
+            box-shadow: 0 2px 8px rgba(0,120,212,0.3); border-color: #0078D7;
+        }
+        .win11-search-box input {
+            border: none; background: transparent; width: 100%; margin-left: 10px;
+            outline: none; color: #000; font-size: 14px;
+        }
+        .win11-search-box i { color: #0078D7; }
+
+        .win11-section-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 16px; padding: 0 8px;
+        }
+        .win11-section-title { font-size: 14px; font-weight: 600; color: #202020; margin: 0; }
+        .win11-btn-all {
+            background: rgba(255,255,255,0.7); border: 1px solid rgba(0,0,0,0.05);
+            border-radius: 4px; padding: 4px 10px; font-size: 12px; font-weight: 500;
+            color: #202020; cursor: pointer; transition: background 0.2s;
+        }
+        .win11-btn-all:hover { background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        .win11-pinned-grid {
+            display: grid; grid-template-columns: repeat(6, 1fr); gap: 15px 5px; margin-bottom: 30px;
+        }
+        .win11-app-icon {
+            display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+            text-decoration: none; color: #202020; padding: 8px 4px; border-radius: 8px;
+            transition: background 0.2s, transform 0.1s; cursor: pointer; border: 1px solid transparent;
+        }
+        .win11-app-icon:hover {
+            background: rgba(255,255,255,0.8); box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            color: #202020;
+        }
+        .win11-app-icon:active { transform: scale(0.95); }
+        .win11-app-icon .icon-wrapper {
+            width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center;
+            justify-content: center; margin-bottom: 8px; font-size: 24px; color: #fff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .win11-app-icon span { font-size: 11px; text-align: center; line-height: 1.2; font-weight: 500; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+        .icon-blue { background: linear-gradient(135deg, #0078D7, #005A9E); }
+        .icon-green { background: linear-gradient(135deg, #107C10, #0B5A0B); }
+        .icon-orange { background: linear-gradient(135deg, #D83B01, #A82E01); }
+        .icon-purple { background: linear-gradient(135deg, #5C2D91, #401F68); }
+        .icon-teal { background: linear-gradient(135deg, #008272, #005C50); }
+        .icon-red { background: linear-gradient(135deg, #E81123, #A80D1A); }
+
+        .win11-recommended { display: flex; flex-direction: column; gap: 8px; }
+        .win11-recents-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .win11-recent-item {
+            display: flex; align-items: center; padding: 10px 12px; color: #202020;
+            text-decoration: none; transition: background 0.2s; border-radius: 6px;
+            background: rgba(255,255,255,0.4); border: 1px solid transparent;
+        }
+        .win11-recent-item:hover {
+            background: rgba(255,255,255,0.8); border: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); color: #202020;
+        }
+        .win11-recent-item i { width: 32px; font-size: 18px; text-align: center; }
+
+        .win11-footer {
+            margin-top: auto; padding-top: 16px; display: flex; justify-content: space-between;
+            align-items: center; border-top: 1px solid rgba(0,0,0,0.1);
+        }
+        .win11-profile { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+        .win11-profile img { width: 32px; height: 32px; border-radius: 50%; }
+        .win11-power-btn { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; color: #202020; }
+        .win11-power-btn:hover { background: rgba(0,0,0,0.05); }
+
+        .win11-category-title { display: none; } /* Hide category titles for Win11 flat grid, use for search filtering */
     </style>
+
     <div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true" style="z-index: 1055;">
-        <div class="modal-dialog modal-dialog-centered win10-modal-dialog">
-            <div class="modal-content win10-modal-content">
-                <div class="win10-sidebar">
-                    <div class="win10-sidebar-icon" data-bs-dismiss="modal"><i class="fas fa-bars"></i></div>
-                    <div style="flex-grow: 1;"></div>
-                    <div class="win10-sidebar-icon"><i class="fas fa-user"></i></div>
-                    <div class="win10-sidebar-icon"><i class="fas fa-cog"></i></div>
-                    <div class="win10-sidebar-icon" data-bs-dismiss="modal"><i class="fas fa-power-off text-danger"></i></div>
+        <div class="modal-dialog modal-dialog-centered win11-modal-dialog">
+            <div class="modal-content win11-modal-content">
+
+                <div class="win11-search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="win10SearchInput" placeholder="Type here to search apps, settings, and more" autofocus autocomplete="off">
                 </div>
-                <div class="win10-main-content">
-                    <div class="win10-search-box">
-                        <i class="fas fa-search"></i>
-                        <input type="text" id="win10SearchInput" placeholder="Type here to search apps, settings, and more" autofocus autocomplete="off">
+
+                <div class="win11-section-header">
+                    <h3 class="win11-section-title">Pinned</h3>
+                    <button class="win11-btn-all" data-bs-dismiss="modal">All apps <i class="fas fa-chevron-right ms-1" style="font-size: 10px;"></i></button>
+                </div>
+
+                <div class="win11-pinned-grid" id="win10GridContainer">
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Company Setup</span>
+                        <a href="/company_profile" class="win11-app-icon win10-tile" data-name="company profile">
+                            <div class="icon-wrapper icon-blue"><i class="fas fa-id-card"></i></div><span>Company</span>
+                        </a>
+                        <a href="/create_bank_account" class="win11-app-icon win10-tile" data-name="bank account">
+                            <div class="icon-wrapper icon-blue"><i class="fas fa-university"></i></div><span>Bank Acc</span>
+                        </a>
+                        <a href="/admin/users" class="win11-app-icon win10-tile" data-name="users admin">
+                            <div class="icon-wrapper icon-blue"><i class="fas fa-user-plus"></i></div><span>Users</span>
+                        </a>
+                        <a href="/control_panel" class="win11-app-icon win10-tile" data-name="system control panel">
+                            <div class="icon-wrapper icon-blue"><i class="fas fa-sliders-h"></i></div><span>System</span>
+                        </a>
                     </div>
-                    <div class="win10-layout">
-                        <div class="win10-groups" id="win10GridContainer">
-                            <div class="win10-category">
-                                <div class="win10-category-title">Company Setup</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/company_profile" class="win10-tile tile-blue" data-name="company profile"><i class="fas fa-id-card"></i><span>Company</span></a>
-                                    <a href="/create_bank_account" class="win10-tile tile-blue" data-name="bank account"><i class="fas fa-university"></i><span>Bank Acc</span></a>
-                                    <a href="/admin/users" class="win10-tile tile-blue" data-name="users admin"><i class="fas fa-user-plus"></i><span>Users</span></a>
-                                    <a href="/control_panel" class="win10-tile tile-blue" data-name="system control panel"><i class="fas fa-sliders-h"></i><span>System</span></a>
-                                </div>
-                            </div>
-                            <div class="win10-category">
-                                <div class="win10-category-title">Suppliers & Customers</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/add_customer" class="win10-tile tile-green" data-name="add new customer"><i class="fas fa-user-tag"></i><span>Customer</span></a>
-                                    <a href="/add_supplier" class="win10-tile tile-green" data-name="add new supplier"><i class="fas fa-truck"></i><span>Supplier</span></a>
-                                </div>
-                            </div>
-                            <div class="win10-category">
-                                <div class="win10-category-title">Point of Sales</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/pos_settings" class="win10-tile tile-orange" data-name="pos settings"><i class="fas fa-cogs"></i><span>POS Set</span></a>
-                                    <a href="/warranty_period" class="win10-tile tile-orange" data-name="warranty period"><i class="fas fa-shield-alt"></i><span>Warranty</span></a>
-                                </div>
-                            </div>
-                            <div class="win10-category">
-                                <div class="win10-category-title">Accounting</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/balance_sheet_category" class="win10-tile tile-purple" data-name="balance sheet category"><i class="fas fa-balance-scale"></i><span>Bal Sheet</span></a>
-                                    <a href="/pl_category" class="win10-tile tile-purple" data-name="profit loss category"><i class="fas fa-chart-pie"></i><span>P&L Cat</span></a>
-                                    <a href="/add_new_account" class="win10-tile tile-purple" data-name="add new account"><i class="fas fa-file-invoice"></i><span>New Acc</span></a>
-                                    <a href="/bulk_upload_gl" class="win10-tile tile-purple" data-name="bulk upload gl"><i class="fas fa-file-upload"></i><span>Bulk GL</span></a>
-                                </div>
-                            </div>
-                            <div class="win10-category">
-                                <div class="win10-category-title">Inventory Management</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/inventory_locations" class="win10-tile tile-teal" data-name="inventory locations house"><i class="fas fa-warehouse"></i><span>Inv House</span></a>
-                                    <a href="/add_inventory_item" class="win10-tile tile-teal" data-name="add inventory item"><i class="fas fa-box"></i><span>Inv Item</span></a>
-                                </div>
-                            </div>
-                            <div class="win10-category">
-                                <div class="win10-category-title">Other Tools</div>
-                                <div class="win10-tile-grid">
-                                    <a href="/tax_settings" class="win10-tile tile-teal" data-name="tax settings"><i class="fas fa-percent"></i><span>Tax</span></a>
-                                    <a href="/system_backup" class="win10-tile tile-red" data-name="system backup download"><i class="fas fa-download"></i><span>Backup</span></a>
-                                </div>
-                            </div>
+
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Suppliers & Customers</span>
+                        <a href="/add_customer" class="win11-app-icon win10-tile" data-name="add new customer">
+                            <div class="icon-wrapper icon-green"><i class="fas fa-user-tag"></i></div><span>Customer</span>
+                        </a>
+                        <a href="/add_supplier" class="win11-app-icon win10-tile" data-name="add new supplier">
+                            <div class="icon-wrapper icon-green"><i class="fas fa-truck"></i></div><span>Supplier</span>
+                        </a>
+                    </div>
+
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Point of Sales</span>
+                        <a href="/pos_settings" class="win11-app-icon win10-tile" data-name="pos settings">
+                            <div class="icon-wrapper icon-orange"><i class="fas fa-cogs"></i></div><span>POS Set</span>
+                        </a>
+                        <a href="/warranty_period" class="win11-app-icon win10-tile" data-name="warranty period">
+                            <div class="icon-wrapper icon-orange"><i class="fas fa-shield-alt"></i></div><span>Warranty</span>
+                        </a>
+                    </div>
+
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Accounting</span>
+                        <a href="/balance_sheet_category" class="win11-app-icon win10-tile" data-name="balance sheet category">
+                            <div class="icon-wrapper icon-purple"><i class="fas fa-balance-scale"></i></div><span>Bal Sheet</span>
+                        </a>
+                        <a href="/pl_category" class="win11-app-icon win10-tile" data-name="profit loss category">
+                            <div class="icon-wrapper icon-purple"><i class="fas fa-chart-pie"></i></div><span>P&L Cat</span>
+                        </a>
+                        <a href="/add_new_account" class="win11-app-icon win10-tile" data-name="add new account">
+                            <div class="icon-wrapper icon-purple"><i class="fas fa-file-invoice"></i></div><span>New Acc</span>
+                        </a>
+                        <a href="/bulk_upload_gl" class="win11-app-icon win10-tile" data-name="bulk upload gl">
+                            <div class="icon-wrapper icon-purple"><i class="fas fa-file-upload"></i></div><span>Bulk GL</span>
+                        </a>
+                    </div>
+
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Inventory Management</span>
+                        <a href="/inventory_locations" class="win11-app-icon win10-tile" data-name="inventory locations house">
+                            <div class="icon-wrapper icon-teal"><i class="fas fa-warehouse"></i></div><span>Inv House</span>
+                        </a>
+                        <a href="/add_inventory_item" class="win11-app-icon win10-tile" data-name="add inventory item">
+                            <div class="icon-wrapper icon-teal"><i class="fas fa-box"></i></div><span>Inv Item</span>
+                        </a>
+                    </div>
+
+                    <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Other Tools</span>
+                        <a href="/tax_settings" class="win11-app-icon win10-tile" data-name="tax settings">
+                            <div class="icon-wrapper icon-teal"><i class="fas fa-percent"></i></div><span>Tax</span>
+                        </a>
+                        <a href="/system_backup" class="win11-app-icon win10-tile" data-name="system backup download">
+                            <div class="icon-wrapper icon-red"><i class="fas fa-download"></i></div><span>Backup</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="win11-recommended" id="win10RecentCategory">
+                    <div class="win11-section-header" style="margin-bottom: 8px;">
+                        <h3 class="win11-section-title">Recommended</h3>
+                        <div class="win11-btn-all">More <i class="fas fa-chevron-right ms-1" style="font-size: 10px;"></i></div>
+                    </div>
+                    <div class="win11-recents-grid">
+                        <a href="/add_customer" class="win11-recent-item win10-recent-item" data-name="add customer">
+                            <i class="fas fa-user-plus text-primary"></i>
+                            <div><div class="fw-bold" style="font-size: 13px;">Add Customer</div><div class="text-muted" style="font-size: 11px;">Recently used</div></div>
+                        </a>
+                        <a href="/create_bank_account" class="win11-recent-item win10-recent-item" data-name="create bank account">
+                            <i class="fas fa-university text-success"></i>
+                            <div><div class="fw-bold" style="font-size: 13px;">Create Bank Account</div><div class="text-muted" style="font-size: 11px;">Recently used</div></div>
+                        </a>
+                        <a href="/balance_sheet_category" class="win11-recent-item win10-recent-item" data-name="balance sheet category">
+                            <i class="fas fa-balance-scale text-warning"></i>
+                            <div><div class="fw-bold" style="font-size: 13px;">Balance Sheet Category</div><div class="text-muted" style="font-size: 11px;">Recently used</div></div>
+                        </a>
+                        <a href="/journal_entry" class="win11-recent-item win10-recent-item" data-name="journal entry">
+                            <i class="fas fa-book text-info"></i>
+                            <div><div class="fw-bold" style="font-size: 13px;">Journal Entry</div><div class="text-muted" style="font-size: 11px;">Used 5m ago</div></div>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="win11-footer">
+                    <div class="win11-profile">
+                        <div style="background: #e2e8f0; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #475569;">
+                            <i class="fas fa-user"></i>
                         </div>
-                        <div class="win10-recents win10-category" id="win10RecentCategory">
-                            <div class="win10-category-title">Recent Actions</div>
-                            <div class="win10-recent-list">
-                                <a href="/add_customer" class="win10-recent-item" data-name="add customer"><i class="fas fa-user-plus text-primary"></i><div><div class="fw-bold" style="font-size: 14px;">Add Customer</div><div class="text-white-50" style="font-size: 12px;">Recently used</div></div></a>
-                                <a href="/create_bank_account" class="win10-recent-item" data-name="create bank account"><i class="fas fa-university text-success"></i><div><div class="fw-bold" style="font-size: 14px;">Create Bank Account</div><div class="text-white-50" style="font-size: 12px;">Recently used</div></div></a>
-                                <a href="/balance_sheet_category" class="win10-recent-item" data-name="balance sheet category"><i class="fas fa-balance-scale text-warning"></i><div><div class="fw-bold" style="font-size: 14px;">Balance Sheet Category</div><div class="text-white-50" style="font-size: 12px;">Recently used</div></div></a>
-                                <a href="/journal_entry" class="win10-recent-item" data-name="journal entry"><i class="fas fa-book text-info"></i><div><div class="fw-bold" style="font-size: 14px;">Journal Entry</div><div class="text-white-50" style="font-size: 12px;">Used 5m ago</div></div></a>
-                            </div>
-                        </div>
+                        {{ session.get('username', 'Admin') }}
+                    </div>
+                    <div class="win11-power-btn" data-bs-dismiss="modal">
+                        <i class="fas fa-power-off"></i>
                     </div>
                 </div>
             </div>
