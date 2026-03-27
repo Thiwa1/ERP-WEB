@@ -29,13 +29,13 @@
             overflow-x: hidden;
         }
 
-        /* Sidebar Styling - Modern Pro */
+        /* Sidebar Styling - Win11 Mode */
         .sidebar {
             width: var(--sidebar-width);
-            background: linear-gradient(180deg, var(--primary-color) 0%, var(--secondary-color) 100%); /* Deep slate, slightly translucent */
-            backdrop-filter: blur(12px); /* Glassmorphism blur effect */
-            -webkit-backdrop-filter: blur(12px);
-            color: var(--text-light);
+            background: rgba(243, 243, 243, 0.95);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            color: #202020;
             height: 100vh;
             position: fixed;
             top: 0;
@@ -43,8 +43,8 @@
             z-index: 1000;
             padding-top: 0;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            border-right: 1px solid rgba(255, 255, 255, 0.05);
-            box-shadow: 5px 0 25px rgba(0,0,0,0.15);
+            border-right: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 2px 0 10px rgba(0,0,0,0.05);
             overflow-y: auto;
         }
 
@@ -56,42 +56,35 @@
             background: transparent;
         }
         .sidebar::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.1);
             border-radius: 4px;
         }
         .sidebar::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.2);
         }
 
         .sidebar-header {
             padding: 24px 20px;
-            background: linear-gradient(to right, rgba(255,255,255,0.02), transparent);
             text-align: left;
-            border-bottom: 1px solid rgba(255,255,255,0.06);
+            border-bottom: 1px solid rgba(0,0,0,0.05);
             display: flex;
             align-items: center;
         }
 
         .sidebar-brand {
             font-size: 1.35rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #ffffff 0%, #94a3b8 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            color: #202020;
             text-decoration: none;
             display: flex;
             align-items: center;
             gap: 12px;
             letter-spacing: 0.5px;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
 
         .sidebar-brand i {
             font-size: 1.5rem;
-            background: linear-gradient(135deg, var(--accent-color), #60a5fa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.4));
+            color: #0078D4; /* Win11 Accent Blue */
         }
 
         .sidebar-menu {
@@ -99,47 +92,50 @@
         }
 
         .menu-category {
-            color: rgba(255,255,255,0.7); /* Sleek, dark gray */
-            text-transform: uppercase;
-            font-size: 0.65rem;
-            font-weight: 800;
-            margin: 28px 0 12px 16px;
-            letter-spacing: 1.2px;
-            opacity: 0.8;
+            color: #605E5C;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin: 24px 0 8px 16px;
+            letter-spacing: 0.5px;
         }
 
         .nav-link {
-            color: rgba(255,255,255,0.85); /* Muted base text */
+            color: #202020;
             padding: 10px 16px;
-            border-radius: 8px; /* Modern rounded rectangles */
+            border-radius: 6px;
             margin-bottom: 4px;
             font-size: 0.88rem;
-            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: background-color 0.2s, color 0.2s;
             display: flex;
             align-items: center;
             font-weight: 500;
-            border: 1px solid transparent;
-            position: relative;
-            overflow: hidden;
+            text-decoration: none;
         }
 
-        /* Hover Glow Effect */
+        /* Hover Effect */
         .nav-link:hover {
-            background-color: rgba(255,255,255,0.04);
-            color: #f8fafc;
-            border-color: rgba(255,255,255,0.05);
-            transform: translateX(4px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            background-color: rgba(0, 0, 0, 0.04);
+            color: #000;
         }
 
-        /* Active State Pill */
+        /* Active State */
         .nav-link.active {
-            background: linear-gradient(90deg, rgba(255,255,255,0.2) 0%, transparent 100%);
-            color: #ffffff;
+            background-color: rgba(0, 0, 0, 0.06);
+            color: #000;
             font-weight: 600;
-            border-left: 3px solid var(--accent-color);
-            border-radius: 0 8px 8px 0; /* Flat left side for active indicator */
-            padding-left: 13px; /* Compensate for border */
+            position: relative;
+        }
+
+        .nav-link.active::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            height: 16px;
+            width: 3px;
+            background-color: #0078D4;
+            border-radius: 0 4px 4px 0;
         }
 
         .nav-link i {
@@ -147,30 +143,27 @@
             text-align: left;
             margin-right: 12px;
             font-size: 1.1rem;
-            color: rgba(255,255,255,0.7);
-            transition: color 0.3s ease;
+            color: #605E5C;
+            transition: color 0.2s;
         }
 
         .nav-link:hover i {
-            color: #ffffff;
-            filter: drop-shadow(0 0 5px rgba(255,255,255,0.3));
+            color: #202020;
         }
 
         .nav-link.active i {
-            color: var(--accent-color);
-            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
+            color: #0078D4;
         }
 
         /* Specifically style the pending approvals text */
         .nav-link.text-warning {
-            color: #eab308 !important;
+            color: #D83B01 !important;
         }
         .nav-link.text-warning i {
-            color: #eab308;
+            color: #D83B01;
         }
         .nav-link.text-warning:hover {
-            background-color: rgba(234, 179, 8, 0.05);
-            border-color: rgba(234, 179, 8, 0.1);
+            background-color: rgba(216, 59, 1, 0.05);
         }
 
 
@@ -215,7 +208,7 @@
             transform: translateY(-50%);
             height: 16px;
             width: 3px;
-            background-color: var(--accent-color);
+            background-color: #0078D4;
             border-radius: 4px;
         }
 
@@ -243,9 +236,9 @@
 
         /* Win11 Sidebar Toggle Button */
         .sidebar-collapse-btn {
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.1);
-            color: rgba(255,255,255,0.7);
+            background: rgba(0,0,0,0.05);
+            border: 1px solid rgba(0,0,0,0.1);
+            color: #605E5C;
             border-radius: 50%;
             width: 28px;
             height: 28px;
@@ -260,8 +253,8 @@
             z-index: 1010;
         }
         .sidebar-collapse-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: #fff;
+            background: rgba(0,0,0,0.1);
+            color: #202020;
         }
 
         body.sidebar-collapsed .sidebar-collapse-btn {
