@@ -49,7 +49,148 @@
         }
 
         /* Webkit scrollbar specific for sidebar to blend in */
-        .sidebar::-webkit-scrollbar {
+
+
+
+        /* Sidebar Search */
+        .sidebar-search-container {
+            padding: 16px 16px 0 16px;
+        }
+
+        .sidebar-search-container .input-group {
+            background-color: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.3s;
+        }
+
+        .sidebar-search-container .input-group:focus-within {
+            background-color: rgba(0,0,0,0.3);
+            border-color: rgba(255,255,255,0.2);
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+        }
+
+        .sidebar-search-container input {
+            background: transparent;
+            border: none;
+            color: white;
+            padding: 8px 12px;
+            font-size: 0.85rem;
+        }
+
+        .sidebar-search-container input::placeholder {
+            color: rgba(255,255,255,0.4);
+        }
+
+        .sidebar-search-container input:focus {
+            background: transparent;
+            color: white;
+            box-shadow: none;
+        }
+
+        .sidebar-search-container .input-group-text {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.4);
+            padding-right: 8px;
+        }
+
+        /* Hide search container when sidebar is collapsed */
+        .sidebar.collapsed .sidebar-search-container {
+            display: none;
+        }
+
+        /* Sidebar Collapsed State */
+        .sidebar.collapsed {
+            width: 80px;
+            overflow-x: hidden;
+        }
+
+        .sidebar.collapsed .sidebar-header {
+            padding: 24px 10px;
+            justify-content: center;
+        }
+
+        .sidebar.collapsed .sidebar-brand {
+            font-size: 0; /* Hide text */
+        }
+
+        .sidebar.collapsed .sidebar-brand i {
+            margin: 0;
+            font-size: 1.8rem;
+        }
+
+        .sidebar.collapsed .nav-text,
+        .sidebar.collapsed .menu-category {
+            display: none !important;
+        }
+
+        .sidebar.collapsed .nav-link {
+            justify-content: center;
+            padding: 12px 0;
+            border-radius: 8px;
+            margin: 4px 10px;
+        }
+
+        .sidebar.collapsed .nav-link i {
+            margin: 0 !important;
+            font-size: 1.2rem;
+        }
+
+        /* Update main content margin */
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            min-height: 100vh;
+            transition: margin-left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .sidebar.collapsed ~ .main-content {
+            margin-left: 80px;
+        }
+
+        .sidebar .nav-link i {
+            width: 24px;
+            text-align: center;
+            margin-right: 12px;
+            font-size: 1.1rem;
+        }
+
+        .sidebar-brand i {
+            margin-right: 10px;
+        }
+
+        /* Toggle button */
+        .sidebar-collapse-btn {
+            background: transparent;
+            border: none;
+            color: rgba(255,255,255,0.7);
+            font-size: 1.4rem;
+            cursor: pointer;
+            padding: 4px;
+            display: none;
+            transition: all 0.3s;
+            margin-left: auto;
+        }
+        .sidebar-collapse-btn:hover {
+            color: white;
+            transform: scale(1.1);
+        }
+
+        @media (min-width: 992px) {
+            .sidebar-collapse-btn {
+                display: block;
+            }
+            .sidebar.collapsed .sidebar-collapse-btn {
+                margin: 10px auto 0 auto;
+                display: block;
+            }
+            .sidebar.collapsed .sidebar-header {
+                flex-direction: column;
+            }
+        }
+.sidebar::-webkit-scrollbar {
             width: 4px;
         }
         .sidebar::-webkit-scrollbar-track {
@@ -524,60 +665,68 @@
     <nav class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <a href="/" class="sidebar-brand">
-                <i class="fas fa-chart-line"></i>
-                SUWIN ERP
+                <i class="fas fa-chart-line"></i> <span class="nav-text">SUWIN ERP</span>
             </a>
+            <button class="sidebar-collapse-btn" id="sidebarCollapseDesktop" title="Toggle Sidebar">
+                <i class="fas fa-angle-left" id="collapseIcon"></i>
+            </button>
         </div>
+        <div class="sidebar-search-container" id="sidebarSearchContainer">
+            <div class="input-group input-group-sm">
+                <span class="input-group-text"><i class="fas fa-search"></i></span>
+                <input type="text" class="form-control shadow-none" id="sidebarSearchInput" placeholder="Search menu...">
+            </div>
+        </div>
+
 
         <div class="sidebar-menu">
             <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
-                <i class="fas fa-th-large"></i> Dashboard
-            </a>
+                <i class="fas fa-th-large"></i> <span class="nav-text">Dashboard</span></a>
 
             <!-- Accordion for dense menu -->
             <div class="accordion accordion-flush bg-transparent" id="sidebarAccordion">
 
                 <!-- Core Accounting -->
                 <div class="menu-category">Core Accounting</div>
-                <a href="/approvals" class="nav-link text-warning fw-bold"><i class="fas fa-check-double"></i> Pending Approvals</a>
-                <a href="/customer_receipt" class="nav-link"><i class="fas fa-receipt"></i> Customer Receipt</a>
-                <a href="/cash_payment" class="nav-link"><i class="fas fa-money-bill"></i> Cash Payments</a>
-                <a href="/direct_purchasing" class="nav-link"><i class="fas fa-hand-holding-usd"></i> Direct Purchase</a>
-                <a href="/bank_payment" class="nav-link"><i class="fas fa-university"></i> Bank Payments</a>
-                <a href="/cheque_print_setup" class="nav-link"><i class="fas fa-print"></i> Cheque Print Setup</a>
-                <a href="/journal_entry" class="nav-link"><i class="fas fa-book"></i> Journal Entry</a>
-                <a href="/fixed_assets" class="nav-link"><i class="fas fa-building"></i> Fixed Assets</a>
+                <a href="/approvals" class="nav-link text-warning fw-bold"><i class="fas fa-check-double"></i> <span class="nav-text">Pending Approvals</span></a>
+                <a href="/customer_receipt" class="nav-link"><i class="fas fa-receipt"></i> <span class="nav-text">Customer Receipt</span></a>
+                <a href="/cash_payment" class="nav-link"><i class="fas fa-money-bill"></i> <span class="nav-text">Cash Payments</span></a>
+                <a href="/direct_purchasing" class="nav-link"><i class="fas fa-hand-holding-usd"></i> <span class="nav-text">Direct Purchase</span></a>
+                <a href="/bank_payment" class="nav-link"><i class="fas fa-university"></i> <span class="nav-text">Bank Payments</span></a>
+                <a href="/cheque_print_setup" class="nav-link"><i class="fas fa-print"></i> <span class="nav-text">Cheque Print Setup</span></a>
+                <a href="/journal_entry" class="nav-link"><i class="fas fa-book"></i> <span class="nav-text">Journal Entry</span></a>
+                <a href="/fixed_assets" class="nav-link"><i class="fas fa-building"></i> <span class="nav-text">Fixed Assets</span></a>
 
                 <!-- Reversals & Adjustments -->
                 <div class="menu-category">Reversals & Adjustments</div>
-                <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> POS Reversal</a>
-                <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> Cash Pay Reversal</a>
-                <a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> Bank Pay Reversal</a>
-                <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> Direct Pay Reversal</a>
-                <a href="/reversal_category" class="nav-link"><i class="fas fa-tags"></i> Reversal Category</a>
+                <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> <span class="nav-text">POS Reversal</span></a>
+                <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> <span class="nav-text">Cash Pay Reversal</span></a>
+                <a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Bank Pay Reversal</span></a>
+                <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> <span class="nav-text">Direct Pay Reversal</span></a>
+                <a href="/reversal_category" class="nav-link"><i class="fas fa-tags"></i> <span class="nav-text">Reversal Category</span></a>
 
                 <!-- Inventory -->
                 <div class="menu-category">Inventory</div>
-                <a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> Inventory Balance</a>
-                <a href="/add_inventory_item" class="nav-link"><i class="fas fa-plus-square"></i> New Inventory Item</a>
-                <a href="/grn" class="nav-link"><i class="fas fa-boxes"></i> GRN</a>
-                <a href="/purchase_orders" class="nav-link"><i class="fas fa-file-invoice"></i> PO Generator</a>
-                <a href="/quotation_evaluation" class="nav-link"><i class="fas fa-balance-scale-right"></i> Quotation Eval</a>
-                <a href="/proforma_invoice" class="nav-link"><i class="fas fa-file-contract"></i> Proforma Invoice</a>
-                <a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> Sales Invoice</a>
-                <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> Inventory Transfer</a>
-                <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> Manufacturing</a>
-                <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> Trend Analysis</a>
+                <a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">Inventory Balance</span></a>
+                <a href="/add_inventory_item" class="nav-link"><i class="fas fa-plus-square"></i> <span class="nav-text">New Inventory Item</span></a>
+                <a href="/grn" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">GRN</span></a>
+                <a href="/purchase_orders" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">PO Generator</span></a>
+                <a href="/quotation_evaluation" class="nav-link"><i class="fas fa-balance-scale-right"></i> <span class="nav-text">Quotation Eval</span></a>
+                <a href="/proforma_invoice" class="nav-link"><i class="fas fa-file-contract"></i> <span class="nav-text">Proforma Invoice</span></a>
+                <a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> <span class="nav-text">Sales Invoice</span></a>
+                <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> <span class="nav-text">Inventory Transfer</span></a>
+                <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> <span class="nav-text">Manufacturing</span></a>
+                <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> <span class="nav-text">Trend Analysis</span></a>
 
-                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> POS System</a>
+                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>
 
                 <!-- Reports -->
                 <div class="menu-category">Reports</div>
-                <a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> Ledger View</a>
-                <a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> Trial Balance</a>
-                <a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> Supplier Aging</a>
-                <a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> Balance Sheet</a>
-                <a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> Profit & Loss</a>
+                <a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>
+                <a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>
+                <a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Supplier Aging</span></a>
+                <a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Balance Sheet</span></a>
+                <a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Profit & Loss</span></a>
             </div>
 
             <div class="px-3">
@@ -820,6 +969,76 @@
             if (sidebarOverlay) {
                 sidebarOverlay.addEventListener('click', function() {
                     toggleSidebar();
+                });
+            }
+
+
+
+
+            // Sidebar Search Logic
+            const sidebarSearchInput = document.getElementById('sidebarSearchInput');
+            if (sidebarSearchInput) {
+                sidebarSearchInput.addEventListener('input', function(e) {
+                    const query = e.target.value.toLowerCase();
+                    const menuLinks = document.querySelectorAll('.sidebar-menu .nav-link');
+                    const menuCategories = document.querySelectorAll('.sidebar-menu .menu-category');
+
+                    // Filter links
+                    menuLinks.forEach(link => {
+                        const text = link.textContent.toLowerCase();
+                        if (text.includes(query)) {
+                            link.style.display = 'flex';
+                        } else {
+                            link.style.display = 'none';
+                        }
+                    });
+
+                    // Hide/show categories based on visible links
+                    menuCategories.forEach(category => {
+                        let nextElement = category.nextElementSibling;
+                        let hasVisibleLinks = false;
+
+                        // Check all subsequent links until the next category
+                        while (nextElement && nextElement.classList.contains('nav-link')) {
+                            if (nextElement.style.display !== 'none') {
+                                hasVisibleLinks = true;
+                                break;
+                            }
+                            nextElement = nextElement.nextElementSibling;
+                        }
+
+                        if (hasVisibleLinks || query === '') {
+                            category.style.display = 'block';
+                        } else {
+                            category.style.display = 'none';
+                        }
+                    });
+                });
+            }
+
+            // Desktop Sidebar Collapse Logic
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.querySelector('.main-content');
+            const sidebarCollapseDesktop = document.getElementById('sidebarCollapseDesktop');
+            const collapseIcon = document.getElementById('collapseIcon');
+
+            if (sidebarCollapseDesktop) {
+                // Initialize state from localStorage
+                if (localStorage.getItem('sidebarCollapsed') === 'true') {
+                    sidebar.classList.add('collapsed');
+                    collapseIcon.classList.replace('fa-angle-left', 'fa-angle-right');
+                }
+
+                sidebarCollapseDesktop.addEventListener('click', function() {
+                    sidebar.classList.toggle('collapsed');
+                    const isCollapsed = sidebar.classList.contains('collapsed');
+                    localStorage.setItem('sidebarCollapsed', isCollapsed);
+
+                    if (isCollapsed) {
+                        collapseIcon.classList.replace('fa-angle-left', 'fa-angle-right');
+                    } else {
+                        collapseIcon.classList.replace('fa-angle-right', 'fa-angle-left');
+                    }
                 });
             }
 
