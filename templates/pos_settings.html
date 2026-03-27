@@ -3,21 +3,19 @@
 {% block content %}
 <div class="container-fluid py-3">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-cogs me-2"></i> POINT OF SALE – SETTINGS PANEL</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-cogs me-2"></i> Point Of Sale – Settings Panel</h4>
+</div>
 
     <!-- User Management Section -->
     <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
             <i class="fas fa-users-cog me-2"></i> User Management
         </div>
         <div class="card-body bg-white">
             <div class="row align-items-end g-3">
                 <div class="col-md-6">
-                    <label class="form-label fw-bold" style="color: var(--primary-color);">Select Cashier / User</label>
+                    <label class="form-label fw-bold">Select Cashier / User</label>
                     <div class="input-group">
                         <select class="form-select" id="posUserSelect" onchange="changeUser()">
                             {% for user in pos_users %}
@@ -40,12 +38,12 @@
             <!-- General Settings -->
             <div class="col-md-6">
                 <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-sliders-h me-2"></i> General Settings
                     </div>
                     <div class="card-body bg-white">
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Inventory Location</label>
+                            <label class="form-label fw-bold">Inventory Location</label>
                             <select name="location" class="form-select select2">
                                 <option value="">-- Select Location --</option>
                                 {% for loc in locations %}
@@ -56,7 +54,7 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Credit Card Control Account</label>
+                            <label class="form-label fw-bold">Credit Card Control Account</label>
                             <select name="card_ac" class="form-select select2">
                                 <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
@@ -67,7 +65,7 @@
                             </select>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Cash Control Account</label>
+                            <label class="form-label fw-bold">Cash Control Account</label>
                             <select name="cash_ac" class="form-select select2">
                                 <option value="">-- Select Account --</option>
                                 {% for acc in accounts %}
@@ -84,25 +82,25 @@
             <!-- Selling Price Settings -->
             <div class="col-md-6">
                 <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-tags me-2"></i> Selling Price & VAT
                     </div>
                     <div class="card-body bg-white">
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="market_price" id="marketPrice" {% if settings.Sales_with_market_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="marketPrice">Sales with Market Price</label>
+                            <label class="form-check-label fw-bold" for="marketPrice">Sales with Market Price</label>
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="special_price" id="specialPrice" {% if settings.Sales_with_Special_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="specialPrice">Sales with Special Price</label>
+                            <label class="form-check-label fw-bold" for="specialPrice">Sales with Special Price</label>
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="loyalty_price" id="loyaltyPrice" {% if settings.Loyalty_Price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="loyaltyPrice">Loyalty Price Enabled</label>
+                            <label class="form-check-label fw-bold" for="loyaltyPrice">Loyalty Price Enabled</label>
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="vat_enable" id="vatEnable" {% if settings.VAT_Enable == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="vatEnable">VAT Enabled</label>
+                            <label class="form-check-label fw-bold" for="vatEnable">VAT Enabled</label>
                         </div>
                     </div>
                 </div>
@@ -111,23 +109,23 @@
             <!-- Messages & Image -->
             <div class="col-12">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-receipt me-2"></i> Receipt Configuration
                     </div>
                     <div class="card-body bg-white">
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Top Message</label>
+                                    <label class="form-label fw-bold">Top Message</label>
                                     <textarea name="top_msg" class="form-control" rows="3">{{ settings.Top_Message }}</textarea>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Footer Message</label>
+                                    <label class="form-label fw-bold">Footer Message</label>
                                     <textarea name="footer_msg" class="form-control" rows="3">{{ settings.Footer_Message }}</textarea>
                                 </div>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Receipt Header Image</label>
+                                <label class="form-label fw-bold">Receipt Header Image</label>
                                 <div class="border p-3 rounded bg-light mb-3 text-center">
                                     {% if settings.ImageBase64 %}
                                     <img src="data:image/jpeg;base64,{{ settings.ImageBase64 }}" alt="Receipt Logo" class="img-fluid" style="max-height: 120px;">
@@ -148,7 +146,7 @@
         <div class="row mt-4">
             <div class="col-12">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <div><i class="fas fa-sms me-2"></i> SMS Delivery Report (Advanced Options)</div>
                         <button class="btn btn-sm btn-light fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#smsReportCollapse" aria-expanded="false" aria-controls="smsReportCollapse">
                             Toggle View
@@ -214,7 +212,7 @@
 <div class="modal fade" id="newCashierModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white" style="background-color: var(--secondary-color);">
+            <div class="modal-header text-white" >
                 <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Cashier Registration</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>

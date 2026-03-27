@@ -3,19 +3,17 @@
 {% block content %}
 <div class="container-fluid py-3">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-calendar-check me-2"></i> WARRANTY PERIOD MANAGEMENT</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-calendar-check me-2"></i> Warranty Period Management</h4>
+</div>
 
     <!-- Search & Filter -->
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body bg-white">
-            <h6 class="fw-bold mb-3" style="color: var(--primary-color);">Search & Filter</h6>
+            <h6 class="fw-bold mb-3">Search & Filter</h6>
             <form method="GET" action="{{ url_for('warranty_period') }}" class="row g-3 align-items-end">
                 <div class="col-md-5">
-                    <label class="form-label fw-bold" style="color: var(--primary-color);">Inventory Item</label>
+                    <label class="form-label fw-bold">Inventory Item</label>
                     <select class="form-select" name="item_name" id="itemSearch">
                         <option value="">Select Item...</option>
                         {% for item in items %}
@@ -35,12 +33,12 @@
     <!-- Warranty Table -->
     <form method="POST" action="{{ url_for('warranty_save') }}" id="warrantyForm">
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                 <i class="fas fa-list me-2"></i> Warranty Items
             </div>
             <div class="card-body p-0">
                 <table class="table table-bordered table-striped mb-0" id="warrantyTable">
-                    <thead class="text-white" style="background-color: var(--primary-color);">
+                    <thead class="text-white" >
                         <tr>
                             <th style="width: 50px;">#</th>
                             <th>Item Name</th>

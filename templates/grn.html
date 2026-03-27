@@ -2,18 +2,16 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-truck-loading me-2"></i> GOODS RECEIVED NOTE MANAGEMENT</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-truck-loading me-2"></i> Goods Received Note Management</h4>
+</div>
 
     <form method="POST" action="{{ url_for('grn') }}" id="grnForm">
         <div class="row">
             <!-- Left Panel: Item List -->
             <div class="col-md-7">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-list me-2"></i> Items Added
                     </div>
                     <div class="card-body p-0">
@@ -42,12 +40,12 @@
             <div class="col-md-5">
                 <!-- Supplier Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-user-tag me-2"></i> Supplier Selection
                     </div>
                     <div class="card-body bg-white">
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier List</label>
+                            <label class="form-label fw-bold">Supplier List</label>
                             <select class="form-select" name="supplier" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
@@ -56,7 +54,7 @@
                             </select>
                         </div>
                         <div class="mb-0">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Auto-Fill from PO</label>
+                            <label class="form-label fw-bold">Auto-Fill from PO</label>
                             <select class="form-select" id="poSelect" onchange="loadPoDetails()">
                                 <option value="">Select Purchase Order</option>
                                 <!-- Filled via JS -->
@@ -67,13 +65,13 @@
 
                 <!-- Item Entry Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-plus-circle me-2"></i> Item Entry
                     </div>
                     <div class="card-body bg-white">
                         <div class="row g-2 mb-2">
                             <div class="col-md-5">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Item Name</label>
+                                <label class="form-label fw-bold">Item Name</label>
                                 <select class="form-select" id="itemSelect">
                                     <option value="">Select Item</option>
                                     {% for item in items %}
@@ -82,15 +80,15 @@
                                 </select>
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Qty</label>
+                                <label class="form-label fw-bold">Qty</label>
                                 <input type="number" class="form-control" id="itemQty" step="0.01">
                             </div>
                             <div class="col-md-2">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Cost</label>
+                                <label class="form-label fw-bold">Cost</label>
                                 <input type="number" class="form-control" id="itemCost" step="0.01">
                             </div>
                             <div class="col-md-3">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Total</label>
+                                <label class="form-label fw-bold">Total</label>
                                 <input type="number" class="form-control" id="itemTotal" readonly>
                             </div>
                         </div>
@@ -102,13 +100,13 @@
 
                 <!-- Job & Location Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-map-marker-alt me-2"></i> Job & Location
                     </div>
                     <div class="card-body bg-white">
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Job No</label>
+                                <label class="form-label fw-bold">Job No</label>
                                 <select class="form-select" name="job_no">
                                     <option value="">Select Job</option>
                                     {% for job in jobs %}
@@ -117,7 +115,7 @@
                                 </select>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Location</label>
+                                <label class="form-label fw-bold">Location</label>
                                 <select class="form-select" name="location" required>
                                     <option value="">Select Location</option>
                                     {% for loc in locations %}
@@ -131,27 +129,27 @@
 
                 <!-- Invoice Details Section -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-file-alt me-2"></i> Invoice Details
                     </div>
                     <div class="card-body bg-white">
                         <div class="row g-2 mb-2">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Invoice No</label>
+                                <label class="form-label fw-bold">Invoice No</label>
                                 <input type="text" class="form-control" name="invoice_no" required>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Date</label>
+                                <label class="form-label fw-bold">Date</label>
                                 <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
                             </div>
                         </div>
                         <div class="row g-2">
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">Due Date</label>
+                                <label class="form-label fw-bold">Due Date</label>
                                 <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
                             </div>
                             <div class="col-md-6">
-                                <label class="form-label fw-bold" style="color: var(--primary-color);">J/V Narration</label>
+                                <label class="form-label fw-bold">J/V Narration</label>
                                 <input type="text" class="form-control" name="narration" required>
                             </div>
                         </div>
@@ -160,13 +158,13 @@
 
                 <!-- Totals Section -->
                 <div class="card shadow-sm border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-calculator me-2"></i> Totals & VAT
                     </div>
                     <div class="card-body bg-white">
                         <div class="row mb-2 align-items-center">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">Total Value</label>
+                                <label class="form-label fw-bold mb-0">Total Value</label>
                             </div>
                             <div class="col-md-8">
                                 <div class="input-group">
@@ -179,7 +177,7 @@
                             <div class="col-md-4">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="vatCheck" name="vat_liable" onchange="calculateTotals()">
-                                    <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="vatCheck">VAT Liable</label>
+                                    <label class="form-check-label fw-bold" for="vatCheck">VAT Liable</label>
                                 </div>
                             </div>
                             <div class="col-md-3">
@@ -191,7 +189,7 @@
                         </div>
                         <div class="row mb-2 align-items-center">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">VAT Amount</label>
+                                <label class="form-label fw-bold mb-0">VAT Amount</label>
                             </div>
                             <div class="col-md-8">
                                 <div class="input-group">
@@ -202,7 +200,7 @@
                         </div>
                         <div class="row align-items-center">
                             <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0" style="color: var(--primary-color);">Total Amount</label>
+                                <label class="form-label fw-bold mb-0">Total Amount</label>
                             </div>
                             <div class="col-md-8">
                                 <div class="input-group">

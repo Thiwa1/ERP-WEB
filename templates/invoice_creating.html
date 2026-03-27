@@ -2,18 +2,16 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i> NEW INVOICE CREATION</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice-dollar me-2"></i> New Invoice Creation</h4>
+</div>
 
     <form method="POST" action="{{ url_for('submit_invoice') }}" id="invoiceForm">
         <div class="row">
             <!-- Left Panel: Added Items List -->
             <div class="col-md-8">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <span><i class="fas fa-list me-2"></i> Invoice Items</span>
                         <span class="badge bg-light text-dark" id="itemCount">0 Items</span>
                     </div>
@@ -82,7 +80,7 @@
             <div class="col-md-4">
                 <!-- Header Info -->
                 <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-info-circle me-2"></i> Invoice Details
                     </div>
                     <div class="card-body">
