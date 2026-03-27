@@ -1007,16 +1007,20 @@ def extract_vat_from_pdf():
                 text += page_text + " "
 
         # "AI" Regex to find VAT Numbers
-        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789)
-        vat_pattern = r'(?i)VAT\s*(?:NO|NUMBER|#)?\s*[:\-\s]?\s*([A-Z0-9]{8,15})'
+        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789, VAT REGISTRATION NO: ...)
+        vat_pattern = r'(?i)VAT\s*(?:REGISTRATION\s*)?(?:NO\.|NO|NUMBER|#)?\s*[:\-\s]*([A-Z0-9]{5,15})'
         matches = re.findall(vat_pattern, text)
 
         if matches:
-            # Return first distinct match
-            vat_no = matches[0].strip()
-            return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
-        else:
-            return jsonify({'success': False, 'message': 'No VAT number found in the document'})
+            # Filter out matches that are purely alphabetic (like "REGISTRATION" or "CERTIFICATE")
+            valid_matches = [m.strip() for m in matches if any(char.isdigit() for char in m)]
+
+            if valid_matches:
+                # Return first distinct match that contains digits
+                vat_no = valid_matches[0]
+                return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
+
+        return jsonify({'success': False, 'message': 'No VAT number found in the document'})
 
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
