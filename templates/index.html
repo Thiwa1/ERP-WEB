@@ -91,6 +91,18 @@
     .bg-cyan { background-color: #00BFFF; }
     .bg-grey { background-color: #7A7574; }
 
+
+    .app-category {
+        margin-bottom: 30px;
+    }
+    .app-category-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #323130;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid #edebe9;
+    }
     .app-title {
         font-size: 0.85rem;
         font-weight: 500;
@@ -133,138 +145,176 @@
         </div>
     </div>
 
+
     <!-- All Apps Section (Hidden by default) -->
     <div id="allAppsSection" class="overview-panel" style="display: none;">
         <div class="overview-header">
             <h2 class="overview-title">All Applications</h2>
         </div>
-        <div class="app-grid">
-            <a href="/customer_receipt" class="app-tile">
-                <div class="app-icon-wrapper bg-blue"><i class="fas fa-receipt"></i></div>
-                <span class="app-title">Customer Receipt</span>
-            </a>
-            <a href="/cash_payments" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill"></i></div>
-                <span class="app-title">Cash Payment</span>
-            </a>
-            <a href="/direct_purchasing" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-shopping-cart"></i></div>
-                <span class="app-title">Direct Purchase</span>
-            </a>
-            <a href="/bank_payment" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-university"></i></div>
-                <span class="app-title">Bank Payment</span>
-            </a>
-            <a href="/journal_entry" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-book"></i></div>
-                <span class="app-title">Journal Entry</span>
-            </a>
-            <a href="/add_inventory_item" class="app-tile">
-                <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
-                <span class="app-title">New Inv Item</span>
-            </a>
-            <a href="/grn" class="app-tile">
-                <div class="app-icon-wrapper bg-green"><i class="fas fa-truck-loading"></i></div>
-                <span class="app-title">GRN Entry</span>
-            </a>
-            <a href="/purchase_orders" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-invoice"></i></div>
-                <span class="app-title">PO Generator</span>
-            </a>
-            <a href="/quotation_evaluation" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-balance-scale-right"></i></div>
-                <span class="app-title">Quotation Eval</span>
-            </a>
-            <a href="/proforma_invoice" class="app-tile">
-                <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-contract"></i></div>
-                <span class="app-title">Proforma Invoice</span>
-            </a>
-            <a href="/invoice_creating" class="app-tile">
-                <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-invoice-dollar"></i></div>
-                <span class="app-title">Sales Invoice</span>
-            </a>
-            <a href="/inventory_transfer" class="app-tile">
-                <div class="app-icon-wrapper bg-green"><i class="fas fa-exchange-alt"></i></div>
-                <span class="app-title">Stock Transfer</span>
-            </a>
-            <a href="/inventory_production" class="app-tile">
-                <div class="app-icon-wrapper bg-green"><i class="fas fa-industry"></i></div>
-                <span class="app-title">Manufacturing</span>
-            </a>
-            <a href="/pos_reversal" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-undo"></i></div>
-                <span class="app-title">POS Reversal</span>
-            </a>
-            <a href="/cash_payment_reversal" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-undo-alt"></i></div>
-                <span class="app-title">Cash Pay Reversal</span>
-            </a>
-            <a href="/bank_payment_reversal" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-history"></i></div>
-                <span class="app-title">Bank Pay Reversal</span>
-            </a>
-            <a href="/direct_payment_reversal" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-sync"></i></div>
-                <span class="app-title">Direct Pay Reversal</span>
-            </a>
-            <a href="/reversal_category" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-tags"></i></div>
-                <span class="app-title">Reversal Category</span>
-            </a>
-            <a href="/pos" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-cash-register"></i></div>
-                <span class="app-title">POS System</span>
-            </a>
-            <a href="/bank_reconciliation" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-check-double"></i></div>
-                <span class="app-title">Bank Reconcile</span>
-            </a>
-            <a href="/bank_reconciliation/history" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-history"></i></div>
-                <span class="app-title">Reconcile History</span>
-            </a>
-            <a href="/customer_receipt" class="app-tile">
-                <div class="app-icon-wrapper bg-blue"><i class="fas fa-receipt"></i></div>
-                <span class="app-title">Customer Payment</span>
-            </a>
-            <a href="/inventory_category" class="app-tile">
-                <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
-                <span class="app-title">Add Fin. Goods</span>
-            </a>
-            <a href="/placeholder?title=Load Report" class="app-tile">
-                <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-alt"></i></div>
-                <span class="app-title">Load Report</span>
-            </a>
-            <a href="/cash_handover" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-hand-holding-usd d-block"></i></div>
-                <span class="app-title">Sales Summary</span>
-            </a>
-            <a href="/balance_sheet" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale"></i></div>
-                <span class="app-title">Balance Sheet</span>
-            </a>
-            <a href="/balance_sheet_custom" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-file-invoice-dollar"></i></div>
-                <span class="app-title">Custom Bal Sheet</span>
-            </a>
-            <a href="/cash_flow" class="app-tile">
-                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill-wave"></i></div>
-                <span class="app-title">Cash Flow</span>
-            </a>
-            <a href="/trial_balance" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale-left"></i></div>
-                <span class="app-title">Trial Balance</span>
-            </a>
-            <a href="/profit_loss" class="app-tile">
-                <div class="app-icon-wrapper bg-red"><i class="fas fa-chart-pie"></i></div>
-                <span class="app-title">Profit & Loss</span>
-            </a>
-            <a href="/supplier_aging" class="app-tile">
-                <div class="app-icon-wrapper bg-cyan"><i class="fas fa-clock"></i></div>
-                <span class="app-title">Aging Reports</span>
-            </a>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Receivables & Payables</h3>
+            <div class="app-grid">
+                <a href="/customer_receipt" class="app-tile">
+                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-receipt"></i></div>
+                    <span class="app-title">Customer Receipt</span>
+                </a>
+                <a href="/cash_payments" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill"></i></div>
+                    <span class="app-title">Cash Payment</span>
+                </a>
+                <a href="/bank_payment" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-university"></i></div>
+                    <span class="app-title">Bank Payment</span>
+                </a>
+                <a href="/cash_handover" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-hand-holding-usd d-block"></i></div>
+                    <span class="app-title">Sales Summary</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Purchasing</h3>
+            <div class="app-grid">
+                <a href="/direct_purchasing" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-shopping-cart"></i></div>
+                    <span class="app-title">Direct Purchase</span>
+                </a>
+                <a href="/purchase_orders" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-invoice"></i></div>
+                    <span class="app-title">PO Generator</span>
+                </a>
+                <a href="/quotation_evaluation" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-balance-scale-right"></i></div>
+                    <span class="app-title">Quotation Eval</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Sales & Billing</h3>
+            <div class="app-grid">
+                <a href="/proforma_invoice" class="app-tile">
+                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-contract"></i></div>
+                    <span class="app-title">Proforma Invoice</span>
+                </a>
+                <a href="/invoice_creating" class="app-tile">
+                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-invoice-dollar"></i></div>
+                    <span class="app-title">Sales Invoice</span>
+                </a>
+                <a href="/pos" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-cash-register"></i></div>
+                    <span class="app-title">POS System</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Accounting & Banking</h3>
+            <div class="app-grid">
+                <a href="/journal_entry" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-book"></i></div>
+                    <span class="app-title">Journal Entry</span>
+                </a>
+                <a href="/bank_reconciliation" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-check-double"></i></div>
+                    <span class="app-title">Bank Reconcile</span>
+                </a>
+                <a href="/bank_reconciliation/history" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-history"></i></div>
+                    <span class="app-title">Reconcile History</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Inventory</h3>
+            <div class="app-grid">
+                <a href="/add_inventory_item" class="app-tile">
+                    <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
+                    <span class="app-title">New Inv Item</span>
+                </a>
+                <a href="/grn" class="app-tile">
+                    <div class="app-icon-wrapper bg-green"><i class="fas fa-truck-loading"></i></div>
+                    <span class="app-title">GRN Entry</span>
+                </a>
+                <a href="/inventory_transfer" class="app-tile">
+                    <div class="app-icon-wrapper bg-green"><i class="fas fa-exchange-alt"></i></div>
+                    <span class="app-title">Stock Transfer</span>
+                </a>
+                <a href="/inventory_production" class="app-tile">
+                    <div class="app-icon-wrapper bg-green"><i class="fas fa-industry"></i></div>
+                    <span class="app-title">Manufacturing</span>
+                </a>
+                <a href="/inventory_category" class="app-tile">
+                    <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
+                    <span class="app-title">Add Fin. Goods</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Reversals</h3>
+            <div class="app-grid">
+                <a href="/pos_reversal" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-undo"></i></div>
+                    <span class="app-title">POS Reversal</span>
+                </a>
+                <a href="/cash_payment_reversal" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-undo-alt"></i></div>
+                    <span class="app-title">Cash Pay Reversal</span>
+                </a>
+                <a href="/bank_payment_reversal" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-history"></i></div>
+                    <span class="app-title">Bank Pay Reversal</span>
+                </a>
+                <a href="/direct_payment_reversal" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-sync"></i></div>
+                    <span class="app-title">Direct Pay Reversal</span>
+                </a>
+                <a href="/reversal_category" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-tags"></i></div>
+                    <span class="app-title">Reversal Category</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="app-category">
+            <h3 class="app-category-title">Financial Reports</h3>
+            <div class="app-grid">
+                <a href="/balance_sheet" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale"></i></div>
+                    <span class="app-title">Balance Sheet</span>
+                </a>
+                <a href="/balance_sheet_custom" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-file-invoice-dollar"></i></div>
+                    <span class="app-title">Custom Bal Sheet</span>
+                </a>
+                <a href="/cash_flow" class="app-tile">
+                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill-wave"></i></div>
+                    <span class="app-title">Cash Flow</span>
+                </a>
+                <a href="/trial_balance" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale-left"></i></div>
+                    <span class="app-title">Trial Balance</span>
+                </a>
+                <a href="/profit_loss" class="app-tile">
+                    <div class="app-icon-wrapper bg-red"><i class="fas fa-chart-pie"></i></div>
+                    <span class="app-title">Profit & Loss</span>
+                </a>
+                <a href="/supplier_aging" class="app-tile">
+                    <div class="app-icon-wrapper bg-cyan"><i class="fas fa-clock"></i></div>
+                    <span class="app-title">Aging Reports</span>
+                </a>
+                <a href="/placeholder?title=Load Report" class="app-tile">
+                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-alt"></i></div>
+                    <span class="app-title">Load Report</span>
+                </a>
+            </div>
         </div>
     </div>
+
 </div>
 
 <script>
