@@ -1,5 +1,5 @@
 import flask
-from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
+from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context, jsonify
 from database import Database
 from datetime import datetime, date
 from functools import wraps
