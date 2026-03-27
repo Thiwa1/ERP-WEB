@@ -5,11 +5,9 @@
 {% block content %}
 <div class="container-fluid py-3">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-invoice me-2"></i> PURCHASE ORDER MANAGEMENT</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice me-2"></i> Purchase Order Management</h4>
+</div>
 
     <ul class="nav nav-tabs mb-4" id="poTabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -33,7 +31,7 @@
                     <!-- Left: Items Grid -->
                     <div class="col-md-8">
                         <div class="card shadow-sm mb-3 border-0">
-                            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                                 <i class="fas fa-cubes me-2"></i> PO Items
                             </div>
                             <div class="card-body p-0">
@@ -64,12 +62,12 @@
                     <!-- Right: Header Details -->
                     <div class="col-md-4">
                         <div class="card shadow-sm border-0">
-                            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                                 <i class="fas fa-info-circle me-2"></i> Order Details
                             </div>
                             <div class="card-body bg-white">
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Supplier</label>
+                                    <label class="form-label fw-bold">Supplier</label>
                                     <select class="form-select select2" name="supplier" required>
                                         <option value="">Select Supplier</option>
                                         {% for s in suppliers %}
@@ -78,32 +76,32 @@
                                     </select>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Custom PO Number</label>
+                                    <label class="form-label fw-bold">Custom PO Number</label>
                                     <input type="text" class="form-control" name="po_number">
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Delivery Date</label>
+                                    <label class="form-label fw-bold">Delivery Date</label>
                                     <input type="date" class="form-control" name="delivery_date" required>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Delivery Location</label>
+                                    <label class="form-label fw-bold">Delivery Location</label>
                                     <textarea class="form-control" name="location" rows="2"></textarea>
                                 </div>
                                 <div class="mb-3">
-                                    <label class="form-label fw-bold" style="color: var(--primary-color);">Special Comments</label>
+                                    <label class="form-label fw-bold">Special Comments</label>
                                     <textarea class="form-control" name="comments" rows="2"></textarea>
                                 </div>
 
                                 <hr>
 
                                 <div class="mb-2 row">
-                                    <label class="col-6 col-form-label fw-bold" style="color: var(--primary-color);">Total Value</label>
+                                    <label class="col-6 col-form-label fw-bold">Total Value</label>
                                     <div class="col-6">
                                         <input type="text" class="form-control text-end" id="totalValue" readonly value="0.00">
                                     </div>
                                 </div>
                                 <div class="mb-2 row">
-                                    <label class="col-6 col-form-label fw-bold" style="color: var(--primary-color);">VAT Rate (%)</label>
+                                    <label class="col-6 col-form-label fw-bold">VAT Rate (%)</label>
                                     <div class="col-6">
                                         <input type="number" class="form-control text-end" id="vatRate" name="vat_rate" value="0" oninput="calculateTotals()">
                                     </div>
@@ -130,7 +128,7 @@
         <!-- MANAGE TAB -->
         <div class="tab-pane fade" id="manage" role="tabpanel">
             <div class="card shadow-sm border-0">
-                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                     <div class="row align-items-center">
                         <div class="col-md-4">
                             <i class="fas fa-list-alt me-2"></i> Purchase Orders List

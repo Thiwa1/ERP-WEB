@@ -2,28 +2,26 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-university me-2"></i> CREATE NEW BANK ACCOUNT</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-university me-2"></i> Create New Bank Account</h4>
+</div>
 
     <form method="POST" action="{{ url_for('create_bank_account') }}">
         <div class="row justify-content-center">
             <div class="col-md-8">
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-info-circle me-2"></i> Account Details
                     </div>
                     <div class="card-body bg-white">
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Bank Name</label>
+                            <label class="col-sm-4 col-form-label fw-bold">Bank Name</label>
                             <div class="col-sm-8">
                                 <input type="text" class="form-control" name="bank_name" required placeholder="e.g. Commercial Bank">
                             </div>
                         </div>
                         <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold" style="color: var(--primary-color);">Account Number</label>
+                            <label class="col-sm-4 col-form-label fw-bold">Account Number</label>
                             <div class="col-sm-8">
                                 <input type="text" class="form-control" name="account_number" required placeholder="e.g. 123-456-789">
                             </div>

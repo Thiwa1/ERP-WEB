@@ -3,12 +3,9 @@
 {% block content %}
 <div class="container-fluid py-3">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 fw-bold"><i class="fas fa-receipt me-2"></i> CUSTOMER RECEIPT</h4>
-            <span class="fw-bold">Date: {{ today_date }}</span>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-receipt me-2"></i> Customer Receipt</h4>
+</div>
 
     <form method="POST" action="/customer_receipt/submit" id="receiptForm">
         <div class="row">
@@ -16,7 +13,7 @@
             <div class="col-md-4">
                 <!-- Customer Selection -->
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">Customer Selection</div>
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >Customer Selection</div>
                     <div class="card-body bg-white">
                         <label class="form-label">Select Customer</label>
                         <select id="customerSelect" name="customer_id" class="form-select" onchange="loadOutstanding()" required>
@@ -30,7 +27,7 @@
 
                 <!-- Payment Details -->
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">Payment Details</div>
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >Payment Details</div>
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label">Payment Date</label>
@@ -71,7 +68,7 @@
                 </div>
 
                 <!-- Totals -->
-                <div class="card border-0 mb-4" style="background-color: var(--secondary-color); color: white;">
+                <div class="card border-0 mb-4" >
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2 border-bottom border-secondary pb-2">
                             <span class="fw-bold">Total Outstanding:</span>
@@ -95,7 +92,7 @@
             <div class="col-md-8">
                 <!-- Outstanding Invoices -->
                 <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <span><i class="fas fa-file-invoice me-2"></i> Outstanding Invoices</span>
                         <small style="color: #c3ced5;">Select invoices to pay</small>
                     </div>
@@ -124,7 +121,7 @@
 
                 <!-- Receipt History -->
                 <div class="card shadow-sm border-0">
-                    <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <span><i class="fas fa-history me-2"></i> Receipt History</span>
                         <small style="color: #c3ced5;">Past Payments</small>
                     </div>

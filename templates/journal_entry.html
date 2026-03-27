@@ -3,32 +3,30 @@
 {% block content %}
 <div class="container-fluid py-3">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-book me-2"></i> JOURNAL ENTRY MANAGEMENT</h4>
-        </div>
-    </div>
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-book me-2"></i> Journal Entry Management</h4>
+</div>
 
     <!-- Main Entry Form -->
     <form id="journalForm" method="POST" action="{{ url_for('save_journal_entry') }}">
 
         <!-- Top Section: Journal Info -->
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                 <i class="fas fa-info-circle me-2"></i> Journal Information
             </div>
             <div class="card-body bg-white">
                 <div class="row g-3">
                     <div class="col-md-3">
-                        <label class="form-label fw-bold" style="color: var(--primary-color);">JV Number (Manual)</label>
+                        <label class="form-label fw-bold">JV Number (Manual)</label>
                         <input type="text" class="form-control" name="jv_user_code" placeholder="Enter JV Code" required>
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-bold" style="color: var(--primary-color);">Date</label>
+                        <label class="form-label fw-bold">Date</label>
                         <input type="date" class="form-control" name="entry_date" value="{{ today_date }}" required>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold" style="color: var(--primary-color);">Main Narration</label>
+                        <label class="form-label fw-bold">Main Narration</label>
                         <input type="text" class="form-control" name="main_narration" placeholder="Enter description for this journal entry" required>
                     </div>
                 </div>
@@ -37,7 +35,7 @@
 
         <!-- Middle Section: Entry Grid -->
         <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header fw-bold text-white d-flex justify-content-between align-items-center" style="background-color: var(--secondary-color);">
+            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                 <span><i class="fas fa-list-ol me-2"></i> Journal Entries (Base Currency: {{ base_currency }})</span>
                 <button type="button" class="btn btn-sm btn-light fw-bold text-primary" onclick="addRow()">
                     <i class="fas fa-plus me-1"></i> Add Row
@@ -45,7 +43,7 @@
             </div>
             <div class="card-body p-0 table-responsive">
                 <table class="table table-bordered table-striped mb-0" id="journalTable" style="min-width: 1200px;">
-                    <thead class="text-white" style="background-color: var(--primary-color);">
+                    <thead class="text-white" >
                         <tr>
                             <th style="width: 15%">Account</th>
                             <th style="width: 15%">Sub Account</th>
@@ -109,7 +107,7 @@
 
     <!-- History Section -->
     <div id="historySection" class="card shadow-sm border-0" style="display: none;">
-        <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
+        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
             <i class="fas fa-history me-2"></i> Journal Entry History
         </div>
         <div class="card-body bg-white">
