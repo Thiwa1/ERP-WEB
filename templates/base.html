@@ -527,123 +527,226 @@
             100% { left: 100%; }
         }
 
-        /* Quick Actions Pro Modal */
-        .modal-pro {
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-            background-color: rgba(15, 23, 42, 0.4); /* Darker backdrop */
-        }
-        .modal-pro .modal-content {
-            background: #ffffff;
-            border-radius: 16px;
-            border: 1px solid rgba(0,0,0,0.08);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            overflow: hidden;
-        }
-        .modal-pro .modal-header {
-            background: linear-gradient(to right, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            padding: 20px 24px;
-        }
-        .modal-pro .modal-title {
-            color: #f8fafc;
-            font-weight: 700;
-            letter-spacing: 0.5px;
-            font-size: 1.1rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .modal-pro .modal-title i {
-            color: var(--accent-color);
-            filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.5));
-            font-size: 1.2rem;
-        }
-        .modal-pro .btn-close-white {
-            filter: invert(1) grayscale(100%) brightness(200%);
-            opacity: 0.8;
-            transition: all 0.2s;
-        }
-        .modal-pro .btn-close-white:hover {
-            opacity: 1;
-            transform: scale(1.1);
-        }
-        .modal-pro .modal-body {
-            background-color: #f8fafc; /* Very light slate */
-            padding: 32px !important;
+        /* Win11 Modal Styling */
+        .win11-modal-dialog {
+            max-width: 640px; /* Win11 start menu width */
         }
 
-        .qa-card {
-            background: #ffffff;
+        .win11-modal-content {
+            background: rgba(243, 243, 243, 0.85);
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
             border-radius: 12px;
-            border: 1px solid rgba(226, 232, 240, 0.8);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
-            height: 100%;
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
             overflow: hidden;
+            color: #202020;
         }
-        .qa-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-            border-color: rgba(203, 213, 225, 0.8);
-        }
-        .qa-header {
-            padding: 16px 20px 12px;
-            background: #ffffff;
-            border-bottom: 1px solid rgba(241, 245, 249, 1);
-            font-weight: 700;
-            font-size: 0.95rem;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #334155;
-            letter-spacing: 0.3px;
-        }
-        .qa-header i {
-            font-size: 1.1rem;
-            opacity: 0.9;
-        }
-        .qa-list {
-            padding: 8px 12px;
-            margin: 0;
-            list-style: none;
-        }
-        .qa-item {
-            display: flex;
-            align-items: center;
-            padding: 10px 12px;
-            border-radius: 8px;
-            color: #475569;
-            text-decoration: none;
-            font-size: 0.9rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            margin-bottom: 4px;
-            gap: 12px;
+
+        .win11-modal-header {
+            padding: 24px 32px 16px;
+            border-bottom: none;
             position: relative;
         }
-        .qa-item i {
-            color: #94a3b8;
-            font-size: 1rem;
-            width: 20px;
+
+        /* Search Bar */
+        .win11-search-box {
+            position: relative;
+            width: 100%;
+        }
+        .win11-search-box input {
+            width: 100%;
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            border-bottom: 2px solid #0078d4;
+            border-radius: 4px;
+            padding: 8px 16px 8px 40px;
+            font-size: 14px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            transition: all 0.2s;
+        }
+        .win11-search-box input:focus {
+            outline: none;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+        .win11-search-box i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #606060;
+            font-size: 14px;
+        }
+
+        .win11-modal-body {
+            padding: 0 32px 24px;
+        }
+
+        /* Section Headers */
+        .win11-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            margin-top: 16px;
+        }
+        .win11-section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #202020;
+        }
+        .win11-section-action {
+            font-size: 12px;
+            color: #404040;
+            background: rgba(255,255,255,0.5);
+            padding: 4px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            transition: background 0.2s;
+        }
+        .win11-section-action:hover {
+            background: #ffffff;
+            color: #000;
+        }
+
+        /* Pinned Grid */
+        .win11-pinned-grid {
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 16px 8px;
+        }
+        @media (max-width: 600px) {
+            .win11-pinned-grid { grid-template-columns: repeat(4, 1fr); }
+        }
+        @media (max-width: 400px) {
+            .win11-pinned-grid { grid-template-columns: repeat(3, 1fr); }
+        }
+        .win11-pinned-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
             text-align: center;
-            transition: color 0.2s ease, transform 0.2s ease;
+            text-decoration: none;
+            color: #202020;
+            padding: 8px 4px;
+            border-radius: 4px;
+            transition: background 0.2s;
         }
-        .qa-item:hover {
-            background-color: #f1f5f9;
-            color: #0f172a;
+        .win11-pinned-item:hover {
+            background: rgba(255, 255, 255, 0.6);
         }
-        .qa-item:hover i {
-            color: var(--accent-color);
-            transform: scale(1.1);
+        .win11-pinned-icon {
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
-        /* Color themes for category headers */
-        .qa-theme-primary .qa-header i { color: #3b82f6; }
-        .qa-theme-success .qa-header i { color: #10b981; }
-        .qa-theme-warning .qa-header i { color: #f59e0b; }
-        .qa-theme-info .qa-header i { color: #06b6d4; }
-        .qa-theme-purple .qa-header i { color: #8b5cf6; }
-        .qa-theme-rose .qa-header i { color: #f43f5e; }
+        .icon-blue { color: #0078d4; }
+        .icon-green { color: #107c41; }
+        .icon-orange { color: #d83b01; }
+        .icon-purple { color: #5c2d91; }
+        .icon-teal { color: #008272; }
+        .icon-rose { color: #e3008c; }
+
+        .win11-pinned-text {
+            font-size: 11px;
+            line-height: 1.2;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            word-break: break-word;
+            text-overflow: ellipsis;
+        }
+
+        /* Recommended List */
+        .win11-recommended-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px 24px;
+        }
+        @media (max-width: 500px) {
+            .win11-recommended-grid { grid-template-columns: 1fr; }
+        }
+        .win11-recommended-item {
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: #202020;
+            padding: 8px 12px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .win11-recommended-item:hover {
+            background: rgba(255, 255, 255, 0.6);
+        }
+        .win11-rec-icon {
+            font-size: 18px;
+            margin-right: 12px;
+            width: 24px;
+            text-align: center;
+            color: #606060;
+        }
+        .win11-rec-text-wrap {
+            display: flex;
+            flex-direction: column;
+        }
+        .win11-rec-title {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .win11-rec-subtitle {
+            font-size: 11px;
+            color: #606060;
+        }
+
+        /* Footer */
+        .win11-modal-footer {
+            background: rgba(0, 0, 0, 0.03);
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            padding: 16px 32px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom-left-radius: 12px;
+            border-bottom-right-radius: 12px;
+        }
+        .win11-user {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .win11-user-avatar {
+            width: 32px;
+            height: 32px;
+            background: #0078d4;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            text-transform: uppercase;
+        }
+        .win11-power {
+            color: #404040;
+            font-size: 16px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+        .win11-power:hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
 
     </style>
 </head>
@@ -782,101 +885,154 @@
         {% block content %}{% endblock %}
     </div>
 
-    <!-- Quick Actions Modal -->
-    <div class="modal fade modal-pro" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
-        <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title"><i class="fas fa-bolt"></i> QUICK ACTIONS</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-4">
-                        <!-- Column 1: Setup & Accounting -->
-                        <div class="col-md-4 d-flex flex-column gap-4">
-                            <!-- Company Setup -->
-                            <div class="qa-card qa-theme-primary">
-                                <div class="qa-header">
-                                    <i class="fas fa-building"></i> Company Setup
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/company_profile" class="qa-item"><i class="fas fa-id-card"></i> Setup Company Profile</a></li>
-                                    <li><a href="/create_bank_account" class="qa-item"><i class="fas fa-university"></i> Create Bank Account</a></li>
-                                    <li><a href="/create_cash_account" class="qa-item"><i class="fas fa-money-bill-wave"></i> Create Cash Account</a></li>
-                                    <li><a href="/job_management" class="qa-item"><i class="fas fa-briefcase"></i> Create New Jobs</a></li>
-                                    <li><a href="/tax_settings" class="qa-item"><i class="fas fa-percent"></i> Tax Settings (WHT)</a></li>
-                                    <li><a href="/control_panel" class="qa-item"><i class="fas fa-sliders-h"></i> System Control Panel</a></li>
-                                    <li><a href="/admin/users" class="qa-item"><i class="fas fa-user-plus"></i> Add New User</a></li>
-                                </ul>
-                            </div>
+    <!-- Quick Actions Modal (Win11 Style) -->
+    <div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered win11-modal-dialog">
+            <div class="modal-content win11-modal-content">
 
-                            <!-- Accounting -->
-                            <div class="qa-card qa-theme-purple">
-                                <div class="qa-header">
-                                    <i class="fas fa-book-open"></i> Accounting
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/balance_sheet_category" class="qa-item"><i class="fas fa-balance-scale"></i> Balance Sheet Category</a></li>
-                                    <li><a href="/pl_category" class="qa-item"><i class="fas fa-chart-pie"></i> P&L Category</a></li>
-                                    <li><a href="/cash_flow_categories" class="qa-item"><i class="fas fa-stream"></i> Cash Flow Category</a></li>
-                                    <li><a href="/add_new_account" class="qa-item"><i class="fas fa-file-invoice"></i> Create New Account</a></li>
-                                    <li><a href="/cheque_print_setup" class="qa-item"><i class="fas fa-print"></i> Cheque Print Setup</a></li>
-                                    <li><a href="/bulk_upload_gl" class="qa-item"><i class="fas fa-file-upload"></i> Bulk Upload GL</a></li>
-                                    <li><a href="/bulk_upload_tb" class="qa-item"><i class="fas fa-file-csv"></i> Bulk Upload TB</a></li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <!-- Column 2: Entities & Inventory -->
-                        <div class="col-md-4 d-flex flex-column gap-4">
-                            <!-- Suppliers & Customer -->
-                            <div class="qa-card qa-theme-success">
-                                <div class="qa-header">
-                                    <i class="fas fa-users"></i> Suppliers & Customers
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/add_customer" class="qa-item"><i class="fas fa-user-tag"></i> Create New Customer</a></li>
-                                    <li><a href="/add_supplier" class="qa-item"><i class="fas fa-truck"></i> Create New Supplier</a></li>
-                                </ul>
-                            </div>
-
-                            <!-- Inventory Management -->
-                            <div class="qa-card qa-theme-info">
-                                <div class="qa-header">
-                                    <i class="fas fa-boxes"></i> Inventory Management
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/inventory_locations" class="qa-item"><i class="fas fa-warehouse"></i> Create Inventory House</a></li>
-                                    <li><a href="/add_inventory_item" class="qa-item"><i class="fas fa-box"></i> Create Inventory Items</a></li>
-                                </ul>
-                            </div>
-                        </div>
-
-                        <!-- Column 3: POS & Backup -->
-                        <div class="col-md-4 d-flex flex-column gap-4">
-                            <!-- Point of Sales -->
-                            <div class="qa-card qa-theme-warning">
-                                <div class="qa-header">
-                                    <i class="fas fa-cash-register"></i> Point of Sales
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/pos_settings" class="qa-item"><i class="fas fa-cogs"></i> POS Settings</a></li>
-                                    <li><a href="/warranty_period" class="qa-item"><i class="fas fa-shield-alt"></i> Warranty Period</a></li>
-                                </ul>
-                            </div>
-
-                            <!-- System Backup -->
-                            <div class="qa-card qa-theme-rose">
-                                <div class="qa-header">
-                                    <i class="fas fa-server"></i> System
-                                </div>
-                                <ul class="qa-list">
-                                    <li><a href="/system_backup" class="qa-item"><i class="fas fa-download"></i> System Backup</a></li>
-                                </ul>
-                            </div>
-                        </div>
+                <div class="win11-modal-header">
+                    <div class="win11-search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" placeholder="Type here to search apps, settings, and more" autofocus>
                     </div>
                 </div>
+
+                <div class="win11-modal-body">
+                    <!-- Pinned Section -->
+                    <div class="win11-section-header">
+                        <span class="win11-section-title">Pinned</span>
+                        <a href="#" class="win11-section-action" data-bs-dismiss="modal">All apps <i class="fas fa-chevron-right ms-1" style="font-size: 10px;"></i></a>
+                    </div>
+
+                    <div class="win11-pinned-grid">
+                        <!-- Company Setup -->
+                        <a href="/company_profile" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-blue"><i class="fas fa-id-card"></i></div>
+                            <span class="win11-pinned-text">Company</span>
+                        </a>
+                        <a href="/create_bank_account" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-blue"><i class="fas fa-university"></i></div>
+                            <span class="win11-pinned-text">Bank Acc</span>
+                        </a>
+                        <a href="/admin/users" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-blue"><i class="fas fa-user-plus"></i></div>
+                            <span class="win11-pinned-text">Users</span>
+                        </a>
+                        <a href="/control_panel" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-blue"><i class="fas fa-sliders-h"></i></div>
+                            <span class="win11-pinned-text">System</span>
+                        </a>
+
+                        <!-- Suppliers & Customers -->
+                        <a href="/add_customer" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-green"><i class="fas fa-user-tag"></i></div>
+                            <span class="win11-pinned-text">Customer</span>
+                        </a>
+                        <a href="/add_supplier" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-green"><i class="fas fa-truck"></i></div>
+                            <span class="win11-pinned-text">Supplier</span>
+                        </a>
+
+                        <!-- POS -->
+                        <a href="/pos_settings" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-orange"><i class="fas fa-cogs"></i></div>
+                            <span class="win11-pinned-text">POS Set</span>
+                        </a>
+                        <a href="/warranty_period" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-orange"><i class="fas fa-shield-alt"></i></div>
+                            <span class="win11-pinned-text">Warranty</span>
+                        </a>
+
+                        <!-- Accounting -->
+                        <a href="/balance_sheet_category" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-purple"><i class="fas fa-balance-scale"></i></div>
+                            <span class="win11-pinned-text">Bal Sheet</span>
+                        </a>
+                        <a href="/pl_category" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-purple"><i class="fas fa-chart-pie"></i></div>
+                            <span class="win11-pinned-text">P&L Cat</span>
+                        </a>
+                        <a href="/add_new_account" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-purple"><i class="fas fa-file-invoice"></i></div>
+                            <span class="win11-pinned-text">New Acc</span>
+                        </a>
+                        <a href="/bulk_upload_gl" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-purple"><i class="fas fa-file-upload"></i></div>
+                            <span class="win11-pinned-text">Bulk GL</span>
+                        </a>
+
+                        <!-- Inventory Management -->
+                        <a href="/inventory_locations" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-teal"><i class="fas fa-warehouse"></i></div>
+                            <span class="win11-pinned-text">Inv House</span>
+                        </a>
+                        <a href="/add_inventory_item" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-teal"><i class="fas fa-box"></i></div>
+                            <span class="win11-pinned-text">Inv Item</span>
+                        </a>
+
+                        <!-- Other -->
+                        <a href="/tax_settings" class="win11-pinned-item">
+                            <div class="win11-pinned-icon icon-teal"><i class="fas fa-percent"></i></div>
+                            <span class="win11-pinned-text">Tax</span>
+                        </a>
+
+                        <a href="/system_backup" class="win11-pinned-item">
+                            <div class="win11-pinned-icon text-danger"><i class="fas fa-download"></i></div>
+                            <span class="win11-pinned-text">Backup</span>
+                        </a>
+                    </div>
+
+                    <!-- Recommended Section -->
+                    <div class="win11-section-header mt-4">
+                        <span class="win11-section-title">Recommended</span>
+                        <a href="#" class="win11-section-action">More <i class="fas fa-chevron-right ms-1" style="font-size: 10px;"></i></a>
+                    </div>
+
+                    <div class="win11-recommended-grid">
+                        <a href="/pos" class="win11-recommended-item">
+                            <i class="fas fa-cash-register win11-rec-icon text-warning"></i>
+                            <div class="win11-rec-text-wrap">
+                                <span class="win11-rec-title">POS System</span>
+                                <span class="win11-rec-subtitle">Recently added</span>
+                            </div>
+                        </a>
+                        <a href="/journal_entry" class="win11-recommended-item">
+                            <i class="fas fa-book win11-rec-icon text-info"></i>
+                            <div class="win11-rec-text-wrap">
+                                <span class="win11-rec-title">Journal Entry</span>
+                                <span class="win11-rec-subtitle">Used 5m ago</span>
+                            </div>
+                        </a>
+                        <a href="/inventory_balance" class="win11-recommended-item">
+                            <i class="fas fa-boxes win11-rec-icon text-success"></i>
+                            <div class="win11-rec-text-wrap">
+                                <span class="win11-rec-title">Inventory Balance</span>
+                                <span class="win11-rec-subtitle">Used 1h ago</span>
+                            </div>
+                        </a>
+                        <a href="/cheque_print_setup" class="win11-recommended-item">
+                            <i class="fas fa-print win11-rec-icon text-secondary"></i>
+                            <div class="win11-rec-text-wrap">
+                                <span class="win11-rec-title">Cheque Print Setup</span>
+                                <span class="win11-rec-subtitle">System Setup</span>
+                            </div>
+                        </a>
+                    </div>
+
+                </div>
+
+                <!-- Footer -->
+                <div class="win11-modal-footer">
+                    <div class="win11-user">
+                        <div class="win11-user-avatar">{{ session.get('username', 'User')[0] | upper if session.get('username') else 'U' }}</div>
+                        <span>{{ session.get('username', 'User') }}</span>
+                    </div>
+                    <div class="win11-power" data-bs-dismiss="modal" title="Close">
+                        <i class="fas fa-power-off"></i>
+                    </div>
+                </div>
+
             </div>
         </div>
     </div>
