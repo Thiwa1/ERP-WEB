@@ -1,3 +1,4 @@
+from datetime import date
 
 def create_grn(db, current_user, supplier_info, invoice_info, items):
     """
