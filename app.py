@@ -1312,6 +1312,7 @@ def grn():
             narration = request.form.get('narration')
             job_no = request.form.get('job_no')
             location = request.form.get('location')
+            po_id = request.form.get('po_id')
 
             total_value = parse_float(request.form.get('total_value', 0))
             vat_rate = parse_float(request.form.get('vat_rate', 0))
@@ -1350,6 +1351,10 @@ def grn():
                 }
 
                 jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
+
+                # If Auto-Filled from PO, mark PO as completed (status = 2) so it hides from the dropdown
+                if po_id:
+                    db.execute_query("UPDATE OP_NO_Table SET status = 2 WHERE id = %s", (po_id,))
 
                 current_user_pk = get_current_user_pk()
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
@@ -3416,7 +3421,7 @@ def list_purchase_orders():
             (SELECT SUM(d.QTY * d.Unit_price) FROM PO_Recode_Details d WHERE d.Link_OP_NO_Table = h.id) as subtotal,
             h.VAT_Rate
         FROM OP_NO_Table h
-        WHERE h.Delete_PO = 0
+        WHERE h.Delete_PO = 0 AND h.status = 1
         ORDER BY h.id DESC
     """
     rows = db.execute_query(query)

@@ -46,7 +46,7 @@
                     <div class="card-body bg-white">
                         <div class="mb-3">
                             <label class="form-label fw-bold">Supplier List</label>
-                            <select class="form-select" name="supplier" required>
+                            <select class="form-select select2" name="supplier" id="supplierSelect" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
                                 <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
@@ -55,7 +55,7 @@
                         </div>
                         <div class="mb-0">
                             <label class="form-label fw-bold">Auto-Fill from PO</label>
-                            <select class="form-select" id="poSelect" onchange="loadPoDetails()">
+                            <select class="form-select select2" id="poSelect" name="po_id" onchange="loadPoDetails()">
                                 <option value="">Select Purchase Order</option>
                                 <!-- Filled via JS -->
                             </select>
@@ -72,7 +72,7 @@
                         <div class="row g-2 mb-2">
                             <div class="col-md-5">
                                 <label class="form-label fw-bold">Item Name</label>
-                                <select class="form-select" id="itemSelect">
+                                <select class="form-select select2" id="itemSelect">
                                     <option value="">Select Item</option>
                                     {% for item in items %}
                                     <option value="{{ item.inventoy_name }}" data-code="{{ item.inventoy_code }}" data-unit="{{ item.inventoy_items_messurment_unit }}">{{ item.inventoy_name }}</option>
@@ -334,13 +334,13 @@
             .then(r => r.json())
             .then(data => {
                 // Set Supplier
-                const supSelect = document.querySelector('select[name="supplier"]');
-                for(let i=0; i<supSelect.options.length; i++) {
-                    if(supSelect.options[i].text === data.header.supplier) {
-                        supSelect.selectedIndex = i;
-                        break;
+                const supSelect = $('#supplierSelect');
+                supSelect.val('').trigger('change'); // reset
+                supSelect.find('option').each(function() {
+                    if($(this).text() === data.header.supplier) {
+                        supSelect.val($(this).val()).trigger('change');
                     }
-                }
+                });
 
                 // Add Items
                 // Instead of replacing, we push to the items array
