@@ -745,6 +745,7 @@ def login():
                         tenant_user = tenant_user_res[0]
                         session['user_id'] = tenant_user['User_Code']
                         session['user_pk'] = tenant_user['id']
+                        run_schema_migrations()
                         return redirect(url_for('index'))
                     else:
                         flash('User record missing in tenant database.', 'danger')
@@ -802,6 +803,7 @@ def login():
                 session['user_id'] = user['User_Code']
                 session['user_pk'] = user['id']
                 session['username'] = username
+                run_schema_migrations()
                 if migrated:
                     flash('Login successful. Your password security has been upgraded.', 'success')
                 return redirect(url_for('index'))
@@ -7738,6 +7740,7 @@ def pos_web_login():
                 session['username'] = username
                 session['user_id'] = user['User_Name']
                 session['user_pk'] = user['Id']
+                run_schema_migrations()
 
                 return redirect(url_for('pos'))
     except Exception as e:
@@ -7836,6 +7839,7 @@ def pos_reset_password():
         session['username'] = user['User_Name']
         session['user_id'] = user['User_Name']
         session['user_pk'] = user['Id']
+        run_schema_migrations()
 
         session.pop('pending_pos_user_id', None)
         session.pop('pending_pos_company', None)
