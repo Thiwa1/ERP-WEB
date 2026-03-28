@@ -614,7 +614,6 @@ CREATE TABLE IF NOT EXISTS `Book_keeping`.`bank_book_recod` (
   `Bank_Check_Payment` TINYINT NULL,
   `Bank_Online_Trasfer` TINYINT NULL,
   `Bank_Merchan_ID` VARCHAR(45) NULL,
-  `master_voucher_no` BIGINT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
   INDEX `fk_new_account_bank_idx` (`bank_book__accont_name` ASC),
   INDEX `fk_jv_no2_idx` (`jv_numbers_jv_id` ASC),
