@@ -8476,7 +8476,7 @@ def run_schema_migrations(target_db_conn=None):
         # 10. Master Payment Voucher Sequence
         cursor.execute("SHOW TABLES LIKE 'master_payment_voucher_no'")
         if not cursor.fetchone():
-            print("Migrating: Creating master_payment_voucher_no table")
+            logging.info("Migrating: Creating master_payment_voucher_no table")
             cursor.execute("""
                 CREATE TABLE master_payment_voucher_no (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -8490,7 +8490,7 @@ def run_schema_migrations(target_db_conn=None):
         cursor.execute("SHOW COLUMNS FROM bank_book_recod")
         bbr_cols = [row[0] for row in cursor.fetchall()]
         if 'master_voucher_no' not in bbr_cols:
-            print("Migrating: Adding master_voucher_no to bank_book_recod")
+            logging.info("Migrating: Adding master_voucher_no to bank_book_recod")
             cursor.execute("ALTER TABLE bank_book_recod ADD COLUMN master_voucher_no BIGINT DEFAULT 0")
         # Default Theme Setting
         cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
