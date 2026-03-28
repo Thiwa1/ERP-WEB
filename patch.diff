@@ -1,0 +1,11 @@
+--- app.py
++++ app.py
+@@ -7286,7 +7286,7 @@
+         if 'receipt_logo' in request.files:
+             file = request.files['receipt_logo']
+             if file.filename != '':
+-                img_data = file.read() # Store as bytes in BLOB
++                img_data = base64.b64encode(file.read()).decode('utf-8')
+
+         try:
+             if not user_id:
