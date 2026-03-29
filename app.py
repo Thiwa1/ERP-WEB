@@ -2754,7 +2754,7 @@ def print_cheque(jv_no):
         SELECT
             b.Bank_Payment_Date as date,
             b.bank_book__suplier_name as payee,
-            SUM(b.bank_book_book_recode_dr) as amount,
+            SUM(b.bank_book__recode_cr) as amount,
             b.bank_book__accont_name as bank_account
         FROM bank_book_recod b
         WHERE b.jv_numbers_jv_id = %s
