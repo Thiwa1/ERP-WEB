@@ -2937,7 +2937,7 @@ def _get_supplier_history_data(sup_name, payment_type):
         history = db.execute_query("""
             SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
                    bank_book__accont_name as account, bank_book__recode_cr as amount,
-                   bank_book__naration as extra, NULL as extra2
+                   bank_book__naration as extra, jv_numbers_jv_id as extra2
             FROM bank_book_recod
             WHERE bank_book__suplier_name = %s
             ORDER BY id DESC
@@ -2949,11 +2949,11 @@ def _get_supplier_history_data(sup_name, payment_type):
             'voucher': h['voucher'],
             'date': str(h['date']),
             'account': h['account'],
-            'amount': float(h['amount'] or 0)
+            'amount': float(h['amount'] or 0),
+            'jv_no': h['extra2']
         }
         if payment_type == 'cash':
             item['user_id'] = h['extra']
-            item['jv_no'] = h['extra2']
         else:
             item['narration'] = h['extra']
         hist_list.append(item)
@@ -3204,7 +3204,7 @@ def print_voucher(voucher_type, jv_no):
                 'paid_to': 'b.bank_book__suplier_name',
                 'paid_from': 'b.bank_book__accont_name',
                 'narration': 'b.bank_book__naration',
-                'amount': 'SUM(b.bank_book_book_recode_dr)',
+                'amount': 'SUM(b.bank_book__recode_cr)',
                 'user_id': 'b.Bank_User_Id',
                 'cheque_no': 'b.bank_book_chque_no'
             },
