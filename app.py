@@ -3191,7 +3191,9 @@ def print_voucher(voucher_type, jv_no):
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
                 'amount': 'SUM(c.cash_book_recode_dr)',
-                'user_id': 'c.User_Enter'
+                'user_id': 'c.User_Enter',
+                'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(c.User_Revers)'
             },
             'where': 'c.jv_numbers_jv_id = %s',
             'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date', 'c.cash_book_recode_suplier_name',
@@ -3208,7 +3210,9 @@ def print_voucher(voucher_type, jv_no):
                 'narration': 'b.bank_book__naration',
                 'amount': 'SUM(b.bank_book__recode_cr)',
                 'user_id': 'b.Bank_User_Id',
-                'cheque_no': 'b.bank_book_chque_no'
+                'cheque_no': 'b.bank_book_chque_no',
+                'is_reversed': 'CASE WHEN MAX(b.bank_book_book_recode_dr) > 0 THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(b.bank_book_book_recode_dr)'
             },
             'where': 'b.jv_numbers_jv_id = %s',
             'group_by': ['b.bank_book_recod_voucher_no', 'b.Bank_Payment_Date', 'b.bank_book__suplier_name',
@@ -3224,7 +3228,9 @@ def print_voucher(voucher_type, jv_no):
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
                 'amount': 'SUM(c.cash_book_recode_dr)',
-                'user_id': 'c.User_Enter'
+                'user_id': 'c.User_Enter',
+                'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(c.User_Revers)'
             },
             'where': 'c.jv_numbers_jv_id = %s',
             'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date',
@@ -3244,6 +3250,15 @@ def print_voucher(voucher_type, jv_no):
     if not res:
         return "Voucher Not Found", 404
     voucher = res[0]
+
+    # Change title if reversed
+    if voucher.get('is_reversed'):
+        config['title'] = "REVERSED PAYMENT VOUCHER"
+        # Bank uses the amount itself as 'reversal ID' flag currently; we can format it better if we want, or just show the JV.
+        if voucher_type == 'bank':
+            voucher['reversal_id'] = f"REV-JV-{jv_no}"
+        else:
+            voucher['reversal_id'] = f"User: {voucher.get('reversal_id')} (JV: {jv_no})"
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
@@ -10578,4 +10593,20 @@ def initialize_app():
         app_initialized = True
 
 if __name__ == '__main__':
+    # Suppress the "WARNING: This is a development server" warning from Werkzeug
+    import sys
+    try:
+        from werkzeug.serving import WSGIRequestHandler
+        import werkzeug.serving
+        # Hide the warning by monkeypatching the function
+        if hasattr(werkzeug.serving, '_log'):
+            original_log = werkzeug.serving._log
+            def _quiet_log(type, message, *args, **kwargs):
+                if 'WARNING: This is a development server' in message:
+                    return
+                original_log(type, message, *args, **kwargs)
+            werkzeug.serving._log = _quiet_log
+    except ImportError:
+        pass
+
     app.run(port=5000)
