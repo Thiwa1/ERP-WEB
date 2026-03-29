@@ -6071,6 +6071,8 @@ def pos_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6089,11 +6091,14 @@ def pos_reversal_process():
         flash(f'Transaction {jv} reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing transaction: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('pos_reversal'))
 
@@ -6200,6 +6205,8 @@ def bank_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6218,11 +6225,14 @@ def bank_payment_reversal_process():
         flash(f'Bank Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing bank payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('bank_payment_reversal'))
 
@@ -6262,6 +6272,8 @@ def cash_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6280,11 +6292,14 @@ def cash_payment_reversal_process():
         flash(f'Cash Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing cash payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('cash_payment_reversal'))
 
@@ -6325,6 +6340,8 @@ def direct_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6346,11 +6363,14 @@ def direct_payment_reversal_process():
         flash(f'Direct Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing direct payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('direct_payment_reversal'))
 
