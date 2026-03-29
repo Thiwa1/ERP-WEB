@@ -89,8 +89,10 @@ logging.basicConfig(
 # In production, this should be set via environment variable.
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
-    # Ensure a secret key is explicitly set in the environment
-    raise RuntimeError("No SECRET_KEY set for Flask application. This is a required environment variable for security.")
+    # Use a default development key if not provided, but log a loud warning
+    logging.warning("No SECRET_KEY set in environment variables. Falling back to default development key. "
+                    "This is unsafe for production. Please set SECRET_KEY in your .env file.")
+    app.secret_key = 'default-development-secret-key-change-this-in-production'
 
 app.config['SECRET_KEY'] = app.secret_key
 
@@ -6164,6 +6166,21 @@ def bank_payment_reversal_details():
     gl_query = f"SELECT entry_jv, account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv IN ({format_strings})"
     gl_rows = db.execute_query(gl_query, jv_tuple)
 
+    # Fetch Inventory Movements
+    inv_rec_query = f"""
+        SELECT
+            JV_No,
+            inventoy_name,
+            inventoy_code,
+            inventory_recod_moument_in,
+            inventory_recod_movment_out,
+            inventory_recod_unit_price,
+            inventory_recod_suplier_iv_no,
+            inventory_recod_location
+        FROM inventory_recod WHERE JV_No IN ({format_strings})
+    """
+    inv_rec_rows = db.execute_query(inv_rec_query, jv_tuple)
+
     text = ""
     for current_jv in jvs:
         jv_inv_rows = [r for r in inv_rows if str(r.get('jv_numbers_jv_id')) == current_jv]
@@ -6189,7 +6206,21 @@ def bank_payment_reversal_details():
             else:
                 text += "\nGL Entries:\n"
             for gl in jv_gl_rows:
-                text += f"{gl['account_name']}: DR {gl['enty_values_DR']} | CR {gl['enty_values_CR']}\n"
+                text += f"Account Name:-  {gl['account_name']} Accout Dr:- {gl['enty_values_DR']} Accout Cr:- {gl['enty_values_CR']}\n"
+
+        jv_inv_rec_rows = [ir for ir in inv_rec_rows if str(ir.get('JV_No')) == current_jv]
+        if jv_inv_rec_rows:
+            text += "------------------------\n"
+            for ir in jv_inv_rec_rows:
+                text += (
+                    f"Inventory Name:-  {ir['inventoy_name']} "
+                    f"Inventory Code:- {ir['inventoy_code']} "
+                    f"Item Add:-  {ir['inventory_recod_moument_in']} "
+                    f"Item Issue:-  {ir['inventory_recod_movment_out']} "
+                    f"Item Price:-  {ir['inventory_recod_unit_price']} "
+                    f"IV No:-  {ir['inventory_recod_suplier_iv_no']} "
+                    f"Location:-  {ir['inventory_recod_location']}\n"
+                )
 
     text += "\nDo you need to reverse this entry?"
 
