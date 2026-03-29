@@ -6122,7 +6122,7 @@ def bank_payment_reversal():
             b.jv_numbers_jv_id as JV
         FROM bank_book_recod b
         WHERE b.bank_book__recode_cr > 0
-        AND b.User_Revers IS NULL
+        AND (b.bank_book_book_recode_dr IS NULL OR b.bank_book_book_recode_dr = 0)
         ORDER BY b.Bank_Payment_Date DESC, b.id DESC
         LIMIT 50
     """
