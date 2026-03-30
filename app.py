@@ -1984,7 +1984,9 @@ def create_bank_account():
 
         return redirect(url_for('create_bank_account'))
 
-    return render_template('create_bank_account.html')
+    # Fetch existing bank accounts
+    bank_accounts = db.execute_query("SELECT * FROM bank_book ORDER BY bank_book_create_date DESC")
+    return render_template('create_bank_account.html', bank_accounts=bank_accounts)
 
 # --- Create Cash Account ---
 @app.route('/create_cash_account', methods=['GET', 'POST'])
@@ -2059,7 +2061,9 @@ def create_cash_account():
 
         return redirect(url_for('create_cash_account'))
 
-    return render_template('create_cash_account.html')
+    # Fetch existing cash accounts
+    cash_accounts = db.execute_query("SELECT * FROM cash_book ORDER BY cash_creat_date DESC")
+    return render_template('create_cash_account.html', cash_accounts=cash_accounts)
 
 # --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
@@ -4294,31 +4298,40 @@ def bank_payment_submit():
         res = cursor.fetchone()
         sub_ac_code = res[0] if res else 0
 
-        # Debit AP (Full amount settled)
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_sub_account_code
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+        try:
+            # Debit AP (Full amount settled)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+        except Exception as e:
+            raise Exception(f"Failed to INSERT 'Account Payable': {e}")
 
-        # Credit Bank (Net amount = Total - WHT)
-        net_payment = total_payment - wht_amount
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
-
-        # Credit WHT Payable (If any)
-        if wht_amount > 0:
+        try:
+            # Credit Bank (Net amount = Total - WHT)
+            net_payment = total_payment - wht_amount
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+            """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
+        except Exception as e:
+            raise Exception(f"Failed to INSERT bank_account '{bank_account}': {e}")
+
+        try:
+            # Credit WHT Payable (If any)
+            if wht_amount > 0:
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                        entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+        except Exception as e:
+            raise Exception(f"Failed to INSERT 'WHT Payable': {e}")
 
         # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
         # Bank Book typically matches bank statement, so record NET payment.
@@ -10593,28 +10606,4 @@ def initialize_app():
         app_initialized = True
 
 if __name__ == '__main__':
-    # Suppress the "WARNING: This is a development server" warning from Werkzeug
-    import sys
-    import logging
-    cli = sys.modules.get('flask.cli')
-    if cli:
-        cli.show_server_banner = lambda *args: None
-
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-
-    try:
-        from werkzeug.serving import WSGIRequestHandler
-        import werkzeug.serving
-        # Hide the warning by monkeypatching the function
-        if hasattr(werkzeug.serving, '_log'):
-            original_log = werkzeug.serving._log
-            def _quiet_log(type, message, *args, **kwargs):
-                if 'WARNING: This is a development server' in message:
-                    return
-                original_log(type, message, *args, **kwargs)
-            werkzeug.serving._log = _quiet_log
-    except ImportError:
-        pass
-
     app.run(port=5000)

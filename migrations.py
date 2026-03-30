@@ -44,7 +44,6 @@ def run_migrations(conn):
 
         conn.commit()
         cursor.close()
-        conn.close()
     except Exception as e:
         print(f"Schema Migration Error: {e}")
 

@@ -2,40 +2,85 @@
 
 {% block content %}
 <div class="container-fluid py-3">
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-university me-2"></i> Create New Bank Account</h4>
-</div>
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
+        <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-university me-2"></i> Create New Bank Account</h4>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb mb-0">
+                <li class="breadcrumb-item"><a href="{{ url_for('dashboard') }}" class="text-decoration-none">Dashboard</a></li>
+                <li class="breadcrumb-item active">Company Setup</li>
+                <li class="breadcrumb-item active" aria-current="page">Bank Account</li>
+            </ol>
+        </nav>
+    </div>
 
-    <form method="POST" action="{{ url_for('create_bank_account') }}">
-        <div class="row justify-content-center">
-            <div class="col-md-8">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-info-circle me-2"></i> Account Details
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Bank Name</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="bank_name" required placeholder="e.g. Commercial Bank">
-                            </div>
+    <div class="row">
+        <!-- Add Bank Account Form -->
+        <div class="col-md-4 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
+                    <h6 class="fw-bold text-muted mb-0"><i class="fas fa-plus-circle me-1"></i> Add Account</h6>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('create_bank_account') }}">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Bank Name</label>
+                            <input type="text" class="form-control" name="bank_name" required placeholder="e.g. Commercial Bank">
                         </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Account Number</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="account_number" required placeholder="e.g. 123-456-789">
-                            </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Account Number</label>
+                            <input type="text" class="form-control" name="account_number" required placeholder="e.g. 123-456-789">
                         </div>
 
                         <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary fw-bold py-2 shadow-sm" style="background-color: var(--accent-color); border: none;">
+                            <button type="submit" class="btn btn-primary fw-bold">
                                 <i class="fas fa-save me-2"></i> Create Bank Account
                             </button>
                         </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Existing Bank Accounts -->
+        <div class="col-md-8 mb-4">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-header bg-white border-bottom-0 pt-4 pb-0 d-flex justify-content-between align-items-center">
+                    <h6 class="fw-bold text-muted mb-0"><i class="fas fa-list me-1"></i> Existing Bank Accounts</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle datatable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Bank Name</th>
+                                    <th>Account Number</th>
+                                    <th>Created Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for acc in bank_accounts %}
+                                <tr>
+                                    <td>{{ acc.id }}</td>
+                                    <td class="fw-bold text-dark">{{ acc.bank_book_bank_name }}</td>
+                                    <td>{{ acc.bank_bookcol_account_number }}</td>
+                                    <td>{{ acc.bank_book_create_date }}</td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary" disabled title="Edit function not implemented yet"><i class="fas fa-edit"></i></button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="5" class="text-center text-muted py-4">No bank accounts found.</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
         </div>
-    </form>
+    </div>
 </div>
 {% endblock %}
