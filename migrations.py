@@ -36,6 +36,7 @@ def run_migrations(conn):
         _migrate_company_table(cursor)
         _migrate_tax_rates(cursor)
         _migrate_cheque_print_settings(cursor)
+        _migrate_wht_payable_account(cursor)
         _migrate_proforma_invoice(cursor)
         _migrate_approval_workflow(cursor)
         _migrate_pos_security_features(cursor)
@@ -202,6 +203,23 @@ def _migrate_cheque_print_settings(cursor):
             """)
     except Exception as e:
         print(f"Error migrating cheque_print_settings: {e}")
+
+def _migrate_wht_payable_account(cursor):
+    """Add WHT Payable to new_account_table if missing."""
+    try:
+        cursor.execute("SELECT id FROM new_account_table WHERE account_name = 'WHT Payable'")
+        if not cursor.fetchone():
+            print("Migrating: Creating WHT Payable account")
+            cursor.execute("""
+                INSERT INTO new_account_table (
+                    account_name, account_hold_possion_Balace_Sheet, account_name_of_catogory_Balace_sheet,
+                    account_hold_possion_PL, account_name_of_catogory_PL,
+                    account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                    accont_create_date, account_create_user, account_active, account_basment
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, 1, %s)
+            """, ('WHT Payable', 6, 'Current liabilities', None, None, None, None, None, 'liabilities', None, 0, 'CR'))
+    except Exception as e:
+        print(f"Error migrating WHT Payable account: {e}")
 
 def _migrate_proforma_invoice(cursor):
     """8. Create Proforma Invoice Tables."""

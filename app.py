@@ -10595,6 +10595,14 @@ def initialize_app():
 if __name__ == '__main__':
     # Suppress the "WARNING: This is a development server" warning from Werkzeug
     import sys
+    import logging
+    cli = sys.modules.get('flask.cli')
+    if cli:
+        cli.show_server_banner = lambda *args: None
+
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+
     try:
         from werkzeug.serving import WSGIRequestHandler
         import werkzeug.serving
