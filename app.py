@@ -1984,7 +1984,9 @@ def create_bank_account():
 
         return redirect(url_for('create_bank_account'))
 
-    return render_template('create_bank_account.html')
+    # Fetch existing bank accounts
+    bank_accounts = db.execute_query("SELECT * FROM bank_book ORDER BY bank_book_create_date DESC")
+    return render_template('create_bank_account.html', bank_accounts=bank_accounts)
 
 # --- Create Cash Account ---
 @app.route('/create_cash_account', methods=['GET', 'POST'])
@@ -2059,7 +2061,9 @@ def create_cash_account():
 
         return redirect(url_for('create_cash_account'))
 
-    return render_template('create_cash_account.html')
+    # Fetch existing cash accounts
+    cash_accounts = db.execute_query("SELECT * FROM cash_book ORDER BY cash_creat_date DESC")
+    return render_template('create_cash_account.html', cash_accounts=cash_accounts)
 
 # --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
@@ -10602,28 +10606,4 @@ def initialize_app():
         app_initialized = True
 
 if __name__ == '__main__':
-    # Suppress the "WARNING: This is a development server" warning from Werkzeug
-    import sys
-    import logging
-    cli = sys.modules.get('flask.cli')
-    if cli:
-        cli.show_server_banner = lambda *args: None
-
-    log = logging.getLogger('werkzeug')
-    log.setLevel(logging.ERROR)
-
-    try:
-        from werkzeug.serving import WSGIRequestHandler
-        import werkzeug.serving
-        # Hide the warning by monkeypatching the function
-        if hasattr(werkzeug.serving, '_log'):
-            original_log = werkzeug.serving._log
-            def _quiet_log(type, message, *args, **kwargs):
-                if 'WARNING: This is a development server' in message:
-                    return
-                original_log(type, message, *args, **kwargs)
-            werkzeug.serving._log = _quiet_log
-    except ImportError:
-        pass
-
     app.run(port=5000)
