@@ -9383,7 +9383,7 @@ def system_backup():
             # Since we are in python, we can pipe output to string or file.
 
             cmd = [
-                'mysqldump',
+                dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
                 db_name
@@ -9395,7 +9395,13 @@ def system_backup():
                 # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
                 # returning a streaming response means we can't easily send the error to the client anyway
                 # once the stream has started, and a 64KB stderr buffer would hang the process.
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                try:
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                except FileNotFoundError:
+                    logging.error(f"Backup command not found: {cmd}")
+                    yield b"-- Error: MySQL dump utility not found on server.\n"
+                    return
+
                 try:
                     while True:
                         chunk = process.stdout.read(8192)
