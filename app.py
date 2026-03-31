@@ -4298,40 +4298,31 @@ def bank_payment_submit():
         res = cursor.fetchone()
         sub_ac_code = res[0] if res else 0
 
-        try:
-            # Debit AP (Full amount settled)
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv, entry_sub_account_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
-        except Exception as e:
-            raise Exception(f"Failed to INSERT 'Account Payable': {e}")
+        # Debit AP (Full amount settled)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
 
-        try:
-            # Credit Bank (Net amount = Total - WHT)
-            net_payment = total_payment - wht_amount
+        # Credit Bank (Net amount = Total - WHT)
+        net_payment = total_payment - wht_amount
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
+
+        # Credit WHT Payable (If any)
+        if wht_amount > 0:
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
-        except Exception as e:
-            raise Exception(f"Failed to INSERT bank_account '{bank_account}': {e}")
-
-        try:
-            # Credit WHT Payable (If any)
-            if wht_amount > 0:
-                cursor.execute("""
-                    INSERT INTO entry_details (
-                        account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                        entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-                """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
-        except Exception as e:
-            raise Exception(f"Failed to INSERT 'WHT Payable': {e}")
+            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
 
         # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
         # Bank Book typically matches bank statement, so record NET payment.
