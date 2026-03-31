@@ -8119,7 +8119,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
         pos_sales_params.append((
             item.get('code'), item.get('name'), item.get('unit'),
             item.get('price_market'), item.get('price_special'), item.get('price_loyalty'),
-            settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
+            settings.get('market_price', 0), settings.get('special_price', 0), settings.get('loyalty_price', 0),
             current_user_pk, settings.get('location'), action_date_str, qty, cost,
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), total, jv_no
