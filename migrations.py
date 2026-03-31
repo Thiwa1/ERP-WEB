@@ -216,7 +216,7 @@ def _migrate_wht_payable_account(cursor):
                     account_income, account_expenses, account_assets, account_liabilities, account_equity,
                     accont_create_date, account_create_user, account_active, account_basment
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, 1, %s)
-            """, ('WHT Payable', 6, 'Current liabilities', None, None, None, None, None, 'liabilities', None, 0, 'CR'))
+            """, ('WHT Payable', 6, 'Current liabilities', None, None, None, None, None, 1, None, 0, 'CR'))
     except Exception as e:
         print(f"Error migrating WHT Payable account: {e}")
 
