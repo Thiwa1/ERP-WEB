@@ -5904,6 +5904,213 @@ def customer_aging():
                            })
 
 
+# --- Job Profit Analysis Report ---
+@app.route('/job_profit_analysis', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def job_profit_analysis():
+    job_number = request.args.get('job_number')
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    download = request.args.get('download')
+
+    # Defaults
+    if not from_date:
+        from_date = (date.today() - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = date.today().strftime('%Y-%m-%d')
+
+    # Load Jobs
+    jobs = db.execute_query("""
+        SELECT DISTINCT job_number
+        FROM jobs_unit
+        WHERE (job_finsh = 0 OR job_finsh IS NULL)
+        AND (job_cancell = 0 OR job_cancell IS NULL)
+        ORDER BY job_number
+    """)
+
+    profit_loss_data = []
+    ratio_data = []
+    summary = {
+        'total_income': 0.0,
+        'total_expenses': 0.0,
+        'net_profit': 0.0,
+        'profit_margin': 0.0,
+    }
+
+    if job_number and job_number.isdigit():
+        query = """
+            SELECT
+                CASE
+                    WHEN nat.account_income = 1 THEN 'Income'
+                    WHEN nat.account_expenses = 1 THEN 'Expenses'
+                    ELSE 'Other'
+                END as AccountType,
+                COALESCE(nat.account_name_of_catogory_PL, 'Uncategorized') as CategoryName,
+                COALESCE(nat.account_hold_possion_PL, 999) as CategoryOrder,
+                nat.account_name as AccountName,
+                COALESCE(SUM(
+                    CASE
+                        WHEN nat.account_income = 1 THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN nat.account_expenses = 1 THEN (ed.enty_values_DR - ed.enty_values_CR)
+                        ELSE 0
+                    END
+                ), 0) as Amount
+            FROM entry_details ed
+            INNER JOIN new_account_table nat ON ed.account_name = nat.account_name
+            WHERE ed.entry_job_number = %s
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND (nat.account_income = 1 OR nat.account_expenses = 1)
+                AND ed.entry_deleted = 0
+            GROUP BY AccountType, CategoryName, CategoryOrder, nat.account_name
+            HAVING Amount != 0
+            ORDER BY AccountType DESC, CategoryOrder, Amount DESC
+        """
+
+        rows = db.execute_query(query, (job_number, from_date, to_date))
+
+        # Calculate totals
+        total_income = sum(r['Amount'] for r in rows if r['AccountType'] == 'Income')
+        total_expenses = sum(r['Amount'] for r in rows if r['AccountType'] == 'Expenses')
+        net_profit = total_income - total_expenses
+        profit_margin = (net_profit / total_income * 100) if total_income > 0 else 0
+
+        summary = {
+            'total_income': total_income,
+            'total_expenses': total_expenses,
+            'net_profit': net_profit,
+            'profit_margin': profit_margin
+        }
+
+        # Build categorized P&L Tree
+        categories = {}
+        for r in rows:
+            ctype = r['AccountType']
+            cname = r['CategoryName']
+            key = (ctype, cname)
+
+            if key not in categories:
+                categories[key] = {
+                    'AccountType': ctype,
+                    'CategoryName': cname,
+                    'CategoryOrder': r['CategoryOrder'],
+                    'CategoryTotal': 0.0,
+                    'AccountCount': 0,
+                    'Accounts': []
+                }
+
+            categories[key]['CategoryTotal'] += r['Amount']
+            categories[key]['AccountCount'] += 1
+
+            perc = 0
+            if ctype == 'Income' and total_income > 0:
+                perc = r['Amount'] / total_income * 100
+            elif ctype == 'Expenses' and total_expenses > 0:
+                perc = r['Amount'] / total_expenses * 100
+
+            categories[key]['Accounts'].append({
+                'AccountName': r['AccountName'],
+                'Amount': r['Amount'],
+                'Percentage': perc
+            })
+
+        # Sort and flatten categories for UI
+        sorted_categories = sorted(categories.values(), key=lambda x: (x['AccountType'] == 'Expenses', x['CategoryOrder']))
+
+        for cat in sorted_categories:
+            profit_loss_data.append(cat)
+
+        # Ratio Analysis Data
+        if total_income > 0:
+            ratio_data.append({
+                'RatioType': "Profit Margin",
+                'Value': profit_margin,
+                'Description': "Net Profit as percentage of Total Income"
+            })
+            ratio_data.append({
+                'RatioType': "Expense Ratio",
+                'Value': (total_expenses / total_income) * 100,
+                'Description': "Total Expenses as percentage of Total Income"
+            })
+            ratio_data.append({
+                'RatioType': "Gross Profit Ratio",
+                'Value': profit_margin, # Simplified same as margin in this context
+                'Description': "Gross Profit as percentage of Total Income"
+            })
+
+        if total_expenses > 0:
+            ratio_data.append({
+                'RatioType': "Return on Investment",
+                'Value': (net_profit / total_expenses) * 100,
+                'Description': "Net Profit as percentage of Total Expenses"
+            })
+
+        for cat in sorted_categories:
+            if cat['AccountType'] == 'Expenses' and cat['CategoryTotal'] > 0:
+                if total_income > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Income",
+                        'Value': (cat['CategoryTotal'] / total_income) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Income"
+                    })
+                if total_expenses > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Expenses",
+                        'Value': (cat['CategoryTotal'] / total_expenses) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Expenses"
+                    })
+            elif cat['AccountType'] == 'Income' and cat['CategoryTotal'] > 0:
+                if total_income > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Income",
+                        'Value': (cat['CategoryTotal'] / total_income) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Income"
+                    })
+
+        # CSV Export
+        if download == 'csv':
+            si = io.StringIO()
+            cw = csv.writer(si)
+            cw.writerow(['Account Type', 'Category', 'Account Name', 'Amount', 'Percentage'])
+
+            for cat in sorted_categories:
+                # Calculate category percentage
+                if cat['AccountType'] == 'Income':
+                    cat_perc = (cat['CategoryTotal'] / total_income) * 100 if total_income > 0 else 0
+                else:
+                    cat_perc = (cat['CategoryTotal'] / total_expenses) * 100 if total_expenses > 0 else 0
+
+                cw.writerow([cat['AccountType'], cat['CategoryName'], 'CATEGORY TOTAL', f"{cat['CategoryTotal']:.2f}", f"{cat_perc:.2f}%"])
+
+                for acc in cat['Accounts']:
+                    cw.writerow([cat['AccountType'], cat['CategoryName'], acc['AccountName'], f"{acc['Amount']:.2f}", f"{acc['Percentage']:.2f}%"])
+                cw.writerow([])
+
+            cw.writerow([])
+            cw.writerow(['SUMMARY'])
+            cw.writerow(['Total Income', f"{total_income:.2f}"])
+            cw.writerow(['Total Expenses', f"{total_expenses:.2f}"])
+            cw.writerow(['Net Profit/Loss', f"{net_profit:.2f}"])
+            cw.writerow(['Profit Margin', f"{profit_margin:.2f}%"])
+
+            output = make_response(si.getvalue())
+            output.headers["Content-Disposition"] = f"attachment; filename=Job_Profit_Analysis_{job_number}_{date.today()}.csv"
+            output.headers["Content-type"] = "text/csv"
+            return output
+
+    safe_selected_job = None
+    if job_number and job_number.isdigit():
+        safe_selected_job = int(job_number)
+
+    return render_template('job_profit_analysis.html',
+                           jobs=jobs,
+                           selected_job=safe_selected_job,
+                           from_date=from_date,
+                           to_date=to_date,
+                           profit_loss_data=profit_loss_data,
+                           ratio_data=ratio_data,
+                           summary=summary)
+
 # --- Sales Summary Cashier ---
 @app.route('/sales_summary_cashier', methods=['GET'])
 @login_required
