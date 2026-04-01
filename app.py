@@ -6869,7 +6869,8 @@ def get_customer_outstanding():
     query = """
         SELECT
             Id, invoice_number, invoice_date, invoice_final_date,
-            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding
+            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding,
+            invoice_JV
         FROM Invoice_Oustanding
         WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
         ORDER BY invoice_date
@@ -6882,11 +6883,12 @@ def get_customer_outstanding():
         data.append({
             'id': r['Id'],
             'inv_no': r['invoice_number'],
+            'jv_no': str(r['invoice_JV'] or ''),
             'date': str(r['invoice_date']),
             'due_date': str(r['invoice_final_date']),
-            'total': float(r['invoice_total_oustanding']),
-            'paid': float(r['invoice_oustanding_Patment']),
-            'balance': float(r['Invoice_Oustanding'])
+            'total': float(r['invoice_total_oustanding'] or 0),
+            'paid': float(r['invoice_oustanding_Patment'] or 0),
+            'balance': float(r['Invoice_Oustanding'] or 0)
         })
 
     return {'invoices': data}
@@ -7054,9 +7056,24 @@ def print_receipt(jv_no):
 def submit_customer_receipt():
     customer_id = request.form.get('customer_id')
     account_type = request.form.get('account_type') # 'cash' or 'bank'
-    account_name = request.form.get('account_name')
+
+    if account_type == 'cash':
+        account_name = request.form.get('cash_account')
+    else:
+        account_name = request.form.get('bank_account')
+
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
+
+    # Optional extended WPF fields
+    manual_receipt_no = request.form.get('manual_receipt_no')
+    payment_method = request.form.get('payment_method')
+    online_payment_received = request.form.get('online_payment_received') == 'on'
+    transaction_code = request.form.get('transaction_code')
+    card_last_digits = request.form.get('card_last_digits')
+    bank_transfer_confirmed = request.form.get('bank_transfer_confirmed') == 'on'
+    transfer_id = request.form.get('transfer_id')
+    cheque_no = request.form.get('cheque_no')
 
     if not customer_id or not account_name:
         flash('Missing required fields', 'danger')
@@ -7173,8 +7190,25 @@ def submit_customer_receipt():
                         cash_book_recode_suplier_name, jv_numbers_jv_id,
                         cash_book_recod_voucher_no, User_Enter, Payment_Date
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
         else:
+            # Insert into cash_bank_payment_type first (mirroring WPF)
+            cursor.execute("""
+                INSERT INTO cash_bank_payment_type (
+                    manua_recipt_number, onlie_payment_recived, online_transaction_code,
+                    credit_card_no, bank_transfer, bank_transfer_id, bank_cheque, JV
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                manual_receipt_no,
+                1 if online_payment_received else 0,
+                transaction_code,
+                card_last_digits,
+                1 if bank_transfer_confirmed else 0,
+                transfer_id,
+                cheque_no,
+                jv_no
+            ))
+
             # Bank Recode
             for p in payments:
                 cursor.execute("""
@@ -7182,9 +7216,9 @@ def submit_customer_receipt():
                         bank_book_book_recode_dr, bank_book__recode_cr, bank_book__accont_name,
                         bank_book__naration, bank_book__suplier_oustanding_id,
                         bank_book__suplier_name, jv_numbers_jv_id,
-                        bank_book_recod_voucher_no, Bank_User_Id, Bank_Payment_Date
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+                        bank_book_recod_voucher_no, bank_book_chque_no, Bank_User_Id, Bank_Payment_Date
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
 
         conn.commit()
         flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')
