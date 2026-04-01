@@ -1,270 +1,287 @@
 {% extends "base.html" %}
 
-{% block title %}Job Profit & Loss Analysis{% endblock %}
-
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-chart-line me-2 text-info"></i> Job Profit Analysis</h2>
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-4">
+        <h4 class="mb-0 fw-bold text-dark"><i class="text-primary fas fa-briefcase me-2"></i> Job Profit & Loss Analysis</h4>
     </div>
 
-    <!-- Filter Section -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Report Filters</h6>
-        </div>
+    <!-- Filter Controls (Win11 Summary Panel Style) -->
+    <div class="card shadow-sm mb-4 border-0" style="background-color: #E8F4FD; border-radius: 8px;">
         <div class="card-body">
-            <form id="filterForm" class="row g-3">
+            <form method="GET" class="row align-items-end g-3">
                 <div class="col-md-3">
-                    <label class="form-label">Scope</label>
-                    <select class="form-select" name="scope" id="scopeSelect" onchange="toggleJobSelect()">
-                        <option value="single">Single Job</option>
-                        <option value="open">All Open Jobs</option>
-                        <option value="closed">All Closed Jobs</option>
-                        <option value="compare">Compare Specific Jobs</option>
-                    </select>
-                </div>
-                <div class="col-md-3" id="jobSelectDiv">
-                    <label class="form-label">Select Job(s)</label>
-                    <select class="form-select select2" name="job_ids" id="jobSelect" multiple>
+                    <label class="form-label fw-bold text-primary">Job Number</label>
+                    <select name="job_number" class="form-select select2" required>
+                        <option value="">-- Select Job --</option>
                         {% for job in jobs %}
-                        <option value="{{ job.job_number }}">{{ job.job_number }} - {{ job.job_description }}</option>
+                        <option value="{{ job.job_number }}" {% if selected_job == job.job_number %}selected{% endif %}>
+                            {{ job.job_number }}
+                        </option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">From Date</label>
-                    <input type="date" class="form-control" name="from_date" value="{{ default_from }}">
+                    <label class="form-label fw-bold text-primary">From Date</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label">To Date</label>
-                    <input type="date" class="form-control" name="to_date" value="{{ default_to }}">
+                    <label class="form-label fw-bold text-primary">To Date</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="button" class="btn btn-primary w-100" onclick="loadData()">
-                        <i class="fas fa-search me-1"></i> Load Report
+                <div class="col-md-5 text-end">
+                    <button type="submit" class="btn btn-primary fw-bold me-2 px-4">
+                        <i class="fas fa-sync me-1"></i> Load Report
                     </button>
+                    {% if selected_job %}
+                    <button type="submit" name="download" value="csv" class="btn btn-success fw-bold px-4">
+                        <i class="fas fa-file-csv me-1"></i> Export CSV
+                    </button>
+                    {% endif %}
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="row mb-4" id="summaryCards" style="display:none;">
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Total Income</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalIncome">0.00</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-dollar-sign fa-2x text-gray-300"></i></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-danger shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-danger text-uppercase mb-1">Total Expenses</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="totalExpense">0.00</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-money-bill-wave fa-2x text-gray-300"></i></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Net Profit</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="netProfit">0.00</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-chart-line fa-2x text-gray-300"></i></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6 mb-4">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Profit Margin</div>
-                            <div class="h5 mb-0 font-weight-bold text-gray-800" id="profitMargin">0%</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-percentage fa-2x text-gray-300"></i></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Data Content -->
+    {% if selected_job %}
+    <!-- Main Content -->
     <div class="row">
-        <!-- Detailed Grid -->
-        <div class="col-lg-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3 d-flex justify-content-between">
-                    <h6 class="m-0 font-weight-bold text-primary">Profit & Loss Details</h6>
-                    <button class="btn btn-sm btn-success" onclick="exportCSV()"><i class="fas fa-download"></i> Export CSV</button>
+        <!-- Left: Tabs for Data -->
+        <div class="col-md-8 mb-4">
+            <div class="card shadow-sm border-0 h-100" style="border-radius: 8px;">
+                <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
+                    <ul class="nav nav-tabs border-bottom-0" id="reportTabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active fw-bold text-primary border-0 bg-transparent border-bottom border-primary border-3" id="pl-tab" data-bs-toggle="tab" data-bs-target="#pl" type="button" role="tab" style="border-radius: 0;">Profit & Loss Statement</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold text-secondary border-0 bg-transparent" id="ratio-tab" data-bs-toggle="tab" data-bs-target="#ratio" type="button" role="tab">Ratio Analysis</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link fw-bold text-secondary border-0 bg-transparent" id="category-tab" data-bs-toggle="tab" data-bs-target="#category" type="button" role="tab">Category Details</button>
+                        </li>
+                    </ul>
                 </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-bordered table-striped" id="reportTable">
-                            <thead>
-                                <tr id="tableHeader">
-                                    <th>Category</th>
-                                    <th>Account</th>
-                                    <th>Amount</th>
-                                    <th>%</th>
-                                </tr>
-                            </thead>
-                            <tbody id="tableBody">
-                                <tr><td colspan="4" class="text-center">Select filters and click Load Report</td></tr>
-                            </tbody>
-                        </table>
+                <div class="card-body p-0">
+                    <div class="tab-content" id="reportTabsContent">
+
+                        <!-- Tab 1: Profit & Loss Statement -->
+                        <div class="tab-pane fade show active" id="pl" role="tabpanel">
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-dark sticky-top text-center">
+                                        <tr>
+                                            <th>Account Type</th>
+                                            <th class="text-start">Account Name</th>
+                                            <th class="text-end">Amount (Rs.)</th>
+                                            <th class="text-end">Percentage</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for cat in profit_loss_data %}
+
+                                        <!-- Category Header Row -->
+                                        <tr class="fw-bold" style="background-color: #2B5B80; color: white;">
+                                            <td class="text-center">{{ cat.AccountType }}</td>
+                                            <td>{{ cat.CategoryName | upper }} (Total: {{ "{:,.2f}".format(cat.CategoryTotal) }})</td>
+                                            <td class="text-end">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
+                                            <td class="text-end">
+                                                {% if cat.AccountType == 'Income' and summary.total_income > 0 %}
+                                                    {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_income) * 100) }}
+                                                {% elif cat.AccountType == 'Expenses' and summary.total_expenses > 0 %}
+                                                    {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_expenses) * 100) }}
+                                                {% else %}
+                                                    0.00%
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+
+                                        <!-- Account Rows inside Category -->
+                                        {% for acc in cat.Accounts %}
+                                        <tr style="background-color: #F7FAFD;">
+                                            <td class="text-center text-muted small">{{ cat.AccountType }}</td>
+                                            <td class="ps-4">{{ acc.AccountName }}</td>
+                                            <td class="text-end">{{ "{:,.2f}".format(acc.Amount) }}</td>
+                                            <td class="text-end">{{ "{:,.2f}%".format(acc.Percentage) }}</td>
+                                        </tr>
+                                        {% endfor %}
+
+                                        <!-- Spacing Row -->
+                                        <tr><td colspan="4" class="p-1 border-0"></td></tr>
+
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="4" class="text-center py-4 text-muted fst-italic">No transactions found for the selected period.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Tab 2: Ratio Analysis -->
+                        <div class="tab-pane fade" id="ratio" role="tabpanel">
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-dark sticky-top text-center">
+                                        <tr>
+                                            <th class="text-start">Ratio Type</th>
+                                            <th class="text-end">Value</th>
+                                            <th class="text-start">Description</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody style="background-color: #F7FAFD;">
+                                        {% for ratio in ratio_data %}
+                                        <tr>
+                                            <td class="fw-bold text-primary">{{ ratio.RatioType }}</td>
+                                            <td class="text-end fw-bold">{{ "{:,.2f}%".format(ratio.Value) }}</td>
+                                            <td class="text-muted">{{ ratio.Description }}</td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="3" class="text-center py-4 text-muted fst-italic">No ratio data available.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Tab 3: Category Details -->
+                        <div class="tab-pane fade" id="category" role="tabpanel">
+                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-dark sticky-top text-center">
+                                        <tr>
+                                            <th class="text-start">Category</th>
+                                            <th>Account Type</th>
+                                            <th>Order</th>
+                                            <th class="text-end">Total Amount</th>
+                                            <th>Account Count</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody style="background-color: #F7FAFD;">
+                                        {% for cat in profit_loss_data %}
+                                        <tr>
+                                            <td class="fw-bold text-dark">{{ cat.CategoryName }}</td>
+                                            <td class="text-center">
+                                                <span class="badge {% if cat.AccountType == 'Income' %}bg-success{% else %}bg-danger{% endif %}">{{ cat.AccountType }}</span>
+                                            </td>
+                                            <td class="text-center">{{ cat.CategoryOrder }}</td>
+                                            <td class="text-end fw-bold">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
+                                            <td class="text-center">{{ cat.AccountCount }}</td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="5" class="text-center py-4 text-muted fst-italic">No category data available.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
         </div>
+
+        <!-- Right: Chart and Summary -->
+        <div class="col-md-4 mb-4">
+
+            <!-- Financial Summary -->
+            <div class="card shadow-sm border-0 mb-4" style="background-color: #E8F4FD; border-radius: 8px; border: 2px solid #2B5B80 !important;">
+                <div class="card-body">
+                    <h5 class="fw-bold text-center text-primary mb-4">Financial Summary</h5>
+
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fw-bold text-primary">Total Income:</span>
+                        <span class="fw-bold text-success">{{ "{:,.2f}".format(summary.total_income) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fw-bold text-primary">Total Expenses:</span>
+                        <span class="fw-bold text-danger">{{ "{:,.2f}".format(summary.total_expenses) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="fw-bold text-primary">Gross Profit:</span>
+                        <span class="fw-bold text-primary">{{ "{:,.2f}".format(summary.net_profit) }}</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="fw-bold text-primary">Profit Margin:</span>
+                        <span class="fw-bold text-primary">{{ "{:,.2f}%".format(summary.profit_margin) }}</span>
+                    </div>
+
+                    <hr style="border-color: #82A6CE;">
+
+                    <div class="d-flex justify-content-between mt-3">
+                        <span class="fw-bold text-primary fs-5">Net Profit/Loss:</span>
+                        <span class="fw-bold fs-5 {% if summary.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                            {{ "{:,.2f}".format(summary.net_profit) }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart -->
+            <div class="card shadow-sm border-0" style="background-color: #E8F4FD; border-radius: 8px;">
+                <div class="card-body text-center">
+                    <h5 class="fw-bold text-primary mb-3">Income vs Expenses</h5>
+                    <div style="position: relative; width: 100%; height: 250px;">
+                        <canvas id="incomeExpenseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+        </div>
     </div>
+    {% endif %}
+
 </div>
-{% endblock %}
 
-{% block scripts %}
+<!-- Tab script for switching tabs styling dynamically -->
 <script>
-    function toggleJobSelect() {
-        const scope = document.getElementById('scopeSelect').value;
-        const jobDiv = document.getElementById('jobSelectDiv');
-        const jobSelect = $('#jobSelect'); // Select2 instance
-
-        if (scope === 'single') {
-            jobDiv.style.display = 'block';
-            jobSelect.prop('multiple', false);
-            // Re-init select2 for single selection if needed or just property change is enough
-            // Typically select2 handles dynamic multiple property change if re-initialized or refreshed
-            // Simpler: Just rely on python handling list of 1 vs list of many.
-            // But visual UI: Select2 multiple looks different.
-            // Let's keep it simple: always multiple select, but enforce limit in UI logic?
-            // Actually, for "Single", user expects single dropdown.
-            // For "Compare", multiple.
-            // For "Open/Closed", hidden.
-        } else if (scope === 'compare') {
-            jobDiv.style.display = 'block';
-            jobSelect.prop('multiple', true);
-        } else {
-            jobDiv.style.display = 'none';
-        }
-
-        // Re-init select2 to reflect multiple attribute change
-        // jobSelect.select2('destroy').select2({ theme: 'bootstrap-5', width: '100%' });
-    }
-
-    async function loadData() {
-        const form = document.getElementById('filterForm');
-        const formData = new FormData(form);
-        const data = Object.fromEntries(formData.entries());
-
-        // Handle multiple select for job_ids
-        data.job_ids = $('#jobSelect').val();
-
-        showLoading($('button[onclick="loadData()"]'));
-
-        try {
-            const response = await fetch('/job_profit_analysis/data', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
+    document.querySelectorAll('.nav-tabs .nav-link').forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Reset all
+            document.querySelectorAll('.nav-tabs .nav-link').forEach(t => {
+                t.classList.remove('active', 'text-primary', 'border-bottom', 'border-primary', 'border-3');
+                t.classList.add('text-secondary');
             });
-
-            const result = await response.json();
-
-            if (result.error) {
-                alert(result.error);
-                return;
-            }
-
-            renderReport(result);
-
-        } catch (e) {
-            console.error(e);
-            alert('Failed to load data');
-        } finally {
-            hideLoading($('button[onclick="loadData()"]'));
-        }
-    }
-
-    function renderReport(data) {
-        document.getElementById('summaryCards').style.display = 'flex';
-
-        // Update Summaries
-        document.getElementById('totalIncome').textContent = formatCurrency(data.summary.income);
-        document.getElementById('totalExpense').textContent = formatCurrency(data.summary.expense);
-        document.getElementById('netProfit').textContent = formatCurrency(data.summary.profit);
-        document.getElementById('profitMargin').textContent = data.summary.margin + '%';
-
-        // Color coding
-        document.getElementById('netProfit').className = `h5 mb-0 font-weight-bold ${data.summary.profit >= 0 ? 'text-success' : 'text-danger'}`;
-
-        // Render Table
-        const thead = document.getElementById('tableHeader');
-        const tbody = document.getElementById('tableBody');
-        tbody.innerHTML = '';
-        thead.innerHTML = '';
-
-        if (data.mode === 'compare') {
-            // Comparison Table Columns: Category | Account | Job 1 | Job 2 ... | Total
-            let headerHtml = '<th>Category</th><th>Account</th>';
-            data.jobs.forEach(j => headerHtml += `<th>Job ${j}</th>`);
-            headerHtml += '<th>Total</th>';
-            thead.innerHTML = headerHtml;
-
-            // Rows
-            data.rows.forEach(row => {
-                let tr = `<tr>
-                    <td>${row.category}</td>
-                    <td>${row.account}</td>`;
-
-                data.jobs.forEach(j => {
-                    tr += `<td class="text-end">${formatCurrency(row.amounts[j] || 0)}</td>`;
-                });
-
-                tr += `<td class="text-end fw-bold">${formatCurrency(row.total)}</td></tr>`;
-                tbody.innerHTML += tr;
-            });
-
-        } else {
-            // Standard View
-            thead.innerHTML = '<th>Category</th><th>Account</th><th>Amount</th><th>%</th>';
-
-            data.rows.forEach(row => {
-                const isCatHeader = row.is_header;
-                const rowClass = isCatHeader ? 'table-secondary fw-bold' : '';
-
-                const tr = `<tr class="${rowClass}">
-                    <td>${row.category}</td>
-                    <td>${row.account}</td>
-                    <td class="text-end">${formatCurrency(row.amount)}</td>
-                    <td class="text-end">${row.percent}%</td>
-                </tr>`;
-                tbody.innerHTML += tr;
-            });
-        }
-    }
-
-    function formatCurrency(val) {
-        return parseFloat(val).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
-    }
-
-    // Init
-    $(document).ready(function() {
-        toggleJobSelect(); // Set initial state
+            // Activate current
+            this.classList.add('active', 'text-primary', 'border-bottom', 'border-primary', 'border-3');
+            this.classList.remove('text-secondary');
+        });
     });
 </script>
+
+{% if selected_job %}
+<!-- Chart.js for Pie Chart -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const ctx = document.getElementById('incomeExpenseChart');
+        if (ctx) {
+            new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: ['Income', 'Expenses'],
+                    datasets: [{
+                        data: [{{ summary.total_income | round(2) }}, {{ summary.total_expenses | round(2) }}],
+                        backgroundColor: ['#28a745', '#dc3545'], // Green and Red
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    }
+                }
+            });
+        }
+    });
+</script>
+{% endif %}
 {% endblock %}
