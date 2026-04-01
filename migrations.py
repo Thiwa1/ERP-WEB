@@ -381,5 +381,25 @@ def _migrate_approval_workflow(cursor):
                 )
             """)
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('enable_approval_workflow', '0', 'Enable Park & Post Workflow (0=Disabled, 1=Enabled)')")
+
+        # Create cash_bank_payment_type
+        cursor.execute("SHOW TABLES LIKE 'cash_bank_payment_type'")
+        if not cursor.fetchone():
+            print("Migrating: Creating cash_bank_payment_type table")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cash_bank_payment_type (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  manua_recipt_number VARCHAR(255) NULL,
+                  onlie_payment_recived TINYINT NULL,
+                  online_transaction_code VARCHAR(255) NULL,
+                  credit_card_no VARCHAR(45) NULL,
+                  bank_transfer TINYINT NULL,
+                  bank_transfer_id VARCHAR(255) NULL,
+                  bank_cheque VARCHAR(255) NULL,
+                  JV INT NULL,
+                  PRIMARY KEY (id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
     except Exception as e:
         print(f"Error migrating approval workflow: {e}")
