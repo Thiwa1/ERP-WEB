@@ -5038,6 +5038,7 @@ def add_new_price_tier():
 @has_permission('Access_Inventory')
 def inventory_balance():
     view = request.args.get('view', 'all')
+    download = request.args.get('download')
     report_data = []
 
     if view == 'all':
@@ -5046,6 +5047,50 @@ def inventory_balance():
         report_data = db.execute_query("CALL inventory_balance_02()")
     elif view == 'out':
         report_data = db.execute_query("CALL inventory_balance_03()")
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+
+        if view == 'all':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Total Qty', 'Total Price'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    r.get('inventory_recod_mesrmet', ''),
+                    f"{r.get('SUM(inventory_recod_moument_in - inventory_recod_movment_out)', 0):.2f}",
+                    f"{r.get('SUM(inventory_recod_total_value)', 0):.2f}"
+                ])
+        elif view == 'low':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Current Balance', 'Min Qty', 'Status', 'Category-Main', 'Category-Sub'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    r.get('inventoy_items_messurment_unit', ''),
+                    f"{r.get('current_balance', 0):.2f}",
+                    f"{r.get('min_qty', 0):.2f}",
+                    r.get('status', ''),
+                    r.get('Main_Catogry', ''),
+                    r.get('Sub_Catogory', '')
+                ])
+        elif view == 'out':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Quantity'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    f"{r.get('Curent_Qty', 0):.2f}"
+                ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Inventory_Balance_{view}_{date.today()}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
 
     return render_template('inventory_balance.html', view=view, report_data=report_data)
 
