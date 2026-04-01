@@ -5790,7 +5790,121 @@ def supplier_aging():
                                'report_date': today
                            })
 
-# --- Supplier Aging Report ---
+# --- Customer Aging Report ---
+@app.route('/customer_aging')
+@login_required
+@has_permission('Access_Reports')
+def customer_aging():
+    selected_customer = request.args.get('customer_id')
+    download = request.args.get('download')
+
+    # Load Customers for Dropdown
+    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
+
+    # Aging Query
+    query = """
+        SELECT
+            s.sup_id as CustomerId,
+            s.supplier_name as CustomerName,
+            io.invoice_number as InvoiceNumber,
+            io.invoice_date as InvoiceDate,
+            io.invoice_final_date as FinalDate,
+            io.invoice_total_oustanding as InvoiceTotal,
+            COALESCE(io.invoice_oustanding_Patment, 0) as PaidAmount,
+            (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) as Outstanding
+        FROM invoice_oustanding io
+        INNER JOIN suppliers s ON io.invoice_buinding_Customer = s.sup_id
+        WHERE s.Is_Customer = 1
+        AND io.oustanding_delete = 0
+        AND (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) > 0
+    """
+
+    params = []
+    if selected_customer:
+        query += " AND s.sup_id = %s"
+        params.append(selected_customer)
+
+    query += " ORDER BY s.supplier_name, io.invoice_final_date"
+
+    rows = db.execute_query(query, tuple(params))
+
+    # Process Aging
+    aging_data = []
+    today = date.today()
+
+    buckets = {
+        'Current': 0.0,
+        '1-30 Days': 0.0,
+        '31-60 Days': 0.0,
+        '61-90 Days': 0.0,
+        'Over 90 Days': 0.0
+    }
+
+    for r in rows:
+        due_date = r['FinalDate']
+        # Calculate days overdue (Today - Due Date)
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
+
+        age_days = (today - due_date).days if due_date else 0
+
+        bucket = "Current"
+        if age_days > 90: bucket = "Over 90 Days"
+        elif age_days > 60: bucket = "61-90 Days"
+        elif age_days > 30: bucket = "31-60 Days"
+        elif age_days > 0: bucket = "1-30 Days"
+        else: bucket = "Current"
+
+        r['AgeDays'] = age_days
+        r['AgingBucket'] = bucket
+        r['Outstanding'] = float(r['Outstanding'])
+
+        buckets[bucket] += r['Outstanding']
+        aging_data.append(r)
+
+    total_outstanding = sum(r['Outstanding'] for r in aging_data)
+    total_invoices = len(aging_data)
+    total_customers = len(set(r['CustomerId'] for r in aging_data))
+
+    # Export to CSV
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Customer ID', 'Customer Name', 'Invoice No', 'Invoice Date', 'Due Date', 'Invoice Amount', 'Paid Amount', 'Outstanding', 'Age (Days)', 'Aging Bucket'])
+
+        for r in aging_data:
+            cw.writerow([
+                r['CustomerId'],
+                r['CustomerName'],
+                r['InvoiceNumber'],
+                r['InvoiceDate'],
+                r['FinalDate'],
+                f"{float(r['InvoiceTotal']):.2f}",
+                f"{float(r['PaidAmount']):.2f}",
+                f"{r['Outstanding']:.2f}",
+                r['AgeDays'],
+                r['AgingBucket']
+            ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Customer_Aging_Report_{today}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return render_template('customer_aging.html',
+                           customers=customers,
+                           selected_customer=int(selected_customer) if selected_customer else None,
+                           rows=aging_data,
+                           buckets=buckets,
+                           summary={
+                               'total_outstanding': total_outstanding,
+                               'total_invoices': total_invoices,
+                               'total_customers': total_customers,
+                               'report_date': today
+                           })
+
+
+# --- Sales Summary Cashier ---
 @app.route('/sales_summary_cashier', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
@@ -8119,7 +8233,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
         pos_sales_params.append((
             item.get('code'), item.get('name'), item.get('unit'),
             item.get('price_market'), item.get('price_special'), item.get('price_loyalty'),
-            settings.get('market_price', 0), settings.get('special_price', 0), settings.get('loyalty_price', 0),
+            settings.get('market_active', 0), settings.get('special_active', 0), settings.get('loyalty_active', 0),
             current_user_pk, settings.get('location'), action_date_str, qty, cost,
             payment.get('method'), settings.get('cash_ac'), settings.get('bank_ac'),
             invoice_no, customer.get('loyalty_no', 0), total, jv_no

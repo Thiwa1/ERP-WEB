@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-4">
+    <h4 class="mb-0 fw-bold text-dark"><i class="text-primary fas fa-user-clock me-2"></i> Customer Aging Report</h4>
+</div>
+
+    <!-- Filters -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body bg-light">
+            <form method="GET" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label fw-bold">Select Customer</label>
+                    <select name="customer_id" class="form-select select2" onchange="this.form.submit()">
+                        <option value="">-- All Customers --</option>
+                        {% for c in customers %}
+                        <option value="{{ c.sup_id }}" {% if selected_customer == c.sup_id %}selected{% endif %}>
+                            {{ c.supplier_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8 text-end">
+                    <a href="{{ url_for('customer_aging') }}" class="btn btn-info text-white fw-bold me-2">
+                        <i class="fas fa-list me-1"></i> Show All
+                    </a>
+                    <button type="submit" name="download" value="csv" class="btn btn-success fw-bold me-2">
+                        <i class="fas fa-file-csv me-1"></i> Export CSV
+                    </button>
+                    <button type="button" onclick="window.print()" class="btn btn-danger fw-bold">
+                        <i class="fas fa-print me-1"></i> Print
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4 text-center g-3">
+        <div class="col">
+            <div class="card border-0 shadow-sm" style="background-color: #E8F5E8;">
+                <div class="card-body py-2">
+                    <div class="small fw-bold text-success">CURRENT</div>
+                    <div class="h5 fw-bold mb-0 text-success">{{ "{:,.2f}".format(buckets['Current']) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card border-0 shadow-sm" style="background-color: #FFF4E6;">
+                <div class="card-body py-2">
+                    <div class="small fw-bold text-warning">1-30 DAYS</div>
+                    <div class="h5 fw-bold mb-0 text-warning">{{ "{:,.2f}".format(buckets['1-30 Days']) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card border-0 shadow-sm" style="background-color: #FFECE6;">
+                <div class="card-body py-2">
+                    <div class="small fw-bold" style="color: #E67E22;">31-60 DAYS</div>
+                    <div class="h5 fw-bold mb-0" style="color: #E67E22;">{{ "{:,.2f}".format(buckets['31-60 Days']) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card border-0 shadow-sm" style="background-color: #FFE6E6;">
+                <div class="card-body py-2">
+                    <div class="small fw-bold text-danger">61-90 DAYS</div>
+                    <div class="h5 fw-bold mb-0 text-danger">{{ "{:,.2f}".format(buckets['61-90 Days']) }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col">
+            <div class="card border-0 shadow-sm" style="background-color: #FFD1D1;">
+                <div class="card-body py-2">
+                    <div class="small fw-bold" style="color: #C0392B;">OVER 90 DAYS</div>
+                    <div class="h5 fw-bold mb-0" style="color: #C0392B;">{{ "{:,.2f}".format(buckets['Over 90 Days']) }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Table -->
+    <div class="card shadow-sm border-0">
+        <div class="card-body p-0 table-responsive">
+            <table class="table table-bordered table-hover mb-0 align-middle">
+                <thead class="table-dark text-white">
+                    <tr>
+                        <th>Customer</th>
+                        <th>Invoice No</th>
+                        <th>Inv Date</th>
+                        <th>Due Date</th>
+                        <th class="text-end">Amount</th>
+                        <th class="text-end">Paid</th>
+                        <th class="text-end">Outstanding</th>
+                        <th class="text-center">Age (Days)</th>
+                        <th class="text-center">Bucket</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in rows %}
+                    {% set row_bg = '' %}
+                    {% if row.AgingBucket == 'Current' %}{% set row_bg = 'bg-light-success' %}
+                    {% elif row.AgingBucket == '1-30 Days' %}{% set row_bg = 'bg-light-warning' %}
+                    {% elif row.AgingBucket == 'Over 90 Days' %}{% set row_bg = 'bg-light-danger' %}
+                    {% endif %}
+
+                    <tr>
+                        <td class="fw-bold text-secondary">{{ row.CustomerName }}</td>
+                        <td>{{ row.InvoiceNumber }}</td>
+                        <td>{{ row.InvoiceDate }}</td>
+                        <td>{{ row.FinalDate }}</td>
+                        <td class="text-end">{{ "{:,.2f}".format(row.InvoiceTotal) }}</td>
+                        <td class="text-end text-muted">{{ "{:,.2f}".format(row.PaidAmount) }}</td>
+                        <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Outstanding) }}</td>
+                        <td class="text-center
+                            {% if row.AgeDays <= 0 %}text-success{% elif row.AgeDays > 90 %}text-danger fw-bold{% endif %}">
+                            {{ row.AgeDays }}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge
+                                {% if row.AgingBucket == 'Current' %}bg-success
+                                {% elif row.AgingBucket == '1-30 Days' %}bg-warning text-dark
+                                {% elif row.AgingBucket == '31-60 Days' %}bg-orange
+                                {% else %}bg-danger{% endif %}">
+                                {{ row.AgingBucket }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center py-5 text-muted fst-italic">No outstanding records found.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light fw-bold">
+                    <tr>
+                        <td colspan="4" class="text-end">TOTALS:</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end">-</td>
+                        <td class="text-end">{{ "{:,.2f}".format(summary.total_outstanding) }}</td>
+                        <td colspan="2"></td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        <div class="card-footer bg-secondary text-white small d-flex justify-content-between">
+            <span>Total Customers: {{ summary.total_customers }}</span>
+            <span>Total Invoices: {{ summary.total_invoices }}</span>
+            <span>Report Date: {{ summary.report_date }}</span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .bg-light-success { background-color: #E8F5E8 !important; }
+    .bg-light-warning { background-color: #FFF4E6 !important; }
+    .bg-light-danger { background-color: #FFD1D1 !important; }
+    .bg-orange { background-color: #fd7e14; color: white; }
+
+    @media print {
+        .btn, form { display: none !important; }
+        .card { border: none !important; shadow: none !important; }
+        .badge { border: 1px solid #000; color: #000 !important; background: none !important; }
+    }
+</style>
+{% endblock %}
