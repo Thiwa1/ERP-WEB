@@ -7233,6 +7233,40 @@ def submit_customer_receipt():
 
     return redirect(url_for('customer_receipt'))
 
+@app.route('/customer_receipt/reverse', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def reverse_customer_receipt():
+    jv_no = request.form.get('jv_no')
+
+    if not jv_no:
+        return {'success': False, 'error': 'No JV Number provided'}, 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Reverse JV entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        # 2. Reverse Receipt specifics
+        cursor.execute("CALL Revers_Recept_Simple(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        conn.commit()
+        return {'success': True}
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Receipt Reversal Error: {e}")
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 # --- Profit & Loss Report ---
 
 import ast
