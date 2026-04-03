@@ -88,11 +88,12 @@
                                         <th class="border-0">User Id</th>
                                         <th class="border-0">Narration</th>
                                         <th class="text-center border-0">Action</th>
+                                        <th class="d-none border-0">JSON</th>
                                     </tr>
                                 </thead>
                                 <tbody id="historyTableBody" style="background-color: #F8F9FA;">
                                     <tr>
-                                        <td colspan="10" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td>
+                                        <td colspan="11" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -250,10 +251,10 @@
                             <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #3498DB; height: 38px;">
                                 Re-Print
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #E74C3C; height: 38px;">
+                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #E74C3C; height: 38px;" onclick="alert('Feature not implemented in source')">
                                 Delete
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #F39C12; height: 38px;">
+                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #F39C12; height: 38px;" onclick="triggerReverseModal()">
                                 Reverse
                             </button>
 
@@ -289,6 +290,48 @@
             </div>
         </div>
     </form>
+</div>
+
+<!-- Reversal Modal -->
+<div class="modal fade" id="reversalModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content shadow-lg border-0" style="border-radius: 8px;">
+            <div class="modal-header text-white" style="background-color: #2B5B80;">
+                <h5 class="modal-title fw-bold"><i class="fas fa-undo-alt me-2"></i> Receipt Reversal</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 bg-light">
+                <p class="text-muted fst-italic text-center mb-4">Reverse posted receipt payments and restore GL entries.</p>
+
+                <div class="card border-0 shadow-sm" style="border: 1px solid #82A6CE !important;">
+                    <div class="card-header bg-white fw-bold" style="color: #2B5B80;">
+                        Payment Details
+                    </div>
+                    <div class="card-body" style="font-family: monospace; font-size: 13px; background: linear-gradient(180deg, #E6EFF9 0%, #FFFFFF 100%);">
+                        <div class="mb-1"><span class="fw-bold">Voucher No:</span> <span id="revVoucherNo"></span></div>
+                        <div class="mb-1"><span class="fw-bold">Date:</span> <span id="revDate"></span></div>
+                        <div class="mb-1"><span class="fw-bold">Amount:</span> $<span id="revAmount"></span></div>
+                        <div class="mb-1"><span class="fw-bold">Account:</span> <span id="revAccount"></span></div>
+                        <div class="mb-1"><span class="fw-bold">Narration:</span> <span id="revNarration"></span></div>
+                        <div class="mt-2 fw-bold" style="color: #E74C3C;">Status: Ready for Reversal</div>
+                    </div>
+                </div>
+
+                <div id="revStatusPanel" class="mt-4 text-center d-none">
+                    <i id="revStatusIcon" class="fas fa-spinner fa-spin text-warning fs-3 mb-2"></i>
+                    <div id="revStatusText" class="fw-bold text-warning">Processing reversal...</div>
+                </div>
+
+                <input type="hidden" id="revJvNo">
+            </div>
+            <div class="modal-footer bg-white border-top-0 d-flex justify-content-between">
+                <button type="button" class="btn fw-bold" style="background-color: #6c757d; color: white;" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn fw-bold text-white" id="revProcessBtn" style="background-color: #2B5B80;" onclick="processReversal()">
+                    Process Reversal
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -432,10 +475,16 @@
                                 <td>${h.user_id || 'System'}</td>
                                 <td class="text-truncate" style="max-width: 120px;" title="${h.narration}">${h.narration}</td>
                                 <td class="text-center">
-                                    <a href="/receipt/print/${h.jv_no}" target="_blank" class="btn btn-sm" style="background-color: #2E86AB; color: white;" title="Print Receipt">
-                                        <i class="fas fa-print"></i>
-                                    </a>
+                                    <div class="d-flex gap-1 justify-content-center">
+                                        <a href="/receipt/print/${h.jv_no}" target="_blank" class="btn btn-sm px-2" style="background-color: #2E86AB; color: white;" title="Print Receipt">
+                                            <i class="fas fa-print"></i>
+                                        </a>
+                                        <button type="button" class="btn btn-sm px-2 select-reversal-btn" style="background-color: #F39C12; color: white;" title="Select for Reversal" onclick="selectHistoryRow(this)">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </div>
                                 </td>
+                                <td class="d-none raw-history-data">${JSON.stringify(h).replace(/"/g, '&quot;')}</td>
                             </tr>
                         `;
                         histBody.innerHTML += row;
@@ -452,6 +501,102 @@
             if (!isNaN(val)) total += val;
         });
         document.getElementById('totalReceiptDisplay').textContent = '$' + total.toFixed(2);
+    }
+
+    let selectedReversalJV = null;
+    let selectedReversalData = null;
+
+    function selectHistoryRow(btn) {
+        // Reset all buttons
+        document.querySelectorAll('.select-reversal-btn').forEach(b => {
+            b.innerHTML = '<i class="fas fa-check"></i>';
+            b.classList.remove('btn-danger');
+            b.style.backgroundColor = '#F39C12';
+        });
+
+        // Highlight selected
+        btn.innerHTML = '<i class="fas fa-times"></i>';
+        btn.style.backgroundColor = '';
+        btn.classList.add('btn-danger');
+
+        const row = btn.closest('tr');
+        const rawData = row.querySelector('.raw-history-data').textContent;
+        selectedReversalData = JSON.parse(rawData);
+        selectedReversalJV = selectedReversalData.jv_no;
+
+        console.log("Selected for reversal:", selectedReversalJV);
+    }
+
+    function triggerReverseModal() {
+        if (!selectedReversalJV) {
+            alert('Please select a receipt from the Receipt History table first.');
+            return;
+        }
+
+        // Populate modal data
+        document.getElementById('revVoucherNo').textContent = selectedReversalData.voucher_no || 'N/A';
+        document.getElementById('revDate').textContent = selectedReversalData.date;
+        document.getElementById('revAmount').textContent = selectedReversalData.amount.toFixed(2);
+        document.getElementById('revAccount').textContent = selectedReversalData.account;
+        document.getElementById('revNarration').textContent = selectedReversalData.narration;
+        document.getElementById('revJvNo').value = selectedReversalJV;
+
+        // Reset UI
+        document.getElementById('revStatusPanel').classList.add('d-none');
+        document.getElementById('revProcessBtn').disabled = false;
+
+        const modal = new bootstrap.Modal(document.getElementById('reversalModal'));
+        modal.show();
+    }
+
+    function processReversal() {
+        const jv_no = document.getElementById('revJvNo').value;
+        const processBtn = document.getElementById('revProcessBtn');
+        const statusPanel = document.getElementById('revStatusPanel');
+        const statusText = document.getElementById('revStatusText');
+        const statusIcon = document.getElementById('revStatusIcon');
+
+        // UI Loading
+        processBtn.disabled = true;
+        statusPanel.classList.remove('d-none');
+        statusIcon.className = 'fas fa-spinner fa-spin text-warning';
+        statusText.textContent = 'Processing reversal...';
+        statusText.className = 'text-warning fw-bold';
+
+        // API Call
+        const formData = new FormData();
+        formData.append('jv_no', jv_no);
+
+        fetch('/customer_receipt/reverse', {
+            method: 'POST',
+            body: formData
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                statusIcon.className = 'fas fa-check-circle text-success';
+                statusText.textContent = 'Reversal completed successfully!';
+                statusText.className = 'text-success fw-bold';
+
+                // Refresh data after 1.5s
+                setTimeout(() => {
+                    bootstrap.Modal.getInstance(document.getElementById('reversalModal')).hide();
+                    loadOutstanding();
+                    selectedReversalJV = null;
+                }, 1500);
+            } else {
+                statusIcon.className = 'fas fa-times-circle text-danger';
+                statusText.textContent = 'Reversal failed: ' + (data.error || 'Unknown error');
+                statusText.className = 'text-danger fw-bold';
+                processBtn.disabled = false;
+            }
+        })
+        .catch(err => {
+            statusIcon.className = 'fas fa-times-circle text-danger';
+            statusText.textContent = 'Reversal failed: Network error';
+            statusText.className = 'text-danger fw-bold';
+            processBtn.disabled = false;
+        });
     }
 </script>
 {% endblock %}
