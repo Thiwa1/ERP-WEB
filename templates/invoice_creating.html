@@ -9,9 +9,9 @@
     {% if print_invoice %}
     <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
         <i class="fas fa-check-circle me-2"></i> Invoice <strong>{{ print_invoice }}</strong> created successfully!
-        <button type="button" class="btn btn-sm btn-primary ms-3" onclick="window.print()">
+        <a href="{{ url_for('invoice_print', invoice_no=print_invoice) }}" target="_blank" class="btn btn-sm btn-primary ms-3">
             <i class="fas fa-print me-1"></i> Print Invoice
-        </button>
+        </a>
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
     </div>
     {% endif %}

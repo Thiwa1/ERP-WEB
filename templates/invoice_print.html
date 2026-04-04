@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TAX INVOICE - {{ header.invoice_number }}</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            color: #333;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            -webkit-print-color-adjust: exact;
+        }
+        .invoice-box {
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 40px;
+            background: #fff;
+            border: 1px solid #ddd;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.15);
+        }
+        .invoice-header {
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+        .invoice-title {
+            font-size: 32px;
+            font-weight: bold;
+            color: #007bff;
+            text-transform: uppercase;
+        }
+        .company-details h4 {
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .invoice-meta {
+            text-align: right;
+        }
+        .invoice-meta table {
+            float: right;
+        }
+        .invoice-meta table td {
+            padding: 2px 10px;
+        }
+        .invoice-meta table td:first-child {
+            font-weight: bold;
+            color: #555;
+        }
+        .billing-section {
+            margin-bottom: 30px;
+        }
+        .billing-section h5 {
+            background-color: #f1f1f1;
+            padding: 8px 12px;
+            font-size: 14px;
+            font-weight: bold;
+            border-left: 4px solid #007bff;
+        }
+        .table-invoice th {
+            background-color: #007bff;
+            color: white;
+            text-align: center;
+        }
+        .table-invoice td {
+            vertical-align: middle;
+        }
+        .table-invoice .qty, .table-invoice .price, .table-invoice .total {
+            text-align: right;
+        }
+        .totals-table {
+            width: 50%;
+            float: right;
+            margin-top: 20px;
+        }
+        .totals-table th {
+            text-align: right;
+            padding: 5px 10px;
+            color: #555;
+        }
+        .totals-table td {
+            text-align: right;
+            padding: 5px 10px;
+            font-weight: bold;
+        }
+        .grand-total {
+            font-size: 1.2rem;
+            color: #007bff;
+            border-top: 2px solid #007bff;
+        }
+
+        @media print {
+            body {
+                background: none;
+                margin: 0;
+            }
+            .invoice-box {
+                margin: 0;
+                padding: 0;
+                border: none;
+                box-shadow: none;
+                max-width: 100%;
+            }
+            .no-print {
+                display: none;
+            }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+    <div class="text-center mt-3 no-print">
+        <button class="btn btn-primary" onclick="window.print()">Print Invoice</button>
+        <button class="btn btn-secondary" onclick="window.close()">Close</button>
+    </div>
+
+    <div class="invoice-box">
+        <div class="row invoice-header">
+            <div class="col-6 company-details">
+                <h4>{{ company.Company_Name or 'SUWIN ERP' }}</h4>
+                <div>{{ company.Address_No or '' }} {{ company.Address_Line_1 or '' }}</div>
+                <div>{{ company.Address_Line_2 or '' }}</div>
+                <div>Contact: {{ company.Contact_1 or 'N/A' }}</div>
+                {% if company.vat_registered == 'Yes' and company.vat_registration_no %}
+                <div class="mt-2 fw-bold text-success">VAT Reg No: {{ company.vat_registration_no }}</div>
+                {% endif %}
+            </div>
+            <div class="col-6 invoice-meta">
+                <div class="invoice-title">TAX INVOICE</div>
+                <table class="mt-3">
+                    <tr>
+                        <td>Invoice No:</td>
+                        <td>{{ header.invoice_number }}</td>
+                    </tr>
+                    <tr>
+                        <td>Date:</td>
+                        <td>{{ header.invoice_date }}</td>
+                    </tr>
+                    <tr>
+                        <td>Due Date:</td>
+                        <td>{{ header.due_date }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="row billing-section">
+            <div class="col-sm-6">
+                <h5>Bill To:</h5>
+                <div class="ps-3 mt-2">
+                    <strong>{{ customer.supplier_name or 'Walk-in Customer' }}</strong><br>
+                    {% if customer.supplier_address_1 or customer.supplier_address_2 %}
+                        {{ customer.supplier_address_1 or '' }}<br>
+                        {{ customer.supplier_address_2 or '' }}<br>
+                        {{ customer.supplier_address_3 or '' }}<br>
+                    {% endif %}
+                    {% if customer.suppliers_TIN %}
+                        <strong class="text-success mt-2 d-block">Buyer VAT/TIN: {{ customer.suppliers_TIN }}</strong>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <table class="table table-bordered table-invoice mt-4">
+            <thead>
+                <tr>
+                    <th width="5%">#</th>
+                    <th width="45%" class="text-start">Description</th>
+                    <th width="10%">Unit</th>
+                    <th width="10%">Qty</th>
+                    <th width="15%">Unit Price</th>
+                    <th width="15%">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td class="text-center">{{ loop.index }}</td>
+                    <td>{{ item.invoice_item_name }}</td>
+                    <td class="text-center">{{ item.invoice_unit }}</td>
+                    <td class="qty">{{ item.invoice_qty }}</td>
+                    <td class="price">{{ "%.2f"|format(item.invoice_price) }}</td>
+                    <td class="total">{{ "%.2f"|format(item.total) }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-4">No items listed.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <div class="row">
+            <div class="col-6">
+                <p class="text-muted mt-4" style="font-size: 0.85rem;">
+                    <strong>Terms & Conditions:</strong><br>
+                    Please make payment by the due date. Returns accepted within 14 days with original receipt.
+                </p>
+            </div>
+            <div class="col-6">
+                <table class="totals-table">
+                    <tr>
+                        <th>Subtotal:</th>
+                        <td>{{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                    {% if vat_rate > 0 %}
+                    <tr>
+                        <th>VAT ({{ vat_rate }}%):</th>
+                        <td>{{ "%.2f"|format(vat_amount) }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr class="grand-total">
+                        <th>Grand Total:</th>
+                        <td>{{ "%.2f"|format(grand_total) }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-5 pt-4 text-center text-muted" style="border-top: 1px dashed #ccc; font-size: 0.8rem;">
+            Thank you for your business!
+        </div>
+    </div>
+</body>
+</html>
