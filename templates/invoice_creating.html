@@ -6,6 +6,16 @@
     <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice-dollar me-2"></i> New Invoice Creation</h4>
 </div>
 
+    {% if print_invoice %}
+    <div class="alert alert-success alert-dismissible fade show shadow-sm" role="alert">
+        <i class="fas fa-check-circle me-2"></i> Invoice <strong>{{ print_invoice }}</strong> created successfully!
+        <button type="button" class="btn btn-sm btn-primary ms-3" onclick="window.print()">
+            <i class="fas fa-print me-1"></i> Print Invoice
+        </button>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
     <form method="POST" action="{{ url_for('submit_invoice') }}" id="invoiceForm">
         <div class="row">
             <!-- Left Panel: Added Items List -->
@@ -86,7 +96,7 @@
                     <div class="card-body">
                         <div class="mb-2">
                             <label class="form-label fw-bold small">Customer</label>
-                            <select class="form-select form-select-sm" name="customer" required>
+                            <select class="form-select form-select-sm select2" name="customer" id="customerSelect" required>
                                 <option value="">Select Customer</option>
                                 {% for cust in customers %}
                                 <option value="{{ cust.customer_name }}">{{ cust.customer_name }}</option>
@@ -121,6 +131,13 @@
                                     {% endfor %}
                                 </select>
                             </div>
+                        </div>
+                        <div class="mb-2">
+                            <label class="form-label fw-bold small">Payment Type</label>
+                            <select class="form-select form-select-sm" name="payment_type" required>
+                                <option value="Credit">Credit Invoice</option>
+                                <option value="Cash">Cash (Immediate Payment)</option>
+                            </select>
                         </div>
                     </div>
                 </div>
@@ -227,7 +244,18 @@
     </form>
 </div>
 
+<!-- Select2 Initialization scripts -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
 <script>
+    $(document).ready(function() {
+        $('#customerSelect').select2({
+            theme: 'bootstrap-5',
+            placeholder: 'Search Customer...',
+            width: '100%'
+        });
+    });
+
     let inventoryItems = [];
     let nonInventoryItems = [];
 

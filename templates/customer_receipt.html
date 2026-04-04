@@ -335,6 +335,43 @@
 </div>
 
 <script>
+    document.addEventListener("DOMContentLoaded", function() {
+        // Handle Pre-filled Customer and Invoice if redirected from Invoice Creating
+        const prefillCustomer = "{{ prefill_customer }}";
+        const prefillInvoice = "{{ prefill_invoice }}";
+
+        if(prefillCustomer) {
+            // Find the option with this text and select it
+            const select = document.getElementById('customerSelect');
+            for (let i = 0; i < select.options.length; i++) {
+                if (select.options[i].text === prefillCustomer) {
+                    select.selectedIndex = i;
+                    // Trigger Select2 update if used
+                    if(typeof $ !== 'undefined' && $(select).data('select2')) {
+                        $(select).trigger('change.select2');
+                    }
+                    break;
+                }
+            }
+            // Load outstanding invoices
+            loadOutstanding().then(() => {
+                // If prefillInvoice is set, check the corresponding checkbox
+                if(prefillInvoice) {
+                    setTimeout(() => {
+                        const row = document.querySelector(`tr[data-invoice="${prefillInvoice}"]`);
+                        if(row) {
+                            const checkbox = row.querySelector('.invoice-checkbox');
+                            if(checkbox) {
+                                checkbox.checked = true;
+                                calculatePayment(checkbox);
+                            }
+                        }
+                    }, 500); // give time for DOM to render
+                }
+            });
+        }
+    });
+
     // Live Clock Update
     setInterval(() => {
         const now = new Date();
@@ -403,33 +440,35 @@
 
     // Load Outstanding & History data
     function loadOutstanding() {
-        const customerId = document.getElementById('customerSelect').value;
-        const tbody = document.getElementById('invoiceTableBody');
-        const histBody = document.getElementById('historyTableBody');
-        const totalOutDisplay = document.getElementById('totalOutstandingDisplay');
+        return new Promise((resolve) => {
+            const customerId = document.getElementById('customerSelect').value;
+            const tbody = document.getElementById('invoiceTableBody');
+            const histBody = document.getElementById('historyTableBody');
+            const totalOutDisplay = document.getElementById('totalOutstandingDisplay');
 
-        if (!customerId) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted fst-italic">Select a customer to view outstanding invoices.</td></tr>';
-            histBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td></tr>';
-            totalOutDisplay.textContent = '$0.00';
-            updateTotal();
-            return;
-        }
+            if (!customerId) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted fst-italic">Select a customer to view outstanding invoices.</td></tr>';
+                histBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td></tr>';
+                totalOutDisplay.textContent = '$0.00';
+                updateTotal();
+                resolve();
+                return;
+            }
 
-        // 1. Load Outstanding
-        fetch(`/customer_receipt/get_outstanding?customer_id=${customerId}`)
-            .then(res => res.json())
-            .then(data => {
-                tbody.innerHTML = '';
-                let totalOut = 0;
+            // 1. Load Outstanding
+            fetch(`/customer_receipt/get_outstanding?customer_id=${customerId}`)
+                .then(res => res.json())
+                .then(data => {
+                    tbody.innerHTML = '';
+                    let totalOut = 0;
 
-                if (data.invoices.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 fw-bold text-success"><i class="fas fa-check-circle me-2"></i>No outstanding invoices.</td></tr>';
-                } else {
-                    data.invoices.forEach((inv, index) => {
-                        totalOut += inv.balance;
-                        const row = `
-                            <tr style="background-color: white;">
+                    if (data.invoices.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 fw-bold text-success"><i class="fas fa-check-circle me-2"></i>No outstanding invoices.</td></tr>';
+                    } else {
+                        data.invoices.forEach((inv, index) => {
+                            totalOut += inv.balance;
+                            const row = `
+                                <tr style="background-color: white;" data-invoice="${inv.inv_no}">
                                 <td class="text-muted">${inv.id}</td>
                                 <td class="fw-bold" style="color: #2C3E50;">${inv.inv_no}</td>
                                 <td>${inv.jv_no}</td>
@@ -490,7 +529,9 @@
                         histBody.innerHTML += row;
                     });
                 }
+                resolve();
             });
+        });
     }
 
     function updateTotal() {
