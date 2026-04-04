@@ -897,7 +897,71 @@
         {% endwith %}
 
         {% block content %}{% endblock %}
+
+        <!-- Win11 Pro Footer -->
+        <div class="win11-page-footer">
+            <div class="footer-left">
+                <i class="fas fa-layer-group"></i>
+                <span id="win11FooterPageName">Page Name</span>
+            </div>
+            <div class="footer-right">
+                <span class="pro-badge"><i class="fas fa-crown"></i> PRO VERSION</span>
+            </div>
+        </div>
     </div>
+
+    <style>
+        .win11-page-footer {
+            margin-top: 40px;
+            padding: 16px 24px;
+            background: rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(10px);
+            border-top: 1px solid rgba(0,0,0,0.05);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.85rem;
+            color: #605E5C;
+        }
+        .footer-left {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-weight: 500;
+        }
+        .footer-right .pro-badge {
+            background: linear-gradient(135deg, #FFB900, #F7630C);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            box-shadow: 0 2px 4px rgba(247, 99, 12, 0.2);
+        }
+    </style>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            // Auto-detect page name for the footer based on active sidebar link or title
+            const activeLink = document.querySelector('.sidebar .nav-link.active');
+            let pageName = "Dashboard";
+            if (activeLink) {
+                const textNode = activeLink.querySelector('.nav-text') || activeLink;
+                pageName = textNode.textContent.trim();
+            } else {
+                pageName = document.title.replace('Suwin Accounting - ', '').trim();
+            }
+            const footerNameEl = document.getElementById('win11FooterPageName');
+            if (footerNameEl) {
+                footerNameEl.textContent = pageName;
+            }
+        });
+    </script>
 
     <!-- Quick Actions Modal (Win11 Style) -->
     <style>
@@ -1063,6 +1127,16 @@
                     </div>
 
                     <div class="win10-category" style="display: contents;">
+                        <span class="win11-category-title">Sales & Invoicing</span>
+                        <a href="/invoice_creating" class="win11-app-icon win10-tile" data-name="sales invoice">
+                            <div class="icon-wrapper icon-red"><i class="fas fa-file-invoice-dollar"></i></div><span>Sales Inv</span>
+                        </a>
+                        <a href="/proforma_invoice" class="win11-app-icon win10-tile" data-name="proforma invoice">
+                            <div class="icon-wrapper icon-red"><i class="fas fa-file-contract"></i></div><span>Proforma Inv</span>
+                        </a>
+                    </div>
+
+                    <div class="win10-category" style="display: contents;">
                         <span class="win11-category-title">Inventory Management</span>
                         <a href="/inventory_locations" class="win11-app-icon win10-tile" data-name="inventory locations house">
                             <div class="icon-wrapper icon-teal"><i class="fas fa-warehouse"></i></div><span>Inv House</span>
@@ -1203,6 +1277,38 @@
         });
 
 
+        // Quick Actions Scroll To Top Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            const quickActionLinks = document.querySelectorAll('#quickActionsModal .win11-app-icon, #quickActionsModal .win11-recent-item');
+            const loader = document.getElementById('globalPageLoader');
+
+            quickActionLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    // Only apply logic if it's a valid link and not just closing modal
+                    if(this.getAttribute('href') && this.getAttribute('href') !== '#') {
+                        // Let the default navigation happen, but first:
+
+                        // Close the modal
+                        const modalEl = document.getElementById('quickActionsModal');
+                        if (modalEl) {
+                            const bsModal = bootstrap.Modal.getInstance(modalEl);
+                            if (bsModal) {
+                                bsModal.hide();
+                            }
+                        }
+
+                        // Show global loader to give "load without loading" SPA feel
+                        if (loader) {
+                            loader.classList.remove('hidden');
+                        }
+
+                        // Scroll top immediately so next page feels like it loaded top-down
+                        window.scrollTo({top: 0, behavior: 'instant'});
+                    }
+                });
+            });
+        });
+
         // Quick Actions Win10 Search Filtering
         document.addEventListener('DOMContentLoaded', function() {
             const win10SearchInput = document.getElementById('win10SearchInput');
@@ -1302,6 +1408,40 @@
                     toggleSidebar();
                 });
             }
+
+            // Quick Action & Sidebar Click Intercept (Show loader, hide modal, scroll to top)
+            const allNavLinks = document.querySelectorAll('.win11-app-icon, .nav-link, .dropdown-item');
+            allNavLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    const href = this.getAttribute('href');
+                    // Check if it's an actual link that navigates away
+                    if(href && href !== '#' && !href.startsWith('javascript:')) {
+                        // Scroll up immediately
+                        window.scrollTo(0, 0);
+
+                        // Show Loader immediately
+                        const globalLoader = document.getElementById('globalPageLoader');
+                        if (globalLoader) {
+                            globalLoader.classList.remove('hidden');
+                        }
+
+                        // If it's a Quick Action modal link, try to hide modal fast
+                        if(this.classList.contains('win11-app-icon')) {
+                            const modalEl = document.getElementById('quickActionsModal');
+                            if (modalEl) {
+                                // Close it using bootstrap's vanilla js api if loaded
+                                if(typeof bootstrap !== 'undefined') {
+                                    const modal = bootstrap.Modal.getInstance(modalEl);
+                                    if (modal) modal.hide();
+                                }
+                            }
+                        }
+                    }
+                });
+            });
+
+            // Ensure window opens at top on regular loads
+            window.scrollTo(0, 0);
 
             // Load Customers for Global Dropdown
             fetch('/api/get_customers')
