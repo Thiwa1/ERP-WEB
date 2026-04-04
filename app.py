@@ -6669,6 +6669,10 @@ def get_reversal_details():
 @login_required
 @has_permission('Access_Accounting')
 def customer_receipt():
+    # Fetch pre-filled parameters if redirecting from invoice creation
+    prefill_customer = request.args.get('customer')
+    prefill_invoice = request.args.get('invoice_no')
+
     # Fetch customers with outstanding balances
     # We look at `Invoice_Oustanding` table
     query = """
@@ -6685,6 +6689,8 @@ def customer_receipt():
                            customers=customers,
                            cash_accounts=cash_accounts,
                            bank_accounts=bank_accounts,
+                           prefill_customer=prefill_customer,
+                           prefill_invoice=prefill_invoice,
                            today_date=date.today().strftime('%Y-%m-%d'))
 
 @app.route('/customer_receipt/get_outstanding')
@@ -10054,6 +10060,7 @@ def submit_inventory_transfer():
 @login_required
 @has_permission('Access_Accounting') # or Access_Sales if defined
 def invoice_creating():
+    print_invoice = request.args.get('print_invoice')
     customers = db.execute_query("SELECT supplier_name as customer_name FROM suppliers WHERE Is_Customer = 1")
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
     jobs = db.execute_query("SELECT job_number FROM jobs_unit")
@@ -10072,7 +10079,8 @@ def invoice_creating():
                            locations=locations,
                            jobs=jobs,
                            inventory_items=items,
-                           today_date=today_date)
+                           today_date=today_date,
+                           print_invoice=print_invoice)
 
 @app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
@@ -10372,6 +10380,9 @@ def submit_invoice():
     inv_items = parsed_data['inv_items']
     non_inv_items = parsed_data['non_inv_items']
 
+    form_data = request.form if hasattr(request, 'form') else request
+    payment_type = form_data.get('payment_type', 'Credit')
+
     current_user = get_current_user_id()
     # current_user_pk is unused in the transaction below
 
@@ -10446,17 +10457,22 @@ def submit_invoice():
         )
         post_invoice_gl_entries(gl_ctx)
         conn.commit()
-        flash(f'Invoice {invoice_no} created successfully.', 'success')
+        flash(f'Invoice {invoice_no} created successfully!', 'success')
+
+        if payment_type == 'Cash':
+            return redirect(url_for('customer_receipt', customer=customer_name, invoice_no=invoice_no))
+        else:
+            return redirect(url_for('invoice_creating', print_invoice=invoice_no))
 
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
         print(f"Invoice Error: {e}")
+        return redirect(url_for('invoice_creating'))
     finally:
         cursor.close()
         conn.close()
 
-    return redirect(url_for('invoice_creating'))
 
 # --- Inventory Production ---
 @app.route('/inventory_production', methods=['GET'])
