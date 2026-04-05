@@ -278,11 +278,11 @@
                     <div class="card-body">
                         <div class="d-flex justify-content-between mb-2">
                             <span class="fw-bold" style="color: #2C3E50; font-size: 13px;">Total Outstanding:</span>
-                            <span class="fw-bold" style="color: #E74C3C; font-size: 14px;" id="totalOutstandingDisplay">$0.00</span>
+                            <span class="fw-bold" style="color: #E74C3C; font-size: 14px;" id="totalOutstandingDisplay">{{ company_currency }} 0.00</span>
                         </div>
                         <div class="d-flex justify-content-between">
                             <span class="fw-bold" style="color: #2C3E50; font-size: 13px;">Total Received:</span>
-                            <span class="fw-bold" style="color: #27AE60; font-size: 15px;" id="totalReceiptDisplay">$0.00</span>
+                            <span class="fw-bold" style="color: #27AE60; font-size: 15px;" id="totalReceiptDisplay">{{ company_currency }} 0.00</span>
                         </div>
                     </div>
                 </div>
@@ -411,7 +411,7 @@
         if (!customerId) {
             tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted fst-italic">Select a customer to view outstanding invoices.</td></tr>';
             histBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td></tr>';
-            totalOutDisplay.textContent = '$0.00';
+            totalOutDisplay.textContent = '{{ company_currency }} 0.00';
             updateTotal();
             return;
         }
@@ -449,7 +449,7 @@
                         tbody.innerHTML += row;
                     });
                 }
-                totalOutDisplay.textContent = '$' + totalOut.toFixed(2);
+                totalOutDisplay.textContent = '{{ company_currency }} ' + totalOut.toFixed(2);
                 updateTotal();
 
                 // Auto-fill logic for Cash payment redirect
@@ -509,7 +509,7 @@
             const val = parseFloat(input.value);
             if (!isNaN(val)) total += val;
         });
-        document.getElementById('totalReceiptDisplay').textContent = '$' + total.toFixed(2);
+        document.getElementById('totalReceiptDisplay').textContent = '{{ company_currency }} ' + total.toFixed(2);
     }
 
     let selectedReversalJV = null;
