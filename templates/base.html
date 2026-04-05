@@ -888,9 +888,18 @@
         {% with messages = get_flashed_messages(with_categories=true) %}
           {% if messages %}
             {% for category, message in messages %}
-              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm" role="alert">
-                {{ message }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+              <div class="alert alert-{{ category }} alert-dismissible fade show shadow-sm d-flex align-items-center justify-content-between" role="alert">
+                <div>
+                  {% if '|' in message %}
+                    {{ message.split('|')[0] }}
+                    <a href="/invoice_print/{{ message.split('|')[1] }}" target="_blank" class="btn btn-sm btn-outline-success ms-3" style="background-color: white; border-color: #27AE60; color: #27AE60; font-weight: bold;">
+                        <i class="fas fa-print me-1"></i> Print Invoice
+                    </a>
+                  {% else %}
+                    {{ message }}
+                  {% endif %}
+                </div>
+                <button type="button" class="btn-close m-0 position-relative p-0 ps-3 border-0 bg-transparent" style="float: right;" data-bs-dismiss="alert" aria-label="Close"></button>
               </div>
             {% endfor %}
           {% endif %}
