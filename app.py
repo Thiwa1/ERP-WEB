@@ -10098,7 +10098,7 @@ def invoice_print(invoice_no):
     customer = db.execute_query("""
         SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3, suppliers_TIN
         FROM suppliers
-        WHERE id = %s
+        WHERE sup_id = %s
         LIMIT 1
     """, (header['customer_id'],))
     customer = customer[0] if customer else {}
