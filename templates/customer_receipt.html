@@ -402,7 +402,7 @@
     }
 
     // Load Outstanding & History data
-    function loadOutstanding() {
+    function loadOutstanding(autoSelectInvoice = null) {
         const customerId = document.getElementById('customerSelect').value;
         const tbody = document.getElementById('invoiceTableBody');
         const histBody = document.getElementById('historyTableBody');
@@ -439,7 +439,7 @@
                                 <td class="text-end">${inv.paid.toFixed(2)}</td>
                                 <td class="text-end fw-bold" style="color: #E74C3C;">${inv.balance.toFixed(2)}</td>
                                 <td class="text-center">
-                                    <input type="number" name="pay_${inv.id}" class="form-control form-control-sm text-end pay-input border-primary"
+                                    <input type="number" id="pay_input_${inv.inv_no}" name="pay_${inv.id}" class="form-control form-control-sm text-end pay-input border-primary"
                                            style="background-color: #F0F5FF; font-weight: bold; color: #2E86AB;"
                                            step="0.01" min="0" max="${inv.balance}" placeholder="0.00"
                                            oninput="updateTotal()">
@@ -451,6 +451,15 @@
                 }
                 totalOutDisplay.textContent = '$' + totalOut.toFixed(2);
                 updateTotal();
+
+                // Auto-fill logic for Cash payment redirect
+                if (autoSelectInvoice) {
+                    const inputField = document.getElementById(`pay_input_${autoSelectInvoice}`);
+                    if (inputField) {
+                        inputField.value = inputField.max;
+                        updateTotal();
+                    }
+                }
             });
 
         // 2. Load History
@@ -526,6 +535,26 @@
 
         console.log("Selected for reversal:", selectedReversalJV);
     }
+
+    // Auto-load Logic on Page Load
+    document.addEventListener("DOMContentLoaded", function() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const customerId = urlParams.get('customer_id');
+        const autoInvoice = urlParams.get('auto_invoice');
+
+        if (customerId) {
+            const customerSelect = document.getElementById('customerSelect');
+
+            // For Select2 integration
+            if ($(customerSelect).hasClass("select2-hidden-accessible")) {
+                $(customerSelect).val(customerId).trigger('change');
+            } else {
+                customerSelect.value = customerId;
+            }
+
+            loadOutstanding(autoInvoice);
+        }
+    });
 
     function triggerReverseModal() {
         if (!selectedReversalJV) {

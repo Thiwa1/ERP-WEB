@@ -10450,6 +10450,9 @@ def submit_invoice():
     conn.start_transaction()
 
     try:
+        # Check Payment Type
+        payment_type = request.form.get('payment_type', 'Credit')
+
         # 3. Generate Invoice No (Credit_Invoice_No table)
         cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
         inv_id_seq = cursor.lastrowid
