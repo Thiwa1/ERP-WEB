@@ -10082,9 +10082,8 @@ def invoice_print(invoice_no):
     header = db.execute_query("""
         SELECT o.invoice_number, o.invoice_date, o.invoice_final_date as due_date,
                o.invoice_buinding_Customer as customer_id, o.invoice_JV,
-               v.vat_rate
+               o.VAT_rate as vat_rate
         FROM Invoice_Oustanding o
-        LEFT JOIN (SELECT vat_rate, jv_no FROM vat_recodes WHERE voucher_type = 'Sales') v ON o.invoice_JV = v.jv_no
         WHERE o.invoice_number = %s
         LIMIT 1
     """, (invoice_no,))
