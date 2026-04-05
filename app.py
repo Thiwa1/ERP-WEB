@@ -10514,7 +10514,7 @@ def submit_invoice():
         )
         post_invoice_gl_entries(gl_ctx)
         conn.commit()
-        flash(f'Invoice {invoice_no} created successfully.', 'success')
+        flash(f'Invoice {invoice_no} created successfully.|{invoice_no}', 'success')
 
     except Exception as e:
         conn.rollback()
