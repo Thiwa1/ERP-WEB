@@ -10120,13 +10120,22 @@ def invoice_print(invoice_no):
 
     # Calculate Totals
     subtotal = 0.0
+    vat_rate = header['vat_rate'] or 0.0
+
     for item in items:
-        item['total'] = item['invoice_qty'] * item['invoice_price']
+        # Calculate line item total WITHOUT VAT
+        raw_total = item['invoice_qty'] * item['invoice_price']
+
+        # Add VAT directly into the line item price and total
+        item_vat_amount = (raw_total * vat_rate) / 100
+        item['total'] = raw_total + item_vat_amount
+        item['invoice_price'] = item['invoice_price'] + ((item['invoice_price'] * vat_rate) / 100)
+
         subtotal += item['total']
 
-    vat_rate = header['vat_rate'] or 0.0
-    vat_amount = (subtotal * vat_rate) / 100
-    grand_total = subtotal + vat_amount
+    # Because VAT is rolled into the line items, the subtotal is effectively the grand total
+    grand_total = subtotal
+    vat_amount = 0.0 # Hidden as requested
 
     return render_template('invoice_print.html',
                            header=header,
@@ -10134,7 +10143,7 @@ def invoice_print(invoice_no):
                            company=company,
                            items=items,
                            subtotal=subtotal,
-                           vat_rate=vat_rate,
+                           vat_rate=0.0, # Zeroed out so it hides on the template
                            vat_amount=vat_amount,
                            grand_total=grand_total)
 
@@ -10439,7 +10448,25 @@ def submit_invoice():
     current_user = get_current_user_id()
     # current_user_pk is unused in the transaction below
 
-    # 2. Database Transaction
+    # 2. Validate VAT Registration Rule
+    if apply_vat == 'Yes' and vat_rate > 0:
+        # Check Company VAT
+        company_res = db.execute_query("SELECT company_vate_code FROM company LIMIT 1")
+        company_vat = company_res[0]['company_vate_code'] if company_res else None
+
+        # Check Customer VAT
+        cust_res = db.execute_query("SELECT suppliers_TIN FROM suppliers WHERE sup_id = %s", (customer_name,))
+        cust_vat = cust_res[0]['suppliers_TIN'] if cust_res else None
+
+        if not company_vat or not str(company_vat).strip():
+            flash('Cannot create VAT Invoice: Your Company VAT Registration Number is missing. Please update your Company Profile.', 'danger')
+            return redirect(url_for('invoice_creating'))
+
+        if not cust_vat or not str(cust_vat).strip():
+            flash('Cannot create VAT Invoice: The selected Customer does not have a VAT Registration Number (TIN) on file.', 'danger')
+            return redirect(url_for('invoice_creating'))
+
+    # 3. Database Transaction
     conn = db.get_connection()
     if not conn:
         flash('Database connection failed.', 'danger')
