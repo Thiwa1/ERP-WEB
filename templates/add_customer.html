@@ -11,7 +11,8 @@
             <i class="fas fa-info-circle me-2"></i> CUSTOMER DETAILS
         </div>
         <div class="card-body bg-white">
-            <form method="POST" action="/add_customer">
+            <form method="POST" action="/add_customer" id="customerForm">
+                <input type="hidden" name="customer_id" id="customer_id" value="">
                 <div class="row">
                     <!-- Left Panel: Basic Information -->
                     <div class="col-md-6 border-end">
@@ -131,12 +132,58 @@
                     </div>
                 </div>
 
-                <div class="d-flex justify-content-end mt-4">
-                    <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
+                <div class="d-flex justify-content-end mt-4 gap-2">
+                    <button type="button" class="btn btn-secondary px-4 fw-bold shadow-sm" id="resetBtn" style="display: none;" onclick="resetForm()">
+                        <i class="fas fa-times me-2"></i> CANCEL EDIT
+                    </button>
+                    <button type="submit" class="btn btn-primary px-5 fw-bold shadow-sm" id="submitBtn" style="background-color: var(--accent-color); border: none;">
                         <i class="fas fa-save me-2"></i> CREATE NEW CUSTOMER
                     </button>
                 </div>
             </form>
+        </div>
+    </div>
+
+    <!-- Existing Customers List -->
+    <div class="card shadow-sm border-0 mt-4">
+        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
+            <i class="fas fa-users me-2"></i> EXISTING CUSTOMERS
+        </div>
+        <div class="card-body bg-white">
+            <div class="table-responsive">
+                <table class="table table-striped table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Contact 1</th>
+                            <th>Credit Limit</th>
+                            <th>VAT No</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for customer in customers_list %}
+                        <tr>
+                            <td class="fw-bold">{{ customer.supplier_code }}</td>
+                            <td>{{ customer.supplier_name }}</td>
+                            <td>{{ customer.suppliers_teli_1 or '-' }}</td>
+                            <td>{{ "%.2f"|format(customer.suppliers_credit_fasility or 0.0) }}</td>
+                            <td>{{ customer.suppliers_vat_regidter_no or '-' }}</td>
+                            <td>
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick='editCustomer({{ customer|tojson|safe }})'>
+                                    <i class="fas fa-edit"></i> Edit
+                                </button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center text-muted py-3">No customers found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
 </div>
@@ -198,6 +245,35 @@
             statusMsg.innerHTML = '<span class="text-danger"><i class="fas fa-times-circle"></i> Error processing document.</span>';
         });
     });
+
+    function editCustomer(customer) {
+        document.getElementById('customer_id').value = customer.id;
+        document.getElementById('supplier_name').value = customer.supplier_name;
+        document.getElementById('supplier_code').value = customer.supplier_code;
+        document.getElementById('credit_limit').value = customer.suppliers_credit_fasility || 0;
+        document.getElementById('vatNoInput').value = customer.suppliers_vat_regidter_no || '';
+        document.getElementById('contact_1').value = customer.suppliers_teli_1 || '';
+        document.getElementById('contact_2').value = customer.suppliers_teli_2 || '';
+        document.getElementById('email').value = customer.suppliers_e_mail || '';
+
+        // Update Buttons
+        document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> UPDATE CUSTOMER';
+        document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-warning');
+        document.getElementById('resetBtn').style.display = 'inline-block';
+
+        // Scroll to top smoothly
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function resetForm() {
+        document.getElementById('customerForm').reset();
+        document.getElementById('customer_id').value = '';
+
+        // Restore Buttons
+        document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> CREATE NEW CUSTOMER';
+        document.getElementById('submitBtn').classList.replace('btn-warning', 'btn-primary');
+        document.getElementById('resetBtn').style.display = 'none';
+    }
 </script>
 
 {% endblock %}

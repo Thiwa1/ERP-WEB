@@ -901,6 +901,7 @@ def placeholder():
 def add_customer():
     if request.method == 'POST':
         try:
+            customer_id = request.form.get('customer_id')
             supplier_name = request.form.get('supplier_name')
             salutation = request.form.get('salutation')
             supplier_code = request.form.get('supplier_code')
@@ -925,52 +926,77 @@ def add_customer():
             current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
-            query_supplier = """
-                INSERT INTO suppliers (
-                    sup_id, supplier_name, supplier_code,
-                    supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
-                    suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
-                    supplier_create_date, suppliers_create_user,
-                    suppliers_last_edit_user, suppliers_last_edit_date,
-                    suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                    Is_Suplier, Is_Customer
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            params_supplier = (
-                0, supplier_name, supplier_code,
-                address_no, address_line_1, address_line_2, address_line_3,
-                parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user_pk,
-                current_user_pk, current_date,
-                email, vat_no, salutation,
-                0, 1 # Is_Suplier=0, Is_Customer=1
-            )
-
-            query_sub_account = """
-                INSERT INTO sub_accont_for_new_account (
-                    id_sub, sub_sub_accaount_name, sub_new_account,
-                    creat_user, creat_date, active, sub_account_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            if customer_id:
+                # Update existing customer
+                query_supplier = """
+                    UPDATE suppliers SET
+                        supplier_name=%s, supplier_code=%s,
+                        supplier_address_1=%s, supplier_address_2=%s, supplier_address_3=%s, supplier_address_4=%s,
+                        suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
+                        suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
+                        suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s
+                    WHERE sup_id=%s AND Is_Customer=1
+                """
+                params_supplier = (
+                    supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    customer_id
+                )
+            else:
+                # Insert new customer
+                query_supplier = """
+                    INSERT INTO suppliers (
+                        sup_id, supplier_name, supplier_code,
+                        supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
+                        suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
+                        supplier_create_date, suppliers_create_user,
+                        suppliers_last_edit_user, suppliers_last_edit_date,
+                        suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
+                        Is_Suplier, Is_Customer
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                params_supplier = (
+                    0, supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_date, current_user_pk,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    0, 1 # Is_Suplier=0, Is_Customer=1
+                )
 
             try:
                 with db.transaction_cursor() as cursor:
                     cursor.execute(query_supplier, params_supplier)
-                    cursor.execute(query_sub_account, (
-                        0, supplier_name, "Account Receivable",
-                        current_user, current_date, 1, 0
-                    ))
-                    last_sub_id = cursor.lastrowid
-                    new_sub_code = last_sub_id + 10001
-                    cursor.execute(
-                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                        (new_sub_code, last_sub_id)
-                    )
-                flash('Customer added successfully!', 'success')
+
+                    if not customer_id:
+                        query_sub_account = """
+                            INSERT INTO sub_accont_for_new_account (
+                                id_sub, sub_sub_accaount_name, sub_new_account,
+                                creat_user, creat_date, active, sub_account_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query_sub_account, (
+                            0, supplier_name, "Account Receivable",
+                            current_user, current_date, 1, 0
+                        ))
+                        last_sub_id = cursor.lastrowid
+                        new_sub_code = last_sub_id + 10001
+                        cursor.execute(
+                            "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                            (new_sub_code, last_sub_id)
+                        )
+                if customer_id:
+                    flash('Customer updated successfully!', 'success')
+                else:
+                    flash('Customer added successfully!', 'success')
             except Exception as e:
                 print(f"Transaction failed: {e}")
                 logging.error(f"Transaction failed: {e}")
-                flash(f'Error adding customer: {str(e)}', 'danger')
+                flash(f'Error adding/updating customer: {str(e)}', 'danger')
 
             return redirect(url_for('add_customer'))
 
@@ -984,7 +1010,16 @@ def add_customer():
         salutations = [row['salutation'] for row in salutations_data]
     except Exception as e:
         logging.error(f"Error loading salutations: {e}")
-    return render_template('add_customer.html', salutations=salutations)
+
+    customers_list = db.execute_query("""
+        SELECT sup_id as id, supplier_name, supplier_code, suppliers_teli_1, suppliers_teli_2,
+               suppliers_credit_fasility, suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail
+        FROM suppliers
+        WHERE Is_Customer = 1
+        ORDER BY sup_id DESC
+    """)
+
+    return render_template('add_customer.html', salutations=salutations, customers_list=customers_list)
 
 # --- Add Supplier (New) ---
 
@@ -1063,50 +1098,77 @@ def add_supplier():
             current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
-            query_supplier = """
-                INSERT INTO suppliers (
-                    sup_id, supplier_name, supplier_code,
-                    supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
-                    suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
-                    supplier_create_date, suppliers_create_user,
-                    suppliers_last_edit_user, suppliers_last_edit_date,
-                    suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                    Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            params_supplier = (
-                0, supplier_name, supplier_code,
-                address_no, address_line_1, address_line_2, address_line_3,
-                parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user_pk,
-                current_user_pk, current_date,
-                email, vat_no, salutation,
-                1, 0, tin, nic
-            )
-
-            query_sub_account = """
-                INSERT INTO sub_accont_for_new_account (
-                    id_sub, sub_sub_accaount_name, sub_new_account,
-                    creat_user, creat_date, active, sub_account_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            if supplier_id:
+                # Update existing supplier
+                query_supplier = """
+                    UPDATE suppliers SET
+                        supplier_name=%s, supplier_code=%s,
+                        supplier_address_1=%s, supplier_address_2=%s, supplier_address_3=%s, supplier_address_4=%s,
+                        suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
+                        suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
+                        suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s,
+                        suppliers_TIN=%s, suppliers_NIC=%s
+                    WHERE sup_id=%s AND Is_Suplier=1
+                """
+                params_supplier = (
+                    supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    tin, nic,
+                    supplier_id
+                )
+            else:
+                # Insert new supplier
+                query_supplier = """
+                    INSERT INTO suppliers (
+                        sup_id, supplier_name, supplier_code,
+                        supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
+                        suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
+                        supplier_create_date, suppliers_create_user,
+                        suppliers_last_edit_user, suppliers_last_edit_date,
+                        suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
+                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                params_supplier = (
+                    0, supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_date, current_user_pk,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    1, 0, tin, nic
+                )
 
             try:
                 with db.transaction_cursor() as cursor:
                     cursor.execute(query_supplier, params_supplier)
-                    cursor.execute(query_sub_account, (
-                        0, supplier_name, "Account Payable",
-                        current_user, current_date, 1, 0
-                    ))
-                    last_sub_id = cursor.lastrowid
-                    new_sub_code = last_sub_id + 10001
-                    cursor.execute(
-                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                        (new_sub_code, last_sub_id)
-                    )
-                flash('Supplier added successfully!', 'success')
+
+                    if not supplier_id:
+                        query_sub_account = """
+                            INSERT INTO sub_accont_for_new_account (
+                                id_sub, sub_sub_accaount_name, sub_new_account,
+                                creat_user, creat_date, active, sub_account_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query_sub_account, (
+                            0, supplier_name, "Account Payable",
+                            current_user, current_date, 1, 0
+                        ))
+                        last_sub_id = cursor.lastrowid
+                        new_sub_code = last_sub_id + 10001
+                        cursor.execute(
+                            "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                            (new_sub_code, last_sub_id)
+                        )
+                if supplier_id:
+                    flash('Supplier updated successfully!', 'success')
+                else:
+                    flash('Supplier added successfully!', 'success')
             except Exception as e:
-                flash(f'Error adding supplier: {str(e)}', 'danger')
+                flash(f'Error adding/updating supplier: {str(e)}', 'danger')
 
             return redirect(url_for('add_supplier'))
 
