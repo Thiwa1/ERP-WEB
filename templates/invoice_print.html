@@ -117,12 +117,12 @@
     <div class="invoice-box">
         <div class="row invoice-header">
             <div class="col-6 company-details">
-                <h4>{{ company.Company_Name or 'SUWIN ERP' }}</h4>
-                <div>{{ company.Address_No or '' }} {{ company.Address_Line_1 or '' }}</div>
-                <div>{{ company.Address_Line_2 or '' }}</div>
-                <div>Contact: {{ company.Contact_1 or 'N/A' }}</div>
-                {% if company.vat_registered == 'Yes' and company.vat_registration_no %}
-                <div class="mt-2 fw-bold text-success">VAT Reg No: {{ company.vat_registration_no }}</div>
+                <h4>{{ company.company_name or 'SUWIN ERP' }}</h4>
+                <div>{{ company.company_addras_1 or '' }}</div>
+                <div>{{ company.company_addras_2 or '' }} {{ company.company_addras_3 or '' }}</div>
+                <div>Contact: {{ company.company_land_line or 'N/A' }}</div>
+                {% if company.vat_registered == 'Yes' and company.company_vate_code %}
+                <div class="mt-2 fw-bold text-success">VAT Reg No: {{ company.company_vate_code }}</div>
                 {% endif %}
             </div>
             <div class="col-6 invoice-meta">

@@ -10105,7 +10105,7 @@ def invoice_print(invoice_no):
 
     # Fetch Company Info
     company = db.execute_query("""
-        SELECT Company_Name, Contact_1, Address_No, Address_Line_1, Address_Line_2, vat_registered, vat_registration_no
+        SELECT company_name, company_land_line, company_addras_1, company_addras_2, company_addras_3, vat_registered, company_vate_code
         FROM company
         LIMIT 1
     """)
