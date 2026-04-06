@@ -10158,7 +10158,7 @@ def invoice_print(invoice_no):
 
     # Fetch Customer Info
     customer = db.execute_query("""
-        SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3, suppliers_TIN
+        SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3, suppliers_TIN, suppliers_vat_regidter_no
         FROM suppliers
         WHERE sup_id = %s
         LIMIT 1
@@ -10182,7 +10182,10 @@ def invoice_print(invoice_no):
 
     # Determine VAT Compliance & Invoice Type
     company_vat = company.get('company_vate_code') and str(company['company_vate_code']).strip()
-    cust_vat = customer.get('suppliers_TIN') and str(customer['suppliers_TIN']).strip()
+
+    # Customer can have VAT in TIN or VAT NO field
+    cust_vat = (customer.get('suppliers_TIN') and str(customer['suppliers_TIN']).strip()) or \
+               (customer.get('suppliers_vat_regidter_no') and str(customer['suppliers_vat_regidter_no']).strip())
 
     vat_rate = header['vat_rate'] or 0.0
     subtotal = 0.0
@@ -10544,14 +10547,17 @@ def submit_invoice():
         company_res = db.execute_query("SELECT company_vate_code FROM company LIMIT 1")
         company_vat = company_res[0]['company_vate_code'] if company_res else None
 
-        cust_res = db.execute_query("SELECT suppliers_TIN FROM suppliers WHERE sup_id = %s", (customer_name,))
-        cust_vat = cust_res[0]['suppliers_TIN'] if cust_res else None
+        cust_res = db.execute_query("SELECT suppliers_TIN, suppliers_vat_regidter_no FROM suppliers WHERE sup_id = %s", (customer_name,))
+        cust_vat = None
+        if cust_res:
+            cust_vat = (cust_res[0].get('suppliers_TIN') and str(cust_res[0]['suppliers_TIN']).strip()) or \
+                       (cust_res[0].get('suppliers_vat_regidter_no') and str(cust_res[0]['suppliers_vat_regidter_no']).strip())
 
         if not company_vat or not str(company_vat).strip():
             flash('Warning: Your Company is not VAT registered. The invoice will be processed at standard selling prices without adding a VAT component.', 'warning')
             vat_rate = 0.0
             apply_vat = 'No'
-        elif not cust_vat or not str(cust_vat).strip():
+        elif not cust_vat:
             flash('Notice: The Customer is not VAT registered. A commercial invoice will be generated with VAT-inclusive selling prices.', 'info')
 
     # 3. Database Transaction
