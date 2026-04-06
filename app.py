@@ -10113,10 +10113,10 @@ def invoice_print(invoice_no):
 
     # Fetch Invoice Line Items
     items = db.execute_query("""
-        SELECT invoice_item_name, invoice_qty, invoice_price, invoice_unit
+        SELECT Item_Name as invoice_item_name, Qty as invoice_qty, Pricing as invoice_price, mesurment as invoice_unit
         FROM Invoice_Recode
-        WHERE Invoice_Recode_Binding_id = (SELECT id FROM Invoice_Oustanding WHERE invoice_number = %s LIMIT 1)
-    """, (invoice_no,))
+        WHERE JV_No = %s
+    """, (header['invoice_JV'],))
 
     # Calculate Totals
     subtotal = 0.0
