@@ -10180,24 +10180,52 @@ def invoice_print(invoice_no):
         WHERE JV_No = %s
     """, (header['invoice_JV'],))
 
-    # Calculate Totals
-    subtotal = 0.0
+    # Determine VAT Compliance & Invoice Type
+    company_vat = company.get('company_vate_code') and str(company['company_vate_code']).strip()
+    cust_vat = customer.get('suppliers_TIN') and str(customer['suppliers_TIN']).strip()
+
     vat_rate = header['vat_rate'] or 0.0
+    subtotal = 0.0
+    vat_amount = 0.0
 
-    for item in items:
-        # Calculate line item total WITHOUT VAT
-        raw_total = item['invoice_qty'] * item['invoice_price']
+    if company_vat and cust_vat and vat_rate > 0:
+        # CASE 1: Both registered -> TAX INVOICE with explicit VAT
+        invoice_title = "TAX INVOICE"
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item['total'] = raw_total
+            subtotal += item['total']
 
-        # Add VAT directly into the line item price and total
-        item_vat_amount = (raw_total * vat_rate) / 100
-        item['total'] = raw_total + item_vat_amount
-        item['invoice_price'] = item['invoice_price'] + ((item['invoice_price'] * vat_rate) / 100)
+        vat_amount = (subtotal * vat_rate) / 100
+        grand_total = subtotal + vat_amount
 
-        subtotal += item['total']
+    elif company_vat and not cust_vat and vat_rate > 0:
+        # CASE 2: Company registered, Customer NOT -> INVOICE with VAT rolled into items
+        invoice_title = "INVOICE"
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item_vat_amount = (raw_total * vat_rate) / 100
 
-    # Because VAT is rolled into the line items, the subtotal is effectively the grand total
-    grand_total = subtotal
-    vat_amount = 0.0 # Hidden as requested
+            # Roll VAT into line items
+            item['total'] = raw_total + item_vat_amount
+            item['invoice_price'] = item['invoice_price'] + ((item['invoice_price'] * vat_rate) / 100)
+
+            subtotal += item['total']
+
+        grand_total = subtotal
+        vat_rate = 0.0 # Hide explicit VAT display
+        vat_amount = 0.0
+
+    else:
+        # CASE 3: Company not registered -> Standard INVOICE, no VAT charged
+        invoice_title = "INVOICE"
+        vat_rate = 0.0
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item['total'] = raw_total
+            subtotal += item['total']
+
+        grand_total = subtotal
 
     return render_template('invoice_print.html',
                            header=header,
@@ -10205,9 +10233,10 @@ def invoice_print(invoice_no):
                            company=company,
                            items=items,
                            subtotal=subtotal,
-                           vat_rate=0.0, # Zeroed out so it hides on the template
+                           vat_rate=vat_rate,
                            vat_amount=vat_amount,
-                           grand_total=grand_total)
+                           grand_total=grand_total,
+                           invoice_title=invoice_title)
 
 @app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
@@ -10510,23 +10539,20 @@ def submit_invoice():
     current_user = get_current_user_id()
     # current_user_pk is unused in the transaction below
 
-    # 2. Validate VAT Registration Rule
+    # 2. Validate VAT Registration Rule (Warnings Only)
     if apply_vat == 'Yes' and vat_rate > 0:
-        # Check Company VAT
         company_res = db.execute_query("SELECT company_vate_code FROM company LIMIT 1")
         company_vat = company_res[0]['company_vate_code'] if company_res else None
 
-        # Check Customer VAT
         cust_res = db.execute_query("SELECT suppliers_TIN FROM suppliers WHERE sup_id = %s", (customer_name,))
         cust_vat = cust_res[0]['suppliers_TIN'] if cust_res else None
 
         if not company_vat or not str(company_vat).strip():
-            flash('Cannot create VAT Invoice: Your Company VAT Registration Number is missing. Please update your Company Profile.', 'danger')
-            return redirect(url_for('invoice_creating'))
-
-        if not cust_vat or not str(cust_vat).strip():
-            flash('Cannot create VAT Invoice: The selected Customer does not have a VAT Registration Number (TIN) on file.', 'danger')
-            return redirect(url_for('invoice_creating'))
+            flash('Warning: Your Company is not VAT registered. The invoice will be processed at standard selling prices without adding a VAT component.', 'warning')
+            vat_rate = 0.0
+            apply_vat = 'No'
+        elif not cust_vat or not str(cust_vat).strip():
+            flash('Notice: The Customer is not VAT registered. A commercial invoice will be generated with VAT-inclusive selling prices.', 'info')
 
     # 3. Database Transaction
     conn = db.get_connection()
