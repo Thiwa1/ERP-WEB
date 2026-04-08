@@ -2164,12 +2164,15 @@ def control_panel():
 
             # Invoice Terms
             if 'invoice_terms' in request.form:
-                new_terms = request.form.get('invoice_terms')
-                check_terms = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
-                if not check_terms:
-                    db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('invoice_terms_conditions', %s, 'Terms and Conditions displayed on Invoices')", (new_terms,), commit=True)
-                else:
-                    db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'invoice_terms_conditions'", (new_terms,), commit=True)
+                try:
+                    new_terms = request.form.get('invoice_terms', '')
+                    check_terms = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+                    if not check_terms:
+                        db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('invoice_terms_conditions', %s, 'Terms and Conditions displayed on Invoices')", (new_terms,), commit=True)
+                    else:
+                        db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'invoice_terms_conditions'", (new_terms,), commit=True)
+                except Exception as e:
+                    print(f"Error updating invoice_terms: {e}")
 
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
@@ -2188,8 +2191,13 @@ def control_panel():
     res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
     current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
 
-    res_terms = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
-    invoice_terms = res_terms[0]['setting_value'] if res_terms else ""
+    invoice_terms = ""
+    try:
+        res_terms = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+        if res_terms and isinstance(res_terms, list) and len(res_terms) > 0 and 'setting_value' in res_terms[0]:
+            invoice_terms = res_terms[0]['setting_value'] or ""
+    except Exception as e:
+        print(f"Error fetching invoice_terms: {e}")
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -10244,8 +10252,13 @@ def invoice_print(invoice_no):
         grand_total = subtotal
 
     # Fetch Terms and Conditions
-    terms_res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
-    invoice_terms = terms_res[0]['setting_value'] if terms_res and terms_res[0]['setting_value'] else ""
+    invoice_terms = ""
+    try:
+        terms_res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+        if terms_res and isinstance(terms_res, list) and len(terms_res) > 0 and 'setting_value' in terms_res[0]:
+            invoice_terms = terms_res[0]['setting_value'] or ""
+    except Exception as e:
+        print(f"Error fetching invoice_terms for print: {e}")
 
     return render_template('invoice_print.html',
                            header=header,
