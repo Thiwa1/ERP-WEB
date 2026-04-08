@@ -2178,18 +2178,29 @@ def control_panel():
             return redirect(url_for('control_panel'))
 
     # 2. Fetch Status
-    res = db.execute_query("SELECT yes FROM adding_new")
     warranty_enabled = False
-    if res and res[0]['yes'] == 1:
-        warranty_enabled = True
+    try:
+        res = db.execute_query("SELECT yes FROM adding_new")
+        if res and isinstance(res, list) and len(res) > 0 and res[0].get('yes') == 1:
+            warranty_enabled = True
+    except Exception as e:
+        print(f"Control panel error (warranty): {e}")
 
-    res_app = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
     approval_enabled = False
-    if res_app and res_app[0]['setting_value'] == '1':
-        approval_enabled = True
+    try:
+        res_app = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+        if res_app and isinstance(res_app, list) and len(res_app) > 0 and res_app[0].get('setting_value') == '1':
+            approval_enabled = True
+    except Exception as e:
+        print(f"Control panel error (approval): {e}")
 
-    res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
-    current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
+    current_theme_key = 'default'
+    try:
+        res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+        if res_theme and isinstance(res_theme, list) and len(res_theme) > 0 and res_theme[0].get('setting_value'):
+            current_theme_key = res_theme[0]['setting_value']
+    except Exception as e:
+        print(f"Control panel error (theme): {e}")
 
     invoice_terms = ""
     try:
