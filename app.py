@@ -2137,12 +2137,19 @@ def control_panel():
         # Warranty & Settings
         if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form or 'invoice_terms' in request.form:
             # Warranty Logic
-            warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
-            count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
-            if count_res and count_res[0]['cnt'] == 0:
-                db.execute_query("INSERT INTO adding_new (id, yes) VALUES (0, %s)", (warranty_enabled,), commit=True)
-            else:
-                db.execute_query("UPDATE adding_new SET yes = %s", (warranty_enabled,), commit=True)
+            try:
+                warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
+                count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
+                if count_res and count_res[0]['cnt'] == 0:
+                    # MySQL schema for adding_new has a literal string 'null' as default for ac1, ac2, etc.
+                    # which violates FK constraints on new_account_table if 'null' account doesn't exist.
+                    # We must explicitly insert Python None (SQL NULL) to bypass the default string.
+                    db.execute_query("INSERT INTO adding_new (id, yes, ac1, ac2, ac3, ac4, ac5) VALUES (0, %s, %s, %s, %s, %s, %s)",
+                                     (warranty_enabled, None, None, None, None, None), commit=True)
+                else:
+                    db.execute_query("UPDATE adding_new SET yes = %s", (warranty_enabled,), commit=True)
+            except Exception as e:
+                print(f"Error updating warranty settings: {e}")
 
             # Approval Workflow Logic
             approval_enabled = 1 if request.form.get('approval_enabled') else 0
