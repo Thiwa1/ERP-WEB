@@ -2135,7 +2135,7 @@ def control_panel():
     # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
         # Warranty & Settings
-        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form:
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form or 'invoice_terms' in request.form:
             # Warranty Logic
             warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
             count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
@@ -2162,6 +2162,15 @@ def control_panel():
                 else:
                     db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'system_theme'", (new_theme,), commit=True)
 
+            # Invoice Terms
+            if 'invoice_terms' in request.form:
+                new_terms = request.form.get('invoice_terms')
+                check_terms = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+                if not check_terms:
+                    db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('invoice_terms_conditions', %s, 'Terms and Conditions displayed on Invoices')", (new_terms,), commit=True)
+                else:
+                    db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'invoice_terms_conditions'", (new_terms,), commit=True)
+
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
 
@@ -2178,6 +2187,9 @@ def control_panel():
 
     res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
     current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
+
+    res_terms = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+    invoice_terms = res_terms[0]['setting_value'] if res_terms else ""
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -2206,7 +2218,8 @@ def control_panel():
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
-                           bs_categories=bs_cats)
+                           bs_categories=bs_cats,
+                           invoice_terms=invoice_terms)
 
 @app.route('/control_panel/update', methods=['POST'])
 @login_required
@@ -10230,6 +10243,10 @@ def invoice_print(invoice_no):
 
         grand_total = subtotal
 
+    # Fetch Terms and Conditions
+    terms_res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+    invoice_terms = terms_res[0]['setting_value'] if terms_res and terms_res[0]['setting_value'] else ""
+
     return render_template('invoice_print.html',
                            header=header,
                            customer=customer,
@@ -10239,7 +10256,8 @@ def invoice_print(invoice_no):
                            vat_rate=vat_rate,
                            vat_amount=vat_amount,
                            grand_total=grand_total,
-                           invoice_title=invoice_title)
+                           invoice_title=invoice_title,
+                           invoice_terms=invoice_terms)
 
 @app.route('/api/get_item_prices/<string:item_ids>')
 @login_required

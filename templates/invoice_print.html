@@ -192,10 +192,12 @@
 
         <div class="row">
             <div class="col-6">
-                <p class="text-muted mt-4" style="font-size: 0.85rem;">
+                {% if invoice_terms %}
+                <p class="text-muted mt-4" style="font-size: 0.85rem; white-space: pre-line;">
                     <strong>Terms & Conditions:</strong><br>
-                    Please make payment by the due date. Returns accepted within 14 days with original receipt.
+                    {{ invoice_terms }}
                 </p>
+                {% endif %}
             </div>
             <div class="col-6">
                 <table class="totals-table">

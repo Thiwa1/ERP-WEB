@@ -150,6 +150,12 @@
                             </select>
                         </div>
 
+                        <div class="mb-4">
+                            <label class="form-label fw-bold" for="invoiceTerms">Invoice Terms & Conditions</label>
+                            <textarea class="form-control" id="invoiceTerms" name="invoice_terms" rows="4" placeholder="Enter terms and conditions to display on printed invoices...">{{ invoice_terms }}</textarea>
+                            <div class="form-text">This text will be printed at the bottom of all sales invoices.</div>
+                        </div>
+
                         <button type="submit" class="btn btn-primary btn-sm fw-bold">Save Settings</button>
                     </form>
                 </div>
