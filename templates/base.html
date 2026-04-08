@@ -83,27 +83,28 @@
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05) !important;
         }
         .btn-primary {
-            background-color: #0078D4 !important;
+            background-color: var(--accent-color) !important;
             color: #ffffff !important;
+            border-color: var(--accent-color) !important;
         }
         .btn-primary:hover {
-            background-color: #005A9E !important;
+            background-color: var(--primary-color) !important;
             transform: translateY(-1px);
-            box-shadow: 0 4px 8px rgba(0, 120, 212, 0.2) !important;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15) !important;
         }
         .btn-primary:active {
             transform: translateY(0);
         }
 
         .btn-outline-primary {
-            border-color: #0078D4 !important;
-            color: #0078D4 !important;
+            border-color: var(--accent-color) !important;
+            color: var(--accent-color) !important;
             background-color: transparent !important;
         }
         .btn-outline-primary:hover {
             background-color: #f3f2f1 !important;
-            border-color: #005A9E !important;
-            color: #005A9E !important;
+            border-color: var(--primary-color) !important;
+            color: var(--primary-color) !important;
         }
 
         .btn-secondary {
@@ -287,7 +288,7 @@
             transform: translateY(-50%);
             height: 16px;
             width: 3px;
-            background-color: #0078D4;
+            background-color: var(--accent-color);
             border-radius: 0 4px 4px 0;
         }
 
@@ -301,11 +302,11 @@
         }
 
         .nav-link:hover i {
-            color: #202020;
+            color: var(--primary-color);
         }
 
         .nav-link.active i {
-            color: #0078D4;
+            color: var(--accent-color);
         }
 
         /* Specifically style the pending approvals text */
@@ -361,7 +362,7 @@
             transform: translateY(-50%);
             height: 16px;
             width: 3px;
-            background-color: #0078D4;
+            background-color: var(--accent-color);
             border-radius: 4px;
         }
 
