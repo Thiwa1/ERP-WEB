@@ -6828,19 +6828,12 @@ def get_customer_receipt_history():
     if not customer_id: return {'error': 'No customer ID'}, 400
 
     # Get Customer Name
-    conn = db.get_connection()
-    if not conn:
-        return {'error': 'Database connection failed'}, 500
-    cursor = conn.cursor()
+    cursor = db.get_connection().cursor()
     cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
     res = cursor.fetchone()
-    if not res:
-        cursor.close()
-        conn.close()
-        return {'error': 'Customer not found'}, 404
+    if not res: return {'error': 'Customer not found'}, 404
     cust_name = res[0]
     cursor.close()
-    conn.close()
 
     # Fetch History from Cash Book
     # Grouping by JV to show single line per receipt transaction if multiple invoices paid
@@ -6860,7 +6853,7 @@ def get_customer_receipt_history():
         GROUP BY jv_numbers_jv_id, cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_naration
         ORDER BY Payment_Date DESC
     """
-    cash_rows = db.execute_query(query, (cust_name,)) or []
+    cash_rows = db.execute_query(query, (cust_name,))
 
     # Fetch History from Bank Book
     query_bank = """
@@ -6876,7 +6869,7 @@ def get_customer_receipt_history():
         GROUP BY jv_numbers_jv_id, bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__naration
         ORDER BY Bank_Payment_Date DESC
     """
-    bank_rows = db.execute_query(query_bank, (cust_name,)) or []
+    bank_rows = db.execute_query(query_bank, (cust_name,))
 
     history = []
 
