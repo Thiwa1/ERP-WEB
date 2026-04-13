@@ -83,24 +83,24 @@
             <div class="col-md-6">
                 <div class="card shadow-sm mb-4 border-0 h-100">
                     <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-tags me-2"></i> Selling Price & VAT
+                        <i class="fas fa-tags me-2" style="color: #201f1e;"></i> <span style="color: #201f1e;">Selling Price & VAT</span>
                     </div>
-                    <div class="card-body bg-white">
-                        <div class="form-check form-switch mb-3">
+                    <div class="card-body bg-white pt-4">
+                        <div class="form-check form-switch win11-switch">
                             <input class="form-check-input" type="checkbox" name="market_price" id="marketPrice" {% if settings.Sales_with_market_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="marketPrice">Sales with Market Price</label>
+                            <label class="form-check-label" for="marketPrice">Sales with Market Price</label>
                         </div>
-                        <div class="form-check form-switch mb-3">
+                        <div class="form-check form-switch win11-switch">
                             <input class="form-check-input" type="checkbox" name="special_price" id="specialPrice" {% if settings.Sales_with_Special_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="specialPrice">Sales with Special Price</label>
+                            <label class="form-check-label" for="specialPrice">Sales with Special Price</label>
                         </div>
-                        <div class="form-check form-switch mb-3">
+                        <div class="form-check form-switch win11-switch">
                             <input class="form-check-input" type="checkbox" name="loyalty_price" id="loyaltyPrice" {% if settings.Loyalty_Price == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="loyaltyPrice">Loyalty Price Enabled</label>
+                            <label class="form-check-label" for="loyaltyPrice">Loyalty Price Enabled</label>
                         </div>
-                        <div class="form-check form-switch mb-3">
+                        <div class="form-check form-switch win11-switch">
                             <input class="form-check-input" type="checkbox" name="vat_enable" id="vatEnable" {% if settings.VAT_Enable == 1 %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="vatEnable">VAT Enabled</label>
+                            <label class="form-check-label" for="vatEnable">VAT Enabled</label>
                         </div>
                     </div>
                 </div>
