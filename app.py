@@ -7161,6 +7161,57 @@ def submit_customer_receipt():
 
     return redirect(url_for('customer_receipt'))
 
+@app.route('/customer_receipt/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def delete_customer_invoice():
+    jv_no = request.form.get('jv_no')
+    if not jv_no:
+        return {'success': False, 'error': 'No JV Number provided'}, 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Check if the invoice can be deleted (No partial payments made)
+        cursor.execute("""
+            SELECT invoice_total_oustanding, Invoice_Oustanding
+            FROM Invoice_Oustanding
+            WHERE invoice_JV = %s
+        """, (jv_no,))
+        inv = cursor.fetchone()
+
+        if not inv:
+            return {'success': False, 'error': 'Invoice not found'}, 404
+
+        if inv['invoice_total_oustanding'] != inv['Invoice_Oustanding']:
+            return {'success': False, 'error': 'Cannot delete invoice. Payments have already been made.'}, 400
+
+        conn.start_transaction()
+
+        # 1. Mark Invoice as deleted
+        cursor.execute("UPDATE Invoice_Oustanding SET oustanding_delete = 1 WHERE invoice_JV = %s", (jv_no,))
+
+        # 2. Reverse/Delete Inventory Records
+        cursor.execute("CALL Inventory_Delete(%s)", (jv_no,))
+
+        # 3. Reverse JV Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        conn.commit()
+        return {'success': True}
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Invoice Deletion Error: {e}")
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
 @app.route('/customer_receipt/reverse', methods=['POST'])
 @login_required
 @has_permission('Access_Reversals')
