@@ -1,6 +1,92 @@
 {% extends "base.html" %}
 
+
 {% block content %}
+<style>
+    /* Windows 11 Style Panel */
+    .win11-panel {
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
+        border: 1px solid rgba(0, 0, 0, 0.05);
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+        transition: all 0.3s ease;
+    }
+
+    .win11-panel:hover {
+        box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12);
+        border-color: rgba(0, 120, 212, 0.2);
+    }
+
+    .win11-panel .card-header {
+        background: transparent !important;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        color: #202020 !important;
+        font-weight: 600;
+        font-size: 15px;
+        padding-top: 15px !important;
+        padding-bottom: 12px !important;
+    }
+
+    .win11-panel .form-label {
+        color: #404040;
+        font-weight: 500;
+        margin-bottom: 4px;
+    }
+
+    .win11-panel .form-control, .win11-panel .form-select {
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+
+    .win11-panel .form-control:focus, .win11-panel .form-select:focus {
+        background-color: #ffffff;
+        border-color: #0078D7;
+        box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.2);
+    }
+
+    /* Tabs styling for Win11 */
+    .win11-tabs .nav-tabs {
+        border-bottom: 1px solid rgba(0,0,0,0.05);
+        gap: 4px;
+        padding: 0 10px;
+    }
+    .win11-tabs .nav-link {
+        border: none;
+        border-radius: 6px 6px 0 0;
+        color: #606060;
+        padding: 10px 16px;
+        font-weight: 500;
+        transition: all 0.2s;
+        margin-bottom: -1px;
+    }
+    .win11-tabs .nav-link:hover {
+        background: rgba(0,0,0,0.02);
+        color: #202020;
+    }
+    .win11-tabs .nav-link.active {
+        background: transparent;
+        color: #0078D7 !important;
+        border-bottom: 2px solid #0078D7;
+        font-weight: 600;
+    }
+
+    .win11-btn {
+        background-color: #0078D7;
+        border: none;
+        border-radius: 6px;
+        color: white;
+        padding: 8px 16px;
+        font-weight: 500;
+        transition: background-color 0.2s, transform 0.1s;
+    }
+    .win11-btn:hover { background-color: #006CBE; }
+    .win11-btn:active { transform: scale(0.98); }
+</style>
+
 <div class="container-fluid py-3">
     <div class="d-flex align-items-center mb-4">
     <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice-dollar me-2"></i> New Invoice Creation</h4>
@@ -89,7 +175,7 @@
             <!-- Right Panel: Controls & Inputs -->
             <div class="col-md-4">
                 <!-- Header Info -->
-                <div class="card shadow-sm mb-3 border-0">
+                <div class="card win11-panel mb-3 border-0">
                     <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
                         <i class="fas fa-info-circle me-2"></i> Invoice Details
                     </div>
@@ -143,7 +229,7 @@
                 </div>
 
                 <!-- Add Items Tabs -->
-                <div class="card shadow-sm border-0">
+                <div class="card win11-panel win11-tabs border-0">
                     <div class="card-header p-0 border-0">
                         <ul class="nav nav-tabs nav-fill" id="itemTabs" role="tablist">
                             <li class="nav-item" role="presentation">

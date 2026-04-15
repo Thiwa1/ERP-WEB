@@ -249,7 +249,7 @@
                             <button type="submit" class="btn fw-bold text-white shadow-sm" style="background-color: #27AE60; height: 38px;">
                                 Submit Receipt
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #3498DB; height: 38px;" onclick="triggerReprintModal()">
+                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #3498DB; height: 38px;">
                                 Re-Print
                             </button>
                             <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #E74C3C; height: 38px;" onclick="triggerDeleteInvoiceModal()">
@@ -261,8 +261,11 @@
 
                             <hr class="my-1">
 
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #2E86AB; height: 38px;" onclick="downloadReports()">
-                                Export Outstanding & History
+                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #2E86AB; height: 38px;">
+                                Reports
+                            </button>
+                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #2E86AB; height: 38px;">
+                                Settings
                             </button>
                         </div>
                     </div>
@@ -538,14 +541,6 @@
         console.log("Selected for reversal:", selectedReversalJV);
     }
 
-    function triggerReprintModal() {
-        if (!selectedReversalJV) {
-            alert('Please select a receipt from the Receipt History to Re-Print.');
-            return;
-        }
-        window.open(`/receipt/print/${selectedReversalJV}`, '_blank');
-    }
-
     function triggerDeleteInvoiceModal() {
         const selectedRadio = document.querySelector('.invoice-delete-select:checked');
         if (!selectedRadio) {
@@ -591,15 +586,6 @@
                 console.error(err);
             });
         }
-    }
-
-    function downloadReports() {
-        const customerId = document.getElementById('customerSelect').value;
-        if (!customerId) {
-            alert("Please select a customer first to export their data.");
-            return;
-        }
-        window.location.href = `/customer_receipt/export_report?customer_id=${customerId}`;
     }
 
     // Auto-load Logic on Page Load
