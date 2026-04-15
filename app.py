@@ -9808,9 +9808,8 @@ def system_backup():
                 # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
                 # returning a streaming response means we can't easily send the error to the client anyway
                 # once the stream has started, and a 64KB stderr buffer would hang the process.
-                err_file = tempfile.NamedTemporaryFile(mode='w+', delete=False)
                 try:
-                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err_file)
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 except FileNotFoundError:
                     logging.error(f"Backup command not found: {cmd}")
                     yield b"-- Error: MySQL dump utility not found on server.\n"
@@ -9831,9 +9830,6 @@ def system_backup():
                     # Secure cleanup
                     if os.path.exists(defaults_file.name):
                         os.remove(defaults_file.name)
-                    if 'err_file' in locals() and os.path.exists(err_file.name):
-                        err_file.close()
-                        os.remove(err_file.name)
 
             # We don't remove defaults_file in the outer finally block anymore,
             # it is cleaned up by the generator when it completes or errors out.
