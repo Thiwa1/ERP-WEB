@@ -1,5 +1,5 @@
 import flask
-from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context
+from flask import render_template, request, redirect, url_for, flash, session, make_response, Response, stream_with_context, jsonify
 from database import Database
 from datetime import datetime, date
 from functools import wraps
@@ -89,8 +89,10 @@ logging.basicConfig(
 # In production, this should be set via environment variable.
 app.secret_key = os.environ.get('SECRET_KEY')
 if not app.secret_key:
-    # Ensure a secret key is explicitly set in the environment
-    raise RuntimeError("No SECRET_KEY set for Flask application. This is a required environment variable for security.")
+    # Use a default development key if not provided, but log a loud warning
+    logging.warning("No SECRET_KEY set in environment variables. Falling back to default development key. "
+                    "This is unsafe for production. Please set SECRET_KEY in your .env file.")
+    app.secret_key = 'default-development-secret-key-change-this-in-production'
 
 app.config['SECRET_KEY'] = app.secret_key
 
@@ -745,6 +747,7 @@ def login():
                         tenant_user = tenant_user_res[0]
                         session['user_id'] = tenant_user['User_Code']
                         session['user_pk'] = tenant_user['id']
+                        run_schema_migrations()
                         return redirect(url_for('index'))
                     else:
                         flash('User record missing in tenant database.', 'danger')
@@ -802,6 +805,7 @@ def login():
                 session['user_id'] = user['User_Code']
                 session['user_pk'] = user['id']
                 session['username'] = username
+                run_schema_migrations()
                 if migrated:
                     flash('Login successful. Your password security has been upgraded.', 'success')
                 return redirect(url_for('index'))
@@ -897,6 +901,7 @@ def placeholder():
 def add_customer():
     if request.method == 'POST':
         try:
+            customer_id = request.form.get('customer_id')
             supplier_name = request.form.get('supplier_name')
             salutation = request.form.get('salutation')
             supplier_code = request.form.get('supplier_code')
@@ -921,52 +926,77 @@ def add_customer():
             current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
-            query_supplier = """
-                INSERT INTO suppliers (
-                    sup_id, supplier_name, supplier_code,
-                    supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
-                    suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
-                    supplier_create_date, suppliers_create_user,
-                    suppliers_last_edit_user, suppliers_last_edit_date,
-                    suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                    Is_Suplier, Is_Customer
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            params_supplier = (
-                0, supplier_name, supplier_code,
-                address_no, address_line_1, address_line_2, address_line_3,
-                parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user_pk,
-                current_user_pk, current_date,
-                email, vat_no, salutation,
-                0, 1 # Is_Suplier=0, Is_Customer=1
-            )
-
-            query_sub_account = """
-                INSERT INTO sub_accont_for_new_account (
-                    id_sub, sub_sub_accaount_name, sub_new_account,
-                    creat_user, creat_date, active, sub_account_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            if customer_id:
+                # Update existing customer
+                query_supplier = """
+                    UPDATE suppliers SET
+                        supplier_name=%s, supplier_code=%s,
+                        supplier_address_1=%s, supplier_address_2=%s, supplier_address_3=%s, supplier_address_4=%s,
+                        suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
+                        suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
+                        suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s
+                    WHERE sup_id=%s AND Is_Customer=1
+                """
+                params_supplier = (
+                    supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    customer_id
+                )
+            else:
+                # Insert new customer
+                query_supplier = """
+                    INSERT INTO suppliers (
+                        sup_id, supplier_name, supplier_code,
+                        supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
+                        suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
+                        supplier_create_date, suppliers_create_user,
+                        suppliers_last_edit_user, suppliers_last_edit_date,
+                        suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
+                        Is_Suplier, Is_Customer
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                params_supplier = (
+                    0, supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_date, current_user_pk,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    0, 1 # Is_Suplier=0, Is_Customer=1
+                )
 
             try:
                 with db.transaction_cursor() as cursor:
                     cursor.execute(query_supplier, params_supplier)
-                    cursor.execute(query_sub_account, (
-                        0, supplier_name, "Account Receivable",
-                        current_user, current_date, 1, 0
-                    ))
-                    last_sub_id = cursor.lastrowid
-                    new_sub_code = last_sub_id + 10001
-                    cursor.execute(
-                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                        (new_sub_code, last_sub_id)
-                    )
-                flash('Customer added successfully!', 'success')
+
+                    if not customer_id:
+                        query_sub_account = """
+                            INSERT INTO sub_accont_for_new_account (
+                                id_sub, sub_sub_accaount_name, sub_new_account,
+                                creat_user, creat_date, active, sub_account_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query_sub_account, (
+                            0, supplier_name, "Account Receivable",
+                            current_user, current_date, 1, 0
+                        ))
+                        last_sub_id = cursor.lastrowid
+                        new_sub_code = last_sub_id + 10001
+                        cursor.execute(
+                            "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                            (new_sub_code, last_sub_id)
+                        )
+                if customer_id:
+                    flash('Customer updated successfully!', 'success')
+                else:
+                    flash('Customer added successfully!', 'success')
             except Exception as e:
                 print(f"Transaction failed: {e}")
                 logging.error(f"Transaction failed: {e}")
-                flash(f'Error adding customer: {str(e)}', 'danger')
+                flash(f'Error adding/updating customer: {str(e)}', 'danger')
 
             return redirect(url_for('add_customer'))
 
@@ -980,7 +1010,16 @@ def add_customer():
         salutations = [row['salutation'] for row in salutations_data]
     except Exception as e:
         logging.error(f"Error loading salutations: {e}")
-    return render_template('add_customer.html', salutations=salutations)
+
+    customers_list = db.execute_query("""
+        SELECT sup_id as id, supplier_name, supplier_code, suppliers_teli_1, suppliers_teli_2,
+               suppliers_credit_fasility, suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail
+        FROM suppliers
+        WHERE Is_Customer = 1
+        ORDER BY sup_id DESC
+    """)
+
+    return render_template('add_customer.html', salutations=salutations, customers_list=customers_list)
 
 # --- Add Supplier (New) ---
 
@@ -1007,16 +1046,20 @@ def extract_vat_from_pdf():
                 text += page_text + " "
 
         # "AI" Regex to find VAT Numbers
-        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789)
-        vat_pattern = r'(?i)VAT\s*(?:NO|NUMBER|#)?\s*[:\-\s]?\s*([A-Z0-9]{8,15})'
+        # Matches common VAT formats (e.g., VAT NO: 123456789, VAT: GB123456789, VAT REGISTRATION NO: ...)
+        vat_pattern = r'(?i)VAT\s*(?:REGISTRATION\s*)?(?:NO\.|NO|NUMBER|#)?\s*[:\-\s]*([A-Z0-9]{5,15})'
         matches = re.findall(vat_pattern, text)
 
         if matches:
-            # Return first distinct match
-            vat_no = matches[0].strip()
-            return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
-        else:
-            return jsonify({'success': False, 'message': 'No VAT number found in the document'})
+            # Filter out matches that are purely alphabetic (like "REGISTRATION" or "CERTIFICATE")
+            valid_matches = [m.strip() for m in matches if any(char.isdigit() for char in m)]
+
+            if valid_matches:
+                # Return first distinct match that contains digits
+                vat_no = valid_matches[0]
+                return jsonify({'success': True, 'vat_no': vat_no, 'message': 'VAT extracted successfully'})
+
+        return jsonify({'success': False, 'message': 'No VAT number found in the document'})
 
     except Exception as e:
         app.logger.error(f"Error extracting VAT: {e}")
@@ -1055,50 +1098,77 @@ def add_supplier():
             current_user_pk = get_current_user_pk()
             current_date = datetime.now().date()
 
-            query_supplier = """
-                INSERT INTO suppliers (
-                    sup_id, supplier_name, supplier_code,
-                    supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
-                    suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
-                    supplier_create_date, suppliers_create_user,
-                    suppliers_last_edit_user, suppliers_last_edit_date,
-                    suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                    Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """
-            params_supplier = (
-                0, supplier_name, supplier_code,
-                address_no, address_line_1, address_line_2, address_line_3,
-                parse_float(credit_limit), contact_1, contact_2,
-                current_date, current_user_pk,
-                current_user_pk, current_date,
-                email, vat_no, salutation,
-                1, 0, tin, nic
-            )
-
-            query_sub_account = """
-                INSERT INTO sub_accont_for_new_account (
-                    id_sub, sub_sub_accaount_name, sub_new_account,
-                    creat_user, creat_date, active, sub_account_code
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """
+            if supplier_id:
+                # Update existing supplier
+                query_supplier = """
+                    UPDATE suppliers SET
+                        supplier_name=%s, supplier_code=%s,
+                        supplier_address_1=%s, supplier_address_2=%s, supplier_address_3=%s, supplier_address_4=%s,
+                        suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
+                        suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
+                        suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s,
+                        suppliers_TIN=%s, suppliers_NIC=%s
+                    WHERE sup_id=%s AND Is_Suplier=1
+                """
+                params_supplier = (
+                    supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    tin, nic,
+                    supplier_id
+                )
+            else:
+                # Insert new supplier
+                query_supplier = """
+                    INSERT INTO suppliers (
+                        sup_id, supplier_name, supplier_code,
+                        supplier_address_1, supplier_address_2, supplier_address_3, supplier_address_4,
+                        suppliers_credit_fasility, suppliers_teli_1, suppliers_teli_2,
+                        supplier_create_date, suppliers_create_user,
+                        suppliers_last_edit_user, suppliers_last_edit_date,
+                        suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
+                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """
+                params_supplier = (
+                    0, supplier_name, supplier_code,
+                    address_no, address_line_1, address_line_2, address_line_3,
+                    parse_float(credit_limit), contact_1, contact_2,
+                    current_date, current_user_pk,
+                    current_user_pk, current_date,
+                    email, vat_no, salutation,
+                    1, 0, tin, nic
+                )
 
             try:
                 with db.transaction_cursor() as cursor:
                     cursor.execute(query_supplier, params_supplier)
-                    cursor.execute(query_sub_account, (
-                        0, supplier_name, "Account Payable",
-                        current_user, current_date, 1, 0
-                    ))
-                    last_sub_id = cursor.lastrowid
-                    new_sub_code = last_sub_id + 10001
-                    cursor.execute(
-                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
-                        (new_sub_code, last_sub_id)
-                    )
-                flash('Supplier added successfully!', 'success')
+
+                    if not supplier_id:
+                        query_sub_account = """
+                            INSERT INTO sub_accont_for_new_account (
+                                id_sub, sub_sub_accaount_name, sub_new_account,
+                                creat_user, creat_date, active, sub_account_code
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        """
+                        cursor.execute(query_sub_account, (
+                            0, supplier_name, "Account Payable",
+                            current_user, current_date, 1, 0
+                        ))
+                        last_sub_id = cursor.lastrowid
+                        new_sub_code = last_sub_id + 10001
+                        cursor.execute(
+                            "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                            (new_sub_code, last_sub_id)
+                        )
+                if supplier_id:
+                    flash('Supplier updated successfully!', 'success')
+                else:
+                    flash('Supplier added successfully!', 'success')
             except Exception as e:
-                flash(f'Error adding supplier: {str(e)}', 'danger')
+                flash(f'Error adding/updating supplier: {str(e)}', 'danger')
 
             return redirect(url_for('add_supplier'))
 
@@ -1308,6 +1378,7 @@ def grn():
             narration = request.form.get('narration')
             job_no = request.form.get('job_no')
             location = request.form.get('location')
+            po_id = request.form.get('po_id')
 
             total_value = parse_float(request.form.get('total_value', 0))
             vat_rate = parse_float(request.form.get('vat_rate', 0))
@@ -1346,6 +1417,10 @@ def grn():
                 }
 
                 jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
+
+                # If Auto-Filled from PO, mark PO as completed (status = 2) so it hides from the dropdown
+                if po_id:
+                    db.execute_query("UPDATE OP_NO_Table SET status = 2 WHERE id = %s", (po_id,))
 
                 current_user_pk = get_current_user_pk()
                 flash(f'GRN created successfully. JV No: {jv_no}', 'success')
@@ -1971,7 +2046,9 @@ def create_bank_account():
 
         return redirect(url_for('create_bank_account'))
 
-    return render_template('create_bank_account.html')
+    # Fetch existing bank accounts
+    bank_accounts = db.execute_query("SELECT * FROM bank_book ORDER BY bank_book_create_date DESC")
+    return render_template('create_bank_account.html', bank_accounts=bank_accounts)
 
 # --- Create Cash Account ---
 @app.route('/create_cash_account', methods=['GET', 'POST'])
@@ -2046,7 +2123,9 @@ def create_cash_account():
 
         return redirect(url_for('create_cash_account'))
 
-    return render_template('create_cash_account.html')
+    # Fetch existing cash accounts
+    cash_accounts = db.execute_query("SELECT * FROM cash_book ORDER BY cash_creat_date DESC")
+    return render_template('create_cash_account.html', cash_accounts=cash_accounts)
 
 # --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
@@ -2056,14 +2135,21 @@ def control_panel():
     # 1. Handle Settings (Warranty & Approval)
     if request.method == 'POST':
         # Warranty & Settings
-        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form:
+        if 'warranty_enabled' in request.form or 'approval_enabled' in request.form or 'system_theme' in request.form or 'invoice_terms' in request.form:
             # Warranty Logic
-            warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
-            count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
-            if count_res and count_res[0]['cnt'] == 0:
-                db.execute_query("INSERT INTO adding_new (id, yes) VALUES (0, %s)", (warranty_enabled,), commit=True)
-            else:
-                db.execute_query("UPDATE adding_new SET yes = %s", (warranty_enabled,), commit=True)
+            try:
+                warranty_enabled = 1 if request.form.get('warranty_enabled') else 0
+                count_res = db.execute_query("SELECT COUNT(*) as cnt FROM adding_new")
+                if count_res and count_res[0]['cnt'] == 0:
+                    # MySQL schema for adding_new has a literal string 'null' as default for ac1, ac2, etc.
+                    # which violates FK constraints on new_account_table if 'null' account doesn't exist.
+                    # We must explicitly insert Python None (SQL NULL) to bypass the default string.
+                    db.execute_query("INSERT INTO adding_new (id, yes, ac1, ac2, ac3, ac4, ac5) VALUES (0, %s, %s, %s, %s, %s, %s)",
+                                     (warranty_enabled, None, None, None, None, None), commit=True)
+                else:
+                    db.execute_query("UPDATE adding_new SET yes = %s", (warranty_enabled,), commit=True)
+            except Exception as e:
+                print(f"Error updating warranty settings: {e}")
 
             # Approval Workflow Logic
             approval_enabled = 1 if request.form.get('approval_enabled') else 0
@@ -2083,22 +2169,53 @@ def control_panel():
                 else:
                     db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'system_theme'", (new_theme,), commit=True)
 
+            # Invoice Terms
+            if 'invoice_terms' in request.form:
+                try:
+                    new_terms = request.form.get('invoice_terms', '')
+                    check_terms = db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+                    if not check_terms:
+                        db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES ('invoice_terms_conditions', %s, 'Terms and Conditions displayed on Invoices')", (new_terms,), commit=True)
+                    else:
+                        db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'invoice_terms_conditions'", (new_terms,), commit=True)
+                except Exception as e:
+                    print(f"Error updating invoice_terms: {e}")
+
             flash('Settings updated', 'success')
             return redirect(url_for('control_panel'))
 
     # 2. Fetch Status
-    res = db.execute_query("SELECT yes FROM adding_new")
     warranty_enabled = False
-    if res and res[0]['yes'] == 1:
-        warranty_enabled = True
+    try:
+        res = db.execute_query("SELECT yes FROM adding_new")
+        if res and isinstance(res, list) and len(res) > 0 and res[0].get('yes') == 1:
+            warranty_enabled = True
+    except Exception as e:
+        print(f"Control panel error (warranty): {e}")
 
-    res_app = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
     approval_enabled = False
-    if res_app and res_app[0]['setting_value'] == '1':
-        approval_enabled = True
+    try:
+        res_app = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+        if res_app and isinstance(res_app, list) and len(res_app) > 0 and res_app[0].get('setting_value') == '1':
+            approval_enabled = True
+    except Exception as e:
+        print(f"Control panel error (approval): {e}")
 
-    res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
-    current_theme_key = res_theme[0]['setting_value'] if res_theme else 'default'
+    current_theme_key = 'default'
+    try:
+        res_theme = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'system_theme'")
+        if res_theme and isinstance(res_theme, list) and len(res_theme) > 0 and res_theme[0].get('setting_value'):
+            current_theme_key = res_theme[0]['setting_value']
+    except Exception as e:
+        print(f"Control panel error (theme): {e}")
+
+    invoice_terms = ""
+    try:
+        res_terms = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+        if res_terms and isinstance(res_terms, list) and len(res_terms) > 0 and 'setting_value' in res_terms[0]:
+            invoice_terms = res_terms[0]['setting_value'] or ""
+    except Exception as e:
+        print(f"Error fetching invoice_terms: {e}")
 
     # 3. Fetch Unassigned P&L Accounts (Income or Expense but no P&L Category)
     unassigned_pl = db.execute_query("""
@@ -2127,7 +2244,8 @@ def control_panel():
                            unassigned_pl=unassigned_pl,
                            unassigned_bs=unassigned_bs,
                            pl_categories=pl_cats,
-                           bs_categories=bs_cats)
+                           bs_categories=bs_cats,
+                           invoice_terms=invoice_terms)
 
 @app.route('/control_panel/update', methods=['POST'])
 @login_required
@@ -2743,7 +2861,7 @@ def print_cheque(jv_no):
         SELECT
             b.Bank_Payment_Date as date,
             b.bank_book__suplier_name as payee,
-            SUM(b.bank_book_book_recode_dr) as amount,
+            SUM(b.bank_book__recode_cr) as amount,
             b.bank_book__accont_name as bank_account
         FROM bank_book_recod b
         WHERE b.jv_numbers_jv_id = %s
@@ -2919,16 +3037,16 @@ def _get_supplier_history_data(sup_name, payment_type):
                    cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
                    User_Enter as extra, jv_numbers_jv_id as extra2
             FROM cash_book_recode
-            WHERE cash_book_recode_suplier_name = %s
+            WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
             ORDER BY chash_book_recod_id DESC
         """, (sup_name,))
     else:
         history = db.execute_query("""
             SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
                    bank_book__accont_name as account, bank_book__recode_cr as amount,
-                   bank_book__naration as extra, NULL as extra2
+                   bank_book__naration as extra, jv_numbers_jv_id as extra2
             FROM bank_book_recod
-            WHERE bank_book__suplier_name = %s
+            WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
             ORDER BY id DESC
         """, (sup_name,))
 
@@ -2938,11 +3056,11 @@ def _get_supplier_history_data(sup_name, payment_type):
             'voucher': h['voucher'],
             'date': str(h['date']),
             'account': h['account'],
-            'amount': float(h['amount'] or 0)
+            'amount': float(h['amount'] or 0),
+            'jv_no': h['extra2']
         }
         if payment_type == 'cash':
             item['user_id'] = h['extra']
-            item['jv_no'] = h['extra2']
         else:
             item['narration'] = h['extra']
         hist_list.append(item)
@@ -3178,7 +3296,9 @@ def print_voucher(voucher_type, jv_no):
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
                 'amount': 'SUM(c.cash_book_recode_dr)',
-                'user_id': 'c.User_Enter'
+                'user_id': 'c.User_Enter',
+                'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(c.User_Revers)'
             },
             'where': 'c.jv_numbers_jv_id = %s',
             'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date', 'c.cash_book_recode_suplier_name',
@@ -3193,9 +3313,11 @@ def print_voucher(voucher_type, jv_no):
                 'paid_to': 'b.bank_book__suplier_name',
                 'paid_from': 'b.bank_book__accont_name',
                 'narration': 'b.bank_book__naration',
-                'amount': 'SUM(b.bank_book_book_recode_dr)',
+                'amount': 'SUM(b.bank_book__recode_cr)',
                 'user_id': 'b.Bank_User_Id',
-                'cheque_no': 'b.bank_book_chque_no'
+                'cheque_no': 'b.bank_book_chque_no',
+                'is_reversed': 'CASE WHEN MAX(b.bank_book_book_recode_dr) > 0 THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(b.bank_book_book_recode_dr)'
             },
             'where': 'b.jv_numbers_jv_id = %s',
             'group_by': ['b.bank_book_recod_voucher_no', 'b.Bank_Payment_Date', 'b.bank_book__suplier_name',
@@ -3211,7 +3333,9 @@ def print_voucher(voucher_type, jv_no):
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
                 'amount': 'SUM(c.cash_book_recode_dr)',
-                'user_id': 'c.User_Enter'
+                'user_id': 'c.User_Enter',
+                'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
+                'reversal_id': 'MAX(c.User_Revers)'
             },
             'where': 'c.jv_numbers_jv_id = %s',
             'group_by': ['c.cash_book_recod_voucher_no', 'c.Payment_Date',
@@ -3231,6 +3355,15 @@ def print_voucher(voucher_type, jv_no):
     if not res:
         return "Voucher Not Found", 404
     voucher = res[0]
+
+    # Change title if reversed
+    if voucher.get('is_reversed'):
+        config['title'] = "REVERSED PAYMENT VOUCHER"
+        # Bank uses the amount itself as 'reversal ID' flag currently; we can format it better if we want, or just show the JV.
+        if voucher_type == 'bank':
+            voucher['reversal_id'] = f"REV-JV-{jv_no}"
+        else:
+            voucher['reversal_id'] = f"User: {voucher.get('reversal_id')} (JV: {jv_no})"
 
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
@@ -3412,7 +3545,7 @@ def list_purchase_orders():
             (SELECT SUM(d.QTY * d.Unit_price) FROM PO_Recode_Details d WHERE d.Link_OP_NO_Table = h.id) as subtotal,
             h.VAT_Rate
         FROM OP_NO_Table h
-        WHERE h.Delete_PO = 0
+        WHERE h.Delete_PO = 0 AND h.status = 1
         ORDER BY h.id DESC
     """
     rows = db.execute_query(query)
@@ -3761,179 +3894,6 @@ def toggle_job_status():
         flash(f'Error updating job: {str(e)}', 'danger')
 
     return redirect(url_for('job_management'))
-
-# --- Job Profit Analysis ---
-@app.route('/job_profit_analysis', methods=['GET'])
-@login_required
-@has_permission('Access_Reports')
-def job_profit_analysis():
-    jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit ORDER BY job_number DESC")
-    default_from = date.today().replace(day=1).strftime('%Y-%m-%d')
-    default_to = date.today().strftime('%Y-%m-%d')
-    return render_template('job_profit_analysis.html', jobs=jobs, default_from=default_from, default_to=default_to)
-
-@app.route('/job_profit_analysis/data', methods=['POST'])
-@login_required
-@has_permission('Access_Reports')
-def job_profit_analysis_data():
-    data = request.json
-    scope = data.get('scope', 'single')
-    job_ids = data.get('job_ids', [])
-    from_date = data.get('from_date')
-    to_date = data.get('to_date')
-
-    # Handle single select coming as string vs list
-    if isinstance(job_ids, str): job_ids = [job_ids]
-    if not job_ids and scope in ['single', 'compare']:
-        return {'error': 'Please select job(s)'}, 400
-
-    # Build Filters
-    params = []
-    where_clause = "WHERE (na.account_income = 1 OR na.account_expenses = 1) AND ed.entry_deleted = 0"
-
-    # Job Filter
-    if scope == 'single' or scope == 'compare':
-        placeholders = ','.join(['%s'] * len(job_ids))
-        where_clause += f" AND ed.entry_job_number IN ({placeholders})"
-        params.extend(job_ids)
-    elif scope == 'open':
-        where_clause += " AND ed.entry_job_number IN (SELECT job_number FROM jobs_unit WHERE job_finsh = 0)"
-    elif scope == 'closed':
-        where_clause += " AND ed.entry_job_number IN (SELECT job_number FROM jobs_unit WHERE job_finsh = 1)"
-
-    # Date Filter
-    if from_date and to_date:
-        where_clause += " AND ed.entry_effective_date BETWEEN %s AND %s"
-        params.extend([from_date, to_date])
-
-    # Fetch Data
-    # Group by Job if Comparison, else Aggregate
-    group_cols = "na.account_name, na.account_name_of_catogory_PL, na.account_hold_possion_PL, na.account_income, na.account_expenses"
-    select_cols = group_cols
-
-    if scope == 'compare':
-        # If comparing, we need pivot-like data.
-        # Easier to fetch flat list (Account, Job, Amount) and process in Python
-        query = f"""
-            SELECT
-                ed.entry_job_number,
-                na.account_name,
-                na.account_name_of_catogory_PL as category,
-                na.account_hold_possion_PL as sort_order,
-                na.account_income,
-                SUM(COALESCE(ed.enty_values_CR, 0) - COALESCE(ed.enty_values_DR, 0)) as income_amount,
-                SUM(COALESCE(ed.enty_values_DR, 0) - COALESCE(ed.enty_values_CR, 0)) as expense_amount
-            FROM entry_details ed
-            JOIN new_account_table na ON ed.account_name = na.account_name
-            {where_clause}
-            GROUP BY ed.entry_job_number, {group_cols}
-            ORDER BY na.account_hold_possion_PL, na.account_name
-        """
-    else:
-        # Standard View (Aggregated)
-        query = f"""
-            SELECT
-                na.account_name,
-                na.account_name_of_catogory_PL as category,
-                na.account_hold_possion_PL as sort_order,
-                na.account_income,
-                SUM(COALESCE(ed.enty_values_CR, 0) - COALESCE(ed.enty_values_DR, 0)) as income_amount,
-                SUM(COALESCE(ed.enty_values_DR, 0) - COALESCE(ed.enty_values_CR, 0)) as expense_amount
-            FROM entry_details ed
-            JOIN new_account_table na ON ed.account_name = na.account_name
-            {where_clause}
-            GROUP BY {group_cols}
-            ORDER BY na.account_hold_possion_PL, na.account_name
-        """
-
-    rows = db.execute_query(query, tuple(params))
-
-    # Process Logic
-    summary = {'income': 0, 'expense': 0, 'profit': 0, 'margin': 0}
-    result_rows = []
-
-    if scope == 'compare':
-        # Organize by Account -> Job columns
-        acc_map = {}
-        unique_jobs = set()
-
-        for r in rows:
-            key = (r['category'], r['account_name'])
-            job = str(r['entry_job_number'])
-            unique_jobs.add(job)
-
-            val = float(r['income_amount']) if r['account_income'] == 1 else float(r['expense_amount'])
-
-            # Global Summary
-            if r['account_income'] == 1: summary['income'] += val
-            else: summary['expense'] += val
-
-            if key not in acc_map:
-                acc_map[key] = {'amounts': {}}
-
-            acc_map[key]['amounts'][job] = val
-
-        summary['profit'] = summary['income'] - summary['expense']
-        summary['margin'] = round((summary['profit'] / summary['income'] * 100) if summary['income'] else 0, 2)
-
-        for (cat, acc), data in acc_map.items():
-            total = sum(data['amounts'].values())
-            result_rows.append({
-                'category': cat or 'Uncategorized',
-                'account': acc,
-                'amounts': data['amounts'],
-                'total': total
-            })
-
-        return {'mode': 'compare', 'jobs': sorted(list(unique_jobs)), 'rows': result_rows, 'summary': summary}
-
-    else:
-        # Standard Aggregated View (with Categories)
-        grouped = {}
-
-        for r in rows:
-            cat = r['category'] or 'Uncategorized'
-            if cat not in grouped: grouped[cat] = {'total': 0, 'accounts': []}
-
-            val = float(r['income_amount']) if r['account_income'] == 1 else float(r['expense_amount'])
-
-            # Summary
-            if r['account_income'] == 1: summary['income'] += val
-            else: summary['expense'] += val
-
-            if val != 0:
-                grouped[cat]['accounts'].append({
-                    'name': r['account_name'],
-                    'val': val
-                })
-                grouped[cat]['total'] += val
-
-        summary['profit'] = summary['income'] - summary['expense']
-        summary['margin'] = round((summary['profit'] / summary['income'] * 100) if summary['income'] else 0, 2)
-
-        # Flatten for table
-        base_amt = summary['income'] # For % calculation (usually % of Sales)
-
-        for cat, data in grouped.items():
-            # Header Row
-            result_rows.append({
-                'is_header': True,
-                'category': cat,
-                'account': '',
-                'amount': data['total'],
-                'percent': round((data['total'] / base_amt * 100) if base_amt else 0, 1)
-            })
-            # Detail Rows
-            for acc in data['accounts']:
-                result_rows.append({
-                    'is_header': False,
-                    'category': '',
-                    'account': acc['name'],
-                    'amount': acc['val'],
-                    'percent': round((acc['val'] / base_amt * 100) if base_amt else 0, 1)
-                })
-
-        return {'mode': 'standard', 'rows': result_rows, 'summary': summary}
 
 # --- Warranty Period Management ---
 @app.route('/warranty_period', methods=['GET'])
@@ -5006,6 +4966,7 @@ def add_new_price_tier():
 @has_permission('Access_Inventory')
 def inventory_balance():
     view = request.args.get('view', 'all')
+    download = request.args.get('download')
     report_data = []
 
     if view == 'all':
@@ -5014,6 +4975,50 @@ def inventory_balance():
         report_data = db.execute_query("CALL inventory_balance_02()")
     elif view == 'out':
         report_data = db.execute_query("CALL inventory_balance_03()")
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+
+        if view == 'all':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Total Qty', 'Total Price'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    r.get('inventory_recod_mesrmet', ''),
+                    f"{r.get('SUM(inventory_recod_moument_in - inventory_recod_movment_out)', 0):.2f}",
+                    f"{r.get('SUM(inventory_recod_total_value)', 0):.2f}"
+                ])
+        elif view == 'low':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Current Balance', 'Min Qty', 'Status', 'Category-Main', 'Category-Sub'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    r.get('inventoy_items_messurment_unit', ''),
+                    f"{r.get('current_balance', 0):.2f}",
+                    f"{r.get('min_qty', 0):.2f}",
+                    r.get('status', ''),
+                    r.get('Main_Catogry', ''),
+                    r.get('Sub_Catogory', '')
+                ])
+        elif view == 'out':
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Quantity'])
+            for i, r in enumerate(report_data):
+                cw.writerow([
+                    i + 1,
+                    r.get('inventoy_name', ''),
+                    r.get('inventoy_code', ''),
+                    f"{r.get('Curent_Qty', 0):.2f}"
+                ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Inventory_Balance_{view}_{date.today()}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
 
     return render_template('inventory_balance.html', view=view, report_data=report_data)
 
@@ -5758,7 +5763,328 @@ def supplier_aging():
                                'report_date': today
                            })
 
-# --- Supplier Aging Report ---
+# --- Customer Aging Report ---
+@app.route('/customer_aging')
+@login_required
+@has_permission('Access_Reports')
+def customer_aging():
+    selected_customer = request.args.get('customer_id')
+    download = request.args.get('download')
+
+    # Load Customers for Dropdown
+    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
+
+    # Aging Query
+    query = """
+        SELECT
+            s.sup_id as CustomerId,
+            s.supplier_name as CustomerName,
+            io.invoice_number as InvoiceNumber,
+            io.invoice_date as InvoiceDate,
+            io.invoice_final_date as FinalDate,
+            io.invoice_total_oustanding as InvoiceTotal,
+            COALESCE(io.invoice_oustanding_Patment, 0) as PaidAmount,
+            (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) as Outstanding
+        FROM invoice_oustanding io
+        INNER JOIN suppliers s ON io.invoice_buinding_Customer = s.sup_id
+        WHERE s.Is_Customer = 1
+        AND io.oustanding_delete = 0
+        AND (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) > 0
+    """
+
+    params = []
+    if selected_customer:
+        query += " AND s.sup_id = %s"
+        params.append(selected_customer)
+
+    query += " ORDER BY s.supplier_name, io.invoice_final_date"
+
+    rows = db.execute_query(query, tuple(params))
+
+    # Process Aging
+    aging_data = []
+    today = date.today()
+
+    buckets = {
+        'Current': 0.0,
+        '1-30 Days': 0.0,
+        '31-60 Days': 0.0,
+        '61-90 Days': 0.0,
+        'Over 90 Days': 0.0
+    }
+
+    for r in rows:
+        due_date = r['FinalDate']
+        # Calculate days overdue (Today - Due Date)
+        if isinstance(due_date, datetime):
+            due_date = due_date.date()
+
+        age_days = (today - due_date).days if due_date else 0
+
+        bucket = "Current"
+        if age_days > 90: bucket = "Over 90 Days"
+        elif age_days > 60: bucket = "61-90 Days"
+        elif age_days > 30: bucket = "31-60 Days"
+        elif age_days > 0: bucket = "1-30 Days"
+        else: bucket = "Current"
+
+        r['AgeDays'] = age_days
+        r['AgingBucket'] = bucket
+        r['Outstanding'] = float(r['Outstanding'])
+
+        buckets[bucket] += r['Outstanding']
+        aging_data.append(r)
+
+    total_outstanding = sum(r['Outstanding'] for r in aging_data)
+    total_invoices = len(aging_data)
+    total_customers = len(set(r['CustomerId'] for r in aging_data))
+
+    # Export to CSV
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Customer ID', 'Customer Name', 'Invoice No', 'Invoice Date', 'Due Date', 'Invoice Amount', 'Paid Amount', 'Outstanding', 'Age (Days)', 'Aging Bucket'])
+
+        for r in aging_data:
+            cw.writerow([
+                r['CustomerId'],
+                r['CustomerName'],
+                r['InvoiceNumber'],
+                r['InvoiceDate'],
+                r['FinalDate'],
+                f"{float(r['InvoiceTotal']):.2f}",
+                f"{float(r['PaidAmount']):.2f}",
+                f"{r['Outstanding']:.2f}",
+                r['AgeDays'],
+                r['AgingBucket']
+            ])
+
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=Customer_Aging_Report_{today}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
+    return render_template('customer_aging.html',
+                           customers=customers,
+                           selected_customer=int(selected_customer) if selected_customer else None,
+                           rows=aging_data,
+                           buckets=buckets,
+                           summary={
+                               'total_outstanding': total_outstanding,
+                               'total_invoices': total_invoices,
+                               'total_customers': total_customers,
+                               'report_date': today
+                           })
+
+
+# --- Job Profit Analysis Report ---
+@app.route('/job_profit_analysis', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def job_profit_analysis():
+    job_number = request.args.get('job_number')
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    download = request.args.get('download')
+
+    # Defaults
+    if not from_date:
+        from_date = (date.today() - timedelta(days=30)).strftime('%Y-%m-%d')
+    if not to_date:
+        to_date = date.today().strftime('%Y-%m-%d')
+
+    # Load Jobs
+    jobs = db.execute_query("""
+        SELECT DISTINCT job_number
+        FROM jobs_unit
+        WHERE (job_finsh = 0 OR job_finsh IS NULL)
+        AND (job_cancell = 0 OR job_cancell IS NULL)
+        ORDER BY job_number
+    """)
+
+    profit_loss_data = []
+    ratio_data = []
+    summary = {
+        'total_income': 0.0,
+        'total_expenses': 0.0,
+        'net_profit': 0.0,
+        'profit_margin': 0.0,
+    }
+
+    if job_number and job_number.isdigit():
+        query = """
+            SELECT
+                CASE
+                    WHEN nat.account_income = 1 THEN 'Income'
+                    WHEN nat.account_expenses = 1 THEN 'Expenses'
+                    ELSE 'Other'
+                END as AccountType,
+                COALESCE(nat.account_name_of_catogory_PL, 'Uncategorized') as CategoryName,
+                COALESCE(nat.account_hold_possion_PL, 999) as CategoryOrder,
+                nat.account_name as AccountName,
+                COALESCE(SUM(
+                    CASE
+                        WHEN nat.account_income = 1 THEN (ed.enty_values_CR - ed.enty_values_DR)
+                        WHEN nat.account_expenses = 1 THEN (ed.enty_values_DR - ed.enty_values_CR)
+                        ELSE 0
+                    END
+                ), 0) as Amount
+            FROM entry_details ed
+            INNER JOIN new_account_table nat ON ed.account_name = nat.account_name
+            WHERE ed.entry_job_number = %s
+                AND ed.entry_effective_date BETWEEN %s AND %s
+                AND (nat.account_income = 1 OR nat.account_expenses = 1)
+                AND ed.entry_deleted = 0
+            GROUP BY AccountType, CategoryName, CategoryOrder, nat.account_name
+            HAVING Amount != 0
+            ORDER BY AccountType DESC, CategoryOrder, Amount DESC
+        """
+
+        rows = db.execute_query(query, (job_number, from_date, to_date))
+
+        # Calculate totals
+        total_income = sum(r['Amount'] for r in rows if r['AccountType'] == 'Income')
+        total_expenses = sum(r['Amount'] for r in rows if r['AccountType'] == 'Expenses')
+        net_profit = total_income - total_expenses
+        profit_margin = (net_profit / total_income * 100) if total_income > 0 else 0
+
+        summary = {
+            'total_income': total_income,
+            'total_expenses': total_expenses,
+            'net_profit': net_profit,
+            'profit_margin': profit_margin
+        }
+
+        # Build categorized P&L Tree
+        categories = {}
+        for r in rows:
+            ctype = r['AccountType']
+            cname = r['CategoryName']
+            key = (ctype, cname)
+
+            if key not in categories:
+                categories[key] = {
+                    'AccountType': ctype,
+                    'CategoryName': cname,
+                    'CategoryOrder': r['CategoryOrder'],
+                    'CategoryTotal': 0.0,
+                    'AccountCount': 0,
+                    'Accounts': []
+                }
+
+            categories[key]['CategoryTotal'] += r['Amount']
+            categories[key]['AccountCount'] += 1
+
+            perc = 0
+            if ctype == 'Income' and total_income > 0:
+                perc = r['Amount'] / total_income * 100
+            elif ctype == 'Expenses' and total_expenses > 0:
+                perc = r['Amount'] / total_expenses * 100
+
+            categories[key]['Accounts'].append({
+                'AccountName': r['AccountName'],
+                'Amount': r['Amount'],
+                'Percentage': perc
+            })
+
+        # Sort and flatten categories for UI
+        sorted_categories = sorted(categories.values(), key=lambda x: (x['AccountType'] == 'Expenses', x['CategoryOrder']))
+
+        for cat in sorted_categories:
+            profit_loss_data.append(cat)
+
+        # Ratio Analysis Data
+        if total_income > 0:
+            ratio_data.append({
+                'RatioType': "Profit Margin",
+                'Value': profit_margin,
+                'Description': "Net Profit as percentage of Total Income"
+            })
+            ratio_data.append({
+                'RatioType': "Expense Ratio",
+                'Value': (total_expenses / total_income) * 100,
+                'Description': "Total Expenses as percentage of Total Income"
+            })
+            ratio_data.append({
+                'RatioType': "Gross Profit Ratio",
+                'Value': profit_margin, # Simplified same as margin in this context
+                'Description': "Gross Profit as percentage of Total Income"
+            })
+
+        if total_expenses > 0:
+            ratio_data.append({
+                'RatioType': "Return on Investment",
+                'Value': (net_profit / total_expenses) * 100,
+                'Description': "Net Profit as percentage of Total Expenses"
+            })
+
+        for cat in sorted_categories:
+            if cat['AccountType'] == 'Expenses' and cat['CategoryTotal'] > 0:
+                if total_income > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Income",
+                        'Value': (cat['CategoryTotal'] / total_income) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Income"
+                    })
+                if total_expenses > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Expenses",
+                        'Value': (cat['CategoryTotal'] / total_expenses) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Expenses"
+                    })
+            elif cat['AccountType'] == 'Income' and cat['CategoryTotal'] > 0:
+                if total_income > 0:
+                    ratio_data.append({
+                        'RatioType': f"{cat['CategoryName']} % of Income",
+                        'Value': (cat['CategoryTotal'] / total_income) * 100,
+                        'Description': f"{cat['CategoryName']} as percentage of Total Income"
+                    })
+
+        # CSV Export
+        if download == 'csv':
+            si = io.StringIO()
+            cw = csv.writer(si)
+            cw.writerow(['Account Type', 'Category', 'Account Name', 'Amount', 'Percentage'])
+
+            for cat in sorted_categories:
+                # Calculate category percentage
+                if cat['AccountType'] == 'Income':
+                    cat_perc = (cat['CategoryTotal'] / total_income) * 100 if total_income > 0 else 0
+                else:
+                    cat_perc = (cat['CategoryTotal'] / total_expenses) * 100 if total_expenses > 0 else 0
+
+                cw.writerow([cat['AccountType'], cat['CategoryName'], 'CATEGORY TOTAL', f"{cat['CategoryTotal']:.2f}", f"{cat_perc:.2f}%"])
+
+                for acc in cat['Accounts']:
+                    cw.writerow([cat['AccountType'], cat['CategoryName'], acc['AccountName'], f"{acc['Amount']:.2f}", f"{acc['Percentage']:.2f}%"])
+                cw.writerow([])
+
+            cw.writerow([])
+            cw.writerow(['SUMMARY'])
+            cw.writerow(['Total Income', f"{total_income:.2f}"])
+            cw.writerow(['Total Expenses', f"{total_expenses:.2f}"])
+            cw.writerow(['Net Profit/Loss', f"{net_profit:.2f}"])
+            cw.writerow(['Profit Margin', f"{profit_margin:.2f}%"])
+
+            output = make_response(si.getvalue())
+            output.headers["Content-Disposition"] = f"attachment; filename=Job_Profit_Analysis_{job_number}_{date.today()}.csv"
+            output.headers["Content-type"] = "text/csv"
+            return output
+
+    safe_selected_job = None
+    if job_number and job_number.isdigit():
+        safe_selected_job = int(job_number)
+
+    return render_template('job_profit_analysis.html',
+                           jobs=jobs,
+                           selected_job=safe_selected_job,
+                           from_date=from_date,
+                           to_date=to_date,
+                           profit_loss_data=profit_loss_data,
+                           ratio_data=ratio_data,
+                           summary=summary)
+
+# --- Sales Summary Cashier ---
 @app.route('/sales_summary_cashier', methods=['GET'])
 @login_required
 @has_permission('Access_Reports')
@@ -6060,6 +6386,8 @@ def pos_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6078,11 +6406,14 @@ def pos_reversal_process():
         flash(f'Transaction {jv} reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing transaction: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('pos_reversal'))
 
@@ -6104,7 +6435,7 @@ def bank_payment_reversal():
             b.jv_numbers_jv_id as JV
         FROM bank_book_recod b
         WHERE b.bank_book__recode_cr > 0
-        AND b.User_Revers IS NULL
+        AND (b.bank_book_book_recode_dr IS NULL OR b.bank_book_book_recode_dr = 0)
         ORDER BY b.Bank_Payment_Date DESC, b.id DESC
         LIMIT 50
     """
@@ -6148,6 +6479,21 @@ def bank_payment_reversal_details():
     gl_query = f"SELECT entry_jv, account_name, enty_values_DR, enty_values_CR FROM entry_details WHERE entry_jv IN ({format_strings})"
     gl_rows = db.execute_query(gl_query, jv_tuple)
 
+    # Fetch Inventory Movements
+    inv_rec_query = f"""
+        SELECT
+            JV_No,
+            inventoy_name,
+            inventoy_code,
+            inventory_recod_moument_in,
+            inventory_recod_movment_out,
+            inventory_recod_unit_price,
+            inventory_recod_suplier_iv_no,
+            inventory_recod_location
+        FROM inventory_recod WHERE JV_No IN ({format_strings})
+    """
+    inv_rec_rows = db.execute_query(inv_rec_query, jv_tuple)
+
     text = ""
     for current_jv in jvs:
         jv_inv_rows = [r for r in inv_rows if str(r.get('jv_numbers_jv_id')) == current_jv]
@@ -6173,7 +6519,21 @@ def bank_payment_reversal_details():
             else:
                 text += "\nGL Entries:\n"
             for gl in jv_gl_rows:
-                text += f"{gl['account_name']}: DR {gl['enty_values_DR']} | CR {gl['enty_values_CR']}\n"
+                text += f"Account Name:-  {gl['account_name']} Accout Dr:- {gl['enty_values_DR']} Accout Cr:- {gl['enty_values_CR']}\n"
+
+        jv_inv_rec_rows = [ir for ir in inv_rec_rows if str(ir.get('JV_No')) == current_jv]
+        if jv_inv_rec_rows:
+            text += "------------------------\n"
+            for ir in jv_inv_rec_rows:
+                text += (
+                    f"Inventory Name:-  {ir['inventoy_name']} "
+                    f"Inventory Code:- {ir['inventoy_code']} "
+                    f"Item Add:-  {ir['inventory_recod_moument_in']} "
+                    f"Item Issue:-  {ir['inventory_recod_movment_out']} "
+                    f"Item Price:-  {ir['inventory_recod_unit_price']} "
+                    f"IV No:-  {ir['inventory_recod_suplier_iv_no']} "
+                    f"Location:-  {ir['inventory_recod_location']}\n"
+                )
 
     text += "\nDo you need to reverse this entry?"
 
@@ -6189,6 +6549,8 @@ def bank_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6207,11 +6569,14 @@ def bank_payment_reversal_process():
         flash(f'Bank Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing bank payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('bank_payment_reversal'))
 
@@ -6251,6 +6616,8 @@ def cash_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6269,11 +6636,14 @@ def cash_payment_reversal_process():
         flash(f'Cash Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing cash payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('cash_payment_reversal'))
 
@@ -6314,6 +6684,8 @@ def direct_payment_reversal_process():
 
     current_user = get_current_user_id()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -6335,11 +6707,14 @@ def direct_payment_reversal_process():
         flash(f'Direct Payment (JV: {jv}) reversed successfully.', 'success')
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error reversing direct payment: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     return redirect(url_for('direct_payment_reversal'))
 
@@ -6422,12 +6797,13 @@ def get_customer_outstanding():
     query = """
         SELECT
             Id, invoice_number, invoice_date, invoice_final_date,
-            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding, invoice_JV
+            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding,
+            invoice_JV
         FROM Invoice_Oustanding
         WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
         ORDER BY invoice_date
     """
-    rows = db.execute_query(query, (customer_id,)) or []
+    rows = db.execute_query(query, (customer_id,))
 
     # Format for JSON
     data = []
@@ -6435,7 +6811,7 @@ def get_customer_outstanding():
         data.append({
             'id': r['Id'],
             'inv_no': r['invoice_number'],
-            'jv_no': r.get('invoice_JV', ''),
+            'jv_no': str(r['invoice_JV'] or ''),
             'date': str(r['invoice_date']),
             'due_date': str(r['invoice_final_date']),
             'total': float(r['invoice_total_oustanding'] or 0),
@@ -6477,7 +6853,7 @@ def get_customer_receipt_history():
         GROUP BY jv_numbers_jv_id, cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name, cash_book_recode_naration
         ORDER BY Payment_Date DESC
     """
-    cash_rows = db.execute_query(query, (cust_name,)) or []
+    cash_rows = db.execute_query(query, (cust_name,))
 
     # Fetch History from Bank Book
     query_bank = """
@@ -6493,7 +6869,7 @@ def get_customer_receipt_history():
         GROUP BY jv_numbers_jv_id, bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name, bank_book__naration
         ORDER BY Bank_Payment_Date DESC
     """
-    bank_rows = db.execute_query(query_bank, (cust_name,)) or []
+    bank_rows = db.execute_query(query_bank, (cust_name,))
 
     history = []
 
@@ -6523,76 +6899,6 @@ def get_customer_receipt_history():
     history.sort(key=lambda x: x['date'], reverse=True)
 
     return {'history': history}
-
-@app.route('/customer_receipt/export_report')
-@login_required
-def export_customer_report():
-    import csv
-    import io
-    from flask import make_response
-
-    customer_id = request.args.get('customer_id')
-    if not customer_id:
-        return "Customer ID required", 400
-
-    cursor = db.get_connection().cursor(dictionary=True)
-    cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
-    res = cursor.fetchone()
-    if not res:
-        return "Customer not found", 404
-    cust_name = res['customer_name']
-
-    # Reuse data fetching logic implicitly
-    out_query = """
-        SELECT invoice_number, invoice_date, invoice_final_date,
-               invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding
-        FROM Invoice_Oustanding
-        WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
-        ORDER BY invoice_date
-    """
-    out_rows = db.execute_query(out_query, (customer_id,)) or []
-
-    cash_query = """
-        SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
-               SUM(cash_book_recode_dr) as amount, cash_book_recode_accont_name as account
-        FROM cash_book_recode WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
-        GROUP BY jv_numbers_jv_id, cash_book_recod_voucher_no, Payment_Date, cash_book_recode_accont_name
-    """
-    cash_rows = db.execute_query(cash_query, (cust_name,)) or []
-
-    bank_query = """
-        SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
-               SUM(bank_book_book_recode_dr) as amount, bank_book__accont_name as account
-        FROM bank_book_recod WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
-        GROUP BY jv_numbers_jv_id, bank_book_recod_voucher_no, Bank_Payment_Date, bank_book__accont_name
-    """
-    bank_rows = db.execute_query(bank_query, (cust_name,)) or []
-
-    # Write CSV
-    si = io.StringIO()
-    cw = csv.writer(si)
-
-    cw.writerow(['--- OUTSTANDING INVOICES ---'])
-    cw.writerow(['Invoice No', 'Date', 'Due Date', 'Due Total', 'Received', 'Payable'])
-    for r in out_rows:
-        cw.writerow([
-            r['invoice_number'], r['invoice_date'], r['invoice_final_date'],
-            r['invoice_total_oustanding'], r['invoice_oustanding_Patment'], r['Invoice_Oustanding']
-        ])
-
-    cw.writerow([])
-    cw.writerow(['--- RECEIPT HISTORY ---'])
-    cw.writerow(['Type', 'Voucher', 'Date', 'Amount', 'Account'])
-    for r in cash_rows:
-        cw.writerow(['Cash', r['voucher'], r['date'], r['amount'], r['account']])
-    for r in bank_rows:
-        cw.writerow(['Bank', r['voucher'], r['date'], r['amount'], r['account']])
-
-    output = make_response(si.getvalue())
-    output.headers["Content-Disposition"] = f"attachment; filename=Customer_{cust_name}_Report.csv"
-    output.headers["Content-type"] = "text/csv"
-    return output
-
 
 @app.route('/receipt/print/<int:jv_no>')
 @login_required
@@ -6678,9 +6984,24 @@ def print_receipt(jv_no):
 def submit_customer_receipt():
     customer_id = request.form.get('customer_id')
     account_type = request.form.get('account_type') # 'cash' or 'bank'
-    account_name = request.form.get('account_name')
+
+    if account_type == 'cash':
+        account_name = request.form.get('cash_account')
+    else:
+        account_name = request.form.get('bank_account')
+
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
+
+    # Optional extended WPF fields
+    manual_receipt_no = request.form.get('manual_receipt_no')
+    payment_method = request.form.get('payment_method')
+    online_payment_received = request.form.get('online_payment_received') == 'on'
+    transaction_code = request.form.get('transaction_code')
+    card_last_digits = request.form.get('card_last_digits')
+    bank_transfer_confirmed = request.form.get('bank_transfer_confirmed') == 'on'
+    transfer_id = request.form.get('transfer_id')
+    cheque_no = request.form.get('cheque_no')
 
     if not customer_id or not account_name:
         flash('Missing required fields', 'danger')
@@ -6797,8 +7118,25 @@ def submit_customer_receipt():
                         cash_book_recode_suplier_name, jv_numbers_jv_id,
                         cash_book_recod_voucher_no, User_Enter, Payment_Date
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
         else:
+            # Insert into cash_bank_payment_type first (mirroring WPF)
+            cursor.execute("""
+                INSERT INTO cash_bank_payment_type (
+                    manua_recipt_number, onlie_payment_recived, online_transaction_code,
+                    credit_card_no, bank_transfer, bank_transfer_id, bank_cheque, JV
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                manual_receipt_no,
+                1 if online_payment_received else 0,
+                transaction_code,
+                card_last_digits,
+                1 if bank_transfer_confirmed else 0,
+                transfer_id,
+                cheque_no,
+                jv_no
+            ))
+
             # Bank Recode
             for p in payments:
                 cursor.execute("""
@@ -6806,9 +7144,9 @@ def submit_customer_receipt():
                         bank_book_book_recode_dr, bank_book__recode_cr, bank_book__accont_name,
                         bank_book__naration, bank_book__suplier_oustanding_id,
                         bank_book__suplier_name, jv_numbers_jv_id,
-                        bank_book_recod_voucher_no, Bank_User_Id, Bank_Payment_Date
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, receipt_no, current_user, payment_date))
+                        bank_book_recod_voucher_no, bank_book_chque_no, Bank_User_Id, Bank_Payment_Date
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
 
         conn.commit()
         flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')
@@ -6822,6 +7160,91 @@ def submit_customer_receipt():
         conn.close()
 
     return redirect(url_for('customer_receipt'))
+
+@app.route('/customer_receipt/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def delete_customer_invoice():
+    jv_no = request.form.get('jv_no')
+    if not jv_no:
+        return {'success': False, 'error': 'No JV Number provided'}, 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        # Check if the invoice can be deleted (No partial payments made)
+        cursor.execute("""
+            SELECT invoice_total_oustanding, Invoice_Oustanding
+            FROM Invoice_Oustanding
+            WHERE invoice_JV = %s
+        """, (jv_no,))
+        inv = cursor.fetchone()
+
+        if not inv:
+            return {'success': False, 'error': 'Invoice not found'}, 404
+
+        if inv['invoice_total_oustanding'] != inv['Invoice_Oustanding']:
+            return {'success': False, 'error': 'Cannot delete invoice. Payments have already been made.'}, 400
+
+        conn.start_transaction()
+
+        # 1. Mark Invoice as deleted
+        cursor.execute("UPDATE Invoice_Oustanding SET oustanding_delete = 1 WHERE invoice_JV = %s", (jv_no,))
+
+        # 2. Reverse/Delete Inventory Records
+        cursor.execute("CALL Inventory_Delete(%s)", (jv_no,))
+
+        # 3. Reverse JV Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        conn.commit()
+        return {'success': True}
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Invoice Deletion Error: {e}")
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+@app.route('/customer_receipt/reverse', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def reverse_customer_receipt():
+    jv_no = request.form.get('jv_no')
+
+    if not jv_no:
+        return {'success': False, 'error': 'No JV Number provided'}, 400
+
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Reverse JV entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        # 2. Reverse Receipt specifics
+        cursor.execute("CALL Revers_Recept_Simple(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        conn.commit()
+        return {'success': True}
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Receipt Reversal Error: {e}")
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 # --- Profit & Loss Report ---
 
@@ -7348,7 +7771,7 @@ def pos_settings():
         if 'receipt_logo' in request.files:
             file = request.files['receipt_logo']
             if file.filename != '':
-                img_data = file.read() # Store as bytes in BLOB
+                img_data = base64.b64encode(file.read()).decode('utf-8')
 
         try:
             if not user_id:
@@ -7800,6 +8223,7 @@ def pos_web_login():
                 session['username'] = username
                 session['user_id'] = user['User_Name']
                 session['user_pk'] = user['Id']
+                run_schema_migrations()
 
                 return redirect(url_for('pos'))
     except Exception as e:
@@ -7898,6 +8322,7 @@ def pos_reset_password():
         session['username'] = user['User_Name']
         session['user_id'] = user['User_Name']
         session['user_pk'] = user['Id']
+        run_schema_migrations()
 
         session.pop('pending_pos_user_id', None)
         session.pop('pending_pos_company', None)
@@ -8538,7 +8963,7 @@ def run_schema_migrations(target_db_conn=None):
         # 10. Master Payment Voucher Sequence
         cursor.execute("SHOW TABLES LIKE 'master_payment_voucher_no'")
         if not cursor.fetchone():
-            print("Migrating: Creating master_payment_voucher_no table")
+            logging.info("Migrating: Creating master_payment_voucher_no table")
             cursor.execute("""
                 CREATE TABLE master_payment_voucher_no (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -8552,7 +8977,7 @@ def run_schema_migrations(target_db_conn=None):
         cursor.execute("SHOW COLUMNS FROM bank_book_recod")
         bbr_cols = [row[0] for row in cursor.fetchall()]
         if 'master_voucher_no' not in bbr_cols:
-            print("Migrating: Adding master_voucher_no to bank_book_recod")
+            logging.info("Migrating: Adding master_voucher_no to bank_book_recod")
             cursor.execute("ALTER TABLE bank_book_recod ADD COLUMN master_voucher_no BIGINT DEFAULT 0")
         # Default Theme Setting
         cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
@@ -9371,7 +9796,7 @@ def system_backup():
             # Since we are in python, we can pipe output to string or file.
 
             cmd = [
-                'mysqldump',
+                dump_cmd,
                 f'--defaults-extra-file={defaults_file.name}',
                 '--', # End of options
                 db_name
@@ -9383,7 +9808,14 @@ def system_backup():
                 # To keep it simple and avoid deadlock, we pipe stderr to DEVNULL since
                 # returning a streaming response means we can't easily send the error to the client anyway
                 # once the stream has started, and a 64KB stderr buffer would hang the process.
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                err_file = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+                try:
+                    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=err_file)
+                except FileNotFoundError:
+                    logging.error(f"Backup command not found: {cmd}")
+                    yield b"-- Error: MySQL dump utility not found on server.\n"
+                    return
+
                 try:
                     while True:
                         chunk = process.stdout.read(8192)
@@ -9399,6 +9831,9 @@ def system_backup():
                     # Secure cleanup
                     if os.path.exists(defaults_file.name):
                         os.remove(defaults_file.name)
+                    if 'err_file' in locals() and os.path.exists(err_file.name):
+                        err_file.close()
+                        os.remove(err_file.name)
 
             # We don't remove defaults_file in the outer finally block anymore,
             # it is cleaned up by the generator when it completes or errors out.
@@ -9795,6 +10230,121 @@ def invoice_creating():
                            inventory_items=items,
                            today_date=today_date)
 
+@app.route('/invoice_print/<string:invoice_no>')
+@login_required
+@has_permission('Access_Accounting')
+def invoice_print(invoice_no):
+    # Fetch Invoice Header from Invoice_Oustanding
+    header = db.execute_query("""
+        SELECT o.invoice_number, o.invoice_date, o.invoice_final_date as due_date,
+               o.invoice_buinding_Customer as customer_id, o.invoice_JV,
+               o.VAT_rate as vat_rate
+        FROM Invoice_Oustanding o
+        WHERE o.invoice_number = %s
+        LIMIT 1
+    """, (invoice_no,))
+
+    if not header:
+        flash("Invoice not found.", "danger")
+        return redirect(url_for('invoice_creating'))
+
+    header = header[0]
+
+    # Fetch Customer Info
+    customer = db.execute_query("""
+        SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3, suppliers_TIN, suppliers_vat_regidter_no
+        FROM suppliers
+        WHERE sup_id = %s
+        LIMIT 1
+    """, (header['customer_id'],))
+    customer = customer[0] if customer else {}
+
+    # Fetch Company Info
+    company = db.execute_query("""
+        SELECT company_name, company_land_line, company_addras_1, company_addras_2, company_addras_3, vat_registered, company_vate_code
+        FROM company
+        LIMIT 1
+    """)
+    company = company[0] if company else {}
+
+    # Fetch Invoice Line Items
+    items = db.execute_query("""
+        SELECT Item_Name as invoice_item_name, Qty as invoice_qty, Pricing as invoice_price, mesurment as invoice_unit
+        FROM Invoice_Recode
+        WHERE JV_No = %s
+    """, (header['invoice_JV'],))
+
+    # Determine VAT Compliance & Invoice Type
+    company_vat = company.get('company_vate_code') and str(company['company_vate_code']).strip()
+
+    # Customer can have VAT in TIN or VAT NO field
+    cust_vat = (customer.get('suppliers_TIN') and str(customer['suppliers_TIN']).strip()) or \
+               (customer.get('suppliers_vat_regidter_no') and str(customer['suppliers_vat_regidter_no']).strip())
+
+    vat_rate = header['vat_rate'] or 0.0
+    subtotal = 0.0
+    vat_amount = 0.0
+
+    if company_vat and cust_vat and vat_rate > 0:
+        # CASE 1: Both registered -> TAX INVOICE with explicit VAT
+        invoice_title = "TAX INVOICE"
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item['total'] = raw_total
+            subtotal += item['total']
+
+        vat_amount = (subtotal * vat_rate) / 100
+        grand_total = subtotal + vat_amount
+
+    elif company_vat and not cust_vat and vat_rate > 0:
+        # CASE 2: Company registered, Customer NOT -> INVOICE with VAT rolled into items
+        invoice_title = "INVOICE"
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item_vat_amount = (raw_total * vat_rate) / 100
+
+            # Roll VAT into line items
+            item['total'] = raw_total + item_vat_amount
+            item['invoice_price'] = item['invoice_price'] + ((item['invoice_price'] * vat_rate) / 100)
+
+            subtotal += item['total']
+
+        grand_total = subtotal
+        vat_rate = 0.0 # Hide explicit VAT display
+        vat_amount = 0.0
+
+    else:
+        # CASE 3: Company not registered -> Standard INVOICE, no VAT charged
+        invoice_title = "INVOICE"
+        vat_rate = 0.0
+        for item in items:
+            raw_total = item['invoice_qty'] * item['invoice_price']
+            item['total'] = raw_total
+            subtotal += item['total']
+
+        grand_total = subtotal
+
+    # Fetch Terms and Conditions
+    invoice_terms = ""
+    try:
+        terms_res = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'invoice_terms_conditions'")
+        if terms_res and isinstance(terms_res, list) and len(terms_res) > 0 and 'setting_value' in terms_res[0]:
+            invoice_terms = terms_res[0]['setting_value'] or ""
+    except Exception as e:
+        print(f"Error fetching invoice_terms for print: {e}")
+
+    return render_template('invoice_print.html',
+                           header=header,
+                           customer=customer,
+                           company=company,
+                           items=items,
+                           subtotal=subtotal,
+                           vat_rate=vat_rate,
+                           vat_amount=vat_amount,
+                           grand_total=grand_total,
+                           invoice_title=invoice_title,
+                           invoice_terms=invoice_terms)
+
 @app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
 def api_get_item_prices(item_ids):
@@ -10096,7 +10646,25 @@ def submit_invoice():
     current_user = get_current_user_id()
     # current_user_pk is unused in the transaction below
 
-    # 2. Database Transaction
+    # 2. Validate VAT Registration Rule (Warnings Only)
+    if apply_vat == 'Yes' and vat_rate > 0:
+        company_res = db.execute_query("SELECT company_vate_code FROM company LIMIT 1")
+        company_vat = company_res[0]['company_vate_code'] if company_res else None
+
+        cust_res = db.execute_query("SELECT suppliers_TIN, suppliers_vat_regidter_no FROM suppliers WHERE sup_id = %s", (customer_name,))
+        cust_vat = None
+        if cust_res:
+            cust_vat = (cust_res[0].get('suppliers_TIN') and str(cust_res[0]['suppliers_TIN']).strip()) or \
+                       (cust_res[0].get('suppliers_vat_regidter_no') and str(cust_res[0]['suppliers_vat_regidter_no']).strip())
+
+        if not company_vat or not str(company_vat).strip():
+            flash('Warning: Your Company is not VAT registered. The invoice will be processed at standard selling prices without adding a VAT component.', 'warning')
+            vat_rate = 0.0
+            apply_vat = 'No'
+        elif not cust_vat:
+            flash('Notice: The Customer is not VAT registered. A commercial invoice will be generated with VAT-inclusive selling prices.', 'info')
+
+    # 3. Database Transaction
     conn = db.get_connection()
     if not conn:
         flash('Database connection failed.', 'danger')
@@ -10106,6 +10674,9 @@ def submit_invoice():
     conn.start_transaction()
 
     try:
+        # Check Payment Type
+        payment_type = request.form.get('payment_type', 'Credit')
+
         # 3. Generate Invoice No (Credit_Invoice_No table)
         cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
         inv_id_seq = cursor.lastrowid
@@ -10167,7 +10738,7 @@ def submit_invoice():
         )
         post_invoice_gl_entries(gl_ctx)
         conn.commit()
-        flash(f'Invoice {invoice_no} created successfully.', 'success')
+        flash(f'Invoice {invoice_no} created successfully.|{invoice_no}', 'success')
 
     except Exception as e:
         conn.rollback()
