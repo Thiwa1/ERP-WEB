@@ -5,18 +5,25 @@
 {% block content %}
 <style>
     body {
-        background-color: #f3f2f1;
+        background-color: #f3f3f3; /* Win11 base background */
     }
     .dashboard-container {
-        padding: 20px;
+        padding: 24px;
+        max-width: 1200px;
+        margin: 0 auto;
     }
 
+    /* Win11 Fluent Panel */
     .overview-panel {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 24px;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(30px);
+        -webkit-backdrop-filter: blur(30px);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 12px;
+        padding: 28px;
         margin-bottom: 24px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
     }
 
     .overview-header {
@@ -24,51 +31,65 @@
         justify-content: space-between;
         align-items: center;
         margin-bottom: 24px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid rgba(0,0,0,0.05);
     }
 
     .overview-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #201f1e;
+        font-family: 'Segoe UI Variable Display', 'Segoe UI', sans-serif;
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #202020;
         margin: 0;
     }
 
     .all-apps-link {
-        color: #605e5c;
+        color: #0067C0; /* Win11 primary blue */
         text-decoration: none;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
         font-weight: 500;
+        padding: 6px 12px;
+        border-radius: 6px;
+        transition: background 0.2s ease;
     }
 
     .all-apps-link:hover {
-        color: #201f1e;
+        background: rgba(0, 103, 192, 0.1);
+        color: #005A9E;
     }
 
     .app-grid {
-        display: flex;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
         gap: 16px;
-        flex-wrap: wrap;
     }
 
+    /* Win11 Tile Item */
     .app-tile {
-        flex: 1;
-        min-width: 100px;
-        max-width: 140px;
-        background: #faf9f8;
-        border-radius: 12px;
-        padding: 20px 10px;
+        background: rgba(255, 255, 255, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 8px;
+        padding: 20px 12px;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-decoration: none;
-        color: #201f1e;
-        transition: transform 0.2s, box-shadow 0.2s;
+        color: #202020;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     }
 
     .app-tile:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        color: #201f1e;
+        transform: translateY(-3px) scale(1.02);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+        background: rgba(255, 255, 255, 0.9);
+        color: #000;
+        border-color: rgba(0, 103, 192, 0.3);
+    }
+
+    .app-tile:active {
+        transform: scale(0.98);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
     .app-icon-wrapper {
@@ -78,37 +99,39 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 12px;
+        font-size: 1.4rem;
+        margin-bottom: 14px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
         color: white;
-        font-size: 1.5rem;
     }
 
-    /* Icon Colors based on image */
-    .bg-blue { background-color: #0078D4; }
-    .bg-green { background-color: #107C10; }
-    .bg-yellow { background-color: #FFB900; }
-    .bg-red { background-color: #E81123; }
-    .bg-cyan { background-color: #00BFFF; }
-    .bg-grey { background-color: #7A7574; }
+    .app-title {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.85rem;
+        font-weight: 500;
+        text-align: center;
+        line-height: 1.2;
+    }
 
-
+    /* Category styles */
     .app-category {
-        margin-bottom: 30px;
+        margin-bottom: 24px;
     }
     .app-category-title {
         font-size: 1.1rem;
         font-weight: 600;
-        color: #323130;
+        color: #404040;
         margin-bottom: 16px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #edebe9;
-    }
-    .app-title {
-        font-size: 0.85rem;
-        font-weight: 500;
-        text-align: center;
+        padding-left: 4px;
     }
 
+    /* Icon Colors */
+    .bg-blue { background: linear-gradient(135deg, #0078D4, #005A9E); }
+    .bg-green { background: linear-gradient(135deg, #107C10, #0B5A0B); }
+    .bg-yellow { background: linear-gradient(135deg, #FFB900, #D29200); }
+    .bg-red { background: linear-gradient(135deg, #E81123, #A80000); }
+    .bg-cyan { background: linear-gradient(135deg, #00B7C3, #008A93); }
+    .bg-grey { background: linear-gradient(135deg, #605E5C, #3B3A39); }
 </style>
 
 <div class="dashboard-container">
