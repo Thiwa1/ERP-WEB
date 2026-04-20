@@ -197,7 +197,7 @@
             border: 1px solid rgba(0,0,0,0.05);
             background: #ffffff;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
-            overflow: hidden;
+            overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */
             margin-bottom: 20px;
         }
 
@@ -673,7 +673,7 @@
             height: 4px;
             background: rgba(0,0,0,0.05);
             border-radius: 4px;
-            overflow: hidden;
+            overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */
             position: relative;
         }
 
@@ -704,7 +704,7 @@
             border-radius: 16px;
             border: 1px solid rgba(0,0,0,0.08);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-            overflow: hidden;
+            overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */
         }
         .modal-pro .modal-header {
             background: linear-gradient(to right, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.95));
@@ -746,7 +746,7 @@
             box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.3s ease;
             height: 100%;
-            overflow: hidden;
+            overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */
         }
         .qa-card:hover {
             transform: translateY(-4px);
@@ -1075,7 +1075,7 @@
             justify-content: center; margin-bottom: 8px; font-size: 28px;
             background: transparent; box-shadow: none;
         }
-        .win11-app-icon span { font-size: 12px; text-align: center; line-height: 1.2; font-weight: 400; width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .win11-app-icon span { font-size: 12px; text-align: center; line-height: 1.2; font-weight: 400; width: 100%; overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */ text-overflow: ellipsis; white-space: nowrap; }
 
         .icon-blue i { color: #0078D7; }
         .icon-green i { color: #107C10; }
