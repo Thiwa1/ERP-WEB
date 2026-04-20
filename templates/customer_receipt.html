@@ -65,6 +65,7 @@
                                     </tr>
                                 </tbody>
                             </table>
+                    </div>
                         </div>
                     </div>
                 </div>
@@ -469,21 +470,11 @@
 
         // 2. Load History
         fetch(`/customer_receipt/get_history?customer_id=${customerId}`)
-            .then(res => {
-                if (!res.ok) {
-                    return res.text().then(text => { throw new Error(text) });
-                }
-                return res.json();
-            })
+            .then(res => res.json())
             .then(data => {
                 histBody.innerHTML = '';
 
-                if (data.error) {
-                    histBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>Error: ${data.error}</td></tr>`;
-                    return;
-                }
-
-                if (!data.history || data.history.length === 0) {
+                if (data.history.length === 0) {
                     histBody.innerHTML = '<tr><td colspan="10" class="text-center py-4 text-muted fst-italic">No receipt history found.</td></tr>';
                 } else {
                     data.history.forEach((h, index) => {
@@ -514,10 +505,6 @@
                         histBody.innerHTML += row;
                     });
                 }
-            })
-            .catch(err => {
-                console.error("History fetch error:", err);
-                histBody.innerHTML = `<tr><td colspan="10" class="text-center py-4 text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>Failed to load history: ${err.message || 'Server Error'}</td></tr>`;
             });
     }
 
