@@ -6828,14 +6828,9 @@ def get_customer_receipt_history():
     if not customer_id: return {'error': 'No customer ID'}, 400
 
     # Get Customer Name
-    conn = db.get_connection()
-    if not conn: return {'error': '2055: Cursor is not connected'}, 500
-    cursor = conn.cursor()
-    cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
-    res = cursor.fetchone()
+    res = db.execute_query("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
     if not res: return {'error': 'Customer not found'}, 404
-    cust_name = res[0]
-    cursor.close()
+    cust_name = res[0]['customer_name']
 
     # Fetch History from Cash Book
     # Grouping by JV to show single line per receipt transaction if multiple invoices paid
