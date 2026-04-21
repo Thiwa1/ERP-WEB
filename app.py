@@ -6323,20 +6323,25 @@ def pos_receipt(jv_no):
         # Calculate Active Price
         active_price = selling_price # Default
 
-        if is_loyalty and r['Loyalty_Price_Active'] == 1:
+        # Safely convert to int
+        loyalty_active = int(r['Loyalty_Price_Active'] or 0)
+        special_active = int(r['Sales_with_Special_price_Active'] or 0)
+        market_active = int(r['Sales_with_market_price_Active'] or 0)
+
+        if is_loyalty and loyalty_active == 1:
             active_price = loyalty_price
-        elif r['Sales_with_Special_price_Active'] == 1:
+        elif special_active == 1:
             active_price = special_price
-        elif r['Sales_with_market_price_Active'] == 1:
+        elif market_active == 1:
             active_price = selling_price
 
         # Savings Calculation
         # If Special Active: Saving = Selling - Special
         # If Loyalty Active: Saving = Selling - Loyalty
         saving_per_unit = 0
-        if r['Sales_with_Special_price_Active'] == 1 and not is_loyalty:
+        if special_active == 1 and not is_loyalty:
             saving_per_unit = selling_price - special_price
-        elif r['Loyalty_Price_Active'] == 1 and is_loyalty:
+        elif loyalty_active == 1 and is_loyalty:
             saving_per_unit = selling_price - loyalty_price
 
         # Add to lists
