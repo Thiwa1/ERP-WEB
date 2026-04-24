@@ -6316,38 +6316,20 @@ def pos_receipt(jv_no):
 
     for r in rows:
         qty = float(r['QuntirySale'])
-        selling_price = float(r['SllingPrice'] or 0)
-        special_price = float(r['ItemPriceComen'] or 0)
-        loyalty_price = float(r['ItemLoyalityPrice'] or 0)
+        selling_price = float(r['SllingPrice'] or 0) # Market price per unit
 
-        # Calculate Active Price
-        active_price = selling_price # Default
+        # We rely strictly on the database's Total_Value which the frontend/legacy app already computed correctly!
+        line_total = float(r['Total_Value'] or 0)
 
-        # Safely convert to int
-        loyalty_active = int(r['Loyalty_Price_Active'] or 0)
-        special_active = int(r['Sales_with_Special_price_Active'] or 0)
-        market_active = int(r['Sales_with_market_price_Active'] or 0)
+        # Reverse engineer the actual charged unit price for the receipt display
+        unit_charged_price = line_total / qty if qty > 0 else line_total
 
-        if is_loyalty and loyalty_active == 1:
-            active_price = loyalty_price
-        elif special_active == 1:
-            active_price = special_price
-        elif market_active == 1:
-            active_price = selling_price
-
-        # Savings Calculation
-        # If Special Active: Saving = Selling - Special
-        # If Loyalty Active: Saving = Selling - Loyalty
-        saving_per_unit = 0
-        if special_active == 1 and not is_loyalty:
-            saving_per_unit = selling_price - special_price
-        elif loyalty_active == 1 and is_loyalty:
-            saving_per_unit = selling_price - loyalty_price
-
-        # Add to lists
-        line_total = active_price * qty
-        line_saving = saving_per_unit * qty
         line_original = selling_price * qty
+
+        # Saving is simply Original (Market) - Final Charged
+        line_saving = 0
+        if line_original > line_total:
+            line_saving = line_original - line_total
 
         total_sales += line_total
         total_savings += line_saving
@@ -6357,7 +6339,7 @@ def pos_receipt(jv_no):
             'name': r['ItemName'],
             'qty': qty,
             'unit': r['ItemMesurmet'],
-            'price': active_price,
+            'price': unit_charged_price,
             'total': line_total,
             'saving': line_saving
         })
