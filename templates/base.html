@@ -1084,6 +1084,10 @@
         .icon-teal i { color: #008272; }
         .icon-red i { color: #E81123; }
 
+        .win11-app-icon-placeholder {
+            display: block; width: 100%; height: 100%; pointer-events: none;
+        }
+
         .win11-recommended { display: flex; flex-direction: column; gap: 8px; }
         .win11-recents-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         .win11-recent-item {
@@ -1123,94 +1127,102 @@
                     <button class="win11-btn-all" data-bs-dismiss="modal">All apps <i class="fas fa-chevron-right ms-1" style="font-size: 10px;"></i></button>
                 </div>
 
-                <div class="win11-pinned-grid" id="win10GridContainer">
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Company Setup</span>
-                        <a href="/company_profile" class="win11-app-icon win10-tile" data-name="company profile">
-                            <div class="icon-wrapper icon-blue"><i class="fas fa-id-card"></i></div><span>Company</span>
-                        </a>
-                        <a href="/create_bank_account" class="win11-app-icon win10-tile" data-name="bank account">
-                            <div class="icon-wrapper icon-blue"><i class="fas fa-university"></i></div><span>Bank Acc</span>
-                        </a>
-                        <a href="/create_cash_account" class="win11-app-icon win10-tile" data-name="cash account">
-                            <div class="icon-wrapper icon-green"><i class="fas fa-wallet"></i></div><span>Cash Acc</span>
-                        </a>
-                        <a href="/admin/users" class="win11-app-icon win10-tile" data-name="users admin">
-                            <div class="icon-wrapper icon-blue"><i class="fas fa-user-plus"></i></div><span>Users</span>
-                        </a>
-                        <a href="/control_panel" class="win11-app-icon win10-tile" data-name="system control panel">
-                            <div class="icon-wrapper icon-blue"><i class="fas fa-sliders-h"></i></div><span>System</span>
-                        </a>
-                    </div>
+                                <div class="win11-pinned-grid" id="win10GridContainer">
+                    <!-- Row 1 -->
+                    <a href="/company_profile" class="win11-app-icon win10-tile" data-name="company profile">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-id-card"></i></div><span>Company</span>
+                    </a>
+                    <a href="/add_customer" class="win11-app-icon win10-tile" data-name="add customer">
+                        <div class="icon-wrapper icon-green"><i class="fas fa-user-tag"></i></div><span>Customer</span>
+                    </a>
+                    <a href="/pos_settings" class="win11-app-icon win10-tile" data-name="pos settings">
+                        <div class="icon-wrapper icon-orange"><i class="fas fa-cogs"></i></div><span>POS Set</span>
+                    </a>
+                    <a href="/balance_sheet_category" class="win11-app-icon win10-tile" data-name="balance sheet category">
+                        <div class="icon-wrapper icon-purple"><i class="fas fa-balance-scale"></i></div><span>Bal Sheet</span>
+                    </a>
+                    <a href="/invoice_creating" class="win11-app-icon win10-tile" data-name="sales invoice">
+                        <div class="icon-wrapper icon-red"><i class="fas fa-file-invoice-dollar"></i></div><span>Sales Inv</span>
+                    </a>
+                    <a href="/inventory_locations" class="win11-app-icon win10-tile" data-name="inventory house">
+                        <div class="icon-wrapper icon-teal"><i class="fas fa-warehouse"></i></div><span>Inv House</span>
+                    </a>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Suppliers & Customers</span>
-                        <a href="/add_customer" class="win11-app-icon win10-tile" data-name="add new customer">
-                            <div class="icon-wrapper icon-green"><i class="fas fa-user-tag"></i></div><span>Customer</span>
-                        </a>
-                        <a href="/add_supplier" class="win11-app-icon win10-tile" data-name="add new supplier">
-                            <div class="icon-wrapper icon-green"><i class="fas fa-truck"></i></div><span>Supplier</span>
-                        </a>
-                    </div>
+                    <!-- Row 2 -->
+                    <a href="/create_bank_account" class="win11-app-icon win10-tile" data-name="bank account">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-university"></i></div><span>Bank Acc</span>
+                    </a>
+                    <a href="/add_supplier" class="win11-app-icon win10-tile" data-name="add supplier">
+                        <div class="icon-wrapper icon-green"><i class="fas fa-truck"></i></div><span>Supplier</span>
+                    </a>
+                    <a href="/warranty_period" class="win11-app-icon win10-tile" data-name="warranty period">
+                        <div class="icon-wrapper icon-orange"><i class="fas fa-shield-alt"></i></div><span>Warranty</span>
+                    </a>
+                    <a href="/pl_category" class="win11-app-icon win10-tile" data-name="profit loss category">
+                        <div class="icon-wrapper icon-purple"><i class="fas fa-chart-pie"></i></div><span>P&L Cat</span>
+                    </a>
+                    <a href="/proforma_invoice" class="win11-app-icon win10-tile" data-name="proforma invoice">
+                        <div class="icon-wrapper icon-red"><i class="fas fa-file-contract"></i></div><span>Proforma Inv</span>
+                    </a>
+                    <a href="/add_inventory_item" class="win11-app-icon win10-tile" data-name="inventory item">
+                        <div class="icon-wrapper icon-teal"><i class="fas fa-box"></i></div><span>Inv Item</span>
+                    </a>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Point of Sales</span>
-                        <a href="/pos_settings" class="win11-app-icon win10-tile" data-name="pos settings">
-                            <div class="icon-wrapper icon-orange"><i class="fas fa-cogs"></i></div><span>POS Set</span>
-                        </a>
-                        <a href="/warranty_period" class="win11-app-icon win10-tile" data-name="warranty period">
-                            <div class="icon-wrapper icon-orange"><i class="fas fa-shield-alt"></i></div><span>Warranty</span>
-                        </a>
-                    </div>
+                    <!-- Row 3 -->
+                    <a href="/create_cash_account" class="win11-app-icon win10-tile" data-name="cash account">
+                        <div class="icon-wrapper icon-green"><i class="fas fa-wallet"></i></div><span>Cash Acc</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <a href="/add_new_account" class="win11-app-icon win10-tile" data-name="new account">
+                        <div class="icon-wrapper icon-purple"><i class="fas fa-file-invoice"></i></div><span>New Acc</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Accounting</span>
-                        <a href="/balance_sheet_category" class="win11-app-icon win10-tile" data-name="balance sheet category">
-                            <div class="icon-wrapper icon-purple"><i class="fas fa-balance-scale"></i></div><span>Bal Sheet</span>
-                        </a>
-                        <a href="/pl_category" class="win11-app-icon win10-tile" data-name="profit loss category">
-                            <div class="icon-wrapper icon-purple"><i class="fas fa-chart-pie"></i></div><span>P&L Cat</span>
-                        </a>
-                        <a href="/add_new_account" class="win11-app-icon win10-tile" data-name="add new account">
-                            <div class="icon-wrapper icon-purple"><i class="fas fa-file-invoice"></i></div><span>New Acc</span>
-                        </a>
-                        <a href="/bulk_upload_gl" class="win11-app-icon win10-tile" data-name="bulk upload gl">
-                            <div class="icon-wrapper icon-purple"><i class="fas fa-file-upload"></i></div><span>Bulk GL</span>
-                        </a>
-                        <a href="/job_profit_analysis" class="win11-app-icon win10-tile" data-name="job profit analysis">
-                            <div class="icon-wrapper icon-blue"><i class="fas fa-briefcase"></i></div><span>Job Profit</span>
-                        </a>
-                    </div>
+                    <!-- Row 4 -->
+                    <a href="/admin/users" class="win11-app-icon win10-tile" data-name="users">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-user-plus"></i></div><span>Users</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <a href="/bulk_upload_gl" class="win11-app-icon win10-tile" data-name="bulk upload gl">
+                        <div class="icon-wrapper icon-purple"><i class="fas fa-file-upload"></i></div><span>Bulk GL</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Sales & Invoicing</span>
-                        <a href="/invoice_creating" class="win11-app-icon win10-tile" data-name="sales invoice">
-                            <div class="icon-wrapper icon-red"><i class="fas fa-file-invoice-dollar"></i></div><span>Sales Inv</span>
-                        </a>
-                        <a href="/proforma_invoice" class="win11-app-icon win10-tile" data-name="proforma invoice">
-                            <div class="icon-wrapper icon-red"><i class="fas fa-file-contract"></i></div><span>Proforma Inv</span>
-                        </a>
-                    </div>
+                    <!-- Row 5 -->
+                    <a href="/control_panel" class="win11-app-icon win10-tile" data-name="system control">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-sliders-h"></i></div><span>System</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <a href="/job_profit_analysis" class="win11-app-icon win10-tile" data-name="job profit analysis">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-briefcase"></i></div><span>Job Profit</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Inventory Management</span>
-                        <a href="/inventory_locations" class="win11-app-icon win10-tile" data-name="inventory locations house">
-                            <div class="icon-wrapper icon-teal"><i class="fas fa-warehouse"></i></div><span>Inv House</span>
-                        </a>
-                        <a href="/add_inventory_item" class="win11-app-icon win10-tile" data-name="add inventory item">
-                            <div class="icon-wrapper icon-teal"><i class="fas fa-box"></i></div><span>Inv Item</span>
-                        </a>
-                    </div>
+                    <!-- Row 6 -->
+                    <a href="/tax_settings" class="win11-app-icon win10-tile" data-name="tax settings">
+                        <div class="icon-wrapper icon-teal"><i class="fas fa-percent"></i></div><span>Tax</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
 
-                    <div class="win10-category" style="display: contents;">
-                        <span class="win11-category-title">Other Tools</span>
-                        <a href="/tax_settings" class="win11-app-icon win10-tile" data-name="tax settings">
-                            <div class="icon-wrapper icon-teal"><i class="fas fa-percent"></i></div><span>Tax</span>
-                        </a>
-                        <a href="/system_backup" class="win11-app-icon win10-tile" data-name="system backup download">
-                            <div class="icon-wrapper icon-red"><i class="fas fa-download"></i></div><span>Backup</span>
-                        </a>
-                    </div>
+                    <!-- Row 7 -->
+                    <a href="/system_backup" class="win11-app-icon win10-tile" data-name="system backup">
+                        <div class="icon-wrapper icon-red"><i class="fas fa-download"></i></div><span>Backup</span>
+                    </a>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
+                    <div class="win11-app-icon-placeholder"></div>
                 </div>
 
                 <div class="win11-recommended" id="win10RecentCategory">

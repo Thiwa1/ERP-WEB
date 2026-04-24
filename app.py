@@ -823,12 +823,6 @@ def logout():
     session.clear()
     return redirect(url_for('login'))
 
-
-@app.route('/new')
-@login_required
-def system_flow():
-    return render_template('new_flow.html')
-
 @app.route('/')
 def index():
     if 'user_id' not in session:
