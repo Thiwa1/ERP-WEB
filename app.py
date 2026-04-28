@@ -225,9 +225,26 @@ def setup_master_db():
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 company_name VARCHAR(255) NOT NULL UNIQUE,
                 db_name VARCHAR(255) NOT NULL UNIQUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_active TINYINT DEFAULT 1,
+                gb_used DOUBLE DEFAULT 0,
+                max_users INT DEFAULT 5
             )
         """)
+
+        # Handle existing deployments by adding the columns if they don't exist
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN is_active TINYINT DEFAULT 1")
+        except Exception:
+            pass
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN gb_used DOUBLE DEFAULT 0")
+        except Exception:
+            pass
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN max_users INT DEFAULT 5")
+        except Exception:
+            pass
 
         master_db.execute_query("""
             CREATE TABLE IF NOT EXISTS users (
@@ -726,7 +743,7 @@ def login():
         try:
             # Query Master DB for user and tenant DB
             master_user_res = master_db.execute_query("""
-                SELECT u.username, u.password, t.db_name
+                SELECT u.username, u.password, t.db_name, t.is_active
                 FROM users u
                 JOIN tenants t ON u.tenant_id = t.id
                 WHERE u.username = %s
@@ -734,6 +751,11 @@ def login():
 
             if master_user_res:
                 master_user = master_user_res[0]
+
+                # Check Tenant Active Status
+                if master_user['is_active'] == 0:
+                    return redirect(url_for('payment_due'))
+
                 if master_user['password'] == password:
                     # Login Successful on Master
                     session['db_name'] = master_user['db_name']
@@ -3618,6 +3640,120 @@ def print_purchase_order(po_id):
                            vat_amount=vat_amount,
                            grand_total=grand_total)
 
+# --- Super Admin Panel ---
+from functools import wraps
+
+def superadmin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('superadmin_logged_in'):
+            flash('Please log in as Super Admin.', 'danger')
+            return redirect(url_for('superadmin_login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/superadmin_login', methods=['GET', 'POST'])
+def superadmin_login():
+    if request.method == 'GET':
+        return render_template('superadmin_login.html')
+
+    username = request.form.get('username')
+    password = request.form.get('password')
+
+    # Simple hardcoded credentials for Super Admin
+    if username == 'superadmin' and password == 'superadmin':
+        session['superadmin_pending_2fa'] = True
+
+        # Generate OTP
+        import random
+        otp = str(random.randint(100000, 999999))
+        session['superadmin_otp'] = otp
+
+        # Super Admin phone number (hardcoded for now, or use os.getenv)
+        superadmin_phone = os.getenv('SUPERADMIN_PHONE', '0700000000')
+
+        # Try to send SMS
+        sms_sent = send_sms_otp(superadmin_phone, otp)
+        if not sms_sent:
+            flash(f'DEVELOPMENT MODE (SMS Disabled): Your Super Admin OTP is {otp}', 'info')
+
+        return redirect(url_for('superadmin_verify'))
+    else:
+        flash('Invalid Super Admin credentials.', 'danger')
+        return redirect(url_for('superadmin_login'))
+
+@app.route('/superadmin_verify', methods=['GET', 'POST'])
+def superadmin_verify():
+    if not session.get('superadmin_pending_2fa'):
+        return redirect(url_for('superadmin_login'))
+
+    if request.method == 'GET':
+        return render_template('superadmin_2fa.html')
+
+    otp = request.form.get('otp')
+    if otp == session.get('superadmin_otp'):
+        session.pop('superadmin_pending_2fa', None)
+        session.pop('superadmin_otp', None)
+        session['superadmin_logged_in'] = True
+        return redirect(url_for('superadmin_dashboard'))
+    else:
+        flash('Invalid OTP.', 'danger')
+        return redirect(url_for('superadmin_verify'))
+
+@app.route('/superadmin/logout')
+def superadmin_logout():
+    session.pop('superadmin_logged_in', None)
+    return redirect(url_for('superadmin_login'))
+
+@app.route('/superadmin/toggle_tenant/<int:tenant_id>', methods=['POST'])
+@superadmin_required
+def superadmin_toggle_tenant(tenant_id):
+    try:
+        current_status = master_db.execute_query("SELECT is_active FROM tenants WHERE id = %s", (tenant_id,))
+        if current_status:
+            new_status = 0 if current_status[0]['is_active'] == 1 else 1
+            master_db.execute_query("UPDATE tenants SET is_active = %s WHERE id = %s", (new_status, tenant_id), commit=True)
+            flash('Tenant status updated successfully.', 'success')
+    except Exception as e:
+        flash(f'Error updating status: {str(e)}', 'danger')
+    return redirect(url_for('superadmin_dashboard'))
+
+@app.route('/superadmin/set_max_users/<int:tenant_id>', methods=['POST'])
+@superadmin_required
+def superadmin_set_max_users(tenant_id):
+    try:
+        max_users = int(request.form.get('max_users', 5))
+        master_db.execute_query("UPDATE tenants SET max_users = %s WHERE id = %s", (max_users, tenant_id), commit=True)
+        flash('Max users limit updated successfully.', 'success')
+    except Exception as e:
+        flash(f'Error updating max users: {str(e)}', 'danger')
+    return redirect(url_for('superadmin_dashboard'))
+
+@app.route('/payment_due')
+def payment_due():
+    return render_template('payment_due.html')
+
+@app.route('/superadmin_dashboard')
+@superadmin_required
+def superadmin_dashboard():
+    # In a real app, this should be protected by a Super Admin login or similar authentication.
+    # For now, it's accessible directly to demonstrate the functionality.
+    try:
+        tenants = master_db.execute_query("""
+            SELECT
+                t.id,
+                t.company_name,
+                t.is_active,
+                t.gb_used,
+                t.max_users,
+                (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as current_users
+            FROM tenants t
+        """)
+        return render_template('superadmin_dashboard.html', tenants=tenants)
+    except Exception as e:
+        flash(f"Error loading superadmin dashboard: {str(e)}", 'danger')
+        return redirect(url_for('login'))
+
 # --- Admin Panel & User Management ---
 @app.route('/admin/users', methods=['GET'])
 @login_required
@@ -3635,6 +3771,22 @@ def add_new_user():
     confirm_password = request.form.get('confirm_password')
     mobile = request.form.get('mobile')
     email = request.form.get('email')
+
+    # Enforce Tenant User Limits
+    current_db_name = session.get('db_name')
+    if current_db_name:
+        try:
+            tenant_info = master_db.execute_query("""
+                SELECT t.max_users, (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as current_users
+                FROM tenants t WHERE t.db_name = %s
+            """, (current_db_name,))
+            if tenant_info:
+                t_info = tenant_info[0]
+                if t_info['current_users'] >= t_info['max_users']:
+                    flash(f"Maximum user limit ({t_info['max_users']}) reached. Please contact support to upgrade.", 'danger')
+                    return redirect(url_for('admin_users'))
+        except Exception as e:
+            logging.error(f"Error checking user limit: {e}")
 
     if not username or not password:
         flash('Username and Password are required', 'danger')
@@ -3693,12 +3845,15 @@ def add_new_user():
 
         flash(f'User {username} created successfully.', 'success')
     except Exception as e:
-        conn.rollback()
+        if 'conn' in locals() and conn:
+            conn.rollback()
         logging.error("Database error while creating user.")
-        flash('Error creating user. Please try again.', 'danger')
+        flash(f'Error creating user: {str(e)}', 'danger')
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals() and cursor:
+            cursor.close()
+        if 'conn' in locals() and conn:
+            conn.close()
 
     return redirect(url_for('admin_users'))
 
@@ -7884,12 +8039,14 @@ def pos_api_login():
 
     try:
         master_user_res = master_db.execute_query('''
-            SELECT t.db_name
+            SELECT t.db_name, t.is_active
             FROM tenants t
             WHERE t.company_name = %s
         ''', (company_name,))
 
         if master_user_res:
+            if master_user_res[0]['is_active'] == 0:
+                return {'success': False, 'error': 'Account suspended. Payment due.'}, 403
             tenant_db_name = master_user_res[0]['db_name']
         else:
             return {'success': False, 'error': 'Company not found'}, 404
@@ -8095,11 +8252,13 @@ def pos_web_login():
     # Locate DB from company name in master DB
     try:
         master_user_res = master_db.execute_query('''
-            SELECT t.db_name
+            SELECT t.db_name, t.is_active
             FROM tenants t
             WHERE t.company_name = %s
         ''', (company_name,))
         if master_user_res:
+            if master_user_res[0]['is_active'] == 0:
+                return redirect(url_for('payment_due'))
             tenant_db_name = master_user_res[0]['db_name']
         else:
             flash('Company not found', 'danger')
