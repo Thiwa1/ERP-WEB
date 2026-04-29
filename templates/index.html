@@ -112,6 +112,44 @@
 </style>
 
 <div class="dashboard-container">
+    {% if vat_summary %}
+    <div class="overview-panel p-4 mb-4" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border-left: 4px solid #1976d2;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0"><i class="fa-solid fa-file-invoice-dollar text-primary me-2"></i>VAT Summary ({{ vat_summary.month }})</h4>
+            <a href="{{ url_for('vat_report') }}" class="btn btn-sm btn-primary shadow-sm"><i class="fa-solid fa-arrow-right"></i> Full Report</a>
+        </div>
+        <div class="row text-center">
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Output VAT</span>
+                <span class="h5 mb-0 text-success">{{ "{:,.2f}".format(vat_summary.total_output) }}</span>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Input VAT</span>
+                <span class="h5 mb-0 text-danger">{{ "{:,.2f}".format(vat_summary.total_input) }}</span>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Net VAT</span>
+                <span class="h5 mb-0 text-primary">{{ "{:,.2f}".format(vat_summary.net_vat) }}</span>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">GL Balance (VAT Control)</span>
+                <span class="h5 mb-0 text-dark">{{ "{:,.2f}".format(vat_summary.gl_balance) }}</span>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Reconciliation Diff</span>
+                <span class="h5 mb-0 {% if vat_summary.difference != 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ "{:,.2f}".format(vat_summary.difference) }}
+                    {% if vat_summary.difference == 0 %}
+                        <i class="fa-solid fa-check-circle ms-1"></i>
+                    {% else %}
+                        <i class="fa-solid fa-triangle-exclamation ms-1"></i>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="overview-panel">
         <div class="overview-header">
             <h2 class="overview-title">Dashboard Overview</h2>
