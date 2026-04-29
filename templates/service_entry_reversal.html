@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <div class="card shadow-sm">
+        <div class="card-header bg-transparent border-0 pb-0 pt-4">
+            <h5 class="mb-0 text-primary">Service Entry Reversal</h5>
+            <small class="text-muted">Reverse supplier liabilities (SRN) and associated GL entries</small>
+        </div>
+        <div class="card-body">
+            <div class="card mb-4 border-secondary">
+                <div class="card-header bg-transparent border-0 pb-0 pt-4 fw-bold">
+                    Recent Service Entries
+                </div>
+                <div class="card-body p-0">
+                    <table class="table table-hover mb-0" id="srnTable">
+                        <thead class="table-dark">
+                            <tr>
+                                <th>JV Number</th>
+                                <th>Supplier</th>
+                                <th>Invoice No</th>
+                                <th>Date</th>
+                                <th class="text-end">Total Amount</th>
+                                <th class="text-center" style="width: 150px;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if rows %}
+                                {% for row in rows %}
+                                <tr>
+                                    <td class="fw-bold">{{ row.jv_user_code }} (JV-{{ row.jv }})</td>
+                                    <td>{{ row.SupplierName }}</td>
+                                    <td>{{ row.InvoiceNo }}</td>
+                                    <td>{{ row.Date }}</td>
+                                    <td class="text-end text-danger fw-bold">{{ "{:,.2f}".format(row.Amount) }}</td>
+                                    <td class="text-center">
+                                        <form method="POST" action="/service_entry_reversal/process" onsubmit="return confirm('Are you sure you want to reverse this Service Entry? This action cannot be undone.');">
+                                            <input type="hidden" name="jv" value="{{ row.jv }}">
+                                            <a href="/service_entry/print/{{ row.jv }}" class="btn btn-sm btn-outline-primary me-1" target="_blank"><i class="fas fa-print"></i> Print</a>
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <i class="fas fa-undo-alt"></i> Reverse
+                                            </button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr><td colspan="6" class="text-center text-muted py-4">No recent service entries found.</td></tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
