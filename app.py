@@ -3675,7 +3675,8 @@ def superadmin_login():
         # Try to send SMS
         sms_sent = send_sms_otp(superadmin_phone, otp)
         if not sms_sent:
-            flash(f'DEVELOPMENT MODE (SMS Disabled): Your Super Admin OTP is {otp}', 'info')
+            flash('Failed to send SMS verification code. Please check your SMS Gateway settings.', 'danger')
+            return redirect(url_for('superadmin_login'))
 
         return redirect(url_for('superadmin_verify'))
     else:
@@ -8343,10 +8344,12 @@ def pos_web_login():
                     if mobile:
                         sms_sent = send_sms_otp(mobile, otp)
                         if not sms_sent:
-                            flash(f'DEVELOPMENT MODE (SMS Disabled): Your login OTP is {otp}', 'info')
+                            flash('Failed to send SMS verification code. Please check your SMS Gateway settings or contact support.', 'danger')
+                            return redirect(url_for('pos_web_login'))
                     else:
                         logging.warning(f"Cannot send 2FA SMS for User {user['Id']} because Mobile_Number is NULL.")
-                        flash(f'DEVELOPMENT MODE (No Mobile Number): Your login OTP is {otp}', 'info')
+                        flash('Your account requires SMS verification, but no mobile number is registered. Please contact support.', 'danger')
+                        return redirect(url_for('pos_web_login'))
 
                     session['pending_pos_user_id'] = user['Id']
                     session['pending_pos_company'] = company_name
