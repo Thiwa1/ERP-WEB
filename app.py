@@ -11,6 +11,7 @@ def is_safe_db_name(name):
     return bool(re.match(r'^[a-zA-Z0-9_]+$', str(name)))
 
 import csv
+import base64
 import io
 import json
 import os
@@ -1288,7 +1289,7 @@ def toggle_sub_category():
 def add_inventory_item():
     if request.method == 'POST':
         try:
-            import base64
+
 
             # 1. Extract Data
             name = request.form.get('item_name')
@@ -2948,7 +2949,7 @@ def tax_settings():
 @has_permission('Add_New_User')
 def company_profile():
     if request.method == 'POST':
-        import base64
+
 
         name = request.form.get('company_name')
         addr1 = request.form.get('address_no')
@@ -3020,7 +3021,7 @@ def company_profile():
             company['company_log'] = company['company_log'].decode('utf-8')
         except UnicodeDecodeError:
             # If it's raw image bytes, encode it
-            import base64
+
             company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
 
     currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
@@ -7905,7 +7906,7 @@ def pos_settings():
         top = request.form.get('top_msg')
 
         # Image Handling
-        import base64
+
         img_data = None
         if 'receipt_logo' in request.files:
             file = request.files['receipt_logo']
@@ -7966,7 +7967,7 @@ def pos_settings():
             current_settings = res[0]
             # Handle Image for Display (Convert bytes to base64)
             if current_settings.get('Image'):
-                import base64
+
                 current_settings['ImageBase64'] = base64.b64encode(current_settings['Image']).decode('utf-8')
 
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
