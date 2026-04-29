@@ -7796,6 +7796,52 @@ def profit_loss():
                            default_start=default_start,
                            default_end=default_end)
 
+# --- Dashboard VAT Export ---
+@app.route('/dashboard_export_vat', methods=['GET'])
+@login_required
+def dashboard_export_vat():
+    import io
+    import csv
+    from datetime import datetime
+    import calendar
+    from vat_helper import VATReportGenerator
+    from flask import make_response
+
+    export_type = request.args.get('type')
+    if export_type not in ['input', 'output']:
+        flash("Invalid export type.", "danger")
+        return redirect(url_for('index'))
+
+    now = datetime.now()
+    first_day = now.replace(day=1).strftime('%Y-%m-%d')
+    last_day = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
+
+    generator = VATReportGenerator(db, first_day, last_day)
+    if not generator.check_vat_registered():
+        flash("Company is not VAT Registered.", "warning")
+        return redirect(url_for('index'))
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+
+    if export_type == 'output':
+        data = generator.generate_schedule_01()
+        cw.writerow(['Date', 'Invoice No', 'Purchaser', 'TIN', 'Total Value', 'VAT Rate', 'VAT Amount'])
+        for r in data['rows']:
+            cw.writerow([r['date'], r['invoice_no'], r['purchaser'], r['tin'], r['total'], r['rate'], r['vat_amount']])
+        filename = f"Output_VAT_{now.strftime('%Y_%m')}.csv"
+    else:
+        data = generator.generate_schedule_02()
+        cw.writerow(['Date', 'Invoice No', 'Supplier', 'TIN', 'Total Value', 'VAT Rate', 'VAT Amount', 'Disallowed VAT'])
+        for r in data['rows']:
+            cw.writerow([r['date'], r['invoice_no'], r['supplier'], r['tin'], r['total'], r['rate'], r['vat_amount'], r['disallowed_vat']])
+        filename = f"Input_VAT_{now.strftime('%Y_%m')}.csv"
+
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    output.headers["Content-type"] = "text/csv"
+    return output
+
 # --- VAT Report (Sri Lanka Schedule 01 & 02) ---
 @app.route('/vat_report', methods=['GET'])
 @login_required

@@ -116,7 +116,11 @@
     <div class="overview-panel p-4 mb-4" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border-left: 4px solid #1976d2;">
         <div class="d-flex justify-content-between align-items-center mb-3">
             <h4 class="mb-0"><i class="fa-solid fa-file-invoice-dollar text-primary me-2"></i>VAT Summary ({{ vat_summary.month }})</h4>
-            <a href="{{ url_for('vat_report') }}" class="btn btn-sm btn-primary shadow-sm"><i class="fa-solid fa-arrow-right"></i> Full Report</a>
+            <div>
+                <a href="{{ url_for('dashboard_export_vat', type='output') }}" class="btn btn-sm btn-outline-success shadow-sm me-2"><i class="fa-solid fa-file-csv"></i> Export Output</a>
+                <a href="{{ url_for('dashboard_export_vat', type='input') }}" class="btn btn-sm btn-outline-danger shadow-sm me-2"><i class="fa-solid fa-file-csv"></i> Export Input</a>
+                <a href="{{ url_for('vat_report') }}" class="btn btn-sm btn-primary shadow-sm"><i class="fa-solid fa-arrow-right"></i> Full Report</a>
+            </div>
         </div>
         <div class="row text-center">
             <div class="col-md-2 col-sm-6 mb-2">
