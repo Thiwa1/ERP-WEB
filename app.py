@@ -3660,8 +3660,11 @@ def superadmin_login():
     username = request.form.get('username')
     password = request.form.get('password')
 
-    # Simple hardcoded credentials for Super Admin
-    if username == 'superadmin' and password == 'superadmin':
+    # Super Admin credentials from environment variables
+    admin_user = os.getenv('SUPERADMIN_USER', 'superadmin')
+    admin_pass = os.getenv('SUPERADMIN_PASS', 'superadmin')
+
+    if username == admin_user and password == admin_pass:
         session['superadmin_pending_2fa'] = True
 
         # Generate OTP
