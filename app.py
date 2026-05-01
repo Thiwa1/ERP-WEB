@@ -5687,18 +5687,22 @@ def get_ledger_data():
     else: # CR
         opening_balance = op_cr - op_dr
 
+
     # 3. Fetch Transactions
     rows = db.execute_query("""
         SELECT
-            entry_effective_date as date,
-            entry_naration as narration,
-            enty_values_DR as dr,
-            enty_values_CR as cr,
-            entry_jv as jv_no
-        FROM entry_details
-        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
-        ORDER BY entry_effective_date, id
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as dr,
+            ed.enty_values_CR as cr,
+            ed.entry_jv as jv_no,
+            s.sub_sub_accaount_name as sub_account
+        FROM entry_details ed
+        LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
+        WHERE ed.account_name = %s AND ed.entry_effective_date BETWEEN %s AND %s AND ed.entry_deleted = 0
+        ORDER BY ed.entry_effective_date, ed.id
     """, (account_name, from_date, to_date))
+
 
     # 4. Process Running Balance
     data = []
@@ -5724,15 +5728,21 @@ def get_ledger_data():
         else: # CR
             current_bal = current_bal + cr - dr
 
+
+        narration_text = r['narration']
+        if r.get('sub_account'):
+            narration_text = f"[{r['sub_account']}] {narration_text}"
+
         data.append({
             'date': str(r['date']),
-            'narration': r['narration'],
+            'narration': narration_text,
             'dr': dr,
             'cr': cr,
             'balance': current_bal,
             'jv_no': r['jv_no'],
             'is_opening': False
         })
+
 
     return {'data': data, 'basement': basement}
 
