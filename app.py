@@ -1119,6 +1119,7 @@ def extract_vat_from_pdf():
 def add_supplier():
     if request.method == 'POST':
         try:
+            supplier_id = request.form.get('supplier_id')
             supplier_name = request.form.get('supplier_name')
             salutation = request.form.get('salutation')
             supplier_code = request.form.get('supplier_code')
