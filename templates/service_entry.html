@@ -1,6 +1,19 @@
 {% extends "base.html" %}
 
 {% block content %}
+
+    <style>
+        /* Hide number input spin buttons */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+
 <div class="container-fluid py-3">
     <!-- Header -->
     <div class="d-flex align-items-center mb-4">
@@ -76,8 +89,8 @@
                                     <th style="width: 25%">Account</th>
                                     <th style="width: 20%">Sub Account</th>
                                     <th style="width: 15%">Job No</th>
-                                    <th style="width: 25%">Narration</th>
-                                    <th style="width: 10%" class="text-end">DR Amount</th>
+                                    <th style="width: 15%">Narration</th>
+                                    <th style="width: 20%" class="text-end">DR Amount</th>
                                     <th style="width: 5%"></th>
                                 </tr>
                             </thead>

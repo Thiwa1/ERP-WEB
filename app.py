@@ -11379,8 +11379,8 @@ def save_service_entry():
             # Credit Account Payable
             cursor.execute("""
                 INSERT INTO entry_details (
-                    entry_account_namae, entry_account_code, entry_value_dr, enty_values_CR,
-                    entry_effected_date, entry_create_date, entry_naration, entry_created_user,
+                    account_name, account_code, enty_values_DR, enty_values_CR,
+                    entry_effective_date, entry_create_date, entry_naration, entry_create_user,
                     entry_job_number, entry_sub_account_code, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
@@ -11395,8 +11395,8 @@ def save_service_entry():
                 vat_amount = total_dr_base * (vat_rate / 100.0)
                 cursor.execute("""
                     INSERT INTO entry_details (
-                        entry_account_namae, entry_account_code, entry_value_dr, enty_values_CR,
-                        entry_effected_date, entry_create_date, entry_naration, entry_created_user,
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
                         entry_job_number, entry_sub_account_code, entry_jv, entry_VAT
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
@@ -11416,8 +11416,8 @@ def save_service_entry():
 
                 cursor.execute("""
                     INSERT INTO entry_details (
-                        entry_account_namae, entry_account_code, entry_value_dr, enty_values_CR,
-                        entry_effected_date, entry_create_date, entry_naration, entry_created_user,
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
                         entry_job_number, entry_sub_account_code, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
