@@ -8255,9 +8255,9 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '28990')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'b0K0nL5kIuR9lM4xZ1aP')
-    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '13120')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'The Bunker')
 
     if not api_key or not user_id:
         logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
