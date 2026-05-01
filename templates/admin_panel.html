@@ -81,7 +81,7 @@
                                     {% endif %}
                                 </td>
                                 <td class="text-end">
-                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="editUser({{ user.id }})"><i class="fas fa-edit"></i></button>
+                                    <button class="btn btn-sm btn-outline-secondary border-0" onclick="editUser(event, {{ user.id }})"><i class="fas fa-edit"></i></button>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -215,7 +215,7 @@
         });
     }
 
-    function editUser(userId) {
+    function editUser(event, userId) {
         // Prevent row click event
         event.stopPropagation();
 
