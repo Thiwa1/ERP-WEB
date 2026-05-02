@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+    <style>
+        /* Hide number input spin buttons */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-4">
+        <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice me-2"></i> Supplier Liability Booking</h4>
+    </div>
+
+    <!-- Main Entry Form -->
+    <form id="serviceEntryForm" method="POST" action="{{ url_for('save_service_entry') }}">
+
+        <div class="row">
+            <div class="col-lg-8 mb-4">
+                <!-- Transaction Details Card -->
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4">
+                        <i class="fas fa-info-circle me-2"></i> Transaction Details
+                    </div>
+                    <div class="card-body bg-white">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Supplier Selection</label>
+                                <select name="supplier_id" class="form-select select2" required>
+                                    <option value="">Select a Supplier</option>
+                                    {% for sup in suppliers %}
+                                    <option value="{{ sup.sup_id }}">{{ sup.supplier_name }} - {{ sup.supplier_code }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Effective Date</label>
+                                <input type="date" class="form-control" name="effective_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-3">
+                                <label class="form-label fw-bold">Invoice Number</label>
+                                <input type="text" class="form-control" name="invoice_number" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Invoice Date</label>
+                                <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Due Date</label>
+                                <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Job Number (Header)</label>
+                                <select name="header_job_number" class="form-select select2">
+                                    <option value="">None</option>
+                                    {% for job in jobs %}
+                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label fw-bold">Narration</label>
+                                <textarea name="main_narration" class="form-control" rows="1" required></textarea>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Middle Section: Entry Grid -->
+                <div class="card shadow-sm border-0">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4">
+                        <span><i class="fas fa-list-ol me-2"></i> Journal Entries</span>
+                        <button type="button" class="btn btn-sm btn-light fw-bold text-primary float-end" onclick="addRow()">
+                            <i class="fas fa-plus me-1"></i> Add Row
+                        </button>
+                    </div>
+                    <div class="card-body p-0 table-responsive mt-3">
+                        <table class="table table-bordered table-striped mb-0" id="journalTable">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th style="width: 25%">Account</th>
+                                    <th style="width: 20%">Sub Account</th>
+                                    <th style="width: 15%">Job No</th>
+                                    <th style="width: 15%">Narration</th>
+                                    <th style="width: 20%" class="text-end">DR Amount</th>
+                                    <th style="width: 5%"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="journalBody">
+                                <!-- Initial Row -->
+                                <tr>
+                                    <td>
+                                        <select class="form-select account-select" onchange="checkAccount(this); calculateTotals()" required>
+                                            <option value="">Select Account</option>
+                                            {% for acc in accounts %}
+                                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select subaccount-select" disabled>
+                                            <option value="">None</option>
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <select class="form-select job-select">
+                                            <option value="">None</option>
+                                            {% for job in jobs %}
+                                            <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                    <td>
+                                        <input type="text" class="form-control memo-input" placeholder="Line Narration">
+                                    </td>
+                                    <td>
+                                        <input type="number" step="0.01" class="form-control text-end dr-input" value="0.00" onchange="calculateTotals()">
+                                    </td>
+                                    <td class="text-center">
+                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4 mb-4">
+                <!-- Amount Calculations Card -->
+                <div class="card shadow-sm border-0 mb-4">
+                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4">
+                        <i class="fas fa-calculator me-2"></i> Amount Calculations
+                    </div>
+                    <div class="card-body bg-white">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <span class="fw-bold">Total Amount (Excl. VAT)</span>
+                            <span class="fs-5 fw-bold" id="totalWithoutVat">0.00</span>
+                        </div>
+                        <div class="form-check form-switch mb-3">
+                            <input class="form-check-input" type="checkbox" id="includeVat" name="include_vat" value="1" onchange="checkAccount(this); calculateTotals()">
+                            <label class="form-check-label fw-bold" for="includeVat">Include VAT</label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">VAT Rate %</label>
+                            <input type="number" step="0.01" class="form-control text-end" id="vatRate" name="vat_rate" value="0.00" onchange="checkAccount(this); calculateTotals()" disabled>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center pt-3 border-top">
+                            <span class="fw-bold">Total with VAT</span>
+                            <span class="fs-4 fw-bold text-success" id="totalWithVat">0.00</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Submit Card -->
+                <div class="card shadow-sm border-0 bg-light">
+                    <div class="card-body text-end">
+                        <input type="hidden" name="entries_json" id="entriesJson">
+                        <input type="hidden" name="total_amount" id="totalAmount">
+                        <button type="button" class="btn btn-success fw-bold px-4" onclick="submitForm()">
+                            <i class="fas fa-save me-2"></i> Submit Entry
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </form>
+</div>
+
+<script>
+    // Make variables available to JS
+    const accountsOptions = `
+        <option value="">Select Account</option>
+        {% for acc in accounts %}
+        <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+        {% endfor %}
+    `;
+    const subAccountsOptions = `<option value="">None</option>`;
+    const jobsOptions = `
+        <option value="">None</option>
+        {% for job in jobs %}
+        <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+        {% endfor %}
+    `;
+
+
+    function checkAccount(selectElement) {
+        const row = selectElement.closest('tr');
+        const subSelect = row.querySelector('.subaccount-select');
+
+        subSelect.innerHTML = '<option value="">None</option>';
+        subSelect.disabled = true;
+
+        if (selectElement.value) {
+            fetch(`/api/get_sub_accounts?account_name=${encodeURIComponent(selectElement.value)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.length > 0) {
+                    subSelect.disabled = false;
+                    data.forEach(item => {
+                        const opt = document.createElement('option');
+                        opt.value = `${item.code} - ${item.name}`;
+                        opt.text = item.name;
+                        subSelect.add(opt);
+                    });
+                }
+            })
+            .catch(e => console.error("Error fetching sub accounts", e));
+        }
+    }
+
+    function addRow() {
+        const tbody = document.getElementById('journalBody');
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><select class="form-select account-select" onchange="checkAccount(this); calculateTotals()" required>${accountsOptions}</select></td>
+            <td><select class="form-select subaccount-select" disabled>
+                                            <option value="">None</option>
+                                        </select></td>
+            <td><select class="form-select job-select">${jobsOptions}</select></td>
+            <td><input type="text" class="form-control memo-input" placeholder="Line Narration"></td>
+            <td><input type="number" step="0.01" class="form-control text-end dr-input" value="0.00" onchange="calculateTotals()"></td>
+            <td class="text-center">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </td>
+        `;
+        tbody.appendChild(tr);
+        // Initialize Select2 if using it on dynamic rows
+        if ($.fn.select2) {
+             // Optional: initialize select2 on the new elements here if needed
+        }
+    }
+
+    function removeRow(btn) {
+        const row = btn.closest('tr');
+        const tbody = document.getElementById('journalBody');
+        if(tbody.rows.length > 1) {
+            row.remove();
+            calculateTotals();
+        } else {
+            alert("Cannot remove the last row.");
+        }
+    }
+
+    document.getElementById('includeVat').addEventListener('change', function() {
+        document.getElementById('vatRate').disabled = !this.checked;
+        if (!this.checked) {
+            document.getElementById('vatRate').value = '0.00';
+        }
+        calculateTotals();
+    });
+
+    function calculateTotals() {
+        let totalDr = 0;
+        document.querySelectorAll('.dr-input').forEach(input => {
+            const val = parseFloat(input.value) || 0;
+            totalDr += val;
+        });
+
+        document.getElementById('totalWithoutVat').innerText = totalDr.toFixed(2);
+
+        let vatRate = 0;
+        if (document.getElementById('includeVat').checked) {
+            vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
+        }
+
+        const totalWithVat = totalDr + (totalDr * vatRate / 100);
+        document.getElementById('totalWithVat').innerText = totalWithVat.toFixed(2);
+        document.getElementById('totalAmount').value = totalWithVat.toFixed(2);
+    }
+
+    function submitForm() {
+        // Collect entries
+        const rows = document.querySelectorAll('#journalBody tr');
+        let entries = [];
+        let isValid = true;
+        let totalDr = 0;
+
+        rows.forEach((row, index) => {
+            const account = row.querySelector('.account-select').value;
+            const subAccount = row.querySelector('.subaccount-select').value;
+            const jobNo = row.querySelector('.job-select').value;
+            const memo = row.querySelector('.memo-input').value;
+            const dr = parseFloat(row.querySelector('.dr-input').value) || 0;
+
+            if (!account && dr > 0) {
+                alert(`Account is required for row ${index + 1}`);
+                isValid = false;
+            }
+
+            if (dr > 0) {
+                entries.push({
+                    account: account,
+                    sub_account: subAccount,
+                    job_no: jobNo,
+                    memo: memo,
+                    dr: dr
+                });
+                totalDr += dr;
+            }
+        });
+
+        if (!isValid) return;
+
+        if (entries.length === 0 || totalDr === 0) {
+            alert('Please enter at least one valid line with a DR amount.');
+            return;
+        }
+
+        document.getElementById('entriesJson').value = JSON.stringify(entries);
+
+        // Required check
+        const form = document.getElementById('serviceEntryForm');
+        if (!form.checkValidity()) {
+            form.reportValidity();
+            return;
+        }
+
+        form.submit();
+    }
+</script>
+{% endblock %}

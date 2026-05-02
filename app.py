@@ -11,6 +11,7 @@ def is_safe_db_name(name):
     return bool(re.match(r'^[a-zA-Z0-9_]+$', str(name)))
 
 import csv
+import base64
 import io
 import json
 import os
@@ -861,7 +862,32 @@ def index():
                 return redirect(url_for('installing'))
     except Exception as e:
         logging.error(f"Error checking for migrations table: {e}")
-    return render_template('index.html')
+
+    # Fetch VAT summary for current month for the dashboard
+    vat_summary = None
+    try:
+        from datetime import datetime, timedelta
+        import calendar
+        now = datetime.now()
+        first_day = now.replace(day=1).strftime('%Y-%m-%d')
+        last_day = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
+
+        from vat_helper import VATReportGenerator
+        generator = VATReportGenerator(db, first_day, last_day)
+        if generator.check_vat_registered():
+            vat_data = generator.generate()
+            vat_summary = {
+                'total_output': vat_data['summary']['total_output_vat'],
+                'total_input': vat_data['summary']['total_input_vat'],
+                'net_vat': vat_data['summary']['net_vat'],
+                'gl_balance': vat_data['reconciliation']['gl_balance'],
+                'difference': vat_data['reconciliation']['difference'],
+                'month': now.strftime('%B %Y')
+            }
+    except Exception as e:
+        logging.error(f"Error fetching VAT summary for dashboard: {e}")
+
+    return render_template('index.html', vat_summary=vat_summary)
 
 @app.route('/installing')
 def installing():
@@ -1093,6 +1119,7 @@ def extract_vat_from_pdf():
 def add_supplier():
     if request.method == 'POST':
         try:
+            supplier_id = request.form.get('supplier_id')
             supplier_name = request.form.get('supplier_name')
             salutation = request.form.get('salutation')
             supplier_code = request.form.get('supplier_code')
@@ -1288,7 +1315,7 @@ def toggle_sub_category():
 def add_inventory_item():
     if request.method == 'POST':
         try:
-            import base64
+
 
             # 1. Extract Data
             name = request.form.get('item_name')
@@ -2948,7 +2975,7 @@ def tax_settings():
 @has_permission('Add_New_User')
 def company_profile():
     if request.method == 'POST':
-        import base64
+
 
         name = request.form.get('company_name')
         addr1 = request.form.get('address_no')
@@ -3020,7 +3047,7 @@ def company_profile():
             company['company_log'] = company['company_log'].decode('utf-8')
         except UnicodeDecodeError:
             # If it's raw image bytes, encode it
-            import base64
+
             company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
 
     currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
@@ -3660,11 +3687,8 @@ def superadmin_login():
     username = request.form.get('username')
     password = request.form.get('password')
 
-    # Super Admin credentials from environment variables
-    admin_user = os.getenv('SUPERADMIN_USER', 'superadmin')
-    admin_pass = os.getenv('SUPERADMIN_PASS', 'superadmin')
-
-    if username == admin_user and password == admin_pass:
+    # Simple hardcoded credentials for Super Admin
+    if username == 'superadmin' and password == 'superadmin':
         session['superadmin_pending_2fa'] = True
 
         # Generate OTP
@@ -5691,18 +5715,22 @@ def get_ledger_data():
     else: # CR
         opening_balance = op_cr - op_dr
 
+
     # 3. Fetch Transactions
     rows = db.execute_query("""
         SELECT
-            entry_effective_date as date,
-            entry_naration as narration,
-            enty_values_DR as dr,
-            enty_values_CR as cr,
-            entry_jv as jv_no
-        FROM entry_details
-        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
-        ORDER BY entry_effective_date, id
+            ed.entry_effective_date as date,
+            ed.entry_naration as narration,
+            ed.enty_values_DR as dr,
+            ed.enty_values_CR as cr,
+            ed.entry_jv as jv_no,
+            s.sub_sub_accaount_name as sub_account
+        FROM entry_details ed
+        LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
+        WHERE ed.account_name = %s AND ed.entry_effective_date BETWEEN %s AND %s AND ed.entry_deleted = 0
+        ORDER BY ed.entry_effective_date, ed.id
     """, (account_name, from_date, to_date))
+
 
     # 4. Process Running Balance
     data = []
@@ -5728,15 +5756,21 @@ def get_ledger_data():
         else: # CR
             current_bal = current_bal + cr - dr
 
+
+        narration_text = r['narration']
+        if r.get('sub_account'):
+            narration_text = f"[{r['sub_account']}] {narration_text}"
+
         data.append({
             'date': str(r['date']),
-            'narration': r['narration'],
+            'narration': narration_text,
             'dr': dr,
             'cr': cr,
             'balance': current_bal,
             'jv_no': r['jv_no'],
             'is_opening': False
         })
+
 
     return {'data': data, 'basement': basement}
 
@@ -7775,6 +7809,52 @@ def profit_loss():
                            default_start=default_start,
                            default_end=default_end)
 
+# --- Dashboard VAT Export ---
+@app.route('/dashboard_export_vat', methods=['GET'])
+@login_required
+def dashboard_export_vat():
+    import io
+    import csv
+    from datetime import datetime
+    import calendar
+    from vat_helper import VATReportGenerator
+    from flask import make_response
+
+    export_type = request.args.get('type')
+    if export_type not in ['input', 'output']:
+        flash("Invalid export type.", "danger")
+        return redirect(url_for('index'))
+
+    now = datetime.now()
+    first_day = now.replace(day=1).strftime('%Y-%m-%d')
+    last_day = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
+
+    generator = VATReportGenerator(db, first_day, last_day)
+    if not generator.check_vat_registered():
+        flash("Company is not VAT Registered.", "warning")
+        return redirect(url_for('index'))
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+
+    if export_type == 'output':
+        data = generator.generate_schedule_01()
+        cw.writerow(['Date', 'Invoice No', 'Purchaser', 'TIN', 'Total Value', 'VAT Rate', 'VAT Amount'])
+        for r in data['rows']:
+            cw.writerow([r['date'], r['invoice_no'], r['purchaser'], r['tin'], r['total'], r['rate'], r['vat_amount']])
+        filename = f"Output_VAT_{now.strftime('%Y_%m')}.csv"
+    else:
+        data = generator.generate_schedule_02()
+        cw.writerow(['Date', 'Invoice No', 'Supplier', 'TIN', 'Total Value', 'VAT Rate', 'VAT Amount', 'Disallowed VAT'])
+        for r in data['rows']:
+            cw.writerow([r['date'], r['invoice_no'], r['supplier'], r['tin'], r['total'], r['rate'], r['vat_amount'], r['disallowed_vat']])
+        filename = f"Input_VAT_{now.strftime('%Y_%m')}.csv"
+
+    output = make_response(si.getvalue())
+    output.headers["Content-Disposition"] = f"attachment; filename={filename}"
+    output.headers["Content-type"] = "text/csv"
+    return output
+
 # --- VAT Report (Sri Lanka Schedule 01 & 02) ---
 @app.route('/vat_report', methods=['GET'])
 @login_required
@@ -7909,7 +7989,7 @@ def pos_settings():
         top = request.form.get('top_msg')
 
         # Image Handling
-        import base64
+
         img_data = None
         if 'receipt_logo' in request.files:
             file = request.files['receipt_logo']
@@ -7970,7 +8050,7 @@ def pos_settings():
             current_settings = res[0]
             # Handle Image for Display (Convert bytes to base64)
             if current_settings.get('Image'):
-                import base64
+
                 current_settings['ImageBase64'] = base64.b64encode(current_settings['Image']).decode('utf-8')
 
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
@@ -8186,9 +8266,9 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '28990')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'b0K0nL5kIuR9lM4xZ1aP')
-    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'NotifyDEMO')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '13120')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K')
+    sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'The Bunker')
 
     if not api_key or not user_id:
         logging.warning("NOTIFY_API_KEY or NOTIFY_USER_ID is not set. Skipping SMS delivery.")
@@ -11299,6 +11379,237 @@ def initialize_app():
         create_default_user()
         ensure_default_accounts()
         app_initialized = True
+
+
+@app.route('/service_entry', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def service_entry():
+    suppliers = db.execute_query("SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Suplier = 1")
+    accounts = db.execute_query("""
+        SELECT account_name
+        FROM new_account_table
+        WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+    """)
+    sub_accounts = db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1")
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit WHERE job_finsh = 0 AND job_cancell = 0")
+
+    return render_template('service_entry.html',
+                           suppliers=suppliers,
+                           accounts=accounts,
+                           sub_accounts=sub_accounts,
+                           jobs=jobs,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+@app.route('/service_entry/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def save_service_entry():
+    try:
+        supplier_id = request.form.get('supplier_id')
+        effective_date = request.form.get('effective_date')
+        invoice_number = request.form.get('invoice_number')
+        invoice_date = request.form.get('invoice_date')
+        due_date = request.form.get('due_date')
+        main_narration = request.form.get('main_narration')
+        header_job = request.form.get('header_job_number')
+        include_vat = request.form.get('include_vat') == '1'
+        vat_rate = parse_float(request.form.get('vat_rate')) if include_vat else 0.0
+        entries_json = request.form.get('entries_json')
+        total_amount = parse_float(request.form.get('total_amount'))
+
+        entries = json.loads(entries_json) if entries_json else []
+
+        if not entries:
+            flash('No entries provided', 'danger')
+            return redirect(url_for('service_entry'))
+
+        if not supplier_id or not invoice_number:
+            flash('Supplier and Invoice Number are required', 'danger')
+            return redirect(url_for('service_entry'))
+
+        current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        try:
+            # 1. Generate JV Number
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                           ("JV FORM SEN INVOICE", main_narration, 1))
+            jv_no = cursor.lastrowid
+
+            # Get Supplier Details
+            cursor.execute("SELECT supplier_code FROM suppliers WHERE sup_id = %s", (supplier_id,))
+            sup_res = cursor.fetchone()
+            supplier_code = sup_res[0] if sup_res else ""
+
+            # 2. Insert into suppliers_invoice_data
+            cursor.execute("""
+                INSERT INTO suppliers_invoice_data (
+                    suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                    suppliers_invoice_total_oustanding, suppliers_invoice_total_payment,
+                    suppliers_invoice_final_date, suppliers_invoice_buinding_supplier,
+                    suppliers_invoice_JV, suppliers_VAT_rate
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                supplier_code, invoice_number, invoice_date,
+                total_amount, 0,
+                due_date, supplier_id,
+                jv_no, vat_rate
+            ))
+
+            # 3. Journal Entries
+            # Credit Account Payable
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, account_code, enty_values_DR, enty_values_CR,
+                    entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                    entry_job_number, entry_sub_account_code, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                'Account Payable', 0, 0, total_amount,
+                effective_date, date.today(), main_narration, current_user_pk,
+                header_job if header_job else None, 0, jv_no
+            ))
+
+            # Debit VAT Control if applicable
+            total_dr_base = sum(parse_float(e['dr']) for e in entries)
+            if include_vat and vat_rate > 0:
+                vat_amount = total_dr_base * (vat_rate / 100.0)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                        entry_job_number, entry_sub_account_code, entry_jv, entry_VAT
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    'VAT Control', 0, vat_amount, 0,
+                    effective_date, date.today(), main_narration, current_user_pk,
+                    header_job if header_job else None, 0, jv_no, vat_rate
+                ))
+
+            # Debit Expense/P&L Accounts
+            for e in entries:
+                sub_code = 0
+                if e.get('sub_account'):
+                    parts = e['sub_account'].split(' - ')
+                    if parts: sub_code = parts[0]
+
+                job_no = e.get('job_no') if e.get('job_no') else None
+
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                        entry_job_number, entry_sub_account_code, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    e['account'], 0, e['dr'], 0,
+                    effective_date, date.today(), e['memo'], current_user_pk,
+                    job_no, sub_code, jv_no
+                ))
+
+            conn.commit()
+            flash(f'Service Entry / Supplier Liability saved successfully. JV: {jv_no}', 'success')
+
+        except Exception as e:
+            conn.rollback()
+            flash(f'Database error: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+
+    except Exception as e:
+        flash(f'Error saving Service Entry: {str(e)}', 'danger')
+
+    return redirect(url_for('service_entry'))
+
+
+
+@app.route('/service_entry_reversal')
+@login_required
+@has_permission('Access_Reversals')
+def service_entry_reversal():
+    # Fetch recent Service Entries (from suppliers_invoice_data & jv_numbers)
+    # We look for outstanding invoices that have not been deleted
+    query = """
+        SELECT
+            s.suppliers_invoice_JV as jv,
+            j.jv_user_code,
+            sup.supplier_name as SupplierName,
+            s.suppliers_invoice_number as InvoiceNo,
+            s.suppliers_invoice_date as Date,
+            s.suppliers_invoice_total_oustanding as Amount
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+        JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE s.suppliers_oustanding_delete = 0
+        AND j.jv_user_code LIKE 'JV FORM SEN INVOICE%'
+        ORDER BY s.s_i_id DESC
+        LIMIT 50
+    """
+    rows = db.execute_query(query)
+    return render_template('service_entry_reversal.html', rows=rows)
+
+@app.route('/service_entry_reversal/process', methods=['POST'])
+@login_required
+def service_entry_reversal_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No transaction selected', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    current_user = get_current_user_id()
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # 1. Security Check: Bank Reconciled?
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash('Cannot reverse: Transaction has been Bank Reconciled.', 'danger')
+            return redirect(url_for('service_entry_reversal'))
+
+        # 2. Security Check: Payments Made?
+        cursor.execute("SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE suppliers_invoice_JV = %s AND suppliers_oustanding_delete = 0", (jv,))
+        inv_res = cursor.fetchone()
+        if not inv_res:
+            flash('Service Entry not found or already deleted.', 'danger')
+            return redirect(url_for('service_entry_reversal'))
+
+        if inv_res[0] > 0:
+            flash('Cannot reverse: Payments have been made against this invoice. Reverse payments first.', 'danger')
+            return redirect(url_for('service_entry_reversal'))
+
+        conn.start_transaction()
+
+        # 3. Reverse GL Entries
+        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+
+        # 4. Reverse Supplier Liability (Delete Outstanding)
+        cursor.execute("UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s", (jv,))
+
+        conn.commit()
+        flash(f'Service Entry (JV: {jv}) reversed successfully.', 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error reversing Service Entry: {str(e)}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('service_entry_reversal'))
+
 
 if __name__ == '__main__':
     app.run(port=5000)
