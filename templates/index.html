@@ -94,9 +94,80 @@
     }
 </style>
 
-<div class="d-flex align-items-center justify-content-between mb-4">
-    <div class="d-flex align-items-center gap-3">
-        <h5 class="mb-0 fw-bold">Executive Dashboard <span class="badge bg-primary rounded-pill ms-2">Pro v2.0</span></h5>
+<div class="dashboard-container">
+    {% if vat_summary %}
+    <div class="overview-panel p-4 mb-4" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border-left: 4px solid #1976d2;">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <h4 class="mb-0"><i class="fa-solid fa-file-invoice-dollar text-primary me-2"></i>VAT Summary ({{ vat_summary.month }})</h4>
+            <div>
+                <a href="{{ url_for('dashboard_export_vat', type='output') }}" class="btn btn-sm btn-outline-success shadow-sm me-2"><i class="fa-solid fa-file-csv"></i> Export Output</a>
+                <a href="{{ url_for('dashboard_export_vat', type='input') }}" class="btn btn-sm btn-outline-danger shadow-sm me-2"><i class="fa-solid fa-file-csv"></i> Export Input</a>
+                <a href="{{ url_for('vat_report') }}" class="btn btn-sm btn-primary shadow-sm"><i class="fa-solid fa-arrow-right"></i> Full Report</a>
+            </div>
+        </div>
+        <div class="row text-center">
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Output VAT</span>
+                <span class="h5 mb-0 text-success">{{ "{:,.2f}".format(vat_summary.total_output) }}</span>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Input VAT</span>
+                <span class="h5 mb-0 text-danger">{{ "{:,.2f}".format(vat_summary.total_input) }}</span>
+            </div>
+            <div class="col-md-2 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Net VAT</span>
+                <span class="h5 mb-0 text-primary">{{ "{:,.2f}".format(vat_summary.net_vat) }}</span>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">GL Balance (VAT Control)</span>
+                <span class="h5 mb-0 text-dark">{{ "{:,.2f}".format(vat_summary.gl_balance) }}</span>
+            </div>
+            <div class="col-md-3 col-sm-6 mb-2">
+                <span class="text-muted d-block small fw-bold">Reconciliation Diff</span>
+                <span class="h5 mb-0 {% if vat_summary.difference != 0 %}text-danger{% else %}text-success{% endif %}">
+                    {{ "{:,.2f}".format(vat_summary.difference) }}
+                    {% if vat_summary.difference == 0 %}
+                        <i class="fa-solid fa-check-circle ms-1"></i>
+                    {% else %}
+                        <i class="fa-solid fa-triangle-exclamation ms-1"></i>
+                    {% endif %}
+                </span>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="overview-panel">
+        <div class="overview-header">
+            <h2 class="overview-title">Dashboard Overview</h2>
+            <a href="#" class="all-apps-link" onclick="toggleAllApps(event)">All apps <i class="fas fa-chevron-right ms-1" style="font-size: 0.75rem;"></i></a>
+        </div>
+        <div class="app-grid">
+            <a href="/new" class="app-tile">
+                <div class="app-icon-wrapper bg-blue"><i class="fas fa-plus-circle"></i></div>
+                <span class="app-title">New</span>
+            </a>
+            <a href="/trending" class="app-tile">
+                <div class="app-icon-wrapper bg-green"><i class="fas fa-chart-line"></i></div>
+                <span class="app-title">Trending</span>
+            </a>
+            <a href="/buying" class="app-tile">
+                <div class="app-icon-wrapper bg-yellow"><i class="fas fa-shopping-cart"></i></div>
+                <span class="app-title">Buying</span>
+            </a>
+            <a href="/reports" class="app-tile">
+                <div class="app-icon-wrapper bg-red"><i class="fas fa-file-alt"></i></div>
+                <span class="app-title">Report</span>
+            </a>
+            <a href="/renew" class="app-tile">
+                <div class="app-icon-wrapper bg-cyan"><i class="fas fa-sync-alt"></i></div>
+                <span class="app-title">Renew</span>
+            </a>
+            <a href="/admin/users" class="app-tile">
+                <div class="app-icon-wrapper bg-grey"><i class="fas fa-user-plus"></i></div>
+                <span class="app-title">New User</span>
+            </a>
+        </div>
     </div>
     <div class="d-flex gap-3">
         <select class="form-select form-select-sm bg-white border-0 shadow-sm" id="globalCustomerSelect" style="width:180px;">
