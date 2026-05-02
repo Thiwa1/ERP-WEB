@@ -1,0 +1,1476 @@
+.FF.EFFEEEEE...FFF.FFF..FF....2026-05-02 16:38:08,863 - root - INFO - Creating default account: Account Payable
+2026-05-02 16:38:08,863 - root - INFO - Creating default account: Account Receivable
+2026-05-02 16:38:08,863 - root - INFO - Creating default account: Cost Of Goods Sold
+2026-05-02 16:38:08,863 - root - INFO - Creating default account: Sales
+2026-05-02 16:38:08,863 - root - INFO - Creating default account: Income
+2026-05-02 16:38:08,863 - root - INFO - Creating default account: Inventory
+2026-05-02 16:38:08,864 - root - INFO - Creating default account: VAT Control
+2026-05-02 16:38:08,864 - root - INFO - Creating default account: Cash In Hand
+.2026-05-02 16:38:08,870 - root - INFO - Default categories checked/created.
+..2026-05-02 16:38:08,877 - root - ERROR - Cash Payment Error: Payment amount 20000.0 exceeds outstanding 10000.0 for invoice ID 1
+......EE...FFF2026-05-02 16:38:08,916 - root - ERROR - Cash Payment Error: DB Error
+FFFF................FFFFFFFFFFFF..FFFFFFFFFFFFFFFFFFFFFF.F.....2026-05-02 16:38:08,978 - root - ERROR - Depreciation Error: 'asset_id'
+E.FFFFFFFFFFE...FE..FFFFF.FFEEFF.FEEEEEEEE............FFFFF2026-05-02 16:38:09,116 - root - INFO - Migrating: Adding Access_Inventory to User_Rights
+2026-05-02 16:38:09,117 - root - INFO - Migrating: Adding Access_POS to User_Rights
+2026-05-02 16:38:09,117 - root - INFO - Migrating: Adding Access_Accounting to User_Rights
+2026-05-02 16:38:09,117 - root - INFO - Migrating: Adding Access_Reports to User_Rights
+2026-05-02 16:38:09,117 - root - INFO - Migrating: Adding Access_Reversals to User_Rights
+2026-05-02 16:38:09,118 - root - INFO - Migrating: Adding uom_secondary to inventoy_items
+2026-05-02 16:38:09,118 - root - INFO - Migrating: Adding uom_conversion_rate to inventoy_items
+2026-05-02 16:38:09,118 - root - INFO - Migrating: Adding suppliers_TIN to suppliers
+2026-05-02 16:38:09,118 - root - INFO - Migrating: Adding suppliers_NIC to suppliers
+2026-05-02 16:38:09,119 - root - INFO - Migrating: Adding vat_registered to company
+2026-05-02 16:38:09,119 - root - INFO - Migrating: Adding status to OP_NO_Table
+2026-05-02 16:38:09,120 - root - INFO - Migrating: Adding status to jv_numbers
+2026-05-02 16:38:09,120 - root - INFO - Migrating: Adding master_voucher_no to bank_book_recod
+.FFFFFF.2026-05-02 16:38:09,136 - root - ERROR - POS Error: DB Fail
+....EEEEEEE..FEEE.................FEE.FF..FF.F................2026-05-02 16:38:09,330 - root - ERROR - Database error while creating user.
+FFFF..........F.......EEFFFF
+======================================================================
+ERROR: test_add_inventory_item_success (test_add_inventory_item.TestAddInventoryItem.test_add_inventory_item_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_add_inventory_item.py", line 53, in test_add_inventory_item_success
+    with app.app.test_client() as client:
+         ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_add_account_success (test_add_new_account.TestAddNewAccount.test_add_account_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_new_account.py", line 218, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_add_account_validation_missing_category (test_add_new_account.TestAddNewAccount.test_add_account_validation_missing_category)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_new_account.py", line 218, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_add_account_validation_missing_name (test_add_new_account.TestAddNewAccount.test_add_account_validation_missing_name)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_new_account.py", line 218, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_add_sub_account_success (test_add_new_account.TestAddNewAccount.test_add_sub_account_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_new_account.py", line 218, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_get_page (test_add_new_account.TestAddNewAccount.test_get_page)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_new_account.py", line 218, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_all_missing (test_benchmark_ensure_default_accounts.TestEnsureDefaultAccounts.test_all_missing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_benchmark_ensure_default_accounts.py", line 39, in test_all_missing
+    original_logic(self.defaults, db_orig)
+  File "/app/benchmark_ensure_default_accounts.py", line 30, in original_logic
+    date.today(), current_user, basement
+    ^^^^
+NameError: name 'date' is not defined
+
+======================================================================
+ERROR: test_some_existing (test_benchmark_ensure_default_accounts.TestEnsureDefaultAccounts.test_some_existing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_benchmark_ensure_default_accounts.py", line 62, in test_some_existing
+    original_logic(self.defaults, db_orig)
+  File "/app/benchmark_ensure_default_accounts.py", line 30, in original_logic
+    date.today(), current_user, basement
+    ^^^^
+NameError: name 'date' is not defined
+
+======================================================================
+ERROR: test_calculate_depreciation (test_fixed_assets.TestFixedAssets.test_calculate_depreciation)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_fixed_assets.py", line 186, in test_calculate_depreciation
+    self.assertEqual(res['success'], True)
+                     ~~~^^^^^^^^^^^
+TypeError: tuple indices must be integers or slices, not str
+
+======================================================================
+ERROR: test_inventory_category_get (test_inventory_category.TestInventoryCategory.test_inventory_category_get)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_inventory_category.py", line 20, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_inventory_trend (unittest.loader._FailedTest.test_inventory_trend)
+----------------------------------------------------------------------
+ImportError: Failed to import test module: test_inventory_trend
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/loader.py", line 396, in _find_test_path
+    module = self._get_module_from_name(name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/loader.py", line 339, in _get_module_from_name
+    __import__(name)
+  File "/app/tests/test_inventory_trend.py", line 3, in <module>
+    import pytest
+ModuleNotFoundError: No module named 'pytest'
+
+
+======================================================================
+ERROR: test_get_sub_accounts (test_jv_enhancements.TestJVEnhancements.test_get_sub_accounts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_jv_enhancements.py", line 21, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_jv_print_route (test_jv_enhancements.TestJVEnhancements.test_jv_print_route)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_jv_enhancements.py", line 21, in setUp
+    self.client = app_module.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_db_error (test_login.TestLogin.test_login_db_error)
+Test login when legacy DB connection fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_incorrect_password (test_login.TestLogin.test_login_incorrect_password)
+Test login with correct username but incorrect password.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_missing_credentials (test_login.TestLogin.test_login_missing_credentials)
+Test POST with missing credentials.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_page_loads (test_login.TestLogin.test_login_page_loads)
+Test GET /login renders login template.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_success (test_login.TestLogin.test_login_success)
+Test successful login.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_login_user_not_found (test_login.TestLogin.test_login_user_not_found)
+Test login with non-existent user.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_logout (test_login.TestLogin.test_logout)
+Test GET /logout clears session and redirects to login.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_master_login_db_error (test_login.TestLogin.test_master_login_db_error)
+Test login when Master DB query raises an Exception, ensuring it falls back to legacy.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_login.py", line 133, in setUp
+    self.client = app.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_case_insensitivity (test_predict_account_type.TestPredictAccountType.test_case_insensitivity)
+Test that fuzzy matching is effectively case insensitive in calculation
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_different_mapped_types (test_predict_account_type.TestPredictAccountType.test_different_mapped_types)
+Test that different knowledge base types are mapped correctly to the UI types
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_exact_match_asset (test_predict_account_type.TestPredictAccountType.test_exact_match_asset)
+Test exact match on an asset account
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_exact_match_expense (test_predict_account_type.TestPredictAccountType.test_exact_match_expense)
+Test exact match on an expense/cost account
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_fuzzy_match (test_predict_account_type.TestPredictAccountType.test_fuzzy_match)
+Test fuzzy matching handles typos or shortened names correctly
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_no_match (test_predict_account_type.TestPredictAccountType.test_no_match)
+Test when no matches are found
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_no_name_provided (test_predict_account_type.TestPredictAccountType.test_no_name_provided)
+Test the endpoint returns error when no name is provided
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_predict_account_type.py", line 37, in setUp
+    self.client = self.app.test_client()
+                  ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_client'
+
+======================================================================
+ERROR: test_profit_loss_default_get (test_profit_loss.TestProfitLoss.test_profit_loss_default_get)
+Test GET request defaults to current month and calculates correctly.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_profit_loss.py", line 107, in test_profit_loss_default_get
+    args, kwargs = mock_flask.render_template.call_args
+    ^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
+
+======================================================================
+ERROR: test_profit_loss_empty_data (test_profit_loss.TestProfitLoss.test_profit_loss_empty_data)
+Test with accounts but no transactions.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_profit_loss.py", line 183, in test_profit_loss_empty_data
+    args, kwargs = mock_flask.render_template.call_args
+    ^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
+
+======================================================================
+ERROR: test_profit_loss_multi_period_post (test_profit_loss.TestProfitLoss.test_profit_loss_multi_period_post)
+Test POST with multiple periods.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_profit_loss.py", line 151, in test_profit_loss_multi_period_post
+    args, kwargs = mock_flask.render_template.call_args
+    ^^^^^^^^^^^^
+TypeError: cannot unpack non-iterable NoneType object
+
+======================================================================
+ERROR: test_sales_summary_cashier_csv (test_sales_summary_cashier.TestSalesSummaryCashier.test_sales_summary_cashier_csv)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_sales_summary_cashier.py", line 59, in test_sales_summary_cashier_csv
+    with app.app.test_request_context('/sales_summary_cashier?date=2023-01-01&filter=current&download=csv'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_request_context'
+
+======================================================================
+ERROR: test_sales_summary_cashier_get (test_sales_summary_cashier.TestSalesSummaryCashier.test_sales_summary_cashier_get)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_sales_summary_cashier.py", line 17, in test_sales_summary_cashier_get
+    with app.app.test_request_context('/sales_summary_cashier?date=2023-01-01&filter=current'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_request_context'
+
+======================================================================
+ERROR: test_vat_not_registered (test_vat_report.TestVatReport.test_vat_not_registered)
+Test response when company is not VAT registered.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_vat_report.py", line 144, in test_vat_not_registered
+    with app_module.app.test_request_context('/vat_report'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_request_context'
+
+======================================================================
+ERROR: test_vat_report_happy_path (test_vat_report.TestVatReport.test_vat_report_happy_path)
+Test successful VAT report generation with mocked data.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_vat_report.py", line 233, in test_vat_report_happy_path
+    with app_module.app.test_request_context('/vat_report'):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'MockFlask' object has no attribute 'test_request_context'
+
+======================================================================
+FAIL: test_add_customer_post_success (test_add_customer.TestAddCustomer.test_add_customer_post_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_customer.py", line 119, in test_add_customer_post_success
+    self.assertTrue(len(calls) >= 3, "DB execute not called enough times")
+AssertionError: False is not true : DB execute not called enough times
+
+======================================================================
+FAIL: test_add_customer_transaction_rollback (test_add_customer.TestAddCustomer.test_add_customer_transaction_rollback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_customer.py", line 165, in test_add_customer_transaction_rollback
+    mock_conn.rollback.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'rollback' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_add_main_category_missing_name (test_add_main_category.TestAddMainCategory.test_add_main_category_missing_name)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_main_category.py", line 94, in test_add_main_category_missing_name
+    self.actual_flash_mock.assert_not_called()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 910, in assert_not_called
+    raise AssertionError(msg)
+AssertionError: Expected 'flash' to not have been called. Called 3 times.
+Calls: [call('Customer added successfully!', 'success'),
+ call('Customer added successfully!', 'success'),
+ call('Supplier Name and Code are required.', 'danger')].
+
+======================================================================
+FAIL: test_add_main_category_success (test_add_main_category.TestAddMainCategory.test_add_main_category_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_main_category.py", line 76, in test_add_main_category_success
+    self.actual_flash_mock.assert_called_once_with('Main category added', 'success')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 960, in assert_called_once_with
+    raise AssertionError(msg)
+AssertionError: Expected 'flash' to be called once. Called 4 times.
+Calls: [call('Customer added successfully!', 'success'),
+ call('Customer added successfully!', 'success'),
+ call('Supplier Name and Code are required.', 'danger'),
+ call('Main category added', 'success')].
+
+======================================================================
+FAIL: test_add_supplier_db_exception (test_add_supplier.TestAddSupplier.test_add_supplier_db_exception)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_supplier.py", line 149, in test_add_supplier_db_exception
+    mock_flask.flash.assert_called_with('Error adding supplier: DB Fail', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Error adding supplier: DB Fail', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_add_supplier_success (test_add_supplier.TestAddSupplier.test_add_supplier_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_supplier.py", line 102, in test_add_supplier_success
+    self.assertTrue(len(calls) >= 3, f"Expected 3 DB calls, got {len(calls)}")
+AssertionError: False is not true : Expected 3 DB calls, got 0
+
+======================================================================
+FAIL: test_add_supplier_validation_error (test_add_supplier.TestAddSupplier.test_add_supplier_validation_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_add_supplier.py", line 126, in test_add_supplier_validation_error
+    mock_flask.flash.assert_called_with('Supplier Name and Code are required.', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Supplier Name and Code are required.', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_negative_input (test_amount_in_words.TestAmountInWords.test_negative_input)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_amount_in_words.py", line 61, in test_negative_input
+    self.assertEqual(result, expected)
+AssertionError: <Magi[36 chars]().replace().replace().replace().title()' id='140645281957072'> != <Magi[36 chars]().replace().replace().replace().title()' id='140645277035328'>
+
+======================================================================
+FAIL: test_normal_amount (test_amount_in_words.TestAmountInWords.test_normal_amount)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_amount_in_words.py", line 26, in test_normal_amount
+    self.assertIn("Rupees", result)
+AssertionError: 'Rupees' not found in <MagicMock name='mock.num2words().replace().replace().replace().replace().title()' id='140645281957072'>
+
+======================================================================
+FAIL: test_singular_amount (test_amount_in_words.TestAmountInWords.test_singular_amount)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_amount_in_words.py", line 46, in test_singular_amount
+    self.assertEqual(result, expected)
+AssertionError: <Magi[36 chars]().replace().replace().replace().title()' id='140645281957072'> != <Magi[36 chars]().replace().replace().replace().title()' id='140645277035328'>
+
+======================================================================
+FAIL: test_backup_missing_mysqldump (test_backup_safety.TestBackupSafety.test_backup_missing_mysqldump)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_backup_safety.py", line 153, in test_backup_missing_mysqldump
+    app_module.flash.assert_called()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 918, in assert_called
+    raise AssertionError(msg)
+AssertionError: Expected 'mock' to have been called.
+
+======================================================================
+FAIL: test_backup_success (test_backup_safety.TestBackupSafety.test_backup_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_backup_safety.py", line 88, in test_backup_success
+    self.assertIn('mysqldump', args)
+AssertionError: 'mysqldump' not found in ['/usr/bin/mysqldump', '--defaults-extra-file=/tmp/tmpze1xzuu6', '--', 'test_db']
+
+======================================================================
+FAIL: test_cash_payment_submit_missing_fields (test_cash_payment_submit.TestCashPaymentSubmit.test_cash_payment_submit_missing_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_cash_payment_submit.py", line 120, in test_cash_payment_submit_missing_fields
+    mock_flask.flash.assert_called_with('Missing supplier or cash account', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Missing supplier or cash account', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_cash_payment_submit_no_payment_amounts (test_cash_payment_submit.TestCashPaymentSubmit.test_cash_payment_submit_no_payment_amounts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_cash_payment_submit.py", line 138, in test_cash_payment_submit_no_payment_amounts
+    mock_flask.flash.assert_called_with('No payment amounts entered', 'warning')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('No payment amounts entered', 'warning')
+  Actual: not called.
+
+======================================================================
+FAIL: test_cash_payment_submit_success (test_cash_payment_submit.TestCashPaymentSubmit.test_cash_payment_submit_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_cash_payment_submit.py", line 108, in test_cash_payment_submit_success
+    self.assertTrue(any("Cash Payment processed successfully" in msg for msg in flashed))
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_cash_payment_submit_transaction_failure (test_cash_payment_submit.TestCashPaymentSubmit.test_cash_payment_submit_transaction_failure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_cash_payment_submit.py", line 160, in test_cash_payment_submit_transaction_failure
+    self.assertTrue(any("Transaction failed" in msg for msg in flashed))
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_chart_of_accounts_counts (test_chart_of_accounts.TestChartOfAccounts.test_chart_of_accounts_counts)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_chart_of_accounts.py", line 87, in test_chart_of_accounts_counts
+    self.assertEqual(kwargs['total_accounts'], 7)
+AssertionError: 0 != 7
+
+======================================================================
+FAIL: test_check_permission_denied (test_check_permission.TestCheckPermission.test_check_permission_denied)
+Verifies denied permission (value 0).
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_check_permission.py", line 83, in test_check_permission_denied
+    self.assertFalse(result)
+AssertionError: True is not false
+
+======================================================================
+FAIL: test_check_permission_missing_column_fix (test_check_permission.TestCheckPermission.test_check_permission_missing_column_fix)
+Verification Test:
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_check_permission.py", line 53, in test_check_permission_missing_column_fix
+    self.assertFalse(result)
+AssertionError: True is not false
+
+======================================================================
+FAIL: test_different_symbol (test_currency_filter.TestCurrencyFilter.test_different_symbol)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 46, in test_different_symbol
+    self.assertEqual(result, "USD 1,234.56")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != 'USD 1,234.56'
+
+======================================================================
+FAIL: test_invalid_value (test_currency_filter.TestCurrencyFilter.test_invalid_value)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 76, in test_invalid_value
+    self.assertEqual(result, "0.00")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != '0.00'
+
+======================================================================
+FAIL: test_no_symbol_in_context (test_currency_filter.TestCurrencyFilter.test_no_symbol_in_context)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 52, in test_no_symbol_in_context
+    self.assertEqual(result, "1,234.56")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != '1,234.56'
+
+======================================================================
+FAIL: test_none_value (test_currency_filter.TestCurrencyFilter.test_none_value)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 64, in test_none_value
+    self.assertEqual(result, "LKR 0.00")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != 'LKR 0.00'
+
+======================================================================
+FAIL: test_string_number (test_currency_filter.TestCurrencyFilter.test_string_number)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 70, in test_string_number
+    self.assertEqual(result, "LKR 5,000.00")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != 'LKR 5,000.00'
+
+======================================================================
+FAIL: test_suppress_symbol (test_currency_filter.TestCurrencyFilter.test_suppress_symbol)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 58, in test_suppress_symbol
+    self.assertEqual(result, "1,234.56")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != '1,234.56'
+
+======================================================================
+FAIL: test_with_symbol_in_context (test_currency_filter.TestCurrencyFilter.test_with_symbol_in_context)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_filter.py", line 40, in test_with_symbol_in_context
+    self.assertEqual(result, "LKR 1,234.56")
+AssertionError: <MagicMock name='mock.Environment().from_[35 chars]592'> != 'LKR 1,234.56'
+
+======================================================================
+FAIL: test_currency_filter_basic (test_currency_logic.TestCurrencyLogic.test_currency_filter_basic)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_logic.py", line 78, in test_currency_filter_basic
+    self.assertEqual(app.currency_filter(ctx, 1234.56), "1,234.56")
+AssertionError: <MagicMock name='mock.pass_context()()' id='140645274900704'> != '1,234.56'
+
+======================================================================
+FAIL: test_currency_filter_invalid (test_currency_logic.TestCurrencyLogic.test_currency_filter_invalid)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_logic.py", line 92, in test_currency_filter_invalid
+    self.assertEqual(app.currency_filter(ctx, "invalid"), "0.00")
+AssertionError: <MagicMock name='mock.pass_context()()' id='140645274900704'> != '0.00'
+
+======================================================================
+FAIL: test_currency_filter_none (test_currency_logic.TestCurrencyLogic.test_currency_filter_none)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_logic.py", line 88, in test_currency_filter_none
+    self.assertEqual(app.currency_filter(ctx, None), "0.00")
+AssertionError: <MagicMock name='mock.pass_context()()' id='140645274900704'> != '0.00'
+
+======================================================================
+FAIL: test_currency_filter_string (test_currency_logic.TestCurrencyLogic.test_currency_filter_string)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_logic.py", line 84, in test_currency_filter_string
+    self.assertEqual(app.currency_filter(ctx, "1234.56"), "1,234.56")
+AssertionError: <MagicMock name='mock.pass_context()()' id='140645274900704'> != '1,234.56'
+
+======================================================================
+FAIL: test_currency_filter_unformattable (test_currency_logic.TestCurrencyLogic.test_currency_filter_unformattable)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_currency_logic.py", line 97, in test_currency_filter_unformattable
+    self.assertEqual(app.currency_filter(ctx, []), "0.00")
+AssertionError: <MagicMock name='mock.pass_context()()' id='140645274900704'> != '0.00'
+
+======================================================================
+FAIL: test_execute_batch_connection_fail (test_database.TestDatabase.test_execute_batch_connection_fail)
+Test execute_batch returns False if get_connection fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 203, in test_execute_batch_connection_fail
+    self.assertFalse(result)
+AssertionError: <MagicMock name='mock.Database().execute_batch()' id='140645276852848'> is not false
+
+======================================================================
+FAIL: test_execute_batch_exception (test_database.TestDatabase.test_execute_batch_exception)
+Test execute_batch calls rollback and re-raises on exception.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 217, in test_execute_batch_exception
+    with self.assertRaises(MockError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: MockError not raised
+
+======================================================================
+FAIL: test_execute_batch_optimization (test_database.TestDatabase.test_execute_batch_optimization)
+Verify that execute_batch calls executemany exactly once.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 370, in test_execute_batch_optimization
+    mock_cursor.executemany.assert_called_once_with(query, params_list)
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 960, in assert_called_once_with
+    raise AssertionError(msg)
+AssertionError: Expected 'executemany' to be called once. Called 0 times.
+
+======================================================================
+FAIL: test_execute_batch_success (test_database.TestDatabase.test_execute_batch_success)
+Test execute_batch uses executemany inside a transaction.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 189, in test_execute_batch_success
+    mock_conn.cursor.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'cursor' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_execute_query_connection_fail (test_database.TestDatabase.test_execute_query_connection_fail)
+Test execute_query returns None if get_connection fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 133, in test_execute_query_connection_fail
+    self.assertIsNone(result)
+AssertionError: <MagicMock name='mock.Database().execute_query()' id='140645275326256'> is not None
+
+======================================================================
+FAIL: test_execute_query_insert (test_database.TestDatabase.test_execute_query_insert)
+Test execute_query with commit=True (insert query).
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 119, in test_execute_query_insert
+    self.assertEqual(result, 123)
+AssertionError: <MagicMock name='mock.Database().execute_query()' id='140645275326256'> != 123
+
+======================================================================
+FAIL: test_execute_query_no_rollback_on_select_error (test_database.TestDatabase.test_execute_query_no_rollback_on_select_error)
+Test that rollback is NOT called for select queries (commit=False)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 168, in test_execute_query_no_rollback_on_select_error
+    with self.assertRaises(MockError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: MockError not raised
+
+======================================================================
+FAIL: test_execute_query_rollback_on_error (test_database.TestDatabase.test_execute_query_rollback_on_error)
+Test that rollback is called when an error occurs during commit=True
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 147, in test_execute_query_rollback_on_error
+    with self.assertRaises(MockError) as cm:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: MockError not raised
+
+======================================================================
+FAIL: test_execute_query_select (test_database.TestDatabase.test_execute_query_select)
+Test execute_query with commit=False (select query).
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 97, in test_execute_query_select
+    self.assertEqual(result, expected_result)
+AssertionError: <MagicMock name='mock.Database().execute_query()' id='140645275326256'> != [{'id': 1, 'name': 'test'}]
+
+======================================================================
+FAIL: test_execute_transaction_connection_fail (test_database.TestDatabase.test_execute_transaction_connection_fail)
+Test execute_transaction returns False if get_connection fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 256, in test_execute_transaction_connection_fail
+    self.assertFalse(result)
+AssertionError: <MagicMock name='mock.Database().execute_transaction()' id='140645275550640'> is not false
+
+======================================================================
+FAIL: test_execute_transaction_exception (test_database.TestDatabase.test_execute_transaction_exception)
+Test execute_transaction calls rollback and re-raises on exception.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 272, in test_execute_transaction_exception
+    with self.assertRaises(MockError):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: MockError not raised
+
+======================================================================
+FAIL: test_execute_transaction_n_plus_1 (test_database.TestDatabase.test_execute_transaction_n_plus_1)
+Verify that execute_transaction calls execute N times (N+1 problem).
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 343, in test_execute_transaction_n_plus_1
+    self.assertEqual(mock_cursor.execute.call_count, 3)
+AssertionError: 0 != 3
+
+======================================================================
+FAIL: test_execute_transaction_success (test_database.TestDatabase.test_execute_transaction_success)
+Test execute_transaction executes a list of queries sequentially inside a transaction.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 240, in test_execute_transaction_success
+    mock_conn.cursor.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'cursor' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_get_connection_dynamic_db (test_database.TestDatabase.test_get_connection_dynamic_db)
+Test get_connection uses dynamic DB name if getter is set.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 68, in test_get_connection_dynamic_db
+    self.assertEqual(conn, mock_conn)
+AssertionError: <MagicMock name='mock.Database().get_connection()' id='140645275653264'> != <MagicMock name='mock.connector.connect()' id='140645275702512'>
+
+======================================================================
+FAIL: test_get_connection_error (test_database.TestDatabase.test_get_connection_error)
+Test get_connection sets last_error and returns None on error.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 80, in test_get_connection_error
+    self.assertIsNone(conn)
+AssertionError: <MagicMock name='mock.Database().get_connection()' id='140645275653264'> is not None
+
+======================================================================
+FAIL: test_get_connection_success (test_database.TestDatabase.test_get_connection_success)
+Test get_connection with static config.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 54, in test_get_connection_success
+    self.assertEqual(conn, mock_conn)
+AssertionError: <MagicMock name='mock.Database().get_connection()' id='140645275653264'> != <MagicMock name='mock.connector.connect()' id='140645275710144'>
+
+======================================================================
+FAIL: test_init (test_database.TestDatabase.test_init)
+Test that Database initializes correctly.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 34, in test_init
+    self.assertEqual(self.db.config, self.config)
+AssertionError: <MagicMock name='mock.Database().config' [16 chars]224'> != {'user': 'root', 'password': 'password', [38 chars]_db'}
+
+======================================================================
+FAIL: test_set_db_name_getter (test_database.TestDatabase.test_set_db_name_getter)
+Test that set_db_name_getter sets the getter correctly.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 44, in test_set_db_name_getter
+    self.assertEqual(self.db.db_name_getter, mock_getter)
+AssertionError: <MagicMock name='mock.Database().db_name_g[23 chars]240'> != <function TestDatabase.test_set_db_name_ge[39 chars]ed40>
+
+======================================================================
+FAIL: test_transaction_cursor_connection_fail (test_database.TestDatabase.test_transaction_cursor_connection_fail)
+Test transaction_cursor raises an exception if get_connection fails.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 320, in test_transaction_cursor_connection_fail
+    with self.assertRaisesRegex(Exception, "Failed to connect to database"):
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Exception not raised
+
+======================================================================
+FAIL: test_transaction_cursor_exception (test_database.TestDatabase.test_transaction_cursor_exception)
+Test transaction_cursor calls rollback and re-raises on exception.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 307, in test_transaction_cursor_exception
+    self.assertEqual(cursor, mock_cursor)
+AssertionError: <MagicMock name='mock.Database().transaction_cursor().__enter__[20 chars]288'> != <MagicMock name='mock.connector.connect().cursor()' id='140645275585808'>
+
+======================================================================
+FAIL: test_transaction_cursor_success (test_database.TestDatabase.test_transaction_cursor_success)
+Test transaction_cursor yields a cursor, starts transaction and commits on success.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_database.py", line 289, in test_transaction_cursor_success
+    self.assertEqual(cursor, mock_cursor)
+AssertionError: <MagicMock name='mock.Database().transaction_cursor().__enter__[20 chars]288'> != <MagicMock name='mock.connector.connect().cursor()' id='140645275519600'>
+
+======================================================================
+FAIL: test_delete_cash_payment_invoice_exception (test_delete_cash_payment_invoice.TestDeleteCashPaymentInvoice.test_delete_cash_payment_invoice_exception)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_delete_cash_payment_invoice.py", line 97, in test_delete_cash_payment_invoice_exception
+    self.assertEqual(response.status_code, 500)
+AssertionError: 400 != 500
+
+======================================================================
+FAIL: test_delete_cash_payment_invoice_success (test_delete_cash_payment_invoice.TestDeleteCashPaymentInvoice.test_delete_cash_payment_invoice_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_delete_cash_payment_invoice.py", line 70, in test_delete_cash_payment_invoice_success
+    mock_cursor.execute.assert_any_call("CALL Sup_Delete_Invoice(%s)", ('JV-2023-001',))
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1020, in assert_any_call
+    raise AssertionError(
+AssertionError: execute('CALL Sup_Delete_Invoice(%s)', ('JV-2023-001',)) call not found
+
+======================================================================
+FAIL: test_get_current_user_pk_invalid_string (test_get_current_user_pk.TestGetCurrentUserPk.test_get_current_user_pk_invalid_string)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_get_current_user_pk.py", line 31, in test_get_current_user_pk_invalid_string
+    self.assertEqual(app.get_current_user_pk(), 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_get_current_user_pk_missing (test_get_current_user_pk.TestGetCurrentUserPk.test_get_current_user_pk_missing)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_get_current_user_pk.py", line 27, in test_get_current_user_pk_missing
+    self.assertEqual(app.get_current_user_pk(), 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_get_current_user_pk_type_error (test_get_current_user_pk.TestGetCurrentUserPk.test_get_current_user_pk_type_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_get_current_user_pk.py", line 35, in test_get_current_user_pk_type_error
+    self.assertEqual(app.get_current_user_pk(), 0)
+AssertionError: 1 != 0
+
+======================================================================
+FAIL: test_get_current_user_pk_valid_int (test_get_current_user_pk.TestGetCurrentUserPk.test_get_current_user_pk_valid_int)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_get_current_user_pk.py", line 20, in test_get_current_user_pk_valid_int
+    self.assertEqual(app.get_current_user_pk(), 5)
+AssertionError: 1 != 5
+
+======================================================================
+FAIL: test_get_current_user_pk_valid_string (test_get_current_user_pk.TestGetCurrentUserPk.test_get_current_user_pk_valid_string)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_get_current_user_pk.py", line 24, in test_get_current_user_pk_valid_string
+    self.assertEqual(app.get_current_user_pk(), 10)
+AssertionError: 1 != 10
+
+======================================================================
+FAIL: test_grn_get (test_grn.TestGRN.test_grn_get)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_grn.py", line 117, in test_grn_get
+    mock_flask.render_template.assert_called()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 918, in assert_called
+    raise AssertionError(msg)
+AssertionError: Expected 'mock' to have been called.
+
+======================================================================
+FAIL: test_grn_post_db_error (test_grn.TestGRN.test_grn_post_db_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_grn.py", line 250, in test_grn_post_db_error
+    mock_conn.rollback.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'rollback' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_grn_post_invalid_supplier (test_grn.TestGRN.test_grn_post_invalid_supplier)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_grn.py", line 219, in test_grn_post_invalid_supplier
+    mock_flask.redirect.assert_called()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 918, in assert_called
+    raise AssertionError(msg)
+AssertionError: Expected 'mock' to have been called.
+
+======================================================================
+FAIL: test_grn_post_success (test_grn.TestGRN.test_grn_post_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_grn.py", line 164, in test_grn_post_success
+    mock_conn.start_transaction.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'start_transaction' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_grn_executemany_usage (test_grn_correctness.TestGRNCorrectness.test_grn_executemany_usage)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_grn_correctness.py", line 122, in test_grn_executemany_usage
+    self.assertTrue(mock_cursor.executemany.called, "cursor.executemany was not called")
+AssertionError: False is not true : cursor.executemany was not called
+
+======================================================================
+FAIL: test_submit_transfer_success (test_inventory_transfer.TestInventoryTransfer.test_submit_transfer_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_inventory_transfer.py", line 105, in test_submit_transfer_success
+    self.assertEqual(len(inv_calls), 4)
+AssertionError: 0 != 4
+
+======================================================================
+FAIL: test_submit_invoice_no_items (test_invoice_creation.TestInvoiceCreation.test_submit_invoice_no_items)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_invoice_creation.py", line 210, in test_submit_invoice_no_items
+    mock_flask.flash.assert_called_with('No items in invoice', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('No items in invoice', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_submit_invoice_success (test_invoice_creation.TestInvoiceCreation.test_submit_invoice_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_invoice_creation.py", line 149, in test_submit_invoice_success
+    self.mock_conn.commit.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'commit' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_submit_invoice_transaction_failure (test_invoice_creation.TestInvoiceCreation.test_submit_invoice_transaction_failure)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_invoice_creation.py", line 243, in test_submit_invoice_transaction_failure
+    self.mock_conn.rollback.assert_called_once()
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 928, in assert_called_once
+    raise AssertionError(msg)
+AssertionError: Expected 'rollback' to have been called once. Called 0 times.
+
+======================================================================
+FAIL: test_save_journal_entry_db_error (test_journal_entry_save.TestJournalEntrySave.test_save_journal_entry_db_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_journal_entry_save.py", line 187, in test_save_journal_entry_db_error
+    self.assertIn('Database Error', args[0])
+AssertionError: 'Database Error' not found in 'No entries provided'
+
+======================================================================
+FAIL: test_save_journal_entry_missing_fields (test_journal_entry_save.TestJournalEntrySave.test_save_journal_entry_missing_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_journal_entry_save.py", line 156, in test_save_journal_entry_missing_fields
+    app_module.flash.assert_called_with('JV Number and Main Narration are required', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 949, in assert_called_with
+    raise AssertionError(_error_message()) from cause
+AssertionError: expected call not found.
+Expected: mock('JV Number and Main Narration are required', 'danger')
+  Actual: mock('No entries provided', 'danger')
+
+======================================================================
+FAIL: test_save_journal_entry_success (test_journal_entry_save.TestJournalEntrySave.test_save_journal_entry_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_journal_entry_save.py", line 83, in test_save_journal_entry_success
+    app_module.flash.assert_called_with('Journal Entry created successfully. System JV: 100', 'success')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 949, in assert_called_with
+    raise AssertionError(_error_message()) from cause
+AssertionError: expected call not found.
+Expected: mock('Journal Entry created successfully. System JV: 100', 'success')
+  Actual: mock('No entries provided', 'danger')
+
+======================================================================
+FAIL: test_save_journal_entry_unbalanced (test_journal_entry_save.TestJournalEntrySave.test_save_journal_entry_unbalanced)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_journal_entry_save.py", line 124, in test_save_journal_entry_unbalanced
+    self.assertIn('Entries not balanced', args[0])
+AssertionError: 'Entries not balanced' not found in 'No entries provided'
+
+======================================================================
+FAIL: test_account_mappings_are_correct (test_knowledge_base.TestKnowledgeBase.test_account_mappings_are_correct)
+Test that common accounts are mapped to correct types
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_knowledge_base.py", line 42, in test_account_mappings_are_correct
+    self.assertEqual(knowledge_base.account_types[account], expected_type)
+AssertionError: <MagicMock name='mock.account_types.__getitem__()' id='140645273525840'> != 'Assets Account'
+
+======================================================================
+FAIL: test_account_types_exists_and_is_dict (test_knowledge_base.TestKnowledgeBase.test_account_types_exists_and_is_dict)
+Test that account_types exists in knowledge_base and is a dictionary
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_knowledge_base.py", line 14, in test_account_types_exists_and_is_dict
+    self.assertIsInstance(knowledge_base.account_types, dict)
+AssertionError: <MagicMock name='mock.account_types' id='140645273532032'> is not an instance of <class 'dict'>
+
+======================================================================
+FAIL: test_common_accounts_present (test_knowledge_base.TestKnowledgeBase.test_common_accounts_present)
+Test that common accounts are present in account_types
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_knowledge_base.py", line 28, in test_common_accounts_present
+    self.assertIn(account, knowledge_base.account_types)
+AssertionError: 'Cash' not found in <MagicMock name='mock.account_types' id='140645273532032'>
+
+======================================================================
+FAIL: test_parse_gl_upload_data_cleans_whitespace (test_parse_gl_upload_data.TestParseGLUploadData.test_parse_gl_upload_data_cleans_whitespace)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_parse_gl_upload_data.py", line 59, in test_parse_gl_upload_data_cleans_whitespace
+    self.assertEqual(len(result), 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_parse_gl_upload_data_error_handling (test_parse_gl_upload_data.TestParseGLUploadData.test_parse_gl_upload_data_error_handling)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_parse_gl_upload_data.py", line 85, in test_parse_gl_upload_data_error_handling
+    with self.assertRaises(ValueError) as cm:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: ValueError not raised
+
+======================================================================
+FAIL: test_parse_gl_upload_data_ignores_empty_keys (test_parse_gl_upload_data.TestParseGLUploadData.test_parse_gl_upload_data_ignores_empty_keys)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_parse_gl_upload_data.py", line 73, in test_parse_gl_upload_data_ignores_empty_keys
+    self.assertEqual(len(result), 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_parse_gl_upload_data_ignores_missing_account_name (test_parse_gl_upload_data.TestParseGLUploadData.test_parse_gl_upload_data_ignores_missing_account_name)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_parse_gl_upload_data.py", line 48, in test_parse_gl_upload_data_ignores_missing_account_name
+    self.assertEqual(len(result), 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_parse_gl_upload_data_success (test_parse_gl_upload_data.TestParseGLUploadData.test_parse_gl_upload_data_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_parse_gl_upload_data.py", line 31, in test_parse_gl_upload_data_success
+    self.assertEqual(len(result), 2)
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_create_user_hashes_password (test_password_security_fix.TestPasswordSecurityFix.test_create_user_hashes_password)
+Verify that creating a new user hashes the password.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_password_security_fix.py", line 161, in test_create_user_hashes_password
+    self.assertIn('User newuser created successfully.', response.data.decode('utf-8'))
+AssertionError: 'User newuser created successfully.' not found in <MagicMock name='mock.test_client().post().data.decode()' id='140645277715008'>
+
+======================================================================
+FAIL: test_hashed_password_login (test_password_security_fix.TestPasswordSecurityFix.test_hashed_password_login)
+Verify that a user with a hashed password can login.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_password_security_fix.py", line 95, in test_hashed_password_login
+    self.assertEqual(response.status_code, 200)
+AssertionError: <MagicMock name='mock.test_client().post().status_code' id='140645277370992'> != 200
+
+======================================================================
+FAIL: test_incorrect_password (test_password_security_fix.TestPasswordSecurityFix.test_incorrect_password)
+Verify that an incorrect password fails for hashed user.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_password_security_fix.py", line 133, in test_incorrect_password
+    self.assertIn("Incorrect password.", response.data.decode('utf-8'))
+AssertionError: 'Incorrect password.' not found in <MagicMock name='mock.test_client().post().data.decode()' id='140645277715008'>
+
+======================================================================
+FAIL: test_legacy_plain_text_login_and_migration (test_password_security_fix.TestPasswordSecurityFix.test_legacy_plain_text_login_and_migration)
+Verify that a user with a plain text password can still login (fallback),
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_password_security_fix.py", line 55, in test_legacy_plain_text_login_and_migration
+    self.assertEqual(response.status_code, 200)
+AssertionError: <MagicMock name='mock.test_client().post().status_code' id='140645277370992'> != 200
+
+======================================================================
+FAIL: test_legacy_plain_text_login_migrates (test_password_security_repro.TestPasswordSecurity.test_legacy_plain_text_login_migrates)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_password_security_repro.py", line 48, in test_legacy_plain_text_login_migrates
+    self.assertTrue(len(update_calls) > 0, "Expected password migration UPDATE query to be called for legacy password.")
+AssertionError: False is not true : Expected password migration UPDATE query to be called for legacy password.
+
+======================================================================
+FAIL: test_secure_hashed_password_login (test_password_security_repro.TestPasswordSecurity.test_secure_hashed_password_login)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_password_security_repro.py", line 74, in test_secure_hashed_password_login
+    self.assertEqual(self.app.session.get('username'), 'admin')
+AssertionError: None != 'admin'
+
+======================================================================
+FAIL: test_submit_production_issue_success (test_production_issue.TestProductionIssue.test_submit_production_issue_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_production_issue.py", line 96, in test_submit_production_issue_success
+    self.mock_flash.assert_called_with('Production Issue recorded successfully. JV: 100', 'success')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 949, in assert_called_with
+    raise AssertionError(_error_message()) from cause
+AssertionError: expected call not found.
+Expected: flash('Production Issue recorded successfully. JV: 100', 'success')
+  Actual: flash("Error processing issue: name 'current_user_pk' is not defined", 'danger')
+
+======================================================================
+FAIL: test_register_page_loads (test_register_render.TestRegisterPage.test_register_page_loads)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_register_render.py", line 13, in test_register_page_loads
+    self.assertEqual(response.status_code, 200)
+AssertionError: <MagicMock name='mock.test_client().get().status_code' id='140645271178176'> != 200
+
+======================================================================
+FAIL: test_is_safe_db_name (test_security_fix_db_name.TestSecurityFixDbName.test_is_safe_db_name)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_security_fix_db_name.py", line 29, in test_is_safe_db_name
+    self.assertFalse(app.is_safe_db_name("bad`db`name"))
+AssertionError: True is not false
+
+======================================================================
+FAIL: test_db_password_default_none (test_security_fix_unit.TestSecurityFix.test_db_password_default_none)
+Test that db_config['password'] is None when DB_PASSWORD is not set.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_security_fix_unit.py", line 35, in test_db_password_default_none
+    self.assertIsNone(app.db_config.get('password'))
+AssertionError: '21219125' is not None
+
+======================================================================
+FAIL: test_create_grn_failure_rollback (test_services.TestServices.test_create_grn_failure_rollback)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_services.py", line 106, in test_create_grn_failure_rollback
+    with self.assertRaises(Exception) as context:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: Exception not raised
+
+======================================================================
+FAIL: test_create_grn_success (test_services.TestServices.test_create_grn_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_services.py", line 40, in test_create_grn_success
+    self.assertEqual(jv_no, 123)
+AssertionError: <MagicMock name='mock.create_grn()' id='140645274450832'> != 123
+
+======================================================================
+FAIL: test_setup_master_db_success (test_setup_master_db.TestSetupMasterDb.test_setup_master_db_success)
+Test that setup_master_db correctly initializes the master DB and tables.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 1396, in patched
+    return func(*newargs, **newkeywargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/app/tests/test_setup_master_db.py", line 52, in test_setup_master_db_success
+    self.assertGreaterEqual(mock_execute_query.call_count, 2)
+AssertionError: 0 not greater than or equal to 2
+
+======================================================================
+FAIL: test_add_new_user_db_error (test_user_management.TestUserManagement.test_add_new_user_db_error)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_user_management.py", line 175, in test_add_new_user_db_error
+    mock_flash.assert_called_with('Error creating user: DB Fail', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Error creating user: DB Fail', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_add_new_user_missing_fields (test_user_management.TestUserManagement.test_add_new_user_missing_fields)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_user_management.py", line 137, in test_add_new_user_missing_fields
+    mock_flash.assert_called_with('Username and Password are required', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Username and Password are required', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_add_new_user_password_mismatch (test_user_management.TestUserManagement.test_add_new_user_password_mismatch)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_user_management.py", line 152, in test_add_new_user_password_mismatch
+    mock_flash.assert_called_with('Passwords do not match', 'danger')
+  File "/home/jules/.pyenv/versions/3.12.13/lib/python3.12/unittest/mock.py", line 940, in assert_called_with
+    raise AssertionError(error_message)
+AssertionError: expected call not found.
+Expected: flash('Passwords do not match', 'danger')
+  Actual: not called.
+
+======================================================================
+FAIL: test_add_new_user_success (test_user_management.TestUserManagement.test_add_new_user_success)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_user_management.py", line 117, in test_add_new_user_success
+    self.assertTrue(found_insert, "Failed to insert user into Login_Table")
+AssertionError: False is not true : Failed to insert user into Login_Table
+
+======================================================================
+FAIL: test_get_vat_period_logic (test_vat_helper_issue.TestVatHelperIssue.test_get_vat_period_logic)
+Assert against the logic defined in the snippet.
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_vat_helper_issue.py", line 49, in test_get_vat_period_logic
+    self.fail("VatHelper class not found in vat_helper.py")
+AssertionError: VatHelper class not found in vat_helper.py
+
+======================================================================
+FAIL: test_warranty_save_exception (test_warranty_save.TestWarrantySave.test_warranty_save_exception)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_warranty_save.py", line 179, in test_warranty_save_exception
+    self.assertEqual(self.mock_cursor.execute.call_count, 1)
+AssertionError: 0 != 1
+
+======================================================================
+FAIL: test_warranty_save_insert (test_warranty_save.TestWarrantySave.test_warranty_save_insert)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_warranty_save.py", line 77, in test_warranty_save_insert
+    self.assertTrue(self.mock_conn.start_transaction.called)
+AssertionError: False is not true
+
+======================================================================
+FAIL: test_warranty_save_mixed (test_warranty_save.TestWarrantySave.test_warranty_save_mixed)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_warranty_save.py", line 142, in test_warranty_save_mixed
+    self.assertEqual(self.mock_cursor.execute.call_count, 2)
+AssertionError: 0 != 2
+
+======================================================================
+FAIL: test_warranty_save_update (test_warranty_save.TestWarrantySave.test_warranty_save_update)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/app/tests/test_warranty_save.py", line 114, in test_warranty_save_update
+    self.assertEqual(self.mock_cursor.execute.call_count, 1)
+AssertionError: 0 != 1
+
+----------------------------------------------------------------------
+Ran 267 tests in 0.630s
+
+FAILED (failures=102, errors=35)
+Mocks initialized for flask and mysql.connector
+DB_PASSWORD in config: '21219125'
+UNKNOWN STATE: Password is 21219125
+Exchange Rate API Error: Connection Error
+Migrating: Adding Access_Inventory to User_Rights
+Migrating: Adding Access_POS to User_Rights
+Migrating: Adding Access_Accounting to User_Rights
+Migrating: Adding Access_Reports to User_Rights
+Migrating: Adding Access_Reversals to User_Rights
+Migrating: Creating currency_table
+Migrated: add_currency_code_to_new_account
+Migrating: Adding uom_secondary to inventoy_items
+Migrating: Adding uom_conversion_rate to inventoy_items
+Migrating: Adding suppliers_TIN to suppliers
+Migrating: Adding suppliers_NIC to suppliers
+Migrating: Adding vat_registered to company
+Migrating: Creating tax_rates table
+Migrating: Creating cheque_print_settings table
+Migrating: Creating WHT Payable account
+Migrating: Creating proforma_invoice_header table
+Migrating: Creating proforma_invoice_details table
+Migrating: Adding status to OP_NO_Table
+Migrating: Adding status to jv_numbers
+Migrating: Creating system_settings table
+Migrating: Creating cash_bank_payment_type table
+Migrating: Adding failed_attempts to pose_setting_table
+Migrating: Adding is_locked to pose_setting_table
+Migrating: Adding must_change_password to pose_setting_table
+Migrating: Adding Mobile_Number to pose_setting_table
+Migrating: Adding expiry_date to inventoy_items
+Migrating: Creating pos_user_devices table
+Migrating: Creating pos_2fa_codes table
+Migrating: Extending Password column length in Login_Table
+Migrating: Extending Password column length in Pose_Setting_Table
+Migrating: Adding uom_secondary to inventoy_items
+Migrating: Adding uom_conversion_rate to inventoy_items
+Migrating: Adding suppliers_TIN to suppliers
+Migrating: Adding suppliers_NIC to suppliers
+Migrating: Adding vat_registered to company
+Migrating: Adding status to OP_NO_Table
+Migrating: Adding status to jv_numbers
+Migrating: Adding failed_attempts to pose_setting_table
+Migrating: Adding is_locked to pose_setting_table
+Migrating: Adding must_change_password to pose_setting_table
+Migrating: Adding Mobile_Number to pose_setting_table
+Migrating: Adding expiry_date to inventoy_items
+Migrating: Extending Password column length in Login_Table
+Migrating: Extending Password column length in Pose_Setting_Table
+Migrating: Adding Access_Inventory to User_Rights
+Migrating: Adding Access_POS to User_Rights
+Migrating: Adding Access_Accounting to User_Rights
+Migrating: Adding Access_Reports to User_Rights
+Migrating: Adding Access_Reversals to User_Rights
+Migrating: Creating currency_table
+Migrated: add_currency_code_to_new_account
+Migrating: Adding uom_secondary to inventoy_items
+Migrating: Adding uom_conversion_rate to inventoy_items
+Migrating: Adding suppliers_TIN to suppliers
+Migrating: Adding suppliers_NIC to suppliers
+Migrating: Adding vat_registered to company
+Migrating: Creating tax_rates table
+Migrating: Creating cheque_print_settings table
+Migrating: Creating WHT Payable account
+Migrating: Creating proforma_invoice_header table
+Migrating: Creating proforma_invoice_details table
+Migrating: Adding status to OP_NO_Table
+Migrating: Adding status to jv_numbers
+Migrating: Creating system_settings table
+Migrating: Creating cash_bank_payment_type table
+Migrating: Adding failed_attempts to pose_setting_table
+Migrating: Adding is_locked to pose_setting_table
+Migrating: Adding must_change_password to pose_setting_table
+Migrating: Adding Mobile_Number to pose_setting_table
+Migrating: Adding expiry_date to inventoy_items
+Migrating: Creating pos_user_devices table
+Migrating: Creating pos_2fa_codes table
+Migrating: Extending Password column length in Login_Table
+Migrating: Extending Password column length in Pose_Setting_Table
+Testing with SECRET_KEY env var: my_super_secret_test_key
+app.secret_key: my_super_secret_test_key
+
+Creating .env file...
+Creating Database 'sri_test_db'...
+Creating User 'test_user'...
+Granting Privileges...
+Creating Database 'sri_test_db'...
+Creating User 'test_user'...
+User creation note: User already exists
+Granting Privileges...
+=== Suwin ERP Setup Wizard ===
+This script will create the database, user, and seed initial data.
+
+--- Application Database Configuration ---
+=== Suwin ERP Setup Wizard ===
+This script will create the database, user, and seed initial data.
+
+--- Application Database Configuration ---
+
+--- Seeding Default Data ---
+Seeding Categories...
+Seeding Inventory Categories...
+Seeding Chart of Accounts...
+Seeding Sub-Accounts...
+Seeding Default Customer...
+Seeding Default Supplier...
+Creating Default Admin User...
+Initializing Company Profile...
