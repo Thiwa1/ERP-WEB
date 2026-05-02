@@ -1,99 +1,158 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>Suwin ERP Pro | Intelligent Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block title %}Suwin ERP Pro | Intelligent Dashboard{% endblock %}
+        :root {
+            --sidebar-width: 260px;
+            --win11-blue: #0078D4;
+            --win11-green: #107C10;
+            --win11-orange: #D83B01;
+            --win11-purple: #5C2D91;
+            --win11-teal: #008272;
+            --win11-red: #E81123;
+            --glass-bg: rgba(255, 255, 255, 0.85);
+            --card-radius: 20px;
+        }
 
-{% block content %}
-<style>
-    /* KPI Cards */
-    .kpi-card {
-        background: white;
-        border-radius: 24px;
-        padding: 1.2rem;
-        border: 1px solid rgba(0, 0, 0, 0.03);
-        box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.05);
-        transition: transform 0.2s, box-shadow 0.2s;
-        height: 100%;
-    }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f2f1;
+            color: #1e293b;
+            overflow-x: hidden;
+        }
 
-    .kpi-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 20px 25px -12px rgba(0, 0, 0, 0.12);
-    }
+        /* SIDEBAR (Win11 Fluent) */
+        .sidebar {
+            width: var(--sidebar-width);
+            background: rgba(248, 250, 252, 0.96);
+            backdrop-filter: blur(16px);
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1050;
+            transition: transform 0.3s cubic-bezier(0.2, 0.9, 0.4, 1.1);
+            border-right: 1px solid rgba(0, 0, 0, 0.05);
+            overflow-y: auto;
+            padding-bottom: 2rem;
+        }
 
-    .trend-up {
-        background: #d1fae5;
-        color: #10b981;
-        border-radius: 40px;
-        padding: 4px 10px;
-        font-size: 0.7rem;
-        font-weight: 700;
-    }
+        .sidebar-header {
+            padding: 24px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        }
 
-    /* ALL APPS SECTION (PRO VERSION) */
-    .all-apps-container {
-        background: white;
-        border-radius: 20px;
-        padding: 1.8rem;
-        margin-top: 1.5rem;
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.02);
-        border: 1px solid rgba(0, 0, 0, 0.03);
-    }
+        .sidebar-brand {
+            font-weight: 800;
+            font-size: 1.3rem;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #0f172a;
+        }
 
-    .app-category-title {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #1e293b;
-        margin: 1.5rem 0 1rem 0;
-        padding-left: 0.5rem;
-        border-left: 4px solid var(--accent-color);
-    }
+        .sidebar-brand i {
+            color: var(--win11-blue);
+            font-size: 1.6rem;
+        }
 
-    .app-grid-modern {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-        gap: 1rem;
-    }
+        .nav-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px 20px;
+            margin: 4px 12px;
+            border-radius: 14px;
+            color: #334155;
+            font-weight: 500;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
 
-    .app-tile-pro {
-        background: #faf9f8;
-        border-radius: 18px;
-        padding: 1rem 0.5rem;
-        text-align: center;
-        text-decoration: none;
-        color: #1e293b;
-        transition: all 0.2s ease;
-        border: 1px solid rgba(0, 0, 0, 0.02);
-    }
+        .nav-link:hover {
+            background: rgba(0, 0, 0, 0.04);
+            color: #0f172a;
+        }
 
-    .app-tile-pro:hover {
-        background: white;
-        transform: translateY(-4px);
-        box-shadow: 0 12px 18px -8px rgba(0, 0, 0, 0.1);
-        color: var(--accent-color);
-        border-color: rgba(0, 120, 212, 0.2);
-    }
+        .nav-link.active {
+            background: rgba(0, 120, 212, 0.12);
+            color: var(--win11-blue);
+            font-weight: 700;
+        }
 
-    .app-icon-pro {
-        font-size: 1.9rem;
-        margin-bottom: 8px;
-        display: inline-block;
-    }
+        .nav-link.active i {
+            color: var(--win11-blue);
+        }
 
-    .app-tile-pro span {
-        display: block;
-        font-size: 0.75rem;
-        font-weight: 600;
-        letter-spacing: 0.2px;
-    }
+        .menu-category {
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            color: #64748b;
+            margin: 24px 0 8px 24px;
+        }
 
-    .badge-pro {
-        background: linear-gradient(135deg, #f59e0b, #ea580c);
-        color: white;
-        border-radius: 40px;
-        padding: 4px 12px;
-    }
-</style>
+        .btn-add-new-pro {
+            background: linear-gradient(135deg, var(--win11-blue), #1e40af);
+            border: none;
+            border-radius: 40px;
+            padding: 12px;
+            font-weight: 700;
+            margin: 20px 16px;
+            color: white;
+            transition: all 0.2s;
+        }
 
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 28px 32px;
+            min-height: 100vh;
+            transition: margin-left 0.3s;
+        }
+
+        .top-navbar {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(20px);
+            padding: 12px 24px;
+            margin: -28px -32px 28px -32px;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 1020;
+        }
+
+        /* KPI Cards */
+        .kpi-card {
+            background: white;
+            border-radius: 24px;
+            padding: 1.2rem;
+            border: 1px solid rgba(0, 0, 0, 0.03);
+            box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s, box-shadow 0.2s;
+            height: 100%;
+        }
+
+<<<<<<< HEAD
 <div class="dashboard-container">
     {% if vat_summary %}
     <div class="overview-panel p-4 mb-4" style="background: linear-gradient(135deg, #e3f2fd, #bbdefb); border-left: 4px solid #1976d2;">
@@ -169,100 +228,278 @@
             </a>
         </div>
     </div>
-    <div class="d-flex gap-3">
-        <select class="form-select form-select-sm bg-white border-0 shadow-sm" id="globalCustomerSelect" style="width:180px;">
-            <option value="">All Customers</option>
-            <option>ABC Corp</option><option>VisionTech</option><option>Metro Traders</option>
-        </select>
-        <div class="d-none d-sm-block"><small class="text-muted">Welcome,</small> <span class="fw-semibold">{{ session.get('username', 'User') }}</span></div>
+=======
+        .kpi-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 25px -12px rgba(0, 0, 0, 0.12);
+        }
+>>>>>>> 898df57 (fix: improve SMS fallback handling)
+
+        .trend-up {
+            background: #d1fae5;
+            color: #10b981;
+            border-radius: 40px;
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            font-weight: 700;
+        }
+
+        /* ALL APPS SECTION (PRO VERSION) */
+        .all-apps-container {
+            background: white;
+            border-radius: var(--card-radius);
+            padding: 1.8rem;
+            margin-top: 1.5rem;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.02);
+            border: 1px solid rgba(0, 0, 0, 0.03);
+        }
+
+        .app-category-title {
+            font-size: 1rem;
+            font-weight: 700;
+            color: #1e293b;
+            margin: 1.5rem 0 1rem 0;
+            padding-left: 0.5rem;
+            border-left: 4px solid var(--win11-blue);
+        }
+
+        .app-grid-modern {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 1rem;
+        }
+
+        .app-tile-pro {
+            background: #faf9f8;
+            border-radius: 18px;
+            padding: 1rem 0.5rem;
+            text-align: center;
+            text-decoration: none;
+            color: #1e293b;
+            transition: all 0.2s ease;
+            border: 1px solid rgba(0, 0, 0, 0.02);
+        }
+
+        .app-tile-pro:hover {
+            background: white;
+            transform: translateY(-4px);
+            box-shadow: 0 12px 18px -8px rgba(0, 0, 0, 0.1);
+            color: var(--win11-blue);
+            border-color: rgba(0, 120, 212, 0.2);
+        }
+
+        .app-icon-pro {
+            font-size: 1.9rem;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        .app-tile-pro span {
+            display: block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+        }
+
+        /* responsive */
+        @media (max-width: 992px) {
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            .sidebar.show {
+                transform: translateX(0);
+            }
+            .main-content {
+                margin-left: 0;
+            }
+            .sidebar-toggle-mobile {
+                display: block;
+            }
+        }
+
+        .sidebar-toggle-mobile {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+        }
+
+        .win11-footer-pro {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(0, 0, 0, 0.05);
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8rem;
+            color: #5b6e8c;
+        }
+
+        .badge-pro {
+            background: linear-gradient(135deg, #f59e0b, #ea580c);
+            color: white;
+            border-radius: 40px;
+            padding: 4px 12px;
+        }
+
+        body.sidebar-collapsed .sidebar {
+            width: 80px;
+        }
+
+        body.sidebar-collapsed .nav-text,
+        body.sidebar-collapsed .menu-category {
+            display: none;
+        }
+
+        body.sidebar-collapsed .nav-link {
+            justify-content: center;
+            padding: 12px 0;
+        }
+    </style>
+</head>
+<body>
+
+<div id="globalLoader" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(255,255,255,0.9);backdrop-filter:blur(6px);z-index:9999;display:flex;align-items:center;justify-content:center;transition:opacity 0.2s;">
+    <div class="text-center"><div class="spinner-border text-primary" style="width:3rem;height:3rem;"></div><div class="mt-2 fw-semibold">SUWIN PRO · Loading</div></div>
+</div>
+
+<!-- SIDEBAR -->
+<nav class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+        <a href="/" class="sidebar-brand"><i class="fas fa-chart-line"></i> <span class="nav-text">SUWIN ERP</span></a>
+        <div class="sidebar-collapse-btn" id="win11SidebarToggle" style="cursor:pointer; background:rgba(0,0,0,0.05); border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center;"><i class="fas fa-chevron-left"></i></div>
     </div>
-</div>
+    <div class="sidebar-menu">
+        <a href="/" class="nav-link active"><i class="fas fa-tachometer-alt"></i> <span class="nav-text">Dashboard Pro</span></a>
+        <div class="menu-category">CORE</div>
+        <a href="/approvals" class="nav-link"><i class="fas fa-check-double"></i> <span class="nav-text">Approvals</span></a>
+        <a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> <span class="nav-text">Sales Invoice</span></a>
+        <a href="/customer_receipt" class="nav-link"><i class="fas fa-receipt"></i> <span class="nav-text">Receipt</span></a>
+        <div class="menu-category">REPORTS</div>
+        <a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Balance Sheet</span></a>
+        <a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">P&L</span></a>
+        <button class="btn-add-new-pro w-100" data-bs-toggle="modal" data-bs-target="#quickActionsModal"><i class="fas fa-plus-circle me-2"></i> <span class="nav-text">NEW ITEM</span></button>
+    </div>
+</nav>
 
-<!-- KPI SECTION -->
-<div class="row g-4 mb-4">
-    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-primary bg-opacity-10 p-2 rounded-3"><i class="fas fa-dollar-sign text-primary fs-4"></i></div><span class="trend-up">+12%</span></div><h6 class="mt-3 text-secondary">Revenue MTD</h6><h2 class="fw-bold">$294,500</h2><small>vs $262k last month</small></div></div>
-    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-success bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-line text-success fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">-2%</span></div><h6 class="mt-3 text-secondary">Expenses</h6><h2 class="fw-bold">$173,200</h2><small>operational costs</small></div></div>
-    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-warning bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-simple text-warning fs-4"></i></div><span class="trend-up">+18%</span></div><h6 class="mt-3 text-secondary">Net Profit</h6><h2 class="fw-bold">$121,300</h2><small>margin 41.2%</small></div></div>
-    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-info bg-opacity-10 p-2 rounded-3"><i class="fas fa-clock text-info fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">urgent</span></div><h6 class="mt-3 text-secondary">Pending Approvals</h6><h2 class="fw-bold">12</h2><small>4 invoices, 8 purchases</small></div></div>
-</div>
-
-<!-- CHART + QUICK STATS -->
-<div class="row g-4 mb-4">
-    <div class="col-lg-7">
-        <div class="card border-0 shadow-sm rounded-4">
-            <div class="card-body"><canvas id="revenueChart" height="250"></canvas></div>
+<div class="main-content" id="mainContent">
+    <div class="top-navbar">
+        <div class="d-flex align-items-center gap-3">
+            <button class="sidebar-toggle-mobile" id="mobileSidebarToggle"><i class="fas fa-bars"></i></button>
+            <h5 class="mb-0 fw-bold">Executive Dashboard <span class="badge bg-primary rounded-pill ms-2">Pro v2.0</span></h5>
+        </div>
+        <div class="d-flex gap-3">
+            <select class="form-select form-select-sm bg-white border-0 shadow-sm" id="globalCustomerSelect" style="width:180px;">
+                <option value="">All Customers</option>
+                <option>ABC Corp</option><option>VisionTech</option><option>Metro Traders</option>
+            </select>
+            <div class="d-none d-sm-block"><small class="text-muted">Welcome,</small> <span class="fw-semibold">{{ session.get('username', 'User') }}</span></div>
         </div>
     </div>
-    <div class="col-lg-5">
-        <div class="card border-0 shadow-sm rounded-4 h-100">
-            <div class="card-body"><h6 class="fw-bold"><i class="fas fa-wallet text-primary me-2"></i>Liquidity snapshot</h6><hr><div class="d-flex justify-content-between"><span>Cash in Hand</span><span class="fw-bold">$48,250</span></div><div class="d-flex justify-content-between mt-2"><span>Bank Balance</span><span class="fw-bold">$312,800</span></div><div class="progress mt-2 mb-3" style="height:6px;"><div class="progress-bar bg-primary" style="width:78%"></div></div><div class="d-flex justify-content-between"><span>Receivables</span><span>$94,200</span></div><div class="d-flex justify-content-between"><span>Payables</span><span class="text-danger">$67,500</span></div></div>
+
+    <!-- KPI SECTION -->
+    <div class="row g-4 mb-4">
+        <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-primary bg-opacity-10 p-2 rounded-3"><i class="fas fa-dollar-sign text-primary fs-4"></i></div><span class="trend-up">+12%</span></div><h6 class="mt-3 text-secondary">Revenue MTD</h6><h2 class="fw-bold">$294,500</h2><small>vs $262k last month</small></div></div>
+        <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-success bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-line text-success fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">-2%</span></div><h6 class="mt-3 text-secondary">Expenses</h6><h2 class="fw-bold">$173,200</h2><small>operational costs</small></div></div>
+        <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-warning bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-simple text-warning fs-4"></i></div><span class="trend-up">+18%</span></div><h6 class="mt-3 text-secondary">Net Profit</h6><h2 class="fw-bold">$121,300</h2><small>margin 41.2%</small></div></div>
+        <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-info bg-opacity-10 p-2 rounded-3"><i class="fas fa-clock text-info fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">urgent</span></div><h6 class="mt-3 text-secondary">Pending Approvals</h6><h2 class="fw-bold">12</h2><small>4 invoices, 8 purchases</small></div></div>
+    </div>
+
+    <!-- CHART + QUICK STATS -->
+    <div class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="card border-0 shadow-sm rounded-4">
+                <div class="card-body"><canvas id="revenueChart" height="250"></canvas></div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card border-0 shadow-sm rounded-4 h-100">
+                <div class="card-body"><h6 class="fw-bold"><i class="fas fa-wallet text-primary me-2"></i>Liquidity snapshot</h6><hr><div class="d-flex justify-content-between"><span>Cash in Hand</span><span class="fw-bold">$48,250</span></div><div class="d-flex justify-content-between mt-2"><span>Bank Balance</span><span class="fw-bold">$312,800</span></div><div class="progress mt-2 mb-3" style="height:6px;"><div class="progress-bar bg-primary" style="width:78%"></div></div><div class="d-flex justify-content-between"><span>Receivables</span><span>$94,200</span></div><div class="d-flex justify-content-between"><span>Payables</span><span class="text-danger">$67,500</span></div></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== FULL APPLICATIONS GRID (PRO VERSION) ========== -->
+    <div class="all-apps-container">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <h4 class="fw-bold mb-0"><i class="fas fa-th-large me-2 text-primary"></i> All Applications</h4>
+            <span class="badge-pro"><i class="fas fa-crown me-1"></i> Pro Suite</span>
+        </div>
+
+        <!-- Receivables & Payables -->
+        <div class="app-category-title"><i class="fas fa-hand-holding-usd me-2 text-primary"></i> Receivables & Payables</div>
+        <div class="app-grid-modern mb-4">
+            <a href="/customer_receipt" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-receipt text-primary"></i></div><span>Customer Receipt</span></a>
+            <a href="/cash_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-money-bill-wave text-success"></i></div><span>Cash Payment</span></a>
+            <a href="/bank_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-university text-info"></i></div><span>Bank Payment</span></a>
+            <a href="/sales_summary_customer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-warning"></i></div><span>Sales Summary</span></a>
+        </div>
+
+        <!-- Purchasing -->
+        <div class="app-category-title"><i class="fas fa-shopping-cart me-2 text-success"></i> Purchasing</div>
+        <div class="app-grid-modern mb-4">
+            <a href="/direct_purchasing" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-hand-holding-usd text-secondary"></i></div><span>Direct Purchase</span></a>
+            <a href="/purchase_orders" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice text-secondary"></i></div><span>PO Generator</span></a>
+            <a href="/quotation_evaluation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-right text-dark"></i></div><span>Quotation Eval</span></a>
+        </div>
+
+        <!-- Sales & Billing -->
+        <div class="app-category-title"><i class="fas fa-file-invoice-dollar me-2 text-info"></i> Sales & Billing</div>
+        <div class="app-grid-modern mb-4">
+            <a href="/proforma_invoice" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-contract text-primary"></i></div><span>Proforma Invoice</span></a>
+            <a href="/invoice_creating" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice-dollar text-primary"></i></div><span>Sales Invoice</span></a>
+            <a href="/pos" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-cash-register text-warning"></i></div><span>POS System</span></a>
+        </div>
+
+        <!-- Accounting & Banking -->
+        <div class="app-category-title"><i class="fas fa-book me-2" style="color: var(--win11-purple);"></i> Accounting & Banking</div>
+        <div class="app-grid-modern mb-4">
+            <a href="/journal_entry" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-book" style="color: var(--win11-purple);"></i></div><span>Journal Entry</span></a>
+            <a href="/bank_reconciliation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-check-double" style="color: var(--win11-teal);"></i></div><span>Bank Reconcile</span></a>
+            <a href="/bank_reconciliation_history" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-history text-secondary"></i></div><span>Reconcile History</span></a>
+        </div>
+
+        <!-- Additional PRO modules (Inventory, Reversals) to match completeness -->
+        <div class="app-category-title"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Manufacturing</div>
+        <div class="app-grid-modern mb-4">
+            <a href="/add_inventory_item" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-plus-square text-success"></i></div><span>New Inventory Item</span></a>
+            <a href="/grn" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-truck-loading text-info"></i></div><span>GRN Entry</span></a>
+            <a href="/inventory_transfer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-exchange-alt text-warning"></i></div><span>Stock Transfer</span></a>
+            <a href="/inventory_production" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-industry text-primary"></i></div><span>Manufacturing</span></a>
+        </div>
+
+        <div class="app-category-title"><i class="fas fa-chart-pie me-2 text-danger"></i> Financial Reports</div>
+        <div class="app-grid-modern">
+            <a href="/trial_balance" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-left"></i></div><span>Trial Balance</span></a>
+            <a href="/balance_sheet" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale"></i></div><span>Balance Sheet</span></a>
+            <a href="/profit_loss" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-pie text-danger"></i></div><span>Profit & Loss</span></a>
+            <a href="/cash_flow" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-success"></i></div><span>Cash Flow</span></a>
+            <a href="/supplier_aging" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-clock text-secondary"></i></div><span>Aging Reports</span></a>
+            <a href="/job_profit_analysis" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-briefcase text-info"></i></div><span>Job Profit</span></a>
+        </div>
+    </div>
+
+    <div class="win11-footer-pro">
+        <div><i class="far fa-copyright"></i> Suwin Enterprise Pro · Hyper-V accounting core</div>
+        <div><i class="fas fa-shield-alt"></i> Real-time sync · v4.2.1</div>
+    </div>
+</div>
+
+<!-- MODAL (Quick actions) -->
+<div class="modal fade" id="quickActionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content rounded-4 border-0 shadow-lg">
+            <div class="modal-header bg-light"><h5 class="modal-title fw-bold"><i class="fas fa-bolt text-primary me-2"></i>Quick Create</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body"><div class="list-group"><a href="/customer_receipt" class="list-group-item list-group-item-action">➕ Customer Receipt</a><a href="/invoice_creating" class="list-group-item list-group-item-action">📄 Sales Invoice</a><a href="/add_inventory_item" class="list-group-item list-group-item-action">📦 Inventory Item</a></div></div>
         </div>
     </div>
 </div>
 
-<!-- ========== FULL APPLICATIONS GRID (PRO VERSION) ========== -->
-<div class="all-apps-container">
-    <div class="d-flex align-items-center justify-content-between mb-3">
-        <h4 class="fw-bold mb-0"><i class="fas fa-th-large me-2 text-primary"></i> All Applications</h4>
-        <span class="badge-pro"><i class="fas fa-crown me-1"></i> Pro Suite</span>
-    </div>
-
-    <!-- Receivables & Payables -->
-    <div class="app-category-title"><i class="fas fa-hand-holding-usd me-2 text-primary"></i> Receivables & Payables</div>
-    <div class="app-grid-modern mb-4">
-        <a href="/customer_receipt" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-receipt text-primary"></i></div><span>Customer Receipt</span></a>
-        <a href="/cash_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-money-bill-wave text-success"></i></div><span>Cash Payment</span></a>
-        <a href="/bank_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-university text-info"></i></div><span>Bank Payment</span></a>
-        <a href="/sales_summary_customer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-warning"></i></div><span>Sales Summary</span></a>
-    </div>
-
-    <!-- Purchasing -->
-    <div class="app-category-title"><i class="fas fa-shopping-cart me-2 text-success"></i> Purchasing</div>
-    <div class="app-grid-modern mb-4">
-        <a href="/direct_purchasing" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-hand-holding-usd text-secondary"></i></div><span>Direct Purchase</span></a>
-        <a href="/purchase_orders" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice text-secondary"></i></div><span>PO Generator</span></a>
-        <a href="/quotation_evaluation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-right text-dark"></i></div><span>Quotation Eval</span></a>
-    </div>
-
-    <!-- Sales & Billing -->
-    <div class="app-category-title"><i class="fas fa-file-invoice-dollar me-2 text-info"></i> Sales & Billing</div>
-    <div class="app-grid-modern mb-4">
-        <a href="/proforma_invoice" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-contract text-primary"></i></div><span>Proforma Invoice</span></a>
-        <a href="/invoice_creating" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice-dollar text-primary"></i></div><span>Sales Invoice</span></a>
-        <a href="/pos" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-cash-register text-warning"></i></div><span>POS System</span></a>
-    </div>
-
-    <!-- Accounting & Banking -->
-    <div class="app-category-title"><i class="fas fa-book me-2" style="color: var(--win11-purple);"></i> Accounting & Banking</div>
-    <div class="app-grid-modern mb-4">
-        <a href="/journal_entry" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-book" style="color: var(--win11-purple);"></i></div><span>Journal Entry</span></a>
-        <a href="/bank_reconciliation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-check-double" style="color: var(--win11-teal);"></i></div><span>Bank Reconcile</span></a>
-        <a href="/bank_reconciliation_history" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-history text-secondary"></i></div><span>Reconcile History</span></a>
-    </div>
-
-    <!-- Inventory & Manufacturing -->
-    <div class="app-category-title"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Manufacturing</div>
-    <div class="app-grid-modern mb-4">
-        <a href="/add_inventory_item" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-plus-square text-success"></i></div><span>New Inventory Item</span></a>
-        <a href="/grn" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-truck-loading text-info"></i></div><span>GRN Entry</span></a>
-        <a href="/inventory_transfer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-exchange-alt text-warning"></i></div><span>Stock Transfer</span></a>
-        <a href="/inventory_production" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-industry text-primary"></i></div><span>Manufacturing</span></a>
-    </div>
-
-    <div class="app-category-title"><i class="fas fa-chart-pie me-2 text-danger"></i> Financial Reports</div>
-    <div class="app-grid-modern">
-        <a href="/trial_balance" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-left"></i></div><span>Trial Balance</span></a>
-        <a href="/balance_sheet" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale"></i></div><span>Balance Sheet</span></a>
-        <a href="/profit_loss" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-pie text-danger"></i></div><span>Profit & Loss</span></a>
-        <a href="/cash_flow" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-success"></i></div><span>Cash Flow</span></a>
-        <a href="/supplier_aging" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-clock text-secondary"></i></div><span>Aging Reports</span></a>
-        <a href="/job_profit_analysis" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-briefcase text-info"></i></div><span>Job Profit</span></a>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(() => { const ld = document.getElementById('globalLoader'); if(ld) { ld.style.opacity = '0'; setTimeout(() => ld.style.display = 'none', 300); } }, 400);
+
         // Chart.js initialization
         const ctx = document.getElementById('revenueChart').getContext('2d');
         new Chart(ctx, {
@@ -276,6 +513,48 @@
             },
             options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } }, scales: { y: { title: { display: true, text: 'Amount (k USD)' } } } }
         });
+
+        // Sidebar collapse + mobile
+        const win11Toggle = document.getElementById('win11SidebarToggle');
+        if (win11Toggle) {
+            win11Toggle.addEventListener('click', () => {
+                document.body.classList.toggle('sidebar-collapsed');
+                localStorage.setItem('sidebarCollapsed', document.body.classList.contains('sidebar-collapsed'));
+            });
+            if (localStorage.getItem('sidebarCollapsed') === 'true') document.body.classList.add('sidebar-collapsed');
+        }
+        const mobileBtn = document.getElementById('mobileSidebarToggle');
+        const sidebar = document.getElementById('sidebar');
+        if (mobileBtn) {
+            mobileBtn.addEventListener('click', () => {
+                sidebar.classList.toggle('show');
+                const overlay = document.createElement('div');
+                let existingOverlay = document.querySelector('.mobile-overlay');
+                if (!existingOverlay && sidebar.classList.contains('show')) {
+                    const ov = document.createElement('div');
+                    ov.className = 'mobile-overlay';
+                    ov.style.position = 'fixed'; ov.style.top = 0; ov.style.left = 0; ov.style.width = '100%'; ov.style.height = '100%'; ov.style.backgroundColor = 'rgba(0,0,0,0.3)'; ov.style.zIndex = '1040';
+                    ov.onclick = () => { sidebar.classList.remove('show'); ov.remove(); };
+                    document.body.appendChild(ov);
+                } else if (existingOverlay && !sidebar.classList.contains('show')) existingOverlay.remove();
+            });
+        }
+
+        // smooth navigation loader
+        const allLinks = document.querySelectorAll('a[href^="/"]:not([href="#"])');
+        allLinks.forEach(link => {
+            link.addEventListener('click', function(e) {
+                const href = this.getAttribute('href');
+                if (href && href !== '#' && !href.startsWith('javascript')) {
+                    e.preventDefault();
+                    const loader = document.getElementById('globalLoader');
+                    if (loader) loader.style.display = 'flex';
+                    window.scrollTo({ top: 0, behavior: 'instant' });
+                    setTimeout(() => { window.location.href = href; }, 40);
+                }
+            });
+        });
     });
 </script>
-{% endblock %}
+</body>
+</html>
