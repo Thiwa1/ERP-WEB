@@ -1,114 +1,97 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard Overview{% endblock %}
+{% block title %}Suwin ERP Pro | Intelligent Dashboard{% endblock %}
 
 {% block content %}
 <style>
-    body {
-        background-color: #f3f2f1;
-    }
-    .dashboard-container {
-        padding: 20px;
-    }
-
-    .overview-panel {
-        background: #ffffff;
-        border-radius: 16px;
-        padding: 24px;
-        margin-bottom: 24px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-
-    .overview-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 24px;
-    }
-
-    .overview-title {
-        font-size: 1.25rem;
-        font-weight: 700;
-        color: #201f1e;
-        margin: 0;
-    }
-
-    .all-apps-link {
-        color: #605e5c;
-        text-decoration: none;
-        font-size: 0.9rem;
-        font-weight: 500;
-    }
-
-    .all-apps-link:hover {
-        color: #201f1e;
-    }
-
-    .app-grid {
-        display: flex;
-        gap: 16px;
-        flex-wrap: wrap;
-    }
-
-    .app-tile {
-        flex: 1;
-        min-width: 100px;
-        max-width: 140px;
-        background: #faf9f8;
-        border-radius: 12px;
-        padding: 20px 10px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-decoration: none;
-        color: #201f1e;
+    /* KPI Cards */
+    .kpi-card {
+        background: white;
+        border-radius: 24px;
+        padding: 1.2rem;
+        border: 1px solid rgba(0, 0, 0, 0.03);
+        box-shadow: 0 8px 20px -6px rgba(0, 0, 0, 0.05);
         transition: transform 0.2s, box-shadow 0.2s;
+        height: 100%;
     }
 
-    .app-tile:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-        color: #201f1e;
+    .kpi-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 20px 25px -12px rgba(0, 0, 0, 0.12);
     }
 
-    .app-icon-wrapper {
-        width: 48px;
-        height: 48px;
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        margin-bottom: 12px;
-        color: white;
-        font-size: 1.5rem;
+    .trend-up {
+        background: #d1fae5;
+        color: #10b981;
+        border-radius: 40px;
+        padding: 4px 10px;
+        font-size: 0.7rem;
+        font-weight: 700;
     }
 
-    /* Icon Colors based on image */
-    .bg-blue { background-color: #0078D4; }
-    .bg-green { background-color: #107C10; }
-    .bg-yellow { background-color: #FFB900; }
-    .bg-red { background-color: #E81123; }
-    .bg-cyan { background-color: #00BFFF; }
-    .bg-grey { background-color: #7A7574; }
-
-
-    .app-category {
-        margin-bottom: 30px;
+    /* ALL APPS SECTION (PRO VERSION) */
+    .all-apps-container {
+        background: white;
+        border-radius: 20px;
+        padding: 1.8rem;
+        margin-top: 1.5rem;
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.02);
+        border: 1px solid rgba(0, 0, 0, 0.03);
     }
+
     .app-category-title {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #323130;
-        margin-bottom: 16px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #edebe9;
-    }
-    .app-title {
-        font-size: 0.85rem;
-        font-weight: 500;
-        text-align: center;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 1.5rem 0 1rem 0;
+        padding-left: 0.5rem;
+        border-left: 4px solid var(--accent-color);
     }
 
+    .app-grid-modern {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+        gap: 1rem;
+    }
+
+    .app-tile-pro {
+        background: #faf9f8;
+        border-radius: 18px;
+        padding: 1rem 0.5rem;
+        text-align: center;
+        text-decoration: none;
+        color: #1e293b;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(0, 0, 0, 0.02);
+    }
+
+    .app-tile-pro:hover {
+        background: white;
+        transform: translateY(-4px);
+        box-shadow: 0 12px 18px -8px rgba(0, 0, 0, 0.1);
+        color: var(--accent-color);
+        border-color: rgba(0, 120, 212, 0.2);
+    }
+
+    .app-icon-pro {
+        font-size: 1.9rem;
+        margin-bottom: 8px;
+        display: inline-block;
+    }
+
+    .app-tile-pro span {
+        display: block;
+        font-size: 0.75rem;
+        font-weight: 600;
+        letter-spacing: 0.2px;
+    }
+
+    .badge-pro {
+        background: linear-gradient(135deg, #f59e0b, #ea580c);
+        color: white;
+        border-radius: 40px;
+        padding: 4px 12px;
+    }
 </style>
 
 <div class="dashboard-container">
@@ -186,188 +169,113 @@
             </a>
         </div>
     </div>
-
-
-    <!-- All Apps Section (Hidden by default) -->
-    <div id="allAppsSection" class="overview-panel" style="display: none;">
-        <div class="overview-header">
-            <h2 class="overview-title">All Applications</h2>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Receivables & Payables</h3>
-            <div class="app-grid">
-                <a href="/customer_receipt" class="app-tile">
-                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-receipt"></i></div>
-                    <span class="app-title">Customer Receipt</span>
-                </a>
-                <a href="/cash_payments" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill"></i></div>
-                    <span class="app-title">Cash Payment</span>
-                </a>
-                <a href="/bank_payment" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-university"></i></div>
-                    <span class="app-title">Bank Payment</span>
-                </a>
-                <a href="/cash_handover" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-hand-holding-usd d-block"></i></div>
-                    <span class="app-title">Sales Summary</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Purchasing</h3>
-            <div class="app-grid">
-                <a href="/direct_purchasing" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-shopping-cart"></i></div>
-                    <span class="app-title">Direct Purchase</span>
-                </a>
-                <a href="/purchase_orders" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-invoice"></i></div>
-                    <span class="app-title">PO Generator</span>
-                </a>
-                <a href="/quotation_evaluation" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-balance-scale-right"></i></div>
-                    <span class="app-title">Quotation Eval</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Sales & Billing</h3>
-            <div class="app-grid">
-                <a href="/proforma_invoice" class="app-tile">
-                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-contract"></i></div>
-                    <span class="app-title">Proforma Invoice</span>
-                </a>
-                <a href="/invoice_creating" class="app-tile">
-                    <div class="app-icon-wrapper bg-blue"><i class="fas fa-file-invoice-dollar"></i></div>
-                    <span class="app-title">Sales Invoice</span>
-                </a>
-                <a href="/pos" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-cash-register"></i></div>
-                    <span class="app-title">POS System</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Accounting & Banking</h3>
-            <div class="app-grid">
-                <a href="/journal_entry" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-book"></i></div>
-                    <span class="app-title">Journal Entry</span>
-                </a>
-                <a href="/bank_reconciliation" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-check-double"></i></div>
-                    <span class="app-title">Bank Reconcile</span>
-                </a>
-                <a href="/bank_reconciliation/history" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-history"></i></div>
-                    <span class="app-title">Reconcile History</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Inventory</h3>
-            <div class="app-grid">
-                <a href="/add_inventory_item" class="app-tile">
-                    <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
-                    <span class="app-title">New Inv Item</span>
-                </a>
-                <a href="/grn" class="app-tile">
-                    <div class="app-icon-wrapper bg-green"><i class="fas fa-truck-loading"></i></div>
-                    <span class="app-title">GRN Entry</span>
-                </a>
-                <a href="/inventory_transfer" class="app-tile">
-                    <div class="app-icon-wrapper bg-green"><i class="fas fa-exchange-alt"></i></div>
-                    <span class="app-title">Stock Transfer</span>
-                </a>
-                <a href="/inventory_production" class="app-tile">
-                    <div class="app-icon-wrapper bg-green"><i class="fas fa-industry"></i></div>
-                    <span class="app-title">Manufacturing</span>
-                </a>
-                <a href="/inventory_category" class="app-tile">
-                    <div class="app-icon-wrapper bg-green"><i class="fas fa-plus-square"></i></div>
-                    <span class="app-title">Add Fin. Goods</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Reversals</h3>
-            <div class="app-grid">
-                <a href="/pos_reversal" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-undo"></i></div>
-                    <span class="app-title">POS Reversal</span>
-                </a>
-                <a href="/cash_payment_reversal" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-undo-alt"></i></div>
-                    <span class="app-title">Cash Pay Reversal</span>
-                </a>
-                <a href="/bank_payment_reversal" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-history"></i></div>
-                    <span class="app-title">Bank Pay Reversal</span>
-                </a>
-                <a href="/direct_payment_reversal" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-sync"></i></div>
-                    <span class="app-title">Direct Pay Reversal</span>
-                </a>
-                <a href="/reversal_category" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-tags"></i></div>
-                    <span class="app-title">Reversal Category</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="app-category">
-            <h3 class="app-category-title">Financial Reports</h3>
-            <div class="app-grid">
-                <a href="/balance_sheet" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale"></i></div>
-                    <span class="app-title">Balance Sheet</span>
-                </a>
-                <a href="/balance_sheet_custom" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-file-invoice-dollar"></i></div>
-                    <span class="app-title">Custom Bal Sheet</span>
-                </a>
-                <a href="/cash_flow" class="app-tile">
-                    <div class="app-icon-wrapper bg-yellow"><i class="fas fa-money-bill-wave"></i></div>
-                    <span class="app-title">Cash Flow</span>
-                </a>
-                <a href="/trial_balance" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-balance-scale-left"></i></div>
-                    <span class="app-title">Trial Balance</span>
-                </a>
-                <a href="/profit_loss" class="app-tile">
-                    <div class="app-icon-wrapper bg-red"><i class="fas fa-chart-pie"></i></div>
-                    <span class="app-title">Profit & Loss</span>
-                </a>
-                <a href="/supplier_aging" class="app-tile">
-                    <div class="app-icon-wrapper bg-cyan"><i class="fas fa-clock"></i></div>
-                    <span class="app-title">Aging Reports</span>
-                </a>
-                <a href="/placeholder?title=Load Report" class="app-tile">
-                    <div class="app-icon-wrapper bg-grey"><i class="fas fa-file-alt"></i></div>
-                    <span class="app-title">Load Report</span>
-                </a>
-            </div>
-        </div>
+    <div class="d-flex gap-3">
+        <select class="form-select form-select-sm bg-white border-0 shadow-sm" id="globalCustomerSelect" style="width:180px;">
+            <option value="">All Customers</option>
+            <option>ABC Corp</option><option>VisionTech</option><option>Metro Traders</option>
+        </select>
+        <div class="d-none d-sm-block"><small class="text-muted">Welcome,</small> <span class="fw-semibold">{{ session.get('username', 'User') }}</span></div>
     </div>
-
 </div>
 
+<!-- KPI SECTION -->
+<div class="row g-4 mb-4">
+    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-primary bg-opacity-10 p-2 rounded-3"><i class="fas fa-dollar-sign text-primary fs-4"></i></div><span class="trend-up">+12%</span></div><h6 class="mt-3 text-secondary">Revenue MTD</h6><h2 class="fw-bold">$294,500</h2><small>vs $262k last month</small></div></div>
+    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-success bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-line text-success fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">-2%</span></div><h6 class="mt-3 text-secondary">Expenses</h6><h2 class="fw-bold">$173,200</h2><small>operational costs</small></div></div>
+    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-warning bg-opacity-10 p-2 rounded-3"><i class="fas fa-chart-simple text-warning fs-4"></i></div><span class="trend-up">+18%</span></div><h6 class="mt-3 text-secondary">Net Profit</h6><h2 class="fw-bold">$121,300</h2><small>margin 41.2%</small></div></div>
+    <div class="col-md-3 col-6"><div class="kpi-card"><div class="d-flex justify-content-between"><div class="bg-info bg-opacity-10 p-2 rounded-3"><i class="fas fa-clock text-info fs-4"></i></div><span class="trend-up bg-danger bg-opacity-10 text-danger">urgent</span></div><h6 class="mt-3 text-secondary">Pending Approvals</h6><h2 class="fw-bold">12</h2><small>4 invoices, 8 purchases</small></div></div>
+</div>
+
+<!-- CHART + QUICK STATS -->
+<div class="row g-4 mb-4">
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm rounded-4">
+            <div class="card-body"><canvas id="revenueChart" height="250"></canvas></div>
+        </div>
+    </div>
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm rounded-4 h-100">
+            <div class="card-body"><h6 class="fw-bold"><i class="fas fa-wallet text-primary me-2"></i>Liquidity snapshot</h6><hr><div class="d-flex justify-content-between"><span>Cash in Hand</span><span class="fw-bold">$48,250</span></div><div class="d-flex justify-content-between mt-2"><span>Bank Balance</span><span class="fw-bold">$312,800</span></div><div class="progress mt-2 mb-3" style="height:6px;"><div class="progress-bar bg-primary" style="width:78%"></div></div><div class="d-flex justify-content-between"><span>Receivables</span><span>$94,200</span></div><div class="d-flex justify-content-between"><span>Payables</span><span class="text-danger">$67,500</span></div></div>
+        </div>
+    </div>
+</div>
+
+<!-- ========== FULL APPLICATIONS GRID (PRO VERSION) ========== -->
+<div class="all-apps-container">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+        <h4 class="fw-bold mb-0"><i class="fas fa-th-large me-2 text-primary"></i> All Applications</h4>
+        <span class="badge-pro"><i class="fas fa-crown me-1"></i> Pro Suite</span>
+    </div>
+
+    <!-- Receivables & Payables -->
+    <div class="app-category-title"><i class="fas fa-hand-holding-usd me-2 text-primary"></i> Receivables & Payables</div>
+    <div class="app-grid-modern mb-4">
+        <a href="/customer_receipt" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-receipt text-primary"></i></div><span>Customer Receipt</span></a>
+        <a href="/cash_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-money-bill-wave text-success"></i></div><span>Cash Payment</span></a>
+        <a href="/bank_payment" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-university text-info"></i></div><span>Bank Payment</span></a>
+        <a href="/sales_summary_customer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-warning"></i></div><span>Sales Summary</span></a>
+    </div>
+
+    <!-- Purchasing -->
+    <div class="app-category-title"><i class="fas fa-shopping-cart me-2 text-success"></i> Purchasing</div>
+    <div class="app-grid-modern mb-4">
+        <a href="/direct_purchasing" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-hand-holding-usd text-secondary"></i></div><span>Direct Purchase</span></a>
+        <a href="/purchase_orders" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice text-secondary"></i></div><span>PO Generator</span></a>
+        <a href="/quotation_evaluation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-right text-dark"></i></div><span>Quotation Eval</span></a>
+    </div>
+
+    <!-- Sales & Billing -->
+    <div class="app-category-title"><i class="fas fa-file-invoice-dollar me-2 text-info"></i> Sales & Billing</div>
+    <div class="app-grid-modern mb-4">
+        <a href="/proforma_invoice" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-contract text-primary"></i></div><span>Proforma Invoice</span></a>
+        <a href="/invoice_creating" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-file-invoice-dollar text-primary"></i></div><span>Sales Invoice</span></a>
+        <a href="/pos" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-cash-register text-warning"></i></div><span>POS System</span></a>
+    </div>
+
+    <!-- Accounting & Banking -->
+    <div class="app-category-title"><i class="fas fa-book me-2" style="color: var(--win11-purple);"></i> Accounting & Banking</div>
+    <div class="app-grid-modern mb-4">
+        <a href="/journal_entry" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-book" style="color: var(--win11-purple);"></i></div><span>Journal Entry</span></a>
+        <a href="/bank_reconciliation" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-check-double" style="color: var(--win11-teal);"></i></div><span>Bank Reconcile</span></a>
+        <a href="/bank_reconciliation_history" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-history text-secondary"></i></div><span>Reconcile History</span></a>
+    </div>
+
+    <!-- Inventory & Manufacturing -->
+    <div class="app-category-title"><i class="fas fa-boxes me-2 text-success"></i> Inventory & Manufacturing</div>
+    <div class="app-grid-modern mb-4">
+        <a href="/add_inventory_item" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-plus-square text-success"></i></div><span>New Inventory Item</span></a>
+        <a href="/grn" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-truck-loading text-info"></i></div><span>GRN Entry</span></a>
+        <a href="/inventory_transfer" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-exchange-alt text-warning"></i></div><span>Stock Transfer</span></a>
+        <a href="/inventory_production" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-industry text-primary"></i></div><span>Manufacturing</span></a>
+    </div>
+
+    <div class="app-category-title"><i class="fas fa-chart-pie me-2 text-danger"></i> Financial Reports</div>
+    <div class="app-grid-modern">
+        <a href="/trial_balance" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale-left"></i></div><span>Trial Balance</span></a>
+        <a href="/balance_sheet" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-balance-scale"></i></div><span>Balance Sheet</span></a>
+        <a href="/profit_loss" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-pie text-danger"></i></div><span>Profit & Loss</span></a>
+        <a href="/cash_flow" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-chart-line text-success"></i></div><span>Cash Flow</span></a>
+        <a href="/supplier_aging" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-clock text-secondary"></i></div><span>Aging Reports</span></a>
+        <a href="/job_profit_analysis" class="app-tile-pro"><div class="app-icon-pro"><i class="fas fa-briefcase text-info"></i></div><span>Job Profit</span></a>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-    function toggleAllApps(e) {
-        e.preventDefault();
-        const allApps = document.getElementById('allAppsSection');
-        if (allApps.style.display === 'none') {
-            allApps.style.display = 'block';
-        } else {
-            allApps.style.display = 'none';
-        }
-    }
+    document.addEventListener('DOMContentLoaded', function() {
+        // Chart.js initialization
+        const ctx = document.getElementById('revenueChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: ['Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr'],
+                datasets: [
+                    { label: 'Revenue', data: [215, 228, 254, 271, 289, 312], borderColor: '#0078D4', fill: true, backgroundColor: 'rgba(0,120,212,0.05)', tension: 0.3, pointRadius: 4 },
+                    { label: 'Expenses', data: [178, 182, 165, 172, 184, 191], borderColor: '#D83B01', fill: true, backgroundColor: 'rgba(216,59,1,0.02)', tension: 0.3 }
+                ]
+            },
+            options: { responsive: true, maintainAspectRatio: true, plugins: { legend: { position: 'top' } }, scales: { y: { title: { display: true, text: 'Amount (k USD)' } } } }
+        });
+    });
 </script>
 {% endblock %}
