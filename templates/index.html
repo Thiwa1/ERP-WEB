@@ -565,15 +565,15 @@
             <div class="chart-footer">
               <div>
                 <div class="chart-stat-lbl">Average Monthly</div>
-                <div class="chart-stat-val" style="color:var(--win-accent)">LKR 85,160</div>
+                <div class="chart-stat-val" style="color:var(--win-accent)" id="avgMonthlyStat">LKR 0</div>
               </div>
               <div>
                 <div class="chart-stat-lbl">Best Month</div>
-                <div class="chart-stat-val" style="color:var(--win-success)">May — 142,580</div>
+                <div class="chart-stat-val" style="color:var(--win-success)" id="bestMonthStat">—</div>
               </div>
               <div style="margin-left:auto">
                 <div class="chart-stat-lbl">YTD Total</div>
-                <div class="chart-stat-val">LKR 425,800</div>
+                <div class="chart-stat-val" id="ytdTotalStat">LKR 0</div>
               </div>
             </div>
           </div>
@@ -795,40 +795,59 @@
 
 <script>
 // ── Chart Bars ──
-const chartData = [
-  { label:'Jan', val:72000, max:142580 },
-  { label:'Feb', val:88500, max:142580 },
-  { label:'Mar', val:96200, max:142580 },
-  { label:'Apr', val:114400, max:142580 },
-  { label:'May', val:142580, max:142580, current:true },
-];
-const barsEl = document.getElementById('chartBars');
-const axisEl = document.getElementById('chartAxis');
+function loadMonthlyRevenue() {
+  const barsEl = document.getElementById('chartBars');
+  const axisEl = document.getElementById('chartAxis');
 
-if (barsEl && axisEl) {
-    chartData.forEach(d => {
-      const pct = (d.val / d.max) * 100;
-      const col = document.createElement('div');
-      col.className = 'chart-col';
-      col.innerHTML = `
-        <div class="chart-bar-val">${(d.val/1000).toFixed(0)}K</div>
-        <div class="chart-bar${d.current?' current':''}" style="height:0%" data-pct="${pct}" title="LKR ${d.val.toLocaleString()}"></div>
-      `;
-      barsEl.appendChild(col);
+  if (!barsEl || !axisEl) return;
 
-      const lbl = document.createElement('span');
-      lbl.textContent = d.label;
-      axisEl.appendChild(lbl);
+  fetch('/api/dashboard/monthly_revenue')
+    .then(res => {
+        if (!res.ok) throw new Error('Failed to load monthly revenue');
+        return res.json();
+    })
+    .then(json => {
+        if (!json.success) throw new Error(json.error || 'Unknown error');
+
+        barsEl.innerHTML = '';
+        axisEl.innerHTML = '';
+
+        json.data.forEach(d => {
+            const pct = (d.val / d.max) * 100;
+            const col = document.createElement('div');
+            col.className = 'chart-col';
+            col.innerHTML = `
+              <div class="chart-bar-val">${(d.val/1000).toFixed(0)}K</div>
+              <div class="chart-bar${d.current?' current':''}" style="height:0%" data-pct="${pct}" title="LKR ${d.val.toLocaleString()}"></div>
+            `;
+            barsEl.appendChild(col);
+
+            const lbl = document.createElement('span');
+            lbl.textContent = d.label;
+            axisEl.appendChild(lbl);
+        });
+
+        // Update stats
+        if (json.stats) {
+            document.getElementById('avgMonthlyStat').textContent = `LKR ${json.stats.average.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+            document.getElementById('bestMonthStat').textContent = `${json.stats.best_month_label} — ${json.stats.best_month_val.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+            document.getElementById('ytdTotalStat').textContent = `LKR ${json.stats.ytd_total.toLocaleString(undefined, {maximumFractionDigits:0})}`;
+        }
+
+        // Animate bars on load
+        setTimeout(() => {
+            document.querySelectorAll('.chart-bar').forEach(bar => {
+                bar.style.transition = 'height 1s cubic-bezier(.4,0,.2,1)';
+                bar.style.height = bar.dataset.pct + '%';
+            });
+        }, 100);
+    })
+    .catch(err => {
+        console.error(err);
+        barsEl.innerHTML = '<div style="color:var(--win-danger);font-size:0.9rem;padding-top:20px;">Error loading revenue</div>';
     });
-
-    // Animate bars on load
-    setTimeout(() => {
-      document.querySelectorAll('.chart-bar').forEach(bar => {
-        bar.style.transition = 'height 1s cubic-bezier(.4,0,.2,1)';
-        bar.style.height = bar.dataset.pct + '%';
-      });
-    }, 100);
 }
+document.addEventListener('DOMContentLoaded', loadMonthlyRevenue);
 
 // ── Toggle All Apps ──
 function toggleApps(btn) {

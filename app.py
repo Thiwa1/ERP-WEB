@@ -7810,6 +7810,98 @@ def profit_loss():
                            default_end=default_end)
 
 
+@app.route('/api/dashboard/monthly_revenue')
+@login_required
+def dashboard_monthly_revenue():
+    try:
+        from datetime import datetime
+        from dateutil.relativedelta import relativedelta
+        import calendar
+
+        conn = db.get_connection()
+        if not conn:
+            return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+        cursor = conn.cursor(dictionary=True)
+
+        now = datetime.now()
+        months_data = []
+
+        # Calculate for the last 5 months
+        for i in range(4, -1, -1):
+            d = now - relativedelta(months=i)
+            first_day = d.replace(day=1).strftime('%Y-%m-%d')
+            last_day = d.replace(day=calendar.monthrange(d.year, d.month)[1]).strftime('%Y-%m-%d')
+            label = d.strftime('%b')
+
+            cursor.execute(
+                "SELECT COALESCE(SUM(Total_Value), 0) as total FROM POS_Sales_Invoice_01 WHERE AcctionDate BETWEEN %s AND %s AND Revers = 0",
+                (first_day, last_day)
+            )
+            row = cursor.fetchone()
+            val = float(row['total'])
+
+            # Additional revenue from Invoices (if any)
+            cursor.execute(
+                "SELECT COALESCE(SUM(Total_Amount), 0) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+                (first_day, last_day)
+            )
+            inv_row = cursor.fetchone()
+            if inv_row and 'total' in inv_row:
+                val += float(inv_row['total'])
+
+            months_data.append({
+                'label': label,
+                'val': val,
+                'current': i == 0
+            })
+
+        # Calculate YTD
+        ytd_start = now.replace(month=1, day=1).strftime('%Y-%m-%d')
+        ytd_end = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
+
+        cursor.execute(
+            "SELECT COALESCE(SUM(Total_Value), 0) as total FROM POS_Sales_Invoice_01 WHERE AcctionDate BETWEEN %s AND %s AND Revers = 0",
+            (ytd_start, ytd_end)
+        )
+        row = cursor.fetchone()
+        ytd_val = float(row['total'])
+
+        cursor.execute(
+            "SELECT COALESCE(SUM(Total_Amount), 0) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+            (ytd_start, ytd_end)
+        )
+        inv_row = cursor.fetchone()
+        if inv_row and 'total' in inv_row:
+            ytd_val += float(inv_row['total'])
+
+        # Calculate stats
+        max_val = max(m['val'] for m in months_data) if months_data else 0
+        best_month_data = max(months_data, key=lambda x: x['val']) if months_data else None
+
+        total_5_months = sum(m['val'] for m in months_data)
+        avg_monthly = total_5_months / 5 if months_data else 0
+
+        # Inject max into month data for frontend pct calc
+        # Avoid 0 division in frontend
+        calc_max = max_val if max_val > 0 else 1
+        for m in months_data:
+            m['max'] = calc_max
+
+        return jsonify({
+            'success': True,
+            'data': months_data,
+            'stats': {
+                'average': avg_monthly,
+                'best_month_label': best_month_data['label'] if best_month_data else '',
+                'best_month_val': best_month_data['val'] if best_month_data else 0,
+                'ytd_total': ytd_val
+            }
+        })
+    except Exception as e:
+        logging.error(f"Error fetching monthly revenue: {str(e)}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/api/dashboard/kpis')
 @login_required
 def dashboard_kpis():
