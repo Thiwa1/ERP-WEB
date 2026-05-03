@@ -3344,7 +3344,7 @@ def print_voucher(voucher_type, jv_no):
                 'paid_to': 'c.cash_book_recode_suplier_name',
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
-                'amount': 'SUM(c.cash_book_recode_dr)',
+                'amount': 'SUM(c.cash_book_recode_cr)',
                 'user_id': 'c.User_Enter',
                 'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
                 'reversal_id': 'MAX(c.User_Revers)'
@@ -3381,7 +3381,7 @@ def print_voucher(voucher_type, jv_no):
                 'paid_to': "'Direct Purchase'",
                 'paid_from': 'c.cash_book_recode_accont_name',
                 'narration': 'c.cash_book_recode_naration',
-                'amount': 'SUM(c.cash_book_recode_dr)',
+                'amount': 'SUM(c.cash_book_recode_cr)',
                 'user_id': 'c.User_Enter',
                 'is_reversed': 'CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END',
                 'reversal_id': 'MAX(c.User_Revers)'
