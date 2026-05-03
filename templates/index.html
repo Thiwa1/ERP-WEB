@@ -953,5 +953,36 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
+
+// ── Recent Activity ──
+function loadRecentActivity() {
+  const listEl = document.querySelector('.activity-list');
+  if (!listEl) return;
+
+  fetch('/api/dashboard/recent_activity')
+    .then(res => res.json())
+    .then(json => {
+        if (!json.success || !json.data) return;
+        if (json.data.length === 0) {
+            listEl.innerHTML = '<div style="padding: 10px; color: #888;">No recent activity</div>';
+            return;
+        }
+
+        listEl.innerHTML = '';
+        json.data.forEach(act => {
+            const item = document.createElement('div');
+            item.className = 'activity-item';
+            item.innerHTML = `
+                <div class="a-dot ${act.dot_color}"></div>
+                <div class="a-text">${act.text_content}</div>
+                <div class="a-time">${act.time_str}</div>
+            `;
+            listEl.appendChild(item);
+        });
+    })
+    .catch(err => console.error('Error loading recent activity:', err));
+}
+document.addEventListener('DOMContentLoaded', loadRecentActivity);
+
 </script>
 {% endblock %}
