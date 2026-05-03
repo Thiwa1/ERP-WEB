@@ -7871,7 +7871,7 @@ def dashboard_monthly_revenue():
 
             # Additional revenue from Invoices (if any)
             cursor.execute(
-                "SELECT SUM(Invoice_Total_Value) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+                "SELECT SUM(invoice_total_oustanding) as total FROM invoice_oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
                 (first_day, last_day)
             )
             inv_row = cursor.fetchone()
@@ -7896,7 +7896,7 @@ def dashboard_monthly_revenue():
         ytd_val = float(row['total'] if row and row['total'] is not None else 0)
 
         cursor.execute(
-            "SELECT SUM(Invoice_Total_Value) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+            "SELECT SUM(invoice_total_oustanding) as total FROM invoice_oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
             (ytd_start, ytd_end)
         )
         inv_row = cursor.fetchone()
