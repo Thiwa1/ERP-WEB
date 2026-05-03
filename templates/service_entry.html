@@ -1,182 +1,463 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  /* ── Win11 Fluent Design Tokens ────────────────────────────── */
+  :root {
+    --win-bg:            #f3f3f3;
+    --win-surface:       rgba(255,255,255,0.72);
+    --win-surface-solid: #ffffff;
+    --win-stroke:        rgba(0,0,0,0.08);
+    --win-stroke-strong: rgba(0,0,0,0.14);
+    --win-accent:        #0067c0;
+    --win-accent-hover:  #1a78cc;
+    --win-accent-light:  rgba(0,103,192,0.10);
+    --win-text:          #1a1a1a;
+    --win-text-secondary:#5a5a5a;
+    --win-shadow-sm:     0 2px 6px rgba(0,0,0,0.06), 0 0 1px rgba(0,0,0,0.06);
+    --win-shadow-md:     0 4px 16px rgba(0,0,0,0.10), 0 0 1px rgba(0,0,0,0.06);
+    --win-shadow-lg:     0 8px 32px rgba(0,0,0,0.13), 0 0 1px rgba(0,0,0,0.08);
+    --win-radius-sm:     4px;
+    --win-radius:        8px;
+    --win-radius-lg:     12px;
+    --win-anim:          cubic-bezier(.2,.9,.3,1);
+  }
 
-    <style>
-        /* Hide number input spin buttons */
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-            margin: 0;
-        }
-        input[type="number"] {
-            -moz-appearance: textfield;
-        }
-    </style>
+  /* ═══════════════════════════════════════════════════════
+     COMMAND BAR
+  ═══════════════════════════════════════════════════════ */
+  .command-bar {
+    background: rgba(255,255,255,0.7);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--win-stroke);
+    padding: 8px 24px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: -24px -24px 24px -24px; /* Adjusting for base.html content padding */
+  }
 
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-        <i class="fas fa-file-invoice text-success me-2" style="font-size: 1.5rem;"></i>
-        <h4 class="mb-0 fw-bold" style="color: #2F4F4F !important;">Supplier Liability Booking</h4>
-    </div>
+  .cmd-btn {
+    display: flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    border: none; border-radius: var(--win-radius-sm);
+    background: transparent;
+    font-size: 12.5px; font-weight: 500;
+    color: var(--win-text);
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .cmd-btn:hover { background: rgba(0,0,0,0.06); }
+  .cmd-btn.primary {
+    background: var(--win-accent);
+    color: white;
+  }
+  .cmd-btn.primary:hover { background: var(--win-accent-hover); }
+  .cmd-btn i { font-size: 12px; }
 
-    <!-- Main Entry Form -->
-    <form id="serviceEntryForm" method="POST" action="{{ url_for('save_service_entry') }}">
+  .cmd-sep {
+    width: 1px; height: 20px;
+    background: var(--win-stroke-strong);
+    margin: 0 4px;
+  }
 
-        <div class="row">
-            <div class="col-lg-8 mb-4">
-                <!-- Transaction Details Card -->
-                <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-header fw-bold bg-transparent border-0 pb-0 pt-3" style="color: #333;">
-                        <i class="fas fa-info-circle me-2 text-dark"></i> Transaction Details
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-dark">Supplier Selection</label>
-                                <select name="supplier_id" class="form-select" style="appearance: auto;" required>
-                                    <option value="">Select a Supplier</option>
-                                    {% for sup in suppliers %}
-                                    <option value="{{ sup.sup_id }}">{{ sup.supplier_name }} - {{ sup.supplier_code }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-dark">Effective Date</label>
-                                <input type="date" class="form-control" name="effective_date" value="{{ today_date }}" required>
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label small fw-bold text-dark">Invoice Number</label>
-                                <input type="text" class="form-control" name="invoice_number" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-dark">Invoice Date</label>
-                                <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-dark">Due Date</label>
-                                <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-dark">Job Number (Header)</label>
-                                <select name="header_job_number" class="form-select" style="appearance: auto;">
-                                    <option value="">None</option>
-                                    {% for job in jobs %}
-                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold text-dark">Narration</label>
-                                <textarea name="main_narration" class="form-control" rows="1" required></textarea>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+  /* ── Win11 Card ────────────────────────────────────────────── */
+  .win-card {
+    background: var(--win-surface);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--win-stroke);
+    border-radius: var(--win-radius-lg);
+    box-shadow: var(--win-shadow-sm);
+    overflow: hidden;
+    margin-bottom: 16px;
+  }
 
-                <!-- Middle Section: Entry Grid -->
-                <div class="card shadow-sm border-0">
-                    <div class="card-header fw-bold bg-transparent border-0 pb-0 pt-3 d-flex justify-content-between align-items-center" style="color: #333;">
-                        <span><i class="fas fa-list me-2 text-dark"></i> Journal Entries</span>
-                        <button type="button" class="btn btn-sm btn-light text-primary" style="background-color: #f8f9fa;" onclick="addRow()">
-                            <i class="fas fa-plus"></i> Add Row
-                        </button>
-                    </div>
-                    <div class="card-body bg-white p-3 table-responsive">
-                        <table class="table mb-0" style="border: 1px solid #dee2e6;" id="journalTable">
-                            <thead class="text-secondary" style="border-bottom: 2px solid #dee2e6;">
-                                <tr>
-                                    <th width="25%" class="small fw-bold border-0" style="border-right: 2px solid #000 !important; color: #6c757d;">ACCOUNT</th>
-                                    <th width="20%" class="small fw-bold border-0" style="border-right: 2px solid #000 !important; color: #6c757d;">SUB ACCOUNT</th>
-                                    <th width="15%" class="small fw-bold border-0" style="border-right: 2px solid #000 !important; color: #6c757d;">JOB NO</th>
-                                    <th width="25%" class="small fw-bold border-0" style="border-right: 2px solid #000 !important; color: #6c757d;">NARRATION</th>
-                                    <th width="10%" class="small fw-bold text-center border-0" style="border-right: 2px solid #000 !important; color: #6c757d;">DR AMOUNT</th>
-                                    <th width="5%" class="border-0"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="journalBody">
-                                <!-- Initial Row -->
-                                <tr style="border-bottom: 0px !important;">
-                                    <td style="border-right: 1px solid #dee2e6;">
-                                        <select class="form-select account-select" onchange="checkAccount(this); calculateTotals()" required>
-                                            <option value="">Select Account</option>
-                                            {% for acc in accounts %}
-                                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                    <td style="border-right: 1px solid #dee2e6;">
-                                        <select class="form-select subaccount-select" style="appearance: auto;" disabled>
-                                            <option value="">None</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select class="form-select job-select">
-                                            <option value="">None</option>
-                                            {% for job in jobs %}
-                                            <option value="{{ job.job_number }}">{{ job.job_number }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <input type="text" class="form-control memo-input" placeholder="Line Narration">
-                                    </td>
-                                    <td>
-                                        <input type="number" step="0.01" class="form-control text-end dr-input" value="0.00" onchange="calculateTotals()">
-                                    </td>
-                                    <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
+  .win-card-header {
+    padding: 14px 20px 10px;
+    border-bottom: 1px solid var(--win-stroke);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.5);
+  }
 
-            <div class="col-lg-4 mb-4">
-                <!-- Amount Calculations Card -->
-                <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-header fw-bold bg-transparent border-0 pb-0 pt-3" style="color: #333;">
-                        <i class="fas fa-calculator me-2 text-dark"></i> Amount Calculations
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="d-flex justify-content-between align-items-center mb-3">
-                            <span class="small fw-bold text-dark">Total Amount (Excl. VAT)</span>
-                            <span class="fs-5 fw-bold text-dark" id="totalWithoutVat">0.00</span>
-                        </div>
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="includeVat" name="include_vat" value="1" onchange="checkAccount(this); calculateTotals()">
-                            <label class="form-check-label small fw-bold text-dark" for="includeVat">Include VAT</label>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold text-dark">VAT Rate %</label>
-                            <input type="number" step="0.01" class="form-control text-end" id="vatRate" name="vat_rate" value="0.00" onchange="checkAccount(this); calculateTotals()" disabled>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center pt-3 border-top">
-                            <span class="small fw-bold text-dark">Total with VAT</span>
-                            <span class="fs-4 fw-bold text-success" id="totalWithVat">0.00</span>
-                        </div>
-                    </div>
-                </div>
+  .win-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--win-text);
+  }
+  .win-card-title-icon {
+    width: 24px; height: 24px;
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+  }
+  .icon-blue   { background: rgba(0,103,192,0.12); color: #0067c0; }
+  .icon-green  { background: rgba(16,124,16,0.10); color: #107c10; }
+  .icon-orange { background: rgba(202,80,16,0.12); color: #ca5010; }
 
-                <!-- Submit Card -->
-                <div class="card shadow-sm border-0 bg-transparent">
-                    <div class="card-body text-end p-0 mt-2">
-                        <input type="hidden" name="entries_json" id="entriesJson">
-                        <input type="hidden" name="total_amount" id="totalAmount">
-                        <button type="button" class="btn btn-success fw-bold px-4 py-2 w-100 shadow-sm" style="background-color: #198754; border-color: #198754;" onclick="submitForm()">
-                            <i class="fas fa-save me-2"></i> Submit Entry
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </form>
+  .win-card-body { padding: 18px 20px; }
+
+  /* ── Form Controls ─────────────────────────────────────────── */
+  .form-row { display: grid; gap: 14px; margin-bottom: 14px; }
+  .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+  .form-row.cols-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+
+  .form-group { display: flex; flex-direction: column; gap: 5px; }
+
+  .win-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--win-text-secondary);
+    letter-spacing: 0.1px;
+  }
+
+  .win-input, .win-select, .win-textarea {
+    border: 1px solid var(--win-stroke-strong);
+    border-radius: var(--win-radius-sm);
+    padding: 7px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--win-text);
+    background: var(--win-surface-solid);
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    width: 100%;
+  }
+  .win-input:focus, .win-select:focus, .win-textarea:focus {
+    border-color: var(--win-accent);
+    box-shadow: 0 0 0 2px rgba(0,103,192,0.18);
+  }
+  .win-select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23777' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+  .win-textarea { resize: vertical; min-height: 56px; }
+
+  /* Hide spinners */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+  input[type="number"] { -moz-appearance: textfield; }
+
+  /* ── Toggle (Win11 style) ──────────────────────────────────── */
+  .win-toggle-wrap {
+    display: flex; align-items: center; gap: 10px;
+    cursor: pointer; user-select: none;
+  }
+  .win-toggle {
+    position: relative;
+    width: 40px; height: 20px;
+    flex-shrink: 0;
+  }
+  .win-toggle input { opacity: 0; width: 0; height: 0; }
+  .win-toggle-track {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,0.2);
+    border-radius: 20px;
+    border: 1px solid rgba(0,0,0,0.1);
+    transition: background 0.2s;
+  }
+  .win-toggle input:checked ~ .win-toggle-track { background: var(--win-accent); border-color: var(--win-accent); }
+  .win-toggle-thumb {
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 14px; height: 14px;
+    background: white;
+    border-radius: 50%;
+    transition: left 0.2s var(--win-anim);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .win-toggle input:checked ~ .win-toggle-thumb { left: 23px; }
+  .win-toggle-label { font-size: 13px; font-weight: 500; color: var(--win-text); }
+
+  /* ── Journal Table ─────────────────────────────────────────── */
+  .journal-table-wrap {
+    overflow-x: auto;
+    border-radius: 0 0 10px 10px;
+  }
+  .journal-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .journal-table thead th {
+    background: rgba(240,240,240,0.8);
+    border-bottom: 1px solid var(--win-stroke-strong);
+    padding: 9px 12px;
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 700;
+    color: var(--win-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .journal-table thead th.num { text-align: right; }
+  .journal-table tbody tr {
+    border-bottom: 1px solid rgba(0,0,0,0.04);
+    transition: background 0.1s;
+  }
+  .journal-table tbody tr:hover { background: rgba(0,103,192,0.03); }
+  .journal-table td { padding: 7px 8px; vertical-align: middle; }
+  .journal-table td .win-input,
+  .journal-table td .win-select {
+    padding: 5px 8px;
+    font-size: 12.5px;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+  .journal-table td .win-input:focus,
+  .journal-table td .win-select:focus {
+    background: white;
+    border-color: var(--win-accent);
+    box-shadow: 0 0 0 2px rgba(0,103,192,0.15);
+  }
+
+  /* ── Summary Panel ─────────────────────────────────────────── */
+  .summary-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--win-stroke);
+    font-size: 13px;
+  }
+  .summary-row:last-child { border-bottom: none; }
+  .summary-label { color: var(--win-text-secondary); font-weight: 500; }
+  .summary-value { font-weight: 700; font-size: 15px; color: var(--win-text); font-variant-numeric: tabular-nums; }
+  .summary-value.grand { font-size: 22px; color: #107c10; }
+
+  /* ── Delete row btn ────────────────────────────────────────── */
+  .btn-del {
+    width: 26px; height: 26px;
+    border-radius: var(--win-radius-sm);
+    border: 1px solid transparent;
+    background: transparent;
+    color: #c44a00;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px;
+    transition: background 0.12s, border-color 0.12s;
+    margin: auto;
+  }
+  .btn-del:hover { background: rgba(196,74,0,0.08); border-color: rgba(196,74,0,0.25); }
+
+  /* ── Info chip ─────────────────────────────────────────────── */
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--win-accent-light);
+    color: var(--win-accent);
+    border-radius: 20px;
+    padding: 3px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  /* ── Responsive ────────────────────────────────────────────── */
+  @media (max-width: 860px) {
+    .form-row.cols-4 { grid-template-columns: 1fr 1fr; }
+    .form-row.cols-3 { grid-template-columns: 1fr 1fr; }
+  }
+
+  /* Subtle entrance animation */
+  .win-card {
+    animation: card-in 0.35s var(--win-anim) both;
+  }
+  .win-card:nth-child(2) { animation-delay: 0.05s; }
+  .win-card:nth-child(3) { animation-delay: 0.10s; }
+  @keyframes card-in {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>
+
+<!-- Command Bar -->
+<div class="command-bar">
+  <button class="cmd-btn primary" onclick="submitForm()">
+    <i class="fas fa-save"></i> Save Entry
+  </button>
+  <button class="cmd-btn" onclick="resetForm()">
+    <i class="fas fa-undo"></i> Reset
+  </button>
+  <div class="cmd-sep"></div>
+  <button class="cmd-btn" onclick="addRow()">
+    <i class="fas fa-plus"></i> Add Line
+  </button>
+  <div class="cmd-sep"></div>
+  <button class="cmd-btn">
+    <i class="fas fa-print"></i> Print
+  </button>
+  <button class="cmd-btn">
+    <i class="fas fa-file-export"></i> Export
+  </button>
 </div>
+
+<!-- Main Entry Form -->
+<form id="serviceEntryForm" method="POST" action="{{ url_for('save_service_entry') }}">
+    <div style="display:grid; grid-template-columns:1fr 320px; gap:16px; align-items:start;">
+
+      <!-- LEFT COLUMN -->
+      <div>
+
+        <!-- Transaction Details Card -->
+        <div class="win-card">
+          <div class="win-card-header">
+            <div class="win-card-title-icon icon-blue"><i class="fas fa-info-circle"></i></div>
+            <span class="win-card-title">Transaction Details</span>
+            <div style="margin-left:auto;">
+              <span class="chip"><i class="fas fa-circle" style="font-size:7px;"></i> New Entry</span>
+            </div>
+          </div>
+          <div class="win-card-body">
+            <div class="form-row cols-2">
+              <div class="form-group" style="grid-column: 1 / -1;">
+                <label class="win-label">Supplier</label>
+                <select class="win-select" name="supplier_id" id="supplierSelect" required>
+                  <option value="">Select a supplier…</option>
+                  {% for sup in suppliers %}
+                  <option value="{{ sup.sup_id }}">{{ sup.supplier_name }} - {{ sup.supplier_code }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+            <div class="form-row cols-4">
+              <div class="form-group">
+                <label class="win-label">Effective Date</label>
+                <input type="date" class="win-input" name="effective_date" id="effectiveDate" value="{{ today_date }}" required>
+              </div>
+              <div class="form-group">
+                <label class="win-label">Invoice Date</label>
+                <input type="date" class="win-input" name="invoice_date" value="{{ today_date }}" required>
+              </div>
+              <div class="form-group">
+                <label class="win-label">Due Date</label>
+                <input type="date" class="win-input" name="due_date" value="{{ today_date }}" required>
+              </div>
+              <div class="form-group">
+                <label class="win-label">Invoice Number</label>
+                <input type="text" class="win-input" name="invoice_number" placeholder="e.g. INV-0042" required>
+              </div>
+            </div>
+            <div class="form-row cols-2">
+              <div class="form-group">
+                <label class="win-label">Job Number (Header)</label>
+                <select class="win-select" name="header_job_number">
+                  <option value="">None</option>
+                  {% for job in jobs %}
+                  <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="win-label">Narration</label>
+                <textarea class="win-textarea" name="main_narration" placeholder="Enter transaction narration…" required></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Journal Entries Card -->
+        <div class="win-card">
+          <div class="win-card-header">
+            <div class="win-card-title-icon icon-orange"><i class="fas fa-list-ol"></i></div>
+            <span class="win-card-title">Journal Entries</span>
+            <button type="button" class="cmd-btn" style="margin-left:auto; padding:4px 10px; font-size:12px;" onclick="addRow()">
+              <i class="fas fa-plus"></i> Add Row
+            </button>
+          </div>
+          <div class="journal-table-wrap">
+            <table class="journal-table">
+              <thead>
+                <tr>
+                  <th style="width:26%">Account</th>
+                  <th style="width:22%">Sub Account</th>
+                  <th style="width:15%">Job No</th>
+                  <th style="width:20%">Line Narration</th>
+                  <th class="num" style="width:13%">DR Amount</th>
+                  <th style="width:4%"></th>
+                </tr>
+              </thead>
+              <tbody id="journalBody">
+                <!-- Row injected by JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- RIGHT COLUMN -->
+      <div>
+        <!-- Amounts Card -->
+        <div class="win-card">
+          <div class="win-card-header">
+            <div class="win-card-title-icon icon-green"><i class="fas fa-calculator"></i></div>
+            <span class="win-card-title">Amount Summary</span>
+          </div>
+          <div class="win-card-body">
+            <div class="summary-row">
+              <span class="summary-label">Subtotal (excl. VAT)</span>
+              <span class="summary-value" id="totalWithoutVat">0.00</span>
+            </div>
+
+            <div style="padding: 12px 0; border-bottom: 1px solid var(--win-stroke);">
+              <label class="win-toggle-wrap">
+                <span class="win-toggle">
+                  <input type="checkbox" id="includeVat" name="include_vat" value="1" onchange="onVatToggle()">
+                  <span class="win-toggle-track"></span>
+                  <span class="win-toggle-thumb"></span>
+                </span>
+                <span class="win-toggle-label">Include VAT</span>
+              </label>
+              <div style="margin-top:10px;">
+                <label class="win-label" style="margin-bottom:4px; display:block;">VAT Rate %</label>
+                <input type="number" step="0.01" class="win-input" id="vatRate" name="vat_rate"
+                       value="0.00" disabled onchange="calculateTotals()"
+                       style="text-align:right;">
+              </div>
+            </div>
+
+            <div class="summary-row" style="padding-top:14px;">
+              <span class="summary-label" style="font-size:15px; font-weight:700; color:var(--win-text);">Total with VAT</span>
+              <span class="summary-value grand" id="totalWithVat">0.00</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Submit Card -->
+        <div class="win-card">
+          <div class="win-card-body" style="display:flex; flex-direction:column; gap:10px;">
+            <input type="hidden" name="entries_json" id="entriesJson">
+            <input type="hidden" name="total_amount" id="totalAmount">
+
+            <button type="button" class="cmd-btn primary" style="justify-content:center; padding:10px; font-size:13.5px; font-weight:600; border-radius:6px;" onclick="submitForm()">
+              <i class="fas fa-save"></i> Submit Entry
+            </button>
+            <button type="button" class="cmd-btn" style="justify-content:center; padding:9px;" onclick="resetForm()">
+              <i class="fas fa-undo"></i> Reset Form
+            </button>
+            <div style="font-size:11px; color:var(--win-text-secondary); text-align:center; margin-top:4px;">
+              <i class="fas fa-info-circle" style="margin-right:4px;"></i>
+              Entry will require approval before posting
+            </div>
+          </div>
+        </div>
+
+        <!-- Hidden Card: Entry Info -->
+        <div class="win-card" style="background: rgba(0,103,192,0.06); border-color: rgba(0,103,192,0.15);">
+          <div class="win-card-body" style="padding:14px 16px;">
+            <div style="font-size:12px; font-weight:700; color: var(--win-accent); margin-bottom:8px;">
+              <i class="fas fa-shield-alt" style="margin-right:6px;"></i>Entry Info
+            </div>
+            <div style="font-size:11.5px; color:#444; line-height:1.8;">
+              <div>User: <strong>{{ session.get('username', 'Unknown') }}</strong></div>
+              <div>Date: <strong id="entryDate">{{ today_date }}</strong></div>
+              <div>Status: <strong style="color:#ca5010;">Pending</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /grid -->
+</form>
 
 <script>
     // Make variables available to JS
@@ -186,7 +467,6 @@
         <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
         {% endfor %}
     `;
-    const subAccountsOptions = `<option value="">None</option>`;
     const jobsOptions = `
         <option value="">None</option>
         {% for job in jobs %}
@@ -194,8 +474,34 @@
         {% endfor %}
     `;
 
+    function buildRow() {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td><select class="win-select account-select" onchange="fetchSubs(this); calculateTotals()" required>${accountsOptions}</select></td>
+            <td><select class="win-select subaccount-select" disabled><option value="">None</option></select></td>
+            <td><select class="win-select job-select">${jobsOptions}</select></td>
+            <td><input type="text" class="win-input memo-input" placeholder="Line Narration..."></td>
+            <td><input type="number" step="0.01" class="win-input dr-input" value="0.00" style="text-align:right;" oninput="calculateTotals()"></td>
+            <td><button type="button" class="btn-del" onclick="removeRow(this)" title="Delete row"><i class="fas fa-trash-alt"></i></button></td>
+        `;
+        return tr;
+    }
 
-    function checkAccount(selectElement) {
+    function addRow() {
+        document.getElementById('journalBody').appendChild(buildRow());
+    }
+
+    function removeRow(btn) {
+        const tbody = document.getElementById('journalBody');
+        if (tbody.rows.length <= 1) {
+            alert('Cannot remove the last line.');
+            return;
+        }
+        btn.closest('tr').remove();
+        calculateTotals();
+    }
+
+    function fetchSubs(selectElement) {
         const row = selectElement.closest('tr');
         const subSelect = row.querySelector('.subaccount-select');
 
@@ -220,48 +526,13 @@
         }
     }
 
-    function addRow() {
-        const tbody = document.getElementById('journalBody');
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-            <td><select class="form-select account-select" onchange="checkAccount(this); calculateTotals()" required>${accountsOptions}</select></td>
-            <td><select class="form-select subaccount-select" disabled>
-                                            <option value="">None</option>
-                                        </select></td>
-            <td><select class="form-select job-select">${jobsOptions}</select></td>
-            <td><input type="text" class="form-control memo-input" placeholder="Line Narration"></td>
-            <td><input type="number" step="0.01" class="form-control text-end dr-input" value="0.00" onchange="calculateTotals()"></td>
-            <td class="text-center">
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeRow(this)">
-                    <i class="fas fa-trash"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
-        // Initialize Select2 if using it on dynamic rows
-        if ($.fn.select2) {
-             // Optional: initialize select2 on the new elements here if needed
-        }
-    }
-
-    function removeRow(btn) {
-        const row = btn.closest('tr');
-        const tbody = document.getElementById('journalBody');
-        if(tbody.rows.length > 1) {
-            row.remove();
-            calculateTotals();
-        } else {
-            alert("Cannot remove the last row.");
-        }
-    }
-
-    document.getElementById('includeVat').addEventListener('change', function() {
-        document.getElementById('vatRate').disabled = !this.checked;
-        if (!this.checked) {
-            document.getElementById('vatRate').value = '0.00';
-        }
+    function onVatToggle() {
+        const cb = document.getElementById('includeVat');
+        const rateInput = document.getElementById('vatRate');
+        rateInput.disabled = !cb.checked;
+        if (!cb.checked) rateInput.value = '0.00';
         calculateTotals();
-    });
+    }
 
     function calculateTotals() {
         let totalDr = 0;
@@ -320,6 +591,11 @@
             return;
         }
 
+        if (!document.getElementById('supplierSelect').value) {
+            alert('Please select a supplier.');
+            return;
+        }
+
         document.getElementById('entriesJson').value = JSON.stringify(entries);
 
         // Required check
@@ -331,5 +607,15 @@
 
         form.submit();
     }
+
+    function resetForm() {
+        document.getElementById('journalBody').innerHTML = '';
+        addRow();
+        calculateTotals();
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        addRow();
+    });
 </script>
 {% endblock %}
