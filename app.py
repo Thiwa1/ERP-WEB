@@ -3688,7 +3688,7 @@ def superadmin_login():
     password = request.form.get('password')
 
     # Simple hardcoded credentials for Super Admin
-    if username == 'superadmin' and password == 'superadmin':
+    if username == os.getenv('SUPERADMIN_USERNAME', 'superadmin') and password == os.getenv('SUPERADMIN_PASSWORD', 'superadmin_secret'):
         session['superadmin_pending_2fa'] = True
 
         # Generate OTP
@@ -7809,6 +7809,84 @@ def profit_loss():
                            default_start=default_start,
                            default_end=default_end)
 
+
+@app.route('/api/dashboard/kpis')
+@login_required
+def dashboard_kpis():
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+
+    if not start_date or not end_date:
+        import calendar
+        from datetime import datetime
+        now = datetime.now()
+        start_date = now.replace(day=1).strftime('%Y-%m-%d')
+        end_date = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
+
+    conn = db.get_connection()
+    if not conn:
+        return jsonify({'success': False, 'error': 'Database connection failed'}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+
+        # 1. Total Revenue
+        cursor.execute(
+            "SELECT SUM(Total_Value) as total FROM POS_Sales_Invoice_01 WHERE AcctionDate BETWEEN %s AND %s AND Revers = 0",
+            (start_date, end_date)
+        )
+        row = cursor.fetchone()
+        total_revenue = float(row['total'] or 0)
+
+        # 2. Cash Receipts
+        cursor.execute(
+            "SELECT SUM(cash_book_recode_dr) as total FROM cash_book_recode WHERE Payment_Date BETWEEN %s AND %s AND cash_book_recode_dr IS NOT NULL",
+            (start_date, end_date)
+        )
+        row = cursor.fetchone()
+        cash_rcpt = float(row['total'] or 0)
+
+        cursor.execute(
+            "SELECT SUM(bank_book_book_recode_dr) as total FROM bank_book_recod WHERE Bank_Payment_Date BETWEEN %s AND %s AND bank_book_book_recode_dr IS NOT NULL",
+            (start_date, end_date)
+        )
+        row = cursor.fetchone()
+        bank_rcpt = float(row['total'] or 0)
+        total_receipts = cash_rcpt + bank_rcpt
+
+        # 3. Outstanding Payables (Current Snapshot, independent of date range, or we can filter by final date if required, but snapshot is standard)
+        cursor.execute(
+            "SELECT SUM(suppliers_invoice_oustanding) as total FROM suppliers_invoice_data WHERE suppliers_oustanding_delete = 0"
+        )
+        row = cursor.fetchone()
+        outstanding_payables = float(row['total'] or 0)
+
+        # 4. Pending Approvals
+        cursor.execute(
+            "SELECT COUNT(*) as count FROM OP_NO_Table WHERE status = 0 AND Delete_PO = 0"
+        )
+        row = cursor.fetchone()
+        pending_approvals = int(row['count'] or 0)
+
+        return jsonify({
+            'success': True,
+            'kpis': {
+                'total_revenue': total_revenue,
+                'cash_receipts': total_receipts,
+                'outstanding_payables': outstanding_payables,
+                'pending_approvals': pending_approvals
+            }
+        })
+
+    except Exception as e:
+        import logging
+        logging.error(f"KPI fetch error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        cursor.close()
+        conn.close()
+
+
 # --- Dashboard VAT Export ---
 @app.route('/dashboard_export_vat', methods=['GET'])
 @login_required
@@ -8266,8 +8344,8 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.warning(f"Settings Load Error (Ignored): {e}")
 
-    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID', '13120')
-    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY', 'pU2QCwOIKUjJpdfgYH2K')
+    user_id = settings.get('sms_user_id') or os.getenv('NOTIFY_USER_ID')
+    api_key = settings.get('sms_api_key') or os.getenv('NOTIFY_API_KEY')
     sender_id = settings.get('sms_sender_id') or os.getenv('NOTIFY_SENDER_ID', 'The Bunker')
 
     if not api_key or not user_id:
