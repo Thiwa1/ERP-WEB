@@ -54,22 +54,35 @@ def create_grn(db, current_user, supplier_info, invoice_info, items):
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         """, ('Account Payable', invoice_info['grand_total'], invoice_info['date'], date.today(), invoice_info['narration'], current_user, jv_no, job_no))
 
+        # C3. Debit VAT Control (if applicable)
+        # If VAT rate is present but amount is 0/missing (e.g. not passed from UI), auto-calculate it
+        vat_amount = float(invoice_info.get('vat_amount', 0))
+        vat_rate = float(invoice_info.get('vat_rate', 0))
+        grand_total = float(invoice_info.get('grand_total', 0))
+        total_value = float(invoice_info.get('total_value', 0))
+
+        if vat_amount <= 0 and vat_rate > 0 and grand_total > 0:
+            net = grand_total / (1 + (vat_rate / 100))
+            vat_amount = grand_total - net
+            # Also adjust total_value (Inventory DR) down to net if it was passed as grand_total inclusive of VAT
+            if total_value >= grand_total:
+                total_value = net
+
         # C2. Debit Inventory (Total Value)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_job_number
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Inventory', invoice_info['total_value'], invoice_info['date'], date.today(), invoice_info['narration'], current_user, jv_no, job_no))
+        """, ('Inventory', total_value, invoice_info['date'], date.today(), invoice_info['narration'], current_user, jv_no, job_no))
 
-        # C3. Debit VAT Control (if applicable)
-        if invoice_info['vat_amount'] > 0:
+        if vat_amount > 0:
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, ('VAT Control', invoice_info['vat_amount'], invoice_info['date'], date.today(), invoice_info['narration'], current_user, jv_no, job_no))
+            """, ('VAT Control', round(vat_amount, 2), invoice_info['date'], date.today(), invoice_info['narration'], current_user, jv_no, job_no))
 
         # D. Inventory Records
         for item in items:
