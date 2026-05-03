@@ -10321,6 +10321,103 @@ def system_backup():
         flash(f'Backup error: {str(e)}', 'danger')
         return redirect(url_for('index'))
 
+
+# --- System Restore ---
+@app.route('/system_restore', methods=['GET', 'POST'])
+@login_required
+def system_restore():
+    if request.method == 'POST':
+        # Check if file was uploaded
+        if 'backup_file' not in request.files:
+            flash('No file part', 'danger')
+            return redirect(request.url)
+
+        file = request.files['backup_file']
+
+        if file.filename == '':
+            flash('No selected file', 'danger')
+            return redirect(request.url)
+
+        if not file.filename.endswith('.sql'):
+            flash('Invalid file format. Please upload a .sql file.', 'danger')
+            return redirect(request.url)
+
+        # Validate Config
+        if not validate_db_config(db_config):
+            flash('Invalid database configuration', 'danger')
+            return redirect(url_for('index'))
+
+        # Get the user's specific database name
+        db_name = get_session_db_name()
+        if not is_safe_db_name(db_name):
+            flash('Invalid database name', 'danger')
+            return redirect(url_for('index'))
+
+        # Attempt to find the mysql binary
+        mysql_cmd = shutil.which('mysql')
+        if not mysql_cmd:
+            mysql_cmd = shutil.which('mariadb')
+
+        # Fallback
+        if not mysql_cmd:
+            mysql_cmd = 'mysql'
+
+        try:
+            # Create temporary defaults file to store credentials securely
+            defaults_file = tempfile.NamedTemporaryFile(mode='w+', delete=False)
+            try:
+                # Set permissions to 600 (owner read/write only) BEFORE writing data
+                os.chmod(defaults_file.name, 0o600)
+
+                # Write credentials
+                defaults_file.write('[client]\n')
+                defaults_file.write(f"user={db_config['user']}\n")
+                if db_config['password']:
+                    defaults_file.write(f"password={db_config['password']}\n")
+                defaults_file.write(f"host={db_config['host']}\n")
+                defaults_file.flush()
+                defaults_file.close()
+
+                # Command construction
+                cmd = [
+                    mysql_cmd,
+                    f'--defaults-extra-file={defaults_file.name}',
+                    '--', # End of options
+                    db_name
+                ]
+
+                try:
+                    # Execute the mysql command
+                    process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                    # Write the uploaded file content to stdin
+                    file_content = file.read()
+                    stdout, stderr = process.communicate(input=file_content)
+
+                    if process.returncode == 0:
+                        flash('Database restored successfully', 'success')
+                    else:
+                        error_msg = stderr.decode('utf-8') if stderr else "Unknown error"
+                        logging.error(f"Restore failed with return code {process.returncode}. Error: {error_msg}")
+                        flash(f'Restore failed. Error: {error_msg}', 'danger')
+
+                except FileNotFoundError:
+                    logging.error(f"Restore command not found: {cmd}")
+                    flash('MySQL client utility not found on server.', 'danger')
+
+            finally:
+                if os.path.exists(defaults_file.name):
+                    os.remove(defaults_file.name)
+
+        except Exception as e:
+            logging.error(f"Error during database restore: {str(e)}")
+            flash(f'An error occurred during restore: {str(e)}', 'danger')
+
+        return redirect(url_for('index'))
+
+    return render_template('system_restore.html')
+
+
 # --- Fixed Assets Module ---
 @app.route('/fixed_assets')
 @login_required

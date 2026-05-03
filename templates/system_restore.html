@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-3">
+    <!-- Header -->
+    <div class="d-flex align-items-center mb-4">
+        <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-upload me-2"></i> System Restore</h4>
+    </div>
+
+    <!-- Upload Form -->
+    <div class="card shadow-sm mb-4 border-0">
+        <div class="card-body bg-light text-center py-5">
+            <form method="POST" enctype="multipart/form-data">
+                <i class="fas fa-database fa-3x text-muted mb-3"></i>
+                <h5 class="mb-3">Select Database Backup File (.sql)</h5>
+                <p class="text-muted small mb-4">Warning: Restoring a database will overwrite all existing data. This action cannot be undone.</p>
+
+                <div class="d-flex justify-content-center">
+                    <input type="file" name="backup_file" class="form-control w-50" accept=".sql" required>
+                </div>
+
+                <button type="submit" class="btn btn-danger fw-bold mt-4 px-5" onclick="return confirm('Are you absolutely sure you want to restore the database? This will overwrite your current data.')">
+                    <i class="fas fa-exclamation-triangle me-2"></i> Restore Database
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
