@@ -437,6 +437,16 @@
     </div>
     {% endif %}
 
+
+    <!-- DASHBOARD FILTERS -->
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0 fw-bold" style="color: var(--win-text);">Dashboard Overview</h5>
+        <div class="d-flex gap-2">
+            <input type="date" id="dashStartDate" class="win11-form-control form-control-sm" style="width:140px;">
+            <input type="date" id="dashEndDate" class="win11-form-control form-control-sm" style="width:140px;">
+        </div>
+    </div>
+
     <!-- KPI CARDS -->
     <div class="kpi-grid">
 
@@ -445,7 +455,7 @@
           <div class="kpi-label">Total Revenue</div>
           <div class="kpi-icon blue"><i class="fas fa-chart-line"></i></div>
         </div>
-        <div class="kpi-value">142,580</div>
+        <div class="kpi-value" id="kpiTotalRevenue">142,580</div>
         <div class="kpi-change up"><i class="fas fa-arrow-trend-up"></i> +12.4% vs last month</div>
         <div class="kpi-sparkline">
           <svg viewBox="0 0 120 36" preserveAspectRatio="none">
@@ -466,7 +476,7 @@
           <div class="kpi-label">Cash Receipts</div>
           <div class="kpi-icon green"><i class="fas fa-receipt"></i></div>
         </div>
-        <div class="kpi-value">89,340</div>
+        <div class="kpi-value" id="kpiCashReceipts">89,340</div>
         <div class="kpi-change up"><i class="fas fa-arrow-trend-up"></i> +8.1% vs last month</div>
         <div class="kpi-sparkline">
           <svg viewBox="0 0 120 36" preserveAspectRatio="none">
@@ -487,7 +497,7 @@
           <div class="kpi-label">Outstanding Payables</div>
           <div class="kpi-icon gold"><i class="fas fa-file-invoice"></i></div>
         </div>
-        <div class="kpi-value">34,210</div>
+        <div class="kpi-value" id="kpiOutstandingPayables">34,210</div>
         <div class="kpi-change warn"><i class="fas fa-arrow-trend-up"></i> +3.2% overdue risk</div>
         <div class="kpi-sparkline">
           <svg viewBox="0 0 120 36" preserveAspectRatio="none">
@@ -508,7 +518,7 @@
           <div class="kpi-label">Pending Approvals</div>
           <div class="kpi-icon red"><i class="fas fa-check-double"></i></div>
         </div>
-        <div class="kpi-value">3</div>
+        <div class="kpi-value" id="kpiPendingApprovals">3</div>
         <div class="kpi-change down"><i class="fas fa-triangle-exclamation"></i> Action required</div>
         <div class="kpi-sparkline">
           <svg viewBox="0 0 120 36" preserveAspectRatio="none">
@@ -864,5 +874,65 @@ if (document.getElementById('vatSummaryPanel')) {
             document.getElementById('vatStatus').textContent = 'Error connecting to server';
         });
 }
+
+// KPI API Call
+function fetchKPIs() {
+    const start = document.getElementById('dashStartDate').value;
+    const end = document.getElementById('dashEndDate').value;
+
+    let url = '/api/dashboard/kpis';
+    if (start && end) {
+        url += `?start_date=${start}&end_date=${end}`;
+    }
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const kpis = data.kpis;
+
+                // Format functions
+                const fmtCur = (val) => Number(val).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+                const fmtNum = (val) => Number(val).toLocaleString();
+
+                document.getElementById('kpiTotalRevenue').textContent = fmtCur(kpis.total_revenue);
+                document.getElementById('kpiCashReceipts').textContent = fmtCur(kpis.cash_receipts);
+                document.getElementById('kpiOutstandingPayables').textContent = fmtCur(kpis.outstanding_payables);
+                document.getElementById('kpiPendingApprovals').textContent = fmtNum(kpis.pending_approvals);
+            } else {
+                console.error("Failed to load KPIs:", data.error);
+            }
+        })
+        .catch(err => console.error("Error fetching KPIs:", err));
+}
+
+// Initialize Dates
+document.addEventListener('DOMContentLoaded', () => {
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+
+    // First day of current month
+    const firstDay = `${y}-${m}-01`;
+    // Last day of current month
+    const lastDayObj = new Date(y, now.getMonth() + 1, 0);
+    const lastDay = `${y}-${m}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
+
+    const startInput = document.getElementById('dashStartDate');
+    const endInput = document.getElementById('dashEndDate');
+
+    if(startInput && endInput) {
+        startInput.value = firstDay;
+        endInput.value = lastDay;
+
+        startInput.addEventListener('change', fetchKPIs);
+        endInput.addEventListener('change', fetchKPIs);
+    }
+
+    // Fetch initially
+    fetchKPIs();
+});
+
+
 </script>
 {% endblock %}
