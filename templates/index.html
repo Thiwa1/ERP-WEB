@@ -964,7 +964,7 @@ function loadRecentActivity() {
     .then(json => {
         if (!json.success || !json.data) return;
         if (json.data.length === 0) {
-            listEl.innerHTML = '<div style="padding: 10px; color: #888;">No recent activity</div>';
+            listEl.innerHTML = '<div style="padding: 10px; color: #888;">No recent activity to display</div>';
             return;
         }
 
