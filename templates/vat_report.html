@@ -110,6 +110,21 @@
                                         <td class="fw-bold">Net VAT Payable / (Refundable)</td>
                                         <td class="text-end fw-bold">{{ summary.net_vat|currency }}</td>
                                     </tr>
+                                    <tr>
+                                        <td>VAT Control Account Balance (GL)</td>
+                                        <td class="text-end fw-bold text-primary">{{ reconciliation.gl_balance|currency }}</td>
+                                    </tr>
+                                    <tr class="table-secondary">
+                                        <td class="fw-bold">Reconciliation Difference</td>
+                                        <td class="text-end fw-bold {{ 'text-danger' if reconciliation.difference != 0 else 'text-success' }}">
+                                            {{ reconciliation.difference|currency }}
+                                            {% if reconciliation.difference == 0 %}
+                                                <i class="fa-solid fa-check-circle ms-1"></i>
+                                            {% else %}
+                                                <i class="fa-solid fa-triangle-exclamation ms-1"></i>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
