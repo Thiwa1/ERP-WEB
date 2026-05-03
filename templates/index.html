@@ -812,6 +812,16 @@ function loadMonthlyRevenue() {
         barsEl.innerHTML = '';
         axisEl.innerHTML = '';
 
+        const totalRevenue = json.data.reduce((sum, d) => sum + d.val, 0);
+        if (totalRevenue === 0) {
+            barsEl.innerHTML = '<div style="width: 100%; padding: 30px; text-align: center; color: #888; font-style: italic;">No revenue data for the past 5 months</div>';
+            axisEl.innerHTML = '';
+            document.getElementById('avgMonthlyStat').textContent = `LKR 0`;
+            document.getElementById('bestMonthStat').textContent = `—`;
+            document.getElementById('ytdTotalStat').textContent = `LKR 0`;
+            return;
+        }
+
         json.data.forEach(d => {
             const pct = (d.val / d.max) * 100;
             const col = document.createElement('div');
@@ -964,7 +974,7 @@ function loadRecentActivity() {
     .then(json => {
         if (!json.success || !json.data) return;
         if (json.data.length === 0) {
-            listEl.innerHTML = '<div style="padding: 10px; color: #888;">No recent activity to display</div>';
+            listEl.innerHTML = '<div style="padding: 15px; color: #888; font-style: italic; text-align: center; border-radius: 8px; background: rgba(0,0,0,0.02);">No recent activity</div>';
             return;
         }
 
