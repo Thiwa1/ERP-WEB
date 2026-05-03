@@ -4397,6 +4397,16 @@ def bank_payment_submit():
 
         # 2a. Generate Master Voucher Number (Global Sequence)
         cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recent_activity (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            dot_color VARCHAR(20) DEFAULT 'blue',
+            text_content TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+
         master_voucher_no = cursor.lastrowid
 
         # 3. Create Journal Voucher (JV)
@@ -7459,6 +7469,24 @@ def safe_eval_math(expr):
     except Exception:
         return 0.0
 
+
+def log_recent_activity(dot_color, text_content):
+    try:
+        # Check count
+        res = db.execute_query("SELECT COUNT(*) as cnt FROM recent_activity")
+        count = res[0]['cnt'] if res else 0
+        if count >= 10:
+            # Overwrite the oldest record
+            oldest = db.execute_query("SELECT id FROM recent_activity ORDER BY created_at ASC LIMIT 1")
+            if oldest:
+                oldest_id = oldest[0]['id']
+                db.execute_query("UPDATE recent_activity SET dot_color=%s, text_content=%s, created_at=CURRENT_TIMESTAMP WHERE id=%s", (dot_color, text_content, oldest_id))
+                return
+        # Otherwise insert new
+        db.execute_query("INSERT INTO recent_activity (dot_color, text_content) VALUES (%s, %s)", (dot_color, text_content))
+    except Exception as e:
+        app.logger.error(f"Error logging recent activity: {e}")
+
 def _safe_eval_expression(expr, context_vars):
     if not expr: return 0.0
     # Replace variable names (alphabetic strings) with their float values
@@ -7835,19 +7863,19 @@ def dashboard_monthly_revenue():
             label = d.strftime('%b')
 
             cursor.execute(
-                "SELECT COALESCE(SUM(Total_Value), 0) as total FROM POS_Sales_Invoice_01 WHERE AcctionDate BETWEEN %s AND %s AND Revers = 0",
+                "SELECT SUM(Total_Value) as total FROM POS_Sales_Invoice_01 WHERE DATE(AcctionDate) BETWEEN %s AND %s AND Revers = 0",
                 (first_day, last_day)
             )
             row = cursor.fetchone()
-            val = float(row['total'])
+            val = float(row['total'] if row and row['total'] is not None else 0)
 
             # Additional revenue from Invoices (if any)
             cursor.execute(
-                "SELECT COALESCE(SUM(Total_Amount), 0) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+                "SELECT SUM(Invoice_Total_Value) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
                 (first_day, last_day)
             )
             inv_row = cursor.fetchone()
-            if inv_row and 'total' in inv_row:
+            if inv_row and inv_row['total'] is not None:
                 val += float(inv_row['total'])
 
             months_data.append({
@@ -7861,18 +7889,18 @@ def dashboard_monthly_revenue():
         ytd_end = now.replace(day=calendar.monthrange(now.year, now.month)[1]).strftime('%Y-%m-%d')
 
         cursor.execute(
-            "SELECT COALESCE(SUM(Total_Value), 0) as total FROM POS_Sales_Invoice_01 WHERE AcctionDate BETWEEN %s AND %s AND Revers = 0",
+            "SELECT SUM(Total_Value) as total FROM POS_Sales_Invoice_01 WHERE DATE(AcctionDate) BETWEEN %s AND %s AND Revers = 0",
             (ytd_start, ytd_end)
         )
         row = cursor.fetchone()
-        ytd_val = float(row['total'])
+        ytd_val = float(row['total'] if row and row['total'] is not None else 0)
 
         cursor.execute(
-            "SELECT COALESCE(SUM(Total_Amount), 0) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
+            "SELECT SUM(Invoice_Total_Value) as total FROM invoice_oustanding WHERE Invoice_Date BETWEEN %s AND %s AND oustanding_delete = 0",
             (ytd_start, ytd_end)
         )
         inv_row = cursor.fetchone()
-        if inv_row and 'total' in inv_row:
+        if inv_row and inv_row['total'] is not None:
             ytd_val += float(inv_row['total'])
 
         # Calculate stats
@@ -7901,6 +7929,43 @@ def dashboard_monthly_revenue():
     except Exception as e:
         logging.error(f"Error fetching monthly revenue: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/dashboard/recent_activity')
+@login_required
+def api_recent_activity():
+    try:
+        res = db.execute_query("SELECT dot_color, text_content, created_at FROM recent_activity ORDER BY created_at DESC LIMIT 10")
+
+        # format time diff
+        from datetime import datetime
+        now = datetime.now()
+        activities = []
+        for r in (res or []):
+            dt = r['created_at']
+            if not dt:
+                time_str = "just now"
+            else:
+                diff = (now - dt).total_seconds()
+                if diff < 60:
+                    time_str = f"{int(diff)}s ago"
+                elif diff < 3600:
+                    time_str = f"{int(diff//60)}m ago"
+                elif diff < 86400:
+                    time_str = f"{int(diff//3600)}h ago"
+                else:
+                    time_str = f"{int(diff//86400)}d ago"
+
+            activities.append({
+                'dot_color': r['dot_color'],
+                'text_content': r['text_content'],
+                'time_str': time_str
+            })
+
+        return jsonify({'success': True, 'data': activities})
+    except Exception as e:
+        app.logger.error(f"Error fetching recent activity: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/api/dashboard/kpis')
 @login_required
@@ -9371,6 +9436,16 @@ def run_schema_migrations(target_db_conn=None):
                 )
             """)
             cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
+
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recent_activity (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            dot_color VARCHAR(20) DEFAULT 'blue',
+            text_content TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+
 
         # 11. Add Master Voucher Column to Bank Book Record
         cursor.execute("SHOW COLUMNS FROM bank_book_recod")
