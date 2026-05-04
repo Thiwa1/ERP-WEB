@@ -4473,6 +4473,7 @@ def bank_payment_submit():
 
         conn.commit()
         flash(f'Payment processed successfully. Voucher No: {new_voucher}, Master Voucher: {master_voucher_no}', 'success')
+        log_recent_activity('red', f'<strong>Bank Payment #{new_voucher}</strong> for <strong>{supplier_name}</strong> — LKR {total_payment:,.2f}')
 
     except Exception as e:
         conn.rollback()
