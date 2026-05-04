@@ -154,3 +154,49 @@ class ProfitLossReportGenerator:
             'total_expense': total_expense,
             'net_profit': net_profit
         }
+
+class Customer_ProfitLossReportGenerator(ProfitLossReportGenerator):
+    def __init__(self, db, customer_sub_account_code):
+        super().__init__(db)
+        self.customer_sub_account_code = customer_sub_account_code
+
+    def _fetch_profit_loss_data(self, cursor, periods, acc_map):
+        if not periods:
+            return acc_map
+
+        select_clause = ["account_name"]
+        params = []
+
+        overall_start = min(p['start'] for p in periods)
+        overall_end = max(p['end'] for p in periods)
+
+        for i, p in enumerate(periods):
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
+            params.extend([p['start'], p['end'], p['start'], p['end']])
+
+        params.extend([overall_start, overall_end, self.customer_sub_account_code])
+
+        query = f"""
+            SELECT {', '.join(select_clause)}
+            FROM entry_details
+            WHERE entry_effective_date BETWEEN %s AND %s
+            AND entry_deleted = 0
+            AND entry_sub_account_code = %s
+            GROUP BY account_name
+        """
+
+        cursor.execute(query, tuple(params))
+        rows = cursor.fetchall()
+
+        for r in rows:
+            name = r['account_name']
+            if name in acc_map:
+                is_income = acc_map[name]['meta']['account_income'] == 1
+                for i in range(len(periods)):
+                    dr = float(r.get(f'dr_{i}', 0) or 0)
+                    cr = float(r.get(f'cr_{i}', 0) or 0)
+                    val = (cr - dr) if is_income else (dr - cr)
+                    acc_map[name]['values'][i] = val
+
+        return acc_map

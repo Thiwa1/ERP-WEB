@@ -1,0 +1,228 @@
+--- a/profit_loss_report.py
++++ b/profit_loss_report.py
+@@ -154,3 +154,49 @@
+             'total_expense': total_expense,
+             'net_profit': net_profit
+         }
++
++class Customer_ProfitLossReportGenerator(ProfitLossReportGenerator):
++    def __init__(self, db, customer_sub_account_code):
++        super().__init__(db)
++        self.customer_sub_account_code = customer_sub_account_code
++
++    def _fetch_profit_loss_data(self, cursor, periods, acc_map):
++        if not periods:
++            return acc_map
++
++        select_clause = ["account_name"]
++        params = []
++
++        overall_start = min(p['start'] for p in periods)
++        overall_end = max(p['end'] for p in periods)
++
++        for i, p in enumerate(periods):
++            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
++            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
++            params.extend([p['start'], p['end'], p['start'], p['end']])
++
++        params.extend([overall_start, overall_end, self.customer_sub_account_code])
++
++        query = f"""
++            SELECT {', '.join(select_clause)}
++            FROM entry_details
++            WHERE entry_effective_date BETWEEN %s AND %s
++            AND entry_deleted = 0
++            AND entry_sub_account_code = %s
++            GROUP BY account_name
++        """
++
++        cursor.execute(query, tuple(params))
++        rows = cursor.fetchall()
++
++        for r in rows:
++            name = r['account_name']
++            if name in acc_map:
++                is_income = acc_map[name]['meta']['account_income'] == 1
++                for i in range(len(periods)):
++                    dr = float(r.get(f'dr_{i}', 0) or 0)
++                    cr = float(r.get(f'cr_{i}', 0) or 0)
++                    val = (cr - dr) if is_income else (dr - cr)
++                    acc_map[name]['values'][i] = val
++
++        return acc_map
+--- a/app.py
++++ b/app.py
+@@ -4791,6 +4791,101 @@
+         GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
+     """, (as_at_date,))
+
++@app.route('/customer_balance_sheet')
++@login_required
++@has_permission('Access_Reports')
++def customer_balance_sheet():
++    as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
++    selected_customer = request.args.get('customer_id')
++
++    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
++
++    customer_sub_account_code = 0
++    if selected_customer:
++        customer_row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (selected_customer,))
++        if customer_row:
++            customer_name = customer_row[0]['supplier_name']
++            sub_row = db.execute_query("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (customer_name,))
++            if sub_row:
++                customer_sub_account_code = sub_row[0]['sub_account_code']
++
++    # Using existing stored procedures if possible, or reproducing logic
++    # Reproducing logic from Balance_sheet.xaml.cs using queries for portablity
++
++    assets = db.execute_query("""
++        SELECT
++            na.account_name_of_catogory_Balace_sheet as category,
++            na.account_name as name,
++            COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0) as balance
++        FROM new_account_table na
++        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
++            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
++        WHERE na.account_assets = 1
++        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
++    """, (as_at_date, customer_sub_account_code))
++
++    liabilities = db.execute_query("""
++        SELECT
++            na.account_name_of_catogory_Balace_sheet as category,
++            na.account_name as name,
++            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
++        FROM new_account_table na
++        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
++            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
++        WHERE na.account_liabilities = 1
++        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
++    """, (as_at_date, customer_sub_account_code))
++
++    equity = db.execute_query("""
++        SELECT
++            na.account_name_of_catogory_Balace_sheet as category,
++            na.account_name as name,
++            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
++        FROM new_account_table na
++        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
++            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
++        WHERE na.account_equity = 1
++        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
++    """, (as_at_date, customer_sub_account_code))
++
++    # Calculate Retained Earnings (Profit/Loss up to the date)
++    conn = db.get_connection()
++    cursor = conn.cursor(dictionary=True)
++    try:
++        retained_earnings = calculate_retained_earnings(cursor, as_at_date, customer_sub_account_code)
++    finally:
++        cursor.close()
++        conn.close()
++
++    # Process and organize data
++    def process_category(data):
++        cats = {}
++        total = 0.0
++        for r in data:
++            if abs(r['balance']) < 0.01: continue
++            c = r['category'] or 'Uncategorized'
++            if c not in cats: cats[c] = []
++            cats[c].append(r)
++            total += r['balance']
++        return cats, total
++
++    asset_cats, total_assets = process_category(assets)
++    liab_cats, total_liab = process_category(liabilities)
++    eq_cats, total_eq = process_category(equity)
++
++    total_eq += retained_earnings
++    if 'Retained Earnings' not in eq_cats:
++        eq_cats['Retained Earnings'] = []
++    eq_cats['Retained Earnings'].append({'name': 'Retained Earnings', 'balance': retained_earnings})
++
++    return render_template('customer_balance_sheet.html',
++                           as_at_date=as_at_date,
++                           asset_cats=asset_cats, total_assets=total_assets,
++                           liab_cats=liab_cats, total_liab=total_liab,
++                           eq_cats=eq_cats, total_eq=total_eq,
++                           customers=customers,
++                           selected_customer=int(selected_customer) if selected_customer else None)
++
+     liabilities = db.execute_query("""
+         SELECT
+             na.account_name_of_catogory_Balace_sheet as category,
+@@ -7789,9 +7884,9 @@
+         cursor.close()
+         conn.close()
+
+-def calculate_retained_earnings(cursor, as_at_date):
++def calculate_retained_earnings(cursor, as_at_date, customer_sub_account_code=None):
+     # Same logic as Balance Sheet endpoint for Retained earnings
+-    cursor.execute('''
++    query = '''
+         SELECT
+             na.account_basment,
+             COALESCE(SUM(ed.enty_values_DR), 0) as dr,
+@@ -7802,8 +7897,16 @@
+           AND ed.entry_effective_date <= %s
+           AND na.account_active = 1
+           AND ed.entry_deleted = 0
+-        GROUP BY na.account_basment
+-    ''', (as_at_date,))
++    '''
++    params = [as_at_date]
++
++    if customer_sub_account_code is not None:
++        query += " AND ed.entry_sub_account_code = %s"
++        params.append(customer_sub_account_code)
++
++    query += " GROUP BY na.account_basment"
++
++    cursor.execute(query, tuple(params))
+
+     rows = cursor.fetchall()
+
+@@ -7837,6 +7940,40 @@
+                            default_start=default_start,
+                            default_end=default_end)
+
++@app.route('/customer_profit_loss', methods=['GET', 'POST'])
++@login_required
++@has_permission('Access_Reports')
++def customer_profit_loss():
++    from profit_loss_report import Customer_ProfitLossReportGenerator
++
++    selected_customer = request.args.get('customer_id') or request.form.get('customer_id')
++
++    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
++
++    customer_sub_account_code = 0
++    if selected_customer:
++        customer_row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (selected_customer,))
++        if customer_row:
++            customer_name = customer_row[0]['supplier_name']
++            sub_row = db.execute_query("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (customer_name,))
++            if sub_row:
++                customer_sub_account_code = sub_row[0]['sub_account_code']
++
++    try:
++        generator = Customer_ProfitLossReportGenerator(db, customer_sub_account_code)
++        periods, report_data, default_start, default_end = generator.generate(request)
++    except Exception as e:
++        flash(f'Error generating report: {str(e)}', 'danger')
++        return redirect(url_for('index'))
++
++    return render_template('customer_profit_loss.html',
++                           periods=periods,
++                           report_data=report_data,
++                           default_start=default_start,
++                           default_end=default_end,
++                           customers=customers,
++                           selected_customer=int(selected_customer) if selected_customer else None)
++
+
+ @app.route('/api/dashboard/monthly_revenue')
+ @login_required
