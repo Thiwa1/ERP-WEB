@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container">
+    <h2 class="mb-4">Customer Balance Sheet</h2>
+
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-transparent border-0 pb-0 pt-4">Generate Report</div>
+        <div class="card-body">
+            <form method="GET" action="/customer_balance_sheet" class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">Select Customer</label>
+                    <select name="customer_id" class="form-select select2" onchange="this.form.submit()">
+                        <option value="">-- All Customers --</option>
+                        {% for c in customers %}
+                        <option value="{{ c.sup_id }}" {% if selected_customer == c.sup_id %}selected{% endif %}>
+                            {{ c.supplier_name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">As At Date</label>
+                    <input type="date" name="as_at_date" class="form-control" value="{{ as_at_date }}" required>
+                </div>
+                <div class="col-md-2 d-flex align-items-end">
+                    <button type="submit" class="btn btn-primary w-100">Generate</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {% if report_data %}
+    <div class="card shadow-sm">
+        <div class="card-header text-center fw-bold">
+            STATEMENT OF FINANCIAL POSITION<br>
+            <small>As at {{ as_at_date }}</small>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <!-- Assets -->
+                <div class="col-md-6">
+                    <h5 class="text-primary border-bottom pb-2">ASSETS</h5>
+                    {% for category, accounts in report_data.assets.items() %}
+                        <h6 class="mt-3 text-secondary">{{ category }}</h6>
+                        <table class="table table-sm table-borderless">
+                            {% for acc in accounts %}
+                            <tr>
+                                <td>{{ acc.name }}</td>
+                                <td class="text-end">{{ acc.balance|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    {% endfor %}
+                    <div class="alert alert-info mt-3 d-flex justify-content-between">
+                        <strong>TOTAL ASSETS</strong>
+                        <strong>{{ totals.assets|currency }}</strong>
+                    </div>
+                </div>
+
+                <!-- Liabilities & Equity -->
+                <div class="col-md-6">
+                    <h5 class="text-primary border-bottom pb-2">EQUITY AND LIABILITIES</h5>
+
+                    <h6 class="mt-3 text-secondary">Equity</h6>
+                    <table class="table table-sm table-borderless">
+                        {% for acc in report_data.equity %}
+                        <tr>
+                            <td>{{ acc.name }}</td>
+                            <td class="text-end">{{ acc.balance|currency }}</td>
+                        </tr>
+                        {% endfor %}
+                        <tr>
+                            <td>Retained Earnings</td>
+                            <td class="text-end">{{ totals.retained_earnings|currency }}</td>
+                        </tr>
+                    </table>
+
+                    <h6 class="mt-3 text-secondary">Liabilities</h6>
+                    {% for category, accounts in report_data.liabilities.items() %}
+                        <h6 class="mt-2 fst-italic text-muted ps-2">{{ category }}</h6>
+                        <table class="table table-sm table-borderless">
+                            {% for acc in accounts %}
+                            <tr>
+                                <td>{{ acc.name }}</td>
+                                <td class="text-end">{{ acc.balance|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                        </table>
+                    {% endfor %}
+
+                    <div class="alert alert-info mt-3 d-flex justify-content-between">
+                        <strong>TOTAL EQUITY & LIABILITIES</strong>
+                        <strong>{{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
