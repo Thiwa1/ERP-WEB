@@ -1,220 +1,918 @@
 <!DOCTYPE html>
-<html lang="en" dir="ltr" data-bs-theme="light" data-color-theme="Blue_Theme" data-layout="vertical">
+<html lang="en" dir="ltr">
 <head>
-  <!-- Required meta tags -->
   <meta charset="UTF-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Super Admin Dashboard - MatDash Style</title>
+  <title>Super Admin — Command Center</title>
 
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
-  <!-- Core Css styles adapted from the provided index3.html -->
   <style>
-    body {
-      background-color: #f4f6f9;
-      font-family: 'Plus Jakarta Sans', sans-serif;
-      margin: 0;
+    :root {
+      --bg-base: #0a0e1a;
+      --bg-surface: #111827;
+      --bg-card: #141d2e;
+      --bg-elevated: #1a2540;
+      --border: rgba(99, 162, 255, 0.10);
+      --border-bright: rgba(99, 162, 255, 0.22);
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.18);
+      --accent-light: #60a5fa;
+      --teal: #2dd4bf;
+      --teal-glow: rgba(45, 212, 191, 0.15);
+      --danger: #f87171;
+      --danger-glow: rgba(248, 113, 113, 0.15);
+      --warning: #fbbf24;
+      --text-primary: #e8f0fe;
+      --text-secondary: #8fa3c4;
+      --text-muted: #4d6380;
+      --font-main: 'Sora', sans-serif;
+      --font-mono: 'DM Mono', monospace;
     }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg-base);
+      font-family: var(--font-main);
+      color: var(--text-primary);
+      min-height: 100vh;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% 0%, rgba(59,130,246,0.07) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 40% at 80% 100%, rgba(45,212,191,0.05) 0%, transparent 60%);
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
     .app-header {
-      background: white;
-      padding: 15px 30px;
-      box-shadow: 0 0px 20px rgba(0,0,0,0.05);
       display: flex;
       justify-content: space-between;
       align-items: center;
+      padding: 0 36px;
+      height: 64px;
+      background: rgba(10, 14, 26, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 32px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: white;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-text {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .brand-text span {
+      color: var(--accent-light);
+    }
+
+    .header-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .header-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--teal);
+      background: var(--teal-glow);
+      border: 1px solid rgba(45, 212, 191, 0.25);
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-logout {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 16px;
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      border-radius: 8px;
+      background: transparent;
+      color: var(--danger);
+      font-family: var(--font-main);
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .btn-logout:hover {
+      background: var(--danger-glow);
+      border-color: rgba(248, 113, 113, 0.55);
+      color: var(--danger);
+      text-decoration: none;
+    }
+
+    /* ── Main Wrapper ────────────────────────────────────── */
     .main-wrapper {
-      padding: 30px;
-      max-width: 1400px;
+      max-width: 1360px;
       margin: 0 auto;
+      padding: 36px 36px 60px;
     }
-    .card {
-      border: none;
-      border-radius: 12px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-      margin-bottom: 24px;
-      background: white;
+
+    /* ── Page Header ─────────────────────────────────────── */
+    .page-header {
+      margin-bottom: 32px;
+      animation: fadeUp 0.5s ease both;
     }
-    .card-title {
-      font-weight: 600;
-      color: #2a3547;
-      font-size: 1.1rem;
+
+    .page-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+      line-height: 1.2;
     }
-    .table th {
-      background-color: transparent;
-      color: #7c8fac;
-      font-weight: 600;
-      border-bottom: 1px solid #ebf1f6;
-      padding: 15px;
-      font-size: 0.875rem;
+
+    .page-subtitle {
+      font-size: 13.5px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+    }
+
+    /* ── Stat Cards ──────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+      animation: fadeUp 0.5s 0.05s ease both;
+    }
+
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 22px 24px;
+      position: relative;
+      overflow: hidden;
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+
+    .stat-card:hover {
+      border-color: var(--border-bright);
+      transform: translateY(-2px);
+    }
+
+    .stat-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 2px;
+    }
+
+    .stat-card.blue::before  { background: linear-gradient(90deg, transparent, var(--accent), transparent); }
+    .stat-card.teal::before  { background: linear-gradient(90deg, transparent, var(--teal), transparent); }
+    .stat-card.warn::before  { background: linear-gradient(90deg, transparent, var(--warning), transparent); }
+    .stat-card.red::before   { background: linear-gradient(90deg, transparent, var(--danger), transparent); }
+
+    .stat-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+
+    .stat-icon.blue  { background: var(--accent-glow); color: var(--accent-light); }
+    .stat-icon.teal  { background: var(--teal-glow); color: var(--teal); }
+    .stat-icon.warn  { background: rgba(251,191,36,0.12); color: var(--warning); }
+    .stat-icon.red   { background: var(--danger-glow); color: var(--danger); }
+
+    .stat-label {
+      font-size: 11.5px;
+      font-weight: 500;
+      color: var(--text-muted);
       text-transform: uppercase;
+      letter-spacing: 0.8px;
     }
-    .table td {
+
+    .stat-value {
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -1px;
+      line-height: 1.1;
+      margin-top: 4px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Alert ───────────────────────────────────────────── */
+    .alert {
+      padding: 14px 18px;
+      border-radius: 10px;
+      font-size: 13.5px;
+      margin-bottom: 16px;
+      border-left: 3px solid;
+    }
+
+    .alert-success {
+      background: rgba(45,212,191,0.08);
+      border-color: var(--teal);
+      color: var(--teal);
+    }
+
+    .alert-danger {
+      background: var(--danger-glow);
+      border-color: var(--danger);
+      color: var(--danger);
+    }
+
+    .alert-info {
+      background: var(--accent-glow);
+      border-color: var(--accent);
+      color: var(--accent-light);
+    }
+
+    /* ── Main Table Card ─────────────────────────────────── */
+    .table-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      animation: fadeUp 0.5s 0.1s ease both;
+    }
+
+    .table-card-header {
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .table-card-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+      letter-spacing: -0.3px;
+    }
+
+    .record-count {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Table ───────────────────────────────────────────── */
+    .table-responsive { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead tr {
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      padding: 14px 20px;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.9px;
+      white-space: nowrap;
+      background: var(--bg-surface);
+    }
+
+    th:last-child { text-align: right; }
+
+    td {
+      padding: 18px 20px;
+      font-size: 13.5px;
+      color: var(--text-primary);
+      border-bottom: 1px solid var(--border);
       vertical-align: middle;
-      border-bottom: 1px solid #ebf1f6;
-      padding: 15px;
-      color: #2a3547;
     }
-    .badge-success { background-color: #13deb9; color: white; padding: 5px 10px; border-radius: 6px; font-size: 12px;}
-    .badge-danger { background-color: #fa896b; color: white; padding: 5px 10px; border-radius: 6px; font-size: 12px;}
-    .btn-sm { padding: 5px 12px; border-radius: 6px; font-size: 0.875rem; }
-    .btn-outline-primary { border-color: #5d87ff; color: #5d87ff; }
-    .btn-outline-primary:hover { background-color: #5d87ff; color: white; }
-    .btn-outline-danger { border-color: #fa896b; color: #fa896b; }
-    .btn-outline-danger:hover { background-color: #fa896b; color: white; }
-    .progress { border-radius: 10px; background-color: #ebf1f6; }
-    .bg-primary { background-color: #5d87ff !important; }
+
+    tbody tr {
+      transition: background 0.15s ease;
+    }
+
+    tbody tr:hover td {
+      background: rgba(59, 130, 246, 0.04);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* ── Company Cell ────────────────────────────────────── */
+    .company-cell {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .company-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      background: var(--accent-glow);
+      border: 1px solid rgba(59, 130, 246, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent-light);
+      flex-shrink: 0;
+      font-family: var(--font-mono);
+    }
+
+    .company-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-primary);
+      line-height: 1.3;
+    }
+
+    .company-db {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* ── ID Cell ─────────────────────────────────────────── */
+    .id-badge {
+      font-family: var(--font-mono);
+      font-size: 11.5px;
+      color: var(--text-muted);
+      background: var(--bg-elevated);
+      padding: 4px 9px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+    }
+
+    /* ── Status Badges ───────────────────────────────────── */
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 11px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    .status-badge.active {
+      background: rgba(45, 212, 191, 0.12);
+      color: var(--teal);
+      border: 1px solid rgba(45, 212, 191, 0.25);
+    }
+
+    .status-badge.blocked {
+      background: var(--danger-glow);
+      color: var(--danger);
+      border: 1px solid rgba(248, 113, 113, 0.25);
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+    }
+
+    .status-dot.active {
+      background: var(--teal);
+      box-shadow: 0 0 6px var(--teal);
+      animation: pulse 2s infinite;
+    }
+
+    .status-dot.blocked {
+      background: var(--danger);
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* ── Progress Bar ────────────────────────────────────── */
+    .progress-group {
+      min-width: 160px;
+    }
+
+    .progress-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 7px;
+    }
+
+    .progress-label span:first-child {
+      font-weight: 600;
+      font-family: var(--font-mono);
+      color: var(--text-primary);
+    }
+
+    .progress-track {
+      height: 5px;
+      background: var(--bg-elevated);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 10px;
+      transition: width 0.4s ease;
+    }
+
+    .progress-fill.safe    { background: var(--teal); }
+    .progress-fill.warn    { background: var(--warning); }
+    .progress-fill.danger  { background: var(--danger); }
+
+    /* ── Data Usage ──────────────────────────────────────── */
+    .data-usage {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .data-usage span {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    /* ── Action Buttons ──────────────────────────────────── */
+    .actions-cell {
+      text-align: right;
+    }
+
+    .action-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 7px 14px;
+      border-radius: 8px;
+      font-family: var(--font-main);
+      font-size: 12px;
+      font-weight: 500;
+      border: 1px solid;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      text-decoration: none;
+      white-space: nowrap;
+      background: transparent;
+    }
+
+    .btn-block {
+      color: var(--danger);
+      border-color: rgba(248, 113, 113, 0.3);
+    }
+
+    .btn-block:hover {
+      background: var(--danger-glow);
+      border-color: rgba(248, 113, 113, 0.55);
+    }
+
+    .btn-reactivate {
+      color: var(--teal);
+      border-color: rgba(45, 212, 191, 0.3);
+    }
+
+    .btn-reactivate:hover {
+      background: var(--teal-glow);
+      border-color: rgba(45, 212, 191, 0.55);
+    }
+
+    .btn-primary-action {
+      color: var(--accent-light);
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .btn-primary-action:hover {
+      background: var(--accent-glow);
+      border-color: rgba(59, 130, 246, 0.55);
+    }
+
+    .btn-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.18s ease;
+      font-size: 12px;
+    }
+
+    .btn-icon:hover {
+      border-color: var(--border-bright);
+      color: var(--text-primary);
+      background: var(--bg-elevated);
+    }
+
+    /* ── Empty State ─────────────────────────────────────── */
+    .empty-state {
+      padding: 64px 20px;
+      text-align: center;
+    }
+
+    .empty-icon {
+      font-size: 36px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+
+    .empty-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-secondary);
+    }
+
+    .empty-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* ── Modal ───────────────────────────────────────────── */
+    .modal-content {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-bright);
+      border-radius: 16px;
+      color: var(--text-primary);
+    }
+
+    .modal-header {
+      padding: 22px 24px 18px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .modal-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .btn-close {
+      filter: invert(1) opacity(0.5);
+      transition: opacity 0.2s;
+    }
+
+    .btn-close:hover { opacity: 0.9; }
+
+    .modal-body { padding: 20px 24px; }
+
+    .modal-footer {
+      padding: 16px 24px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .form-label {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      letter-spacing: 0.3px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .form-control {
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 9px;
+      color: var(--text-primary);
+      padding: 10px 14px;
+      font-size: 14px;
+      font-family: var(--font-mono);
+      width: 100%;
+      transition: border-color 0.2s ease;
+      outline: none;
+    }
+
+    .form-control:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .modal-backdrop { background: rgba(0, 0, 0, 0.7); }
+
+    .btn-light {
+      background: var(--bg-elevated);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .btn-light:hover { border-color: var(--border-bright); color: var(--text-primary); }
+
+    .btn-update {
+      background: var(--accent);
+      border: 1px solid var(--accent);
+      color: white;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+
+    .btn-update:hover { background: var(--accent-light); border-color: var(--accent-light); }
+
+    /* ── Animations ──────────────────────────────────────── */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(14px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Divider ─────────────────────────────────────────── */
+    .divider {
+      width: 1px;
+      height: 18px;
+      background: var(--border);
+    }
   </style>
 </head>
 <body>
-  <!-- Header -->
+
+  <!-- ── Header ───────────────────────────────────────────── -->
   <header class="app-header">
-    <div class="d-flex align-items-center">
-      <h3 class="m-0 fw-bold" style="color: #5d87ff;">MatDash <span class="text-dark">Admin</span></h3>
+    <div class="header-brand">
+      <div class="brand-icon">SA</div>
+      <span class="brand-text"><span>Super</span> Admin</span>
     </div>
-    <div>
-      <a href="/superadmin/logout" class="btn btn-outline-danger btn-sm fw-bold">Logout</a>
+    <div class="header-meta">
+      <span class="header-badge">&#9679; LIVE</span>
+      <a href="/superadmin/logout" class="btn-logout">
+        <i class="fas fa-arrow-right-from-bracket"></i>
+        Logout
+      </a>
     </div>
   </header>
 
-  <!-- Main Content -->
+  <!-- ── Main Content ──────────────────────────────────────── -->
   <div class="main-wrapper">
-    <div class="row mb-4">
-      <div class="col-12">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-          {% if messages %}
-            {% for category, message in messages %}
-              <div class="alert alert-{{ category }}">{{ message }}</div>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <!-- Page Header -->
+    <div class="page-header">
+      <h1 class="page-title">Tenant Management</h1>
+      <p class="page-subtitle">Control company access, billing status, and usage limits across all tenants.</p>
+    </div>
+
+    <!-- Stat Cards -->
+    <div class="stats-grid">
+      <div class="stat-card blue">
+        <div class="stat-icon blue"><i class="fas fa-buildings"></i></div>
+        <div class="stat-label">Total Tenants</div>
+        <div class="stat-value">{{ tenants | length }}</div>
+      </div>
+      <div class="stat-card teal">
+        <div class="stat-icon teal"><i class="fas fa-circle-check"></i></div>
+        <div class="stat-label">Active</div>
+        <div class="stat-value">{{ tenants | selectattr('is_active', 'equalto', 1) | list | length }}</div>
+      </div>
+      <div class="stat-card red">
+        <div class="stat-icon red"><i class="fas fa-ban"></i></div>
+        <div class="stat-label">Blocked</div>
+        <div class="stat-value">{{ tenants | selectattr('is_active', 'equalto', 0) | list | length }}</div>
+      </div>
+      <div class="stat-card warn">
+        <div class="stat-icon warn"><i class="fas fa-database"></i></div>
+        <div class="stat-label">Total Data</div>
+        <div class="stat-value">{{ "%.1f"|format(tenants | sum(attribute='gb_used') | default(0)) }} <small style="font-size: 14px; font-weight: 400; color: var(--text-muted);">GB</small></div>
+      </div>
+    </div>
+
+    <!-- Table Card -->
+    <div class="table-card">
+      <div class="table-card-header">
+        <span class="table-card-title">Registered Companies</span>
+        <span class="record-count">{{ tenants | length }} records</span>
+      </div>
+
+      <div class="table-responsive">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Company</th>
+              <th>Status</th>
+              <th>User Limit</th>
+              <th>Data Usage</th>
+              <th>Sidebar</th>
+              <th style="text-align:right;">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tenant in tenants %}
+            <tr>
+              <!-- ID -->
+              <td><span class="id-badge">#{{ tenant.id }}</span></td>
+
+              <!-- Company -->
+              <td>
+                <div class="company-cell">
+                  <div class="company-avatar">{{ tenant.company_name[:1] | upper }}</div>
+                  <div>
+                    <div class="company-name">{{ tenant.company_name }}</div>
+                    <div class="company-db">{{ tenant.db_name }}</div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Status -->
+              <td>
+                {% if tenant.is_active == 1 %}
+                  <span class="status-badge active">
+                    <span class="status-dot active"></span>
+                    Active
+                  </span>
+                {% else %}
+                  <span class="status-badge blocked">
+                    <span class="status-dot blocked"></span>
+                    Blocked
+                  </span>
+                {% endif %}
+              </td>
+
+              <!-- User Limit Progress -->
+              <td>
+                {% set percent = (tenant.current_users / tenant.max_users * 100) if tenant.max_users > 0 else 100 %}
+                <div class="progress-group">
+                  <div class="progress-label">
+                    <span>{{ tenant.current_users }} / {{ tenant.max_users }}</span>
+                    <span>{{ "%.0f"|format(percent) }}%</span>
+                  </div>
+                  <div class="progress-track">
+                    <div class="progress-fill {% if percent >= 100 %}danger{% elif percent >= 80 %}warn{% else %}safe{% endif %}"
+                         style="width: {{ [percent, 100] | min }}%;"></div>
+                  </div>
+                </div>
+              </td>
+
+              <!-- Data Usage -->
+              <td>
+                <div class="data-usage">
+                  {{ "%.2f"|format(tenant.gb_used|default(0.0, true)) }}
+                  <span>GB</span>
+                </div>
+              </td>
+
+              <!-- Sidebar Status -->
+              <td>
+                {% if tenant.sidebar_enabled == 1 %}
+                  <span class="status-badge active" style="font-size: 11px;">
+                    <i class="fas fa-eye" style="font-size: 10px;"></i>
+                    Enabled
+                  </span>
+                {% else %}
+                  <span class="status-badge blocked" style="font-size: 11px;">
+                    <i class="fas fa-eye-slash" style="font-size: 10px;"></i>
+                    Disabled
+                  </span>
+                {% endif %}
+              </td>
+
+              <!-- Actions -->
+              <td class="actions-cell">
+                <div class="action-group">
+                  <!-- Toggle Status -->
+                  <form action="/superadmin/toggle_tenant/{{ tenant.id }}" method="POST" class="d-inline">
+                    {% if tenant.is_active == 1 %}
+                      <button type="submit" class="btn-action btn-block">
+                        <i class="fas fa-ban"></i> Block
+                      </button>
+                    {% else %}
+                      <button type="submit" class="btn-action btn-reactivate">
+                        <i class="fas fa-circle-check"></i> Reactivate
+                      </button>
+                    {% endif %}
+                  </form>
+
+                  <!-- Set Limit -->
+                  <button type="button" class="btn-action btn-primary-action"
+                          data-bs-toggle="modal" data-bs-target="#maxUsersModal{{ tenant.id }}">
+                    <i class="fas fa-sliders"></i> Set Limit
+                  </button>
+
+                  <!-- Toggle Sidebar -->
+                  <form action="/superadmin/toggle_sidebar/{{ tenant.id }}" method="POST" class="d-inline">
+                    {% if tenant.sidebar_enabled == 1 %}
+                      <button type="submit" class="btn-icon" title="Disable Sidebar">
+                        <i class="fas fa-eye-slash"></i>
+                      </button>
+                    {% else %}
+                      <button type="submit" class="btn-icon" title="Enable Sidebar">
+                        <i class="fas fa-eye"></i>
+                      </button>
+                    {% endif %}
+                  </form>
+                </div>
+
+                <!-- Max Users Modal -->
+                <div class="modal fade" id="maxUsersModal{{ tenant.id }}" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-sm modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title">Edit User Limit</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                      </div>
+                      <form action="/superadmin/set_max_users/{{ tenant.id }}" method="POST">
+                        <div class="modal-body">
+                          <label class="form-label">Max users for {{ tenant.company_name }}</label>
+                          <input type="number" class="form-control" name="max_users"
+                                 value="{{ tenant.max_users }}" min="1" required>
+                        </div>
+                        <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end;">
+                          <button type="button" class="btn-light" data-bs-dismiss="modal">Cancel</button>
+                          <button type="submit" class="btn-update">Update</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
+              </td>
+            </tr>
+            {% else %}
+            <tr>
+              <td colspan="7">
+                <div class="empty-state">
+                  <div class="empty-icon"><i class="fas fa-building"></i></div>
+                  <div class="empty-title">No companies registered</div>
+                  <div class="empty-subtitle">Tenant records will appear here once added.</div>
+                </div>
+              </td>
+            </tr>
             {% endfor %}
-          {% endif %}
-        {% endwith %}
-        <h4 class="fw-bold" style="color: #2a3547;">Tenant Management</h4>
-        <p class="text-muted">Control company access, billing status, and usage limits.</p>
+          </tbody>
+        </table>
       </div>
     </div>
 
-    <div class="row">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title mb-4">Registered Companies</h5>
-            <div class="table-responsive">
-              <table class="table align-middle text-nowrap">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Company Name</th>
-                    <th>Status</th>
-                    <th>Users Limit</th>
-                    <th>Data Usage</th>
-                    <th class="text-end">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for tenant in tenants %}
-                  <tr>
-                    <td><span class="fw-semibold">#{{ tenant.id }}</span></td>
-                    <td>
-                      <div class="d-flex align-items-center">
-                        <div class="bg-primary rounded-circle d-flex align-items-center justify-content-center text-white me-3" style="width: 40px; height: 40px; font-weight: bold;">
-                          {{ tenant.company_name[:1] | upper }}
-                        </div>
-                        <div>
-                          <h6 class="mb-0 fw-semibold">{{ tenant.company_name }}</h6>
-                          <span class="fs-2 text-muted">DB: {{ tenant.db_name }}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      {% if tenant.is_active == 1 %}
-                        <span class="badge badge-success">Active</span>
-                      {% else %}
-                        <span class="badge badge-danger">Blocked</span>
-                      {% endif %}
-                    </td>
-                    <td>
-                      <div class="d-flex flex-column">
-                        <span class="mb-1 text-dark fw-semibold">{{ tenant.current_users }} / {{ tenant.max_users }} Users</span>
-                        <div class="progress" style="height: 6px;">
-                          {% set percent = (tenant.current_users / tenant.max_users * 100) if tenant.max_users > 0 else 100 %}
-                          <div class="progress-bar {% if percent >= 100 %}bg-danger{% elif percent >= 80 %}bg-warning{% else %}bg-primary{% endif %}" role="progressbar" style="width: {{ percent }}%;"></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td><span class="fw-semibold">{{ "%.2f"|format(tenant.gb_used|default(0.0, true)) }} GB</span></td>
-                    <td class="text-end">
-                      <div class="btn-group" role="group">
-                        <!-- Toggle Status Form -->
-                        <form action="/superadmin/toggle_tenant/{{ tenant.id }}" method="POST" class="d-inline me-2">
-                          {% if tenant.is_active == 1 %}
-                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                              Block
-                            </button>
-                          {% else %}
-                            <button type="submit" class="btn btn-sm btn-outline-success" style="border-color: #13deb9; color: #13deb9;">
-                              Reactivate
-                            </button>
-                          {% endif %}
-                        </form>
-
-                        <!-- Set Max Users Modal Trigger -->
-                        <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#maxUsersModal{{ tenant.id }}">
-                          Set Limit
-                        </button>
-
-                        <!-- Toggle Sidebar Form -->
-                        <form action="/superadmin/toggle_sidebar/{{ tenant.id }}" method="POST" class="d-inline ms-2">
-                          {% if tenant.sidebar_enabled == 1 %}
-                            <button type="submit" class="btn btn-sm btn-outline-warning" title="Disable Sidebar & Functions">
-                              <i class="fas fa-eye-slash"></i>
-                            </button>
-                          {% else %}
-                            <button type="submit" class="btn btn-sm btn-outline-info" title="Enable Sidebar & Functions">
-                              <i class="fas fa-eye"></i>
-                            </button>
-                          {% endif %}
-                        </form>
-                      </div>
-
-                      <!-- Max Users Modal -->
-                      <div class="modal fade" id="maxUsersModal{{ tenant.id }}" tabindex="-1" aria-hidden="true">
-                        <div class="modal-dialog modal-sm">
-                          <div class="modal-content">
-                            <div class="modal-header border-bottom-0">
-                              <h5 class="modal-title fw-semibold">Edit User Limit</h5>
-                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                            </div>
-                            <form action="/superadmin/set_max_users/{{ tenant.id }}" method="POST">
-                              <div class="modal-body">
-                                <div class="mb-3 text-start">
-                                  <label class="form-label fw-semibold">Max Users for {{ tenant.company_name }}</label>
-                                  <input type="number" class="form-control" name="max_users" value="{{ tenant.max_users }}" min="1" required>
-                                </div>
-                              </div>
-                              <div class="modal-footer border-top-0">
-                                <button type="button" class="btn btn-light btn-sm" data-bs-dismiss="modal">Cancel</button>
-                                <button type="submit" class="btn btn-primary btn-sm">Update</button>
-                              </div>
-                            </form>
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                  {% else %}
-                  <tr>
-                    <td colspan="6" class="text-center text-muted py-5">No companies found.</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
