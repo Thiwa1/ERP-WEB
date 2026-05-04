@@ -3418,6 +3418,12 @@ def print_voucher(voucher_type, jv_no):
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
     company = company_res[0] if company_res else {}
 
+    if company.get('company_log') and isinstance(company['company_log'], bytes):
+        try:
+            company['company_log'] = company['company_log'].decode('utf-8')
+        except UnicodeDecodeError:
+            company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
+
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
                            company=company,
