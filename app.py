@@ -229,7 +229,8 @@ def setup_master_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_active TINYINT DEFAULT 1,
                 gb_used DOUBLE DEFAULT 0,
-                max_users INT DEFAULT 5
+                max_users INT DEFAULT 5,
+                sidebar_enabled TINYINT DEFAULT 1
             )
         """)
 
@@ -244,6 +245,10 @@ def setup_master_db():
             pass
         try:
             master_db.execute_query("ALTER TABLE tenants ADD COLUMN max_users INT DEFAULT 5")
+        except Exception:
+            pass
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN sidebar_enabled TINYINT DEFAULT 1")
         except Exception:
             pass
 
@@ -524,6 +529,19 @@ def inject_globals():
     except Exception:
         globals_dict['current_theme'] = THEMES['default']
         globals_dict['theme_key'] = 'default'
+
+    # Sidebar / Function visibility (Tenant specific from Master DB)
+    try:
+        if 'tenant_id' in session:
+            tenant_res = master_db.execute_query("SELECT sidebar_enabled FROM tenants WHERE id = %s", (session['tenant_id'],))
+            if tenant_res:
+                globals_dict['sidebar_enabled'] = tenant_res[0].get('sidebar_enabled', 1) == 1
+            else:
+                globals_dict['sidebar_enabled'] = True
+        else:
+            globals_dict['sidebar_enabled'] = True
+    except Exception:
+        globals_dict['sidebar_enabled'] = True
 
     return globals_dict
 
@@ -3746,6 +3764,19 @@ def superadmin_toggle_tenant(tenant_id):
         flash(f'Error updating status: {str(e)}', 'danger')
     return redirect(url_for('superadmin_dashboard'))
 
+@app.route('/superadmin/toggle_sidebar/<int:tenant_id>', methods=['POST'])
+@superadmin_required
+def superadmin_toggle_sidebar(tenant_id):
+    try:
+        current_status = master_db.execute_query("SELECT sidebar_enabled FROM tenants WHERE id = %s", (tenant_id,))
+        if current_status:
+            new_status = 0 if current_status[0].get('sidebar_enabled', 1) == 1 else 1
+            master_db.execute_query("UPDATE tenants SET sidebar_enabled = %s WHERE id = %s", (new_status, tenant_id), commit=True)
+            flash('Tenant sidebar/functions status updated successfully.', 'success')
+    except Exception as e:
+        flash(f'Error updating sidebar status: {str(e)}', 'danger')
+    return redirect(url_for('superadmin_dashboard'))
+
 @app.route('/superadmin/set_max_users/<int:tenant_id>', methods=['POST'])
 @superadmin_required
 def superadmin_set_max_users(tenant_id):
@@ -3774,6 +3805,7 @@ def superadmin_dashboard():
                 t.is_active,
                 t.gb_used,
                 t.max_users,
+                t.sidebar_enabled,
                 (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as current_users
             FROM tenants t
         """)

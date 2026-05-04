@@ -163,6 +163,19 @@
                         <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#maxUsersModal{{ tenant.id }}">
                           Set Limit
                         </button>
+
+                        <!-- Toggle Sidebar Form -->
+                        <form action="/superadmin/toggle_sidebar/{{ tenant.id }}" method="POST" class="d-inline ms-2">
+                          {% if tenant.sidebar_enabled == 1 %}
+                            <button type="submit" class="btn btn-sm btn-outline-warning" title="Disable Sidebar & Functions">
+                              <i class="fas fa-eye-slash"></i>
+                            </button>
+                          {% else %}
+                            <button type="submit" class="btn btn-sm btn-outline-info" title="Enable Sidebar & Functions">
+                              <i class="fas fa-eye"></i>
+                            </button>
+                          {% endif %}
+                        </form>
                       </div>
 
                       <!-- Max Users Modal -->

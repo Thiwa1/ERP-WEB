@@ -824,6 +824,7 @@
         </div>
     </div>
 
+    {% if sidebar_enabled %}
     <!-- Sidebar Overlay for Mobile -->
     <div class="sidebar-overlay" id="sidebarOverlay"></div>
 
@@ -903,14 +904,17 @@
             </div>
         </div>
     </nav>
+    {% endif %}
 
     <!-- Main Content -->
-    <div class="main-content">
+    <div class="main-content" {% if not sidebar_enabled %}style="margin-left: 0;"{% endif %}>
         <div class="top-navbar">
             <div class="d-flex align-items-center">
+                {% if sidebar_enabled %}
                 <button class="sidebar-toggle" id="sidebarToggle">
                     <i class="fas fa-bars"></i>
                 </button>
+                {% endif %}
                 <h4 class="mb-0 fw-bold text-secondary fs-5 fs-md-4">
                     {% block title %}Dashboard{% endblock %}
                 </h4>
