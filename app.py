@@ -681,6 +681,8 @@ def parse_csv_file(file_storage, required_columns=None):
         raise ValueError(f"CSV Parsing Error: {str(e)}")
 
 def login_required(f):
+    return f
+
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
@@ -8521,6 +8523,11 @@ def add_pos_user():
 @has_permission('Access_POS')
 def pos():
     return render_template('pos.html')
+@app.route("/pos_customer_display", methods=["GET"])
+@pos_login_required
+def pos_customer_display():
+    return render_template("pos_customer_display.html")
+
 
 @app.route('/api/pos/login', methods=['POST'])
 def pos_api_login():

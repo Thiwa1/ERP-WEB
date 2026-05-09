@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Customer Display</title>
+    <!-- Include Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- FontAwesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            margin: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .header {
+            background-color: #2C3E50;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            font-size: 2rem;
+            font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
+            padding: 20px;
+            gap: 20px;
+            overflow: hidden;
+        }
+        .cart-section {
+            flex: 2;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .cart-header {
+            background-color: #ecf0f1;
+            padding: 15px 20px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #2C3E50;
+            border-bottom: 2px solid #bdc3c7;
+        }
+        .cart-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0;
+        }
+        .table {
+            margin-bottom: 0;
+            font-size: 1.2rem;
+        }
+        .table th {
+            position: sticky;
+            top: 0;
+            background-color: #f8f9fa;
+            z-index: 1;
+        }
+        .totals-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .total-card {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+        }
+        .total-card h3 {
+            color: #7f8c8d;
+            font-size: 1.5rem;
+            margin-bottom: 10px;
+        }
+        .total-value {
+            font-size: 4rem;
+            font-weight: bold;
+            color: #2ecc71;
+        }
+        .savings-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        .customer-card {
+            background: #3498DB;
+            color: white;
+            border-radius: 15px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        .welcome-screen {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #2C3E50, #3498DB);
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .welcome-screen h1 {
+            font-size: 5rem;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        .welcome-screen p {
+            font-size: 2rem;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="welcome-screen" id="welcomeScreen">
+        <h1>Welcome!</h1>
+        <p>Next customer please...</p>
+    </div>
+
+    <div class="header">
+        <i class="fas fa-shopping-cart me-2"></i> Your Order
+    </div>
+
+    <div class="main-content">
+        <div class="cart-section">
+            <div class="cart-header">Items</div>
+            <div class="cart-body">
+                <table class="table table-striped table-hover" id="displayTable">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th class="text-center">Qty</th>
+                            <th class="text-end">Price</th>
+                            <th class="text-end">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Items populated via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="totals-section">
+            <div class="customer-card" id="customerDisplay" style="display: none;">
+                <i class="fas fa-user-circle fa-3x mb-2"></i>
+                <h3 class="mb-0" id="customerName">Loyalty Customer</h3>
+            </div>
+
+            <div class="total-card">
+                <h3>Total Due</h3>
+                <div class="total-value" id="grandTotal">0.00</div>
+            </div>
+
+            <div class="total-card" id="savingsCard" style="display: none;">
+                <h3>You Saved!</h3>
+                <div class="savings-value" id="totalSavings">0.00</div>
+            </div>
+
+            <div class="total-card" id="changeCard" style="display: none;">
+                <h3>Change</h3>
+                <div class="total-value" style="color: #3498DB;" id="changeDue">0.00</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function updateDisplay(state) {
+            if (!state || !state.cart || state.cart.length === 0) {
+                document.getElementById('welcomeScreen').style.display = 'flex';
+                return;
+            }
+
+            document.getElementById('welcomeScreen').style.display = 'none';
+
+            // Update Cart
+            const tbody = document.querySelector('#displayTable tbody');
+            tbody.innerHTML = '';
+
+            let total = 0;
+            let savings = 0;
+
+            state.cart.forEach(item => {
+                total += item.total;
+                const saving = (item.price_market - item.price) * item.qty;
+                if(saving > 0) savings += saving;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${item.name}</strong><br><small class="text-muted">${item.code}</small></td>
+                        <td class="text-center align-middle fw-bold fs-4">${item.qty}</td>
+                        <td class="text-end align-middle">${item.price.toFixed(2)}</td>
+                        <td class="text-end align-middle fw-bold fs-5">${item.total.toFixed(2)}</td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('grandTotal').innerText = total.toFixed(2);
+
+            if (savings > 0) {
+                document.getElementById('savingsCard').style.display = 'block';
+                document.getElementById('totalSavings').innerText = savings.toFixed(2);
+            } else {
+                document.getElementById('savingsCard').style.display = 'none';
+            }
+
+            if (state.customerName && state.customerName !== '-') {
+                document.getElementById('customerDisplay').style.display = 'block';
+                document.getElementById('customerName').innerText = state.customerName;
+            } else {
+                document.getElementById('customerDisplay').style.display = 'none';
+            }
+
+            if (state.changeDue && parseFloat(state.changeDue) > 0) {
+                document.getElementById('changeCard').style.display = 'block';
+                document.getElementById('changeDue').innerText = state.changeDue;
+            } else {
+                document.getElementById('changeCard').style.display = 'none';
+            }
+        }
+
+        window.addEventListener('storage', (e) => {
+            if (e.key === 'pos_state') {
+                try {
+                    const state = JSON.parse(e.newValue);
+                    updateDisplay(state);
+                } catch (err) {
+                    console.error("Error parsing POS state:", err);
+                }
+            }
+        });
+
+        // Initialize display on load
+        try {
+            const initial = localStorage.getItem('pos_state');
+            if (initial) {
+                updateDisplay(JSON.parse(initial));
+            } else {
+                updateDisplay(null);
+            }
+        } catch(err) {
+            console.error("Init err", err);
+        }
+    </script>
+</body>
+</html>
