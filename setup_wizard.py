@@ -49,7 +49,7 @@ def setup_database_and_user(config, cursor):
     app_pass = config['app_pass']
 
     # Prefix DB name with db_suport_name (sri_) if needed
-    db_suport_name = "sri"
+    db_suport_name = "suwixvkn"
     if not app_db_name.startswith(f"{db_suport_name}_"):
         app_db_name = f"{db_suport_name}_{app_db_name}"
 
