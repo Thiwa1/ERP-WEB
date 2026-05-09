@@ -87,6 +87,9 @@
             <span class="ms-2 fw-bold" id="clock"></span>
         </div>
         <div class="col-md-4 text-end">
+            <button class="btn btn-info btn-sm fw-bold me-2 text-white" onclick="window.open('/pos_customer_display', 'CustomerDisplay', 'width=800,height=600')">
+                <i class="fas fa-desktop"></i> DISPLAY
+            </button>
             <button class="btn btn-warning btn-sm fw-bold me-2" onclick="showPricing()">
                 <i class="fas fa-tags"></i> PRICES
             </button>
@@ -556,6 +559,15 @@
         document.getElementById('itemInput').focus();
     }
 
+    function broadcastState() {
+        const state = {
+            cart: cart,
+            customerName: document.getElementById("customerName").innerText,
+            changeDue: document.getElementById("changeDue").value
+        };
+        localStorage.setItem("pos_state", JSON.stringify(state));
+    }
+
     function renderCart() {
         const tbody = document.querySelector('#cartTable tbody');
         tbody.innerHTML = '';
@@ -589,6 +601,8 @@
         } else {
             document.getElementById('savingsDisplay').style.display = 'none';
         }
+
+        broadcastState();
     }
 
     function removeFromCart(idx) {
@@ -633,6 +647,7 @@
             nameDisplay.innerText = "-";
             nameDisplay.className = "mt-1 fw-bold text-warning small";
         }
+        broadcastState();
     }
 
     // --- 6. Payment & Submission ---
@@ -640,6 +655,7 @@
         const total = parseFloat(document.getElementById('grandTotal').innerText);
         const paid = parseFloat(document.getElementById('cashPaid').value) || 0;
         document.getElementById('changeDue').value = (paid - total).toFixed(2);
+        broadcastState();
     }
 
     function processPayment(method) {
@@ -679,11 +695,12 @@
                 // Reset
                 cart = [];
                 loyaltyCustomer = null;
-                renderCart();
                 document.getElementById('cashPaid').value = '';
                 document.getElementById('changeDue').value = '0.00';
                 document.getElementById('customerPhone').value = '';
                 document.getElementById('customerName').innerText = '-';
+                document.getElementById('customerName').className = 'mt-1 fw-bold text-warning small';
+                renderCart();
             } else {
                 alert("Transaction Failed: " + res.error);
             }
