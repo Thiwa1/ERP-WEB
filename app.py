@@ -12138,3 +12138,4 @@ def service_entry_reversal_process():
 
 if __name__ == '__main__':
     app.run(port=5000)
+application = app
