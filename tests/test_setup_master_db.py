@@ -37,7 +37,7 @@ class TestSetupMasterDb(unittest.TestCase):
         # Depending on whether default DB check ran, there might be multiple cursor creates.
         # We find the one for the master DB.
         create_master_found = any(
-            "CREATE DATABASE IF NOT EXISTS sri_Book_keeping_Master" in call[0][0]
+            "CREATE DATABASE IF NOT EXISTS suwixvkn_Book_keeping_Master" in call[0][0]
             or "CREATE DATABASE IF NOT EXISTS Book_keeping_Master" in call[0][0]
             for call in mock_cursor.execute.call_args_list
         )
@@ -56,7 +56,7 @@ class TestSetupMasterDb(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS tenants", first_call)
 
         # Verify second call is for users table
-        second_call = mock_execute_query.call_args_list[6][0][0]
+        second_call = mock_execute_query.call_args_list[5][0][0]
         self.assertIn("CREATE TABLE IF NOT EXISTS users", second_call)
         self.assertIn("FOREIGN KEY (tenant_id) REFERENCES tenants(id)", second_call)
 

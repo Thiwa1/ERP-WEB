@@ -32,9 +32,9 @@ class TestSetupWizardDatabase(unittest.TestCase):
 
         # Verify exact sequence of execute calls
         expected_calls = [
-            call("CREATE DATABASE IF NOT EXISTS `sri_test_db`"),
+            call("CREATE DATABASE IF NOT EXISTS `suwixvkn_test_db`"),
             call("CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
-            call("GRANT ALL PRIVILEGES ON `sri_test_db`.* TO 'test_user'@'%'"),
+            call("GRANT ALL PRIVILEGES ON `suwixvkn_test_db`.* TO 'test_user'@'%'"),
             call("FLUSH PRIVILEGES")
         ]
         self.mock_cursor.execute.assert_has_calls(expected_calls, any_order=False)
@@ -54,10 +54,10 @@ class TestSetupWizardDatabase(unittest.TestCase):
 
         # Verify that ALTER USER was called instead of failing
         expected_calls = [
-            call("CREATE DATABASE IF NOT EXISTS `sri_test_db`"),
+            call("CREATE DATABASE IF NOT EXISTS `suwixvkn_test_db`"),
             call("CREATE USER IF NOT EXISTS 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
             call("ALTER USER 'test_user'@'%' IDENTIFIED BY 'test_pass'"),
-            call("GRANT ALL PRIVILEGES ON `sri_test_db`.* TO 'test_user'@'%'"),
+            call("GRANT ALL PRIVILEGES ON `suwixvkn_test_db`.* TO 'test_user'@'%'"),
             call("FLUSH PRIVILEGES")
         ]
         self.mock_cursor.execute.assert_has_calls(expected_calls, any_order=False)

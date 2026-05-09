@@ -157,7 +157,7 @@ THEMES = {
 
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
-db_suport_name = "sri"
+db_suport_name = "suwixvkn"
 
 # Force prefix onto database name to handle shared hosting constraints
 _raw_db_name = os.environ.get('DB_NAME', 'Book_keeping')
