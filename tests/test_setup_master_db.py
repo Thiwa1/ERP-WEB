@@ -56,9 +56,13 @@ class TestSetupMasterDb(unittest.TestCase):
         self.assertIn("CREATE TABLE IF NOT EXISTS tenants", first_call)
 
         # Verify second call is for users table
-        second_call = mock_execute_query.call_args_list[5][0][0]
+        second_call = mock_execute_query.call_args_list[6][0][0]
         self.assertIn("CREATE TABLE IF NOT EXISTS users", second_call)
         self.assertIn("FOREIGN KEY (tenant_id) REFERENCES tenants(id)", second_call)
+
+        # Verify alter call for mobile column
+        alter_call = mock_execute_query.call_args_list[7][0][0]
+        self.assertIn("ALTER TABLE users ADD COLUMN mobile VARCHAR(50)", alter_call)
 
         # 5. Success message was printed
         mock_print.assert_called_with("Master DB setup complete.")

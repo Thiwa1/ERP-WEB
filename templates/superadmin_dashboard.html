@@ -786,7 +786,12 @@
 
               <!-- Status -->
               <td>
-                {% if tenant.is_active == 1 %}
+                {% if tenant.db_initialized == 0 %}
+                  <span class="status-badge" style="background: rgba(245, 158, 11, 0.1); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.2);">
+                    <i class="fas fa-hourglass-half" style="margin-right: 4px;"></i>
+                    Pending Setup
+                  </span>
+                {% elif tenant.is_active == 1 %}
                   <span class="status-badge active">
                     <span class="status-dot active"></span>
                     Active
@@ -840,6 +845,15 @@
               <!-- Actions -->
               <td class="actions-cell">
                 <div class="action-group">
+                  {% if tenant.db_initialized == 0 %}
+                  <!-- Initialize Database -->
+                  <form action="/superadmin/initialize_db/{{ tenant.id }}" method="POST" class="d-inline">
+                    <button type="submit" class="btn-action btn-primary-action" onclick="return confirm('Ensure you have created the database {{ tenant.db_name }} in cPanel and granted all privileges to the user before running this step. Continue?');">
+                      <i class="fas fa-database"></i> Init DB
+                    </button>
+                  </form>
+                  {% endif %}
+
                   <!-- Toggle Status -->
                   <form action="/superadmin/toggle_tenant/{{ tenant.id }}" method="POST" class="d-inline">
                     {% if tenant.is_active == 1 %}
