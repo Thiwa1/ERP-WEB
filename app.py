@@ -230,7 +230,8 @@ def setup_master_db():
                 is_active TINYINT DEFAULT 1,
                 gb_used DOUBLE DEFAULT 0,
                 max_users INT DEFAULT 5,
-                sidebar_enabled TINYINT DEFAULT 1
+                sidebar_enabled TINYINT DEFAULT 1,
+                db_initialized TINYINT DEFAULT 1
             )
         """)
 
@@ -251,6 +252,10 @@ def setup_master_db():
             master_db.execute_query("ALTER TABLE tenants ADD COLUMN sidebar_enabled TINYINT DEFAULT 1")
         except Exception:
             pass
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN db_initialized TINYINT DEFAULT 1")
+        except Exception:
+            pass
 
         master_db.execute_query("""
             CREATE TABLE IF NOT EXISTS users (
@@ -262,6 +267,13 @@ def setup_master_db():
                 FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
             )
         """)
+
+        # Add mobile column to users if it doesn't exist
+        try:
+            master_db.execute_query("ALTER TABLE users ADD COLUMN mobile VARCHAR(50)")
+        except Exception:
+            pass
+
         print("Master DB setup complete.")
 
         # 3. Setup Default/Fallback Database if missing tables (e.g. Login_Table)
@@ -403,89 +415,19 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
     if existing_tenant: return False, "Company already registered."
 
     try:
-        # Create DB
-        temp_config = db_config.copy()
-        if 'database' in temp_config: del temp_config['database']
-        if not is_safe_db_name(db_name):
-            raise ValueError(f"Invalid database name: {db_name}")
-        try:
-            conn = mysql.connector.connect(**temp_config)
-            cursor = conn.cursor()
-            if not is_safe_db_name(db_name):
-                raise ValueError("Invalid database name")
-            cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`")
-            cursor.close()
-            conn.close()
-        except mysql.connector.Error as e:
-            # 1007: Can't create database; database exists
-            # 1044: Access denied for user to database (on shared hosting where DB must be pre-created)
-            # 1045: Access denied for user (sometimes triggered on shared hosting when connecting without a specific DB)
-            if e.errno in (1007, 1044, 1045):
-                logging.warning(f"Ignored DB creation error {e.errno}: {e.msg} - assuming DB '{db_name}' is already created.")
-            else:
-                raise e
-
-        # Connect to New DB
-        t_config = db_config.copy()
-        t_config['database'] = db_name
-        t_conn = mysql.connector.connect(**t_config)
-        t_cursor = t_conn.cursor()
-
-        # Execute Schema
-        if os.path.exists('database_schema.sql'):
-            with open('database_schema.sql', 'r') as f:
-                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
-                parse_and_execute_sql(t_cursor, content)
-
-        if os.path.exists('fixed_assets.sql'):
-            with open('fixed_assets.sql', 'r') as f:
-                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
-                parse_and_execute_sql(t_cursor, content)
-
-        t_conn.commit()
-
-        # Run application-level migrations on this new database to ensure all dynamic columns are present
-        run_schema_migrations(t_conn)
-
-        t_conn.close()
-
-        # Insert Admin User
-        t_db_conf = db_config.copy()
-        t_db_conf['database'] = db_name
-        t_db = Database(t_db_conf)
-
-        user_id = t_db.execute_query("""
-            INSERT INTO Login_Table (User_Name, Password, Email, Mobile_No, User_Code, User_Active)
-            VALUES (%s, %s, %s, %s, '1001', 1)
-        """, (username, password, email, mobile), commit=True)
-
-        # Grant all rights to the initial tenant admin user
-        t_db.execute_query("""
-            INSERT INTO User_Rights (
-                Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
-                Access_POS, Access_Accounting, Access_Reports, Access_Reversals
-            )
-            VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
-        """, (user_id,), commit=True)
-
-        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (company_name,), commit=True)
-
-        ensure_default_categories(t_db)
-        ensure_default_accounts(t_db)
-
-        # Insert into Master
+        # Insert into Master - mark db_initialized = 0 for manual cPanel creation
         tenant_id = master_db.execute_query(
-            "INSERT INTO tenants (company_name, db_name) VALUES (%s, %s)",
+            "INSERT INTO tenants (company_name, db_name, db_initialized) VALUES (%s, %s, 0)",
             (company_name, db_name),
             commit=True
         )
 
         master_db.execute_query("""
-            INSERT INTO users (username, password, email, tenant_id)
-            VALUES (%s, %s, %s, %s)
-        """, (username, password, email, tenant_id), commit=True)
+            INSERT INTO users (username, password, email, tenant_id, mobile)
+            VALUES (%s, %s, %s, %s, %s)
+        """, (username, password, email, tenant_id, mobile), commit=True)
 
-        return True, "Registration successful."
+        return True, "Registration successful. Pending database setup by administrator."
 
     except Exception as e:
         logging.error(f"Registration Error occurred: {e}", exc_info=True)
@@ -765,7 +707,7 @@ def login():
         try:
             # Query Master DB for user and tenant DB
             master_user_res = master_db.execute_query("""
-                SELECT u.username, u.password, t.db_name, t.is_active
+                SELECT u.username, u.password, t.db_name, t.is_active, t.db_initialized
                 FROM users u
                 JOIN tenants t ON u.tenant_id = t.id
                 WHERE u.username = %s
@@ -777,6 +719,11 @@ def login():
                 # Check Tenant Active Status
                 if master_user['is_active'] == 0:
                     return redirect(url_for('payment_due'))
+
+                # Check Tenant DB Initialization Status
+                if master_user.get('db_initialized', 1) == 0:
+                    flash('Your account is pending database setup by the administrator. Please try again later.', 'warning')
+                    return redirect(url_for('login'))
 
                 if master_user['password'] == password:
                     # Login Successful on Master
@@ -3760,6 +3707,91 @@ def superadmin_logout():
     session.pop('superadmin_logged_in', None)
     return redirect(url_for('superadmin_login'))
 
+@app.route('/superadmin/initialize_db/<int:tenant_id>', methods=['POST'])
+@superadmin_required
+def superadmin_initialize_db(tenant_id):
+    try:
+        # Fetch tenant and admin user info
+        tenant = master_db.execute_query("SELECT company_name, db_name, db_initialized FROM tenants WHERE id = %s", (tenant_id,))
+        admin_user = master_db.execute_query("SELECT username, password, email, mobile FROM users WHERE tenant_id = %s ORDER BY id ASC LIMIT 1", (tenant_id,))
+
+        if not tenant or not admin_user:
+            flash('Tenant or admin user not found.', 'danger')
+            return redirect(url_for('superadmin_dashboard'))
+
+        tenant = tenant[0]
+        admin_user = admin_user[0]
+
+        if tenant.get('db_initialized') == 1:
+            flash('Database is already initialized.', 'info')
+            return redirect(url_for('superadmin_dashboard'))
+
+        db_name = tenant['db_name']
+
+        # 1. Connect to the (already created) cPanel Database
+        t_config = db_config.copy()
+        t_config['database'] = db_name
+        t_conn = mysql.connector.connect(**t_config)
+        t_cursor = t_conn.cursor()
+
+        # 2. Execute Schemas
+        if os.path.exists('database_schema.sql'):
+            with open('database_schema.sql', 'r') as f:
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
+                parse_and_execute_sql(t_cursor, content)
+
+        if os.path.exists('fixed_assets.sql'):
+            with open('fixed_assets.sql', 'r') as f:
+                content = re.sub(r'(?i)Book_keeping', db_name, f.read())
+                parse_and_execute_sql(t_cursor, content)
+
+        t_conn.commit()
+
+        # 3. Run application-level migrations
+        run_schema_migrations(t_conn)
+        t_conn.close()
+
+        # 4. Insert Admin User and setup initial data
+        t_db_conf = db_config.copy()
+        t_db_conf['database'] = db_name
+        t_db = Database(t_db_conf)
+
+        user_id = t_db.execute_query("""
+            INSERT INTO Login_Table (User_Name, Password, Email, Mobile_No, User_Code, User_Active)
+            VALUES (%s, %s, %s, %s, '1001', 1)
+        """, (admin_user['username'], admin_user['password'], admin_user['email'], admin_user.get('mobile')), commit=True)
+
+        t_db.execute_query("""
+            INSERT INTO User_Rights (
+                Link_To_Loging_Tabke, Add_New_User, OP_Approved, Access_Inventory,
+                Access_POS, Access_Accounting, Access_Reports, Access_Reversals
+            )
+            VALUES (%s, 1, 1, 1, 1, 1, 1, 1)
+        """, (user_id,), commit=True)
+
+        t_db.execute_query("INSERT INTO company (id, company_name) VALUES (1, %s)", (tenant['company_name'],), commit=True)
+
+        ensure_default_categories(t_db)
+        ensure_default_accounts(t_db)
+
+        # 5. Mark as initialized
+        master_db.execute_query("UPDATE tenants SET db_initialized = 1 WHERE id = %s", (tenant_id,), commit=True)
+
+        flash(f'Database {db_name} initialized successfully.', 'success')
+
+    except mysql.connector.Error as e:
+        if e.errno == 1049:
+            flash(f'Database {tenant.get("db_name")} does not exist. Please create it in cPanel first.', 'danger')
+        elif e.errno == 1045:
+            flash(f'Access denied. Please ensure the database user is assigned to {tenant.get("db_name")} with all privileges in cPanel.', 'danger')
+        else:
+            flash(f'Database error during initialization: {str(e)}', 'danger')
+    except Exception as e:
+        logging.error(f"Error initializing DB for tenant {tenant_id}: {e}", exc_info=True)
+        flash(f'Error initializing database: {str(e)}', 'danger')
+
+    return redirect(url_for('superadmin_dashboard'))
+
 @app.route('/superadmin/toggle_tenant/<int:tenant_id>', methods=['POST'])
 @superadmin_required
 def superadmin_toggle_tenant(tenant_id):
@@ -3811,10 +3843,12 @@ def superadmin_dashboard():
             SELECT
                 t.id,
                 t.company_name,
+                t.db_name,
                 t.is_active,
                 t.gb_used,
                 t.max_users,
                 t.sidebar_enabled,
+                t.db_initialized,
                 (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as current_users
             FROM tenants t
         """)
