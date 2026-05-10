@@ -3852,6 +3852,8 @@ def superadmin_dashboard():
                 (SELECT COUNT(*) FROM users WHERE tenant_id = t.id) as current_users
             FROM tenants t
         """)
+        if tenants is None:
+            tenants = []
         return render_template('superadmin_dashboard.html', tenants=tenants)
     except Exception as e:
         flash(f"Error loading superadmin dashboard: {str(e)}", 'danger')
