@@ -215,7 +215,7 @@ def setup_master_db():
             cursor.close()
             conn.close()
         except mysql.connector.Error as e:
-            if e.errno in (1007, 1044):
+            if e.errno in (1007, 1044, 1045):
                 logging.warning(f"Ignored DB creation error {e.errno} for Master DB: {e.msg}")
             else:
                 raise e
@@ -280,7 +280,7 @@ def setup_master_db():
                 default_cursor.close()
                 default_conn.close()
             except mysql.connector.Error as e:
-                if e.errno in (1007, 1044):
+                if e.errno in (1007, 1044, 1045):
                     logging.warning(f"Ignored DB creation error {e.errno} for default DB: {e.msg}")
                 else:
                     raise e
@@ -419,7 +419,8 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
         except mysql.connector.Error as e:
             # 1007: Can't create database; database exists
             # 1044: Access denied for user to database (on shared hosting where DB must be pre-created)
-            if e.errno in (1007, 1044):
+            # 1045: Access denied for user (sometimes triggered on shared hosting when connecting without a specific DB)
+            if e.errno in (1007, 1044, 1045):
                 logging.warning(f"Ignored DB creation error {e.errno}: {e.msg} - assuming DB '{db_name}' is already created.")
             else:
                 raise e
@@ -487,8 +488,8 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
         return True, "Registration successful."
 
     except Exception as e:
-        logging.error("Registration Error occurred.")
-        return False, "An error occurred during registration."
+        logging.error(f"Registration Error occurred: {e}", exc_info=True)
+        return False, f"An error occurred during registration: {e}"
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -11750,7 +11751,7 @@ def create_db_if_missing():
             conn_root.close()
             logging.info(f"Database '{db_name}' checked/created.")
         except mysql.connector.Error as e:
-            if e.errno in (1007, 1044):
+            if e.errno in (1007, 1044, 1045):
                 logging.warning(f"Ignored DB creation error {e.errno} in create_db_if_missing: {e.msg}")
             else:
                 raise e
