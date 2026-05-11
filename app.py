@@ -408,6 +408,12 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
     safe_name = re.sub(r'[^a-z0-9]', '_', company_name.lower())
     db_name = f"{db_suport_name}_{safe_name}"
 
+    master_conn = master_db.get_connection()
+    if not master_conn:
+        return False, f"System Error: Master database '{MASTER_DB_NAME}' not found or accessible. Please create it in cPanel first."
+    else:
+        master_conn.close()
+
     existing_user = master_db.execute_query("SELECT id FROM users WHERE username = %s", (username,))
     if existing_user: return False, "Username already exists."
 
@@ -421,6 +427,9 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
             (company_name, db_name),
             commit=True
         )
+
+        if tenant_id is None:
+            return False, "Database error: Could not insert tenant. Ensure Master DB is created."
 
         master_db.execute_query("""
             INSERT INTO users (username, password, email, tenant_id, mobile)
@@ -3854,6 +3863,8 @@ def superadmin_dashboard():
         """)
         if tenants is None:
             tenants = []
+            if master_db.last_error:
+                flash(f"Master DB Connection Error: {master_db.last_error}. Please ensure '{MASTER_DB_NAME}' is created in cPanel.", 'danger')
         return render_template('superadmin_dashboard.html', tenants=tenants)
     except Exception as e:
         flash(f"Error loading superadmin dashboard: {str(e)}", 'danger')

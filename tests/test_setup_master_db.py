@@ -96,5 +96,12 @@ class TestSetupMasterDb(unittest.TestCase):
         )
         self.assertTrue(any_print_error, f"Did not print expected error message. Actual prints: {mock_print.call_args_list}")
 
+    @patch('app.master_db.get_connection')
+    def test_create_tenant_db_master_db_failure(self, mock_get_connection):
+        mock_get_connection.return_value = None
+        success, message = app_module.create_tenant_db('test', 'user', 'pass', 'email')
+        self.assertFalse(success)
+        self.assertIn("Master database", message)
+
 if __name__ == '__main__':
     unittest.main()
