@@ -748,7 +748,7 @@ def login():
                     flash('Incorrect password.', 'danger')
                     return redirect(url_for('login'))
         except Exception as e:
-            logging.error("Master Login Error occurred.")
+            logging.error(f"Master Login Error occurred: {e}", exc_info=True)
             # Fallthrough to legacy
 
         # 2. Fallback to Legacy Login (Default DB)
@@ -759,7 +759,7 @@ def login():
         users = db.execute_query(query, (username,))
 
         if users is None:
-            error_msg = f"Database connection failed: {db.last_error}" if db.last_error else "Database connection failed."
+            error_msg = f"Database connection failed: {db.last_error}" if hasattr(db, 'last_error') and db.last_error else "Database connection failed."
             flash(error_msg, 'danger')
         elif users:
             user = users[0]
