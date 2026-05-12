@@ -410,7 +410,8 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
 
     master_conn = master_db.get_connection()
     if not master_conn:
-        return False, f"System Error: Master database '{MASTER_DB_NAME}' not found or accessible. Please create it in cPanel first."
+        error_details = master_db.last_error if master_db.last_error else "Unknown error."
+        return False, f"System Error: Master database '{MASTER_DB_NAME}' not found or accessible. Details: {error_details}. Please ensure it is created in cPanel and the DB_PASSWORD in .env is correct."
     else:
         master_conn.close()
 
