@@ -74,7 +74,6 @@ import io
 
 import migrations
 
-app = flask.Flask(__name__)
 
 # Configure Logging
 logging.basicConfig(
