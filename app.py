@@ -9754,16 +9754,16 @@ def ensure_default_accounts(target_db=None):
 
         # 2. Add POS SALE sub-account under Income
         sub_query = "SELECT id FROM sub_account_table WHERE sub_sub_accaount_name = 'POS SALE' AND sub_new_account = 'Income'"
-        if not db.execute_query(sub_query):
-            db.execute_query("""
+        if not current_db.execute_query(sub_query):
+            current_db.execute_query("""
                 INSERT INTO sub_account_table (sub_sub_accaount_name, sub_new_account, creat_user, creat_date, active)
                 VALUES ('POS SALE', 'Income', %s, %s, 1)
             """, (current_user, date.today()), commit=True)
 
         # 3. Add Common customer
         cust_query = "SELECT id FROM Customer_table WHERE costomer_code = '60001'"
-        if not db.execute_query(cust_query):
-            db.execute_query("""
+        if not current_db.execute_query(cust_query):
+            current_db.execute_query("""
                 INSERT INTO Customer_table (
                     costomer_name, costomer_code, costomer_billing_addres,
                     customer_dilivery_addres, coustomer_email, customer_credit_limit
