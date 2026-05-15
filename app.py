@@ -9417,20 +9417,20 @@ def run_schema_migrations(target_db_conn=None):
             # Type is index 1
             col_type = res[1]
             # Check if it is varchar(45) or similar short length
-            if b'varchar(45)' in col_type.lower() or 'varchar(45)' in col_type.lower():
+            if (isinstance(col_type, bytes) and b'varchar(45)' in col_type.lower()) or (isinstance(col_type, str) and 'varchar(45)' in col_type.lower()):
                 print("Migrating: Extending Login_Table Password column to 255 chars")
                 cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
 
-        # pose_setting_table
-        cursor.execute("SHOW TABLES LIKE 'pose_setting_table'")
+        # Pose_Setting_Table
+        cursor.execute("SHOW TABLES LIKE 'Pose_Setting_Table'")
         if cursor.fetchone():
-            cursor.execute("SHOW COLUMNS FROM pose_setting_table LIKE 'Password'")
+            cursor.execute("SHOW COLUMNS FROM Pose_Setting_Table LIKE 'Password'")
             res_pos = cursor.fetchone()
             if res_pos:
                 col_type_pos = res_pos[1]
-                if b'varchar(45)' in col_type_pos.lower() or 'varchar(45)' in col_type_pos.lower():
-                    print("Migrating: Extending pose_setting_table Password column to 255 chars")
-                    cursor.execute("ALTER TABLE pose_setting_table MODIFY COLUMN Password VARCHAR(255)")
+                if (isinstance(col_type_pos, bytes) and b'varchar(45)' in col_type_pos.lower()) or (isinstance(col_type_pos, str) and 'varchar(45)' in col_type_pos.lower()):
+                    print("Migrating: Extending Pose_Setting_Table Password column to 255 chars")
+                    cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # 1b. User_Rights Columns
         cursor.execute("SHOW COLUMNS FROM User_Rights")
@@ -9452,20 +9452,20 @@ def run_schema_migrations(target_db_conn=None):
         if res:
             # res format: ('Password', 'varchar(45)', ...)
             col_type = res[1].lower()
-            if 'varchar(45)' in col_type:
+            if (isinstance(col_type, bytes) and b'varchar(45)' in col_type) or (isinstance(col_type, str) and 'varchar(45)' in col_type):
                 print("Migrating: Expanding Password column in Login_Table to VARCHAR(255)")
                 cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # Pose_Setting_Table
-        cursor.execute("SHOW TABLES LIKE 'pose_setting_table'")
+        cursor.execute("SHOW TABLES LIKE 'Pose_Setting_Table'")
         if cursor.fetchone():
-            cursor.execute("SHOW COLUMNS FROM pose_setting_table LIKE 'Password'")
+            cursor.execute("SHOW COLUMNS FROM Pose_Setting_Table LIKE 'Password'")
             res = cursor.fetchone()
             if res:
                 col_type = res[1].lower()
-                if 'varchar(45)' in col_type:
-                    print("Migrating: Expanding Password column in pose_setting_table to VARCHAR(255)")
-                    cursor.execute("ALTER TABLE pose_setting_table MODIFY COLUMN Password VARCHAR(255)")
+                if (isinstance(col_type, bytes) and b'varchar(45)' in col_type) or (isinstance(col_type, str) and 'varchar(45)' in col_type):
+                    print("Migrating: Expanding Password column in Pose_Setting_Table to VARCHAR(255)")
+                    cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # 2. Currency Table
         cursor.execute("SHOW TABLES LIKE 'currency_table'")
@@ -9684,6 +9684,20 @@ def run_schema_migrations(target_db_conn=None):
         if 'master_voucher_no' not in bbr_cols:
             logging.info("Migrating: Adding master_voucher_no to bank_book_recod")
             cursor.execute("ALTER TABLE bank_book_recod ADD COLUMN master_voucher_no BIGINT DEFAULT 0")
+
+        cursor.execute("SHOW TABLES LIKE 'sms_delivery_logs'")
+        if not cursor.fetchone():
+            cursor.execute('''
+                CREATE TABLE sms_delivery_logs (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    mobile VARCHAR(20),
+                    message TEXT,
+                    status VARCHAR(50),
+                    api_response TEXT,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+
         # Default Theme Setting
         cursor.execute("SELECT id FROM system_settings WHERE setting_key = 'system_theme'")
         if not cursor.fetchone():
@@ -9753,11 +9767,11 @@ def ensure_default_accounts(target_db=None):
                 ), commit=True)
 
         # 2. Add POS SALE sub-account under Income
-        sub_query = "SELECT id FROM sub_account_table WHERE sub_sub_accaount_name = 'POS SALE' AND sub_new_account = 'Income'"
+        sub_query = "SELECT id_sub FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = 'POS SALE' AND sub_new_account = 'Income'"
         if not current_db.execute_query(sub_query):
             current_db.execute_query("""
-                INSERT INTO sub_account_table (sub_sub_accaount_name, sub_new_account, creat_user, creat_date, active)
-                VALUES ('POS SALE', 'Income', %s, %s, 1)
+                INSERT INTO sub_accont_for_new_account (sub_sub_accaount_name, sub_new_account, creat_user, creat_date, active, sub_account_code)
+                VALUES ('POS SALE', 'Income', %s, %s, 1, 0)
             """, (current_user, date.today()), commit=True)
 
         # 3. Add Common customer

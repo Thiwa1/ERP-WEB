@@ -278,25 +278,25 @@ def _migrate_password_length(cursor):
 def _migrate_pos_security_features(cursor):
     """10. POS Security & Expiry Date Updates."""
     try:
-        # pose_setting_table: failed_attempts, is_locked
-        cursor.execute("SHOW COLUMNS FROM pose_setting_table")
+        # Pose_Setting_Table: failed_attempts, is_locked
+        cursor.execute("SHOW COLUMNS FROM Pose_Setting_Table")
         pos_cols = [row[0] for row in cursor.fetchall()]
 
         if 'failed_attempts' not in pos_cols:
-            print("Migrating: Adding failed_attempts to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN failed_attempts INT DEFAULT 0")
+            print("Migrating: Adding failed_attempts to Pose_Setting_Table")
+            cursor.execute("ALTER TABLE Pose_Setting_Table ADD COLUMN failed_attempts INT DEFAULT 0")
 
         if 'is_locked' not in pos_cols:
-            print("Migrating: Adding is_locked to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN is_locked TINYINT DEFAULT 0")
+            print("Migrating: Adding is_locked to Pose_Setting_Table")
+            cursor.execute("ALTER TABLE Pose_Setting_Table ADD COLUMN is_locked TINYINT DEFAULT 0")
 
         if 'must_change_password' not in pos_cols:
-            print("Migrating: Adding must_change_password to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN must_change_password TINYINT DEFAULT 0")
+            print("Migrating: Adding must_change_password to Pose_Setting_Table")
+            cursor.execute("ALTER TABLE Pose_Setting_Table ADD COLUMN must_change_password TINYINT DEFAULT 0")
 
         if 'Mobile_Number' not in pos_cols:
-            print("Migrating: Adding Mobile_Number to pose_setting_table")
-            cursor.execute("ALTER TABLE pose_setting_table ADD COLUMN Mobile_Number VARCHAR(20) NULL")
+            print("Migrating: Adding Mobile_Number to Pose_Setting_Table")
+            cursor.execute("ALTER TABLE Pose_Setting_Table ADD COLUMN Mobile_Number VARCHAR(20) NULL")
 
         # inventoy_items: expiry_date
         cursor.execute("SHOW COLUMNS FROM inventoy_items")
