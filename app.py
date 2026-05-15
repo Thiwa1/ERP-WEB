@@ -3051,9 +3051,9 @@ def cash_payment():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
 
-def _get_supplier_history_data(sup_name, payment_type):
+def _get_supplier_history_data(supplier_name, payment_type):
     """Helper to fetch common supplier details, outstanding invoices, and payment history."""
-    details, inv_list, sup_id = _get_supplier_base_data(sup_name)
+    details, inv_list, sup_id = _get_supplier_base_data(supplier_name)
     if not details:
         return {'error': 'Supplier not found'}, 404
 
@@ -3065,7 +3065,7 @@ def _get_supplier_history_data(sup_name, payment_type):
             FROM cash_book_recode
             WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
             ORDER BY chash_book_recod_id DESC
-        """, (sup_name,))
+        """, (supplier_name,))
     else:
         history = db.execute_query("""
             SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
@@ -3074,7 +3074,7 @@ def _get_supplier_history_data(sup_name, payment_type):
             FROM bank_book_recod
             WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
             ORDER BY id DESC
-        """, (sup_name,))
+        """, (supplier_name,))
 
     hist_list = []
     for h in history:
@@ -3093,9 +3093,9 @@ def _get_supplier_history_data(sup_name, payment_type):
 
     return {'details': details, 'invoices': inv_list, 'history': hist_list}
 
-def _get_supplier_base_data(sup_name):
+def _get_supplier_base_data(supplier_name):
     """Helper to fetch common supplier details and outstanding invoices."""
-    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (sup_name,))
+    sup_data = db.execute_query("SELECT * FROM suppliers WHERE supplier_name = %s", (supplier_name,))
     if not sup_data:
         return None, None, None
 
@@ -3134,11 +3134,11 @@ def _get_supplier_base_data(sup_name):
 @app.route('/cash_payment/get_data')
 @login_required
 def get_cash_supplier_data():
-    sup_name = request.args.get('name')
-    if not sup_name:
+    supplier_name = request.args.get('name')
+    if not supplier_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(sup_name, 'cash')
+    return _get_supplier_history_data(supplier_name, 'cash')
 
 @app.route('/cash_payment/submit', methods=['POST'])
 @login_required
@@ -4385,11 +4385,11 @@ def api_get_sub_accounts():
 @app.route('/get_supplier_data')
 @login_required
 def get_supplier_data():
-    sup_name = request.args.get('name')
-    if not sup_name:
+    supplier_name = request.args.get('name')
+    if not supplier_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(sup_name, 'bank')
+    return _get_supplier_history_data(supplier_name, 'bank')
 
 @app.route('/bank_payment_submit', methods=['POST'])
 @login_required
@@ -9788,7 +9788,7 @@ def ensure_default_accounts(target_db=None):
         sup_query = "SELECT sup_id FROM suppliers WHERE supplier_code = '70001'"
         if not db.execute_query(sup_query):
             db.execute_query("""
-                INSERT INTO suppliers (sup_name, supplier_code)
+                INSERT INTO suppliers (supplier_name, supplier_code)
                 VALUES ('Direct Payment', '70001')
             """, commit=True)
 
