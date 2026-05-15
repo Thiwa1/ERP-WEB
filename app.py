@@ -9775,12 +9775,12 @@ def ensure_default_accounts(target_db=None):
             """, (current_user, date.today()), commit=True)
 
         # 3. Add Common customer
-        cust_query = "SELECT id FROM Customer_table WHERE costomer_code = '60001'"
+        cust_query = "SELECT id FROM customer WHERE customer_code = '60001'"
         if not current_db.execute_query(cust_query):
             current_db.execute_query("""
-                INSERT INTO Customer_table (
-                    costomer_name, costomer_code, costomer_billing_addres,
-                    customer_dilivery_addres, coustomer_email, customer_credit_limit
+                INSERT INTO customer (
+                    customer_name, customer_code, customer_Billing_Address,
+                    costomer_Delivery_Address, e_mail, coustomer_credit_limit
                 ) VALUES ('Common customer', '60001', 'non', 'non', 'non', 0)
             """, commit=True)
 
