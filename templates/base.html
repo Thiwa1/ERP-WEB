@@ -850,6 +850,7 @@
             <div class="accordion accordion-flush bg-transparent" id="sidebarAccordion">
 
                 <!-- Core Accounting -->
+                {% if check_permission("Access_Accounting") %}
                 <div class="menu-category">Core Accounting</div>
                 <a href="/approvals" class="nav-link text-warning fw-bold"><i class="fas fa-check-double"></i> <span class="nav-text">Pending Approvals</span></a>
                 <a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> <span class="nav-text">Sales Invoice</span></a>
@@ -862,8 +863,10 @@
                 <a href="/service_entry" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">Service Entry (SRN)</span></a>
                 <a href="/fixed_assets" class="nav-link"><i class="fas fa-building"></i> <span class="nav-text">Fixed Assets</span></a>
                 <a href="/vat_report" class="nav-link"><i class="fas fa-file-alt"></i> <span class="nav-text">VAT Schedule</span></a>
+                {% endif %}
 
                 <!-- Reversals & Adjustments -->
+                {% if check_permission("Access_Reversals") %}
                 <div class="menu-category">Reversals & Adjustments</div>
                 <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> <span class="nav-text">POS Reversal</span></a>
                 <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> <span class="nav-text">Cash Pay Reversal</span></a>
@@ -871,8 +874,10 @@
                 <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> <span class="nav-text">Direct Pay Reversal</span></a>
                 <a href="/service_entry_reversal" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">SRN Reversal</span></a>
                 <a href="/reversal_category" class="nav-link"><i class="fas fa-tags"></i> <span class="nav-text">Reversal Category</span></a>
+                {% endif %}
 
                 <!-- Inventory -->
+                {% if check_permission("Access_Inventory") %}
                 <div class="menu-category">Inventory</div>
                 <a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">Inventory Balance</span></a>
                 <a href="/add_inventory_item" class="nav-link"><i class="fas fa-plus-square"></i> <span class="nav-text">New Inventory Item</span></a>
@@ -883,10 +888,14 @@
                 <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> <span class="nav-text">Inventory Transfer</span></a>
                 <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> <span class="nav-text">Manufacturing</span></a>
                 <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> <span class="nav-text">Trend Analysis</span></a>
+                {% endif %}
 
+                {% if check_permission("Access_POS") %}
                 <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>
+                {% endif %}
 
                 <!-- Reports -->
+                {% if check_permission("Access_Reports") %}
                 <div class="menu-category">Reports</div>
                 <a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>
                 <a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>
@@ -897,6 +906,7 @@
                 <a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Profit & Loss</span></a>
                 <a href="/customer_profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Customer Profit & Loss</span></a>
                 <a href="/job_profit_analysis" class="nav-link"><i class="fas fa-briefcase"></i> <span class="nav-text">Job Profit Analysis</span></a>
+                {% endif %}
             </div>
 
             <div class="px-3">

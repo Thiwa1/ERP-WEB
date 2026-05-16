@@ -498,6 +498,7 @@ def inject_globals():
     except Exception:
         globals_dict['sidebar_enabled'] = True
 
+    globals_dict['check_permission'] = check_permission
     return globals_dict
 
 # Custom Filter for Currency Formatting
