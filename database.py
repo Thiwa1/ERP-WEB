@@ -39,7 +39,8 @@ class Database:
             else:
                 return cursor.fetchall()
         except mysql.connector.Error as err:
-            print(f"Query Error: {err}")
+            if err.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1305, 1304):
+                print(f"Query Error: {err}")
             if commit:
                 conn.rollback()
             raise err
