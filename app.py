@@ -7767,45 +7767,62 @@ def pl_custom_generate():
     curr_vars = {}
 
     try:
+        def get_balance(account_name, start, end):
+            cursor.execute("SELECT account_basment, account_income, account_expenses FROM new_account_table WHERE account_name = %s", (account_name,))
+            acc_info = cursor.fetchone()
+            if not acc_info: return 0.0
+            cursor.execute('''
+                SELECT COALESCE(SUM(enty_values_DR), 0) as dr, COALESCE(SUM(enty_values_CR), 0) as cr
+                FROM entry_details
+                WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+            ''', (account_name, start, end))
+            b = cursor.fetchone()
+            dr = float(b['dr'] or 0)
+            cr = float(b['cr'] or 0)
+            if acc_info['account_expenses'] == 1: return dr - cr
+            elif acc_info['account_income'] == 1: return cr - dr
+            else:
+                if acc_info['account_basment'] == 'DR': return dr - cr
+                else: return cr - dr
+
+        # Pass 1: Fetch account balances
         for r in rows:
             line_no = r['PL_LIne_Number']
-            desc = r['PL_Text_Description']
             account = r['PL_Text_Colom']
-            calc_instr = r['PL_Calqulation_instraction']
-            ratio_instr = r['PL_Rasior_instraction']
 
             prev_val = 0.0
             curr_val = 0.0
 
             if account:
-                def get_balance(start, end):
-                    cursor.execute("SELECT account_basment, account_income, account_expenses FROM new_account_table WHERE account_name = %s", (account,))
-                    acc_info = cursor.fetchone()
-                    if not acc_info: return 0.0
-                    cursor.execute('''
-                        SELECT COALESCE(SUM(enty_values_DR), 0) as dr, COALESCE(SUM(enty_values_CR), 0) as cr
-                        FROM entry_details
-                        WHERE account_name = %s AND entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
-                    ''', (account, start, end))
-                    b = cursor.fetchone()
-                    dr = float(b['dr'] or 0)
-                    cr = float(b['cr'] or 0)
-                    if acc_info['account_expenses'] == 1: return dr - cr
-                    elif acc_info['account_income'] == 1: return cr - dr
-                    else:
-                        if acc_info['account_basment'] == 'DR': return dr - cr
-                        else: return cr - dr
+                prev_val = get_balance(account, prev_from, prev_to)
+                curr_val = get_balance(account, curr_from, curr_to)
 
-                prev_val = get_balance(prev_from, prev_to)
-                curr_val = get_balance(curr_from, curr_to)
+            if line_no:
+                prev_vars[line_no] = prev_val
+                curr_vars[line_no] = curr_val
+
+        # Pass 2: Evaluate calc_instr
+        for r in rows:
+            line_no = r['PL_LIne_Number']
+            calc_instr = r['PL_Calqulation_instraction']
 
             if calc_instr:
                 prev_val = _safe_eval_expression(calc_instr, prev_vars)
                 curr_val = _safe_eval_expression(calc_instr, curr_vars)
 
-            if line_no:
-                prev_vars[line_no] = prev_val
-                curr_vars[line_no] = curr_val
+                if line_no:
+                    prev_vars[line_no] = prev_val
+                    curr_vars[line_no] = curr_val
+
+        # Pass 3 & 4: Evaluate ratios and format results
+        for r in rows:
+            line_no = r['PL_LIne_Number']
+            desc = r['PL_Text_Description']
+            account = r['PL_Text_Colom']
+            ratio_instr = r['PL_Rasior_instraction']
+
+            prev_val = prev_vars.get(line_no, 0.0)
+            curr_val = curr_vars.get(line_no, 0.0)
 
             diff_pct = ""
             if curr_val != 0 or prev_val != 0:
@@ -7835,6 +7852,7 @@ def pl_custom_generate():
                 'line': r.get('PL_Text_line'),
                 'size': r.get('PL_Text_Size')
             })
+
         return {'success': True, 'results': results}
     except Exception as e:
         import traceback
@@ -8034,41 +8052,6 @@ def profit_loss():
                            report_data=report_data,
                            default_start=default_start,
                            default_end=default_end)
-
-@app.route('/customer_profit_loss', methods=['GET', 'POST'])
-@login_required
-@has_permission('Access_Reports')
-def customer_profit_loss():
-    from profit_loss_report import Customer_ProfitLossReportGenerator
-
-    selected_customer = request.args.get('customer_id') or request.form.get('customer_id')
-
-    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
-
-    customer_sub_account_code = 0
-    if selected_customer:
-        customer_row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (selected_customer,))
-        if customer_row:
-            customer_name = customer_row[0]['supplier_name']
-            sub_row = db.execute_query("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (customer_name,))
-            if sub_row:
-                customer_sub_account_code = sub_row[0]['sub_account_code']
-
-    try:
-        generator = Customer_ProfitLossReportGenerator(db, customer_sub_account_code)
-        periods, report_data, default_start, default_end = generator.generate(request)
-    except Exception as e:
-        flash(f'Error generating report: {str(e)}', 'danger')
-        return redirect(url_for('index'))
-
-    return render_template('customer_profit_loss.html',
-                           periods=periods,
-                           report_data=report_data,
-                           default_start=default_start,
-                           default_end=default_end,
-                           customers=customers,
-                           selected_customer=int(selected_customer) if selected_customer else None)
-
 
 @app.route('/api/dashboard/monthly_revenue')
 @login_required
