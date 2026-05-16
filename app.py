@@ -4486,14 +4486,20 @@ def bank_payment_submit():
         # 2a. Generate Master Voucher Number (Global Sequence)
         cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
 
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS recent_activity (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            dot_color VARCHAR(20) DEFAULT 'blue',
-            text_content TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
+        try:
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recent_activity (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                dot_color VARCHAR(20) DEFAULT 'blue',
+                text_content TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+        except mysql.connector.Error as e:
+            if e.errno not in (1050, 1007):
+                logging.error(f"Schema Migration Error: {e}")
+        except Exception as e:
+            logging.error(f"Schema Migration Error: {e}")
 
         master_voucher_no = cursor.lastrowid
 
@@ -9389,6 +9395,9 @@ def run_schema_migrations(target_db_conn=None):
         # 0. Migration Table
         try:
             cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
+        except mysql.connector.Error as e:
+            if e.errno not in (1050, 1007):
+                logging.error(f"Error creating migrations table: {e}")
         except Exception as e:
             logging.error(f"Error creating migrations table: {e}")
 
@@ -9668,14 +9677,20 @@ def run_schema_migrations(target_db_conn=None):
             """)
             cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
 
-        cursor.execute('''
-        CREATE TABLE IF NOT EXISTS recent_activity (
-            id INT AUTO_INCREMENT PRIMARY KEY,
-            dot_color VARCHAR(20) DEFAULT 'blue',
-            text_content TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-        ''')
+        try:
+            cursor.execute('''
+            CREATE TABLE IF NOT EXISTS recent_activity (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                dot_color VARCHAR(20) DEFAULT 'blue',
+                text_content TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+            ''')
+        except mysql.connector.Error as e:
+            if e.errno not in (1050, 1007):
+                logging.error(f"Schema Migration Error: {e}")
+        except Exception as e:
+            logging.error(f"Schema Migration Error: {e}")
 
 
         # 11. Add Master Voucher Column to Bank Book Record
