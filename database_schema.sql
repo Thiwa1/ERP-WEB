@@ -1272,6 +1272,7 @@ USE `Book_keeping` ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Bank_Transaction Revesale`$$
 CREATE PROCEDURE `Bank_Transaction Revesale`(IN jv_No int)
 BEGIN
 
@@ -1310,6 +1311,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Inventory_Delete`$$
 CREATE PROCEDURE `Inventory_Delete`(IN jv_No_ int)
 BEGIN
 
@@ -1346,6 +1348,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Inventory_Items_Revers_IN`$$
 CREATE PROCEDURE `Inventory_Items_Revers_IN`(IN jv_No1 int)
 BEGIN
 
@@ -1394,6 +1397,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Inventory_Items_Revers_OUT`$$
 CREATE PROCEDURE `Inventory_Items_Revers_OUT`(IN jv_No1 int)
 BEGIN
 
@@ -1435,6 +1439,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `JV_Entry_Revers`$$
 CREATE PROCEDURE `JV_Entry_Revers`(IN jv_No int,	IN User01 TEXT,IN Edit_Date DATE)
 BEGIN
 
@@ -1505,6 +1510,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Opening_Balance_any_CR_Account`$$
 CREATE PROCEDURE `Opening_Balance_any_CR_Account`(IN date_up date,IN Account_Name_01 text)
 BEGIN
 
@@ -1544,6 +1550,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Opening_Balance_any_DR_Account`$$
 CREATE PROCEDURE `Opening_Balance_any_DR_Account`(IN date_up date,IN Account_Name_01 text)
 BEGIN
 
@@ -1583,6 +1590,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `POS_Customer_Delete`$$
 CREATE PROCEDURE `POS_Customer_Delete`(IN jv_No_ int)
 BEGIN
     DECLARE var_id INT;
@@ -1616,6 +1624,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Pudate_Reversale`$$
 CREATE PROCEDURE `Pudate_Reversale`(IN jv_No int)
 BEGIN
 
@@ -1654,6 +1663,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Revers_Recept_Simple`$$
 CREATE PROCEDURE `Revers_Recept_Simple`(
     IN jv_No BIGINT,
     IN User INT,
@@ -1741,6 +1751,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Sup_Delete_Invoice`$$
 CREATE PROCEDURE `Sup_Delete_Invoice`(IN jv_No int)
 BEGIN
 
@@ -1787,6 +1798,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Suplier_Oustanding_Revers`$$
 CREATE PROCEDURE `Suplier_Oustanding_Revers`(IN jv_No int)
 BEGIN
 
@@ -1829,6 +1841,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `Suplier_Oustanding_Revers_Bank`$$
 CREATE PROCEDURE `Suplier_Oustanding_Revers_Bank`(IN jv_No int)
 BEGIN
 
@@ -1871,6 +1884,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `assets_ac`$$
 CREATE PROCEDURE `assets_ac`(in from_date date)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
@@ -1891,6 +1905,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `assets_ac_account_name`$$
 CREATE PROCEDURE `assets_ac_account_name`(in from_date date , in accout_name text)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
@@ -1911,6 +1926,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `bank_book_balance`$$
 CREATE PROCEDURE `bank_book_balance`( IN to_date date ,IN account_name text )
 BEGIN
 
@@ -1945,6 +1961,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `bank_opening_balance`$$
 CREATE PROCEDURE `bank_opening_balance`(in account_name text)
 BEGIN
 
@@ -1979,6 +1996,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `closing_inventory`$$
 CREATE PROCEDURE `closing_inventory`(IN date_up date)
 BEGIN
 
@@ -2017,6 +2035,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `cost_goods`$$
 CREATE PROCEDURE `cost_goods`(IN from_date DATE,IN to_date DATE)
 BEGIN
 
@@ -2044,6 +2063,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `customer_settele`$$
 CREATE PROCEDURE `customer_settele`(in curent_value double,in settelment_value double,in idd int)
 BEGIN
 
@@ -2076,6 +2096,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `equety_ac`$$
 CREATE PROCEDURE `equety_ac`(in from_date date)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_exe",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_exe",
@@ -2096,6 +2117,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `equety_ac_name`$$
 CREATE PROCEDURE `equety_ac_name`(in from_date date, in accout_name text)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_exe",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_exe",
@@ -2116,6 +2138,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `expenses`$$
 CREATE PROCEDURE `expenses`(IN from_date DATE,IN to_date DATE)
 BEGIN
 
@@ -2143,6 +2166,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `expenses_name`$$
 CREATE PROCEDURE `expenses_name`(IN from_date DATE,IN to_date DATE , in accout_name text)
 BEGIN
 
@@ -2170,6 +2194,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `income`$$
 CREATE PROCEDURE `income`(IN from_date DATE,IN to_date DATE)
 BEGIN
 
@@ -2196,6 +2221,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `income_name`$$
 CREATE PROCEDURE `income_name`(IN from_date DATE,IN to_date DATE , in accout_name text)
 BEGIN
 
@@ -2222,6 +2248,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `inventory_Opening_Balance`$$
 CREATE PROCEDURE `inventory_Opening_Balance`(from_Date date,item_name text,house text)
 BEGIN
 
@@ -2259,6 +2286,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `inventory_balance_01`$$
 CREATE PROCEDURE `inventory_balance_01`()
 BEGIN
 
@@ -2283,6 +2311,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `inventory_balance_02`$$
 CREATE PROCEDURE `inventory_balance_02`()
 BEGIN
 SELECT
@@ -2330,6 +2359,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `inventory_balance_03`$$
 CREATE PROCEDURE `inventory_balance_03`()
 BEGIN
 SELECT
@@ -2361,6 +2391,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `libility_ac`$$
 CREATE PROCEDURE `libility_ac`(in from_date date)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
@@ -2381,6 +2412,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `libility_ac_name`$$
 CREATE PROCEDURE `libility_ac_name`(in from_date date , in accout_name text)
 SELECT `new_account_table`.`account_name_of_catogory_Balace_sheet` as "Description_ex",
 `new_account_table`.`account_hold_possion_Balace_Sheet` as "No_ex",
@@ -2401,6 +2433,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `opening_inventory`$$
 CREATE PROCEDURE `opening_inventory`(IN date_up date )
 BEGIN
 
@@ -2438,6 +2471,7 @@ DELIMITER ;
 
 DELIMITER $$
 USE `Book_keeping`$$
+DROP PROCEDURE IF EXISTS `vender_settele`$$
 CREATE PROCEDURE `vender_settele`(in curent_value double,in settelment_value double,in id int)
 BEGIN
 

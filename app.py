@@ -4496,7 +4496,7 @@ def bank_payment_submit():
             )
             ''')
         except mysql.connector.Error as e:
-            if e.errno not in (1050, 1007):
+            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
                 logging.error(f"Schema Migration Error: {e}")
         except Exception as e:
             logging.error(f"Schema Migration Error: {e}")
@@ -9396,7 +9396,7 @@ def run_schema_migrations(target_db_conn=None):
         try:
             cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
         except mysql.connector.Error as e:
-            if e.errno not in (1050, 1007):
+            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
                 logging.error(f"Error creating migrations table: {e}")
         except Exception as e:
             logging.error(f"Error creating migrations table: {e}")
@@ -9687,7 +9687,7 @@ def run_schema_migrations(target_db_conn=None):
             )
             ''')
         except mysql.connector.Error as e:
-            if e.errno not in (1050, 1007):
+            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
                 logging.error(f"Schema Migration Error: {e}")
         except Exception as e:
             logging.error(f"Schema Migration Error: {e}")
