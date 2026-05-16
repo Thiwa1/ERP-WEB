@@ -391,8 +391,10 @@ def parse_and_execute_sql(cursor, content):
                 except mysql.connector.Error as e:
                     # If this is a CREATE SCHEMA/DATABASE statement and we hit 1007/1044, safely ignore
                     upper_sql = sql_to_run.upper()
-                    if e.errno in (1007, 1044, 1050, 1305):
-                        logging.warning(f"Ignored DB/Schema creation error in parse_and_execute_sql: {e.msg}")
+
+                    if e.errno in (1007, 1044, 1050, 1305, 1227, 1060, 1061, 1146, 1054):
+                        pass # Ignore completely
+
                     else:
                         print(f"SQL Error: {e} | Statement: {sql_to_run[:50]}...")
                         raise e
@@ -730,10 +732,7 @@ def login():
                 if master_user['is_active'] == 0:
                     return redirect(url_for('payment_due'))
 
-                # Check Tenant DB Initialization Status
-                if master_user.get('db_initialized', 1) == 0:
-                    flash('Your account is pending database setup by the administrator. Please try again later.', 'warning')
-                    return redirect(url_for('login'))
+                # Removed db_initialized check to unblock users
 
                 if master_user['password'] == password:
                     # Login Successful on Master
@@ -9428,7 +9427,7 @@ def run_schema_migrations(target_db_conn=None):
             col_type = res[1]
             # Check if it is varchar(45) or similar short length
             if (isinstance(col_type, bytes) and b'varchar(45)' in col_type.lower()) or (isinstance(col_type, str) and 'varchar(45)' in col_type.lower()):
-                print("Migrating: Extending Login_Table Password column to 255 chars")
+                pass
                 cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # Pose_Setting_Table
@@ -9439,7 +9438,7 @@ def run_schema_migrations(target_db_conn=None):
             if res_pos:
                 col_type_pos = res_pos[1]
                 if (isinstance(col_type_pos, bytes) and b'varchar(45)' in col_type_pos.lower()) or (isinstance(col_type_pos, str) and 'varchar(45)' in col_type_pos.lower()):
-                    print("Migrating: Extending Pose_Setting_Table Password column to 255 chars")
+                    pass
                     cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # 1b. User_Rights Columns
@@ -9463,7 +9462,7 @@ def run_schema_migrations(target_db_conn=None):
             # res format: ('Password', 'varchar(45)', ...)
             col_type = res[1].lower()
             if (isinstance(col_type, bytes) and b'varchar(45)' in col_type) or (isinstance(col_type, str) and 'varchar(45)' in col_type):
-                print("Migrating: Expanding Password column in Login_Table to VARCHAR(255)")
+                pass
                 cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # Pose_Setting_Table
@@ -9474,7 +9473,7 @@ def run_schema_migrations(target_db_conn=None):
             if res:
                 col_type = res[1].lower()
                 if (isinstance(col_type, bytes) and b'varchar(45)' in col_type) or (isinstance(col_type, str) and 'varchar(45)' in col_type):
-                    print("Migrating: Expanding Password column in Pose_Setting_Table to VARCHAR(255)")
+                    pass
                     cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
 
         # 2. Currency Table

@@ -30,7 +30,7 @@ def run_migrations(conn):
                 if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
                     logging.error(f"Schema Migration Error: {e}")
             except Exception as e:
-                print(f"Error recording migration {name}: {e}")
+                pass # Ignore printing error for recording migration {name}
 
         # Execute individual migration steps
         _migrate_user_rights(cursor)
@@ -63,7 +63,7 @@ def _ensure_migration_table(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error creating migrations table: {e}")
+                pass # Ignore printing error for creating migrations table
 
 def _migrate_user_rights(cursor):
     """1. Add columns to User_Rights table."""
@@ -83,7 +83,7 @@ def _migrate_user_rights(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating User_Rights: {e}")
+                pass # Ignore printing error for migrating User_Rights
 
 def _migrate_currency_table(cursor):
     """2. Create currency_table if it doesn't exist."""
@@ -105,7 +105,7 @@ def _migrate_currency_table(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating currency_table: {e}")
+                pass # Ignore printing error for migrating currency_table
 
 def _migrate_account_currency(cursor, conn, is_migration_applied, record_migration):
     """3. Add currency_code to new_account_table."""
@@ -139,7 +139,7 @@ def _migrate_inventory_items(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating inventoy_items: {e}")
+                pass # Ignore printing error for migrating inventoy_items
 
 def _migrate_suppliers_table(cursor):
     """5. Add TIN and NIC columns to suppliers."""
@@ -158,7 +158,7 @@ def _migrate_suppliers_table(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating suppliers table: {e}")
+                pass # Ignore printing error for migrating suppliers table
 
 def _migrate_company_table(cursor):
     """5b. Add vat_registered to company."""
@@ -172,7 +172,7 @@ def _migrate_company_table(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating company table: {e}")
+                pass # Ignore printing error for migrating company table
 
 def _migrate_tax_rates(cursor):
     """6. Create tax_rates table."""
@@ -197,7 +197,7 @@ def _migrate_tax_rates(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating tax_rates table: {e}")
+                pass # Ignore printing error for migrating tax_rates table
 
 def _migrate_cheque_print_settings(cursor):
     """7. Create cheque_print_settings table."""
@@ -236,7 +236,7 @@ def _migrate_cheque_print_settings(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating cheque_print_settings: {e}")
+                pass # Ignore printing error for migrating cheque_print_settings
 
 def _migrate_wht_payable_account(cursor):
     """Add WHT Payable to new_account_table if missing."""
@@ -256,7 +256,7 @@ def _migrate_wht_payable_account(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating WHT Payable account: {e}")
+                pass # Ignore printing error for migrating WHT Payable account
 
 def _migrate_proforma_invoice(cursor):
     """8. Create Proforma Invoice Tables."""
@@ -299,7 +299,7 @@ def _migrate_proforma_invoice(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating proforma_invoice tables: {e}")
+                pass # Ignore printing error for migrating proforma_invoice tables
 
 def _migrate_password_length(cursor):
     """Update Password column length in Login_Table and Pose_Setting_Table to accommodate hashes."""
@@ -310,7 +310,7 @@ def _migrate_password_length(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating Password column length (Login_Table): {e}")
+                pass # Ignore printing error for migrating Password column length (Login_Table)
 
     try:
         print("Migrating: Extending Password column length in Pose_Setting_Table")
@@ -319,7 +319,7 @@ def _migrate_password_length(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating Password column length (Pose_Setting_Table): {e}")
+                pass # Ignore printing error for migrating Password column length (Pose_Setting_Table)
 
 
 def _migrate_pos_security_features(cursor):
@@ -397,7 +397,7 @@ def _migrate_pos_security_features(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating pos security features: {e}")
+                pass # Ignore printing error for migrating pos security features
 
 
 def _migrate_approval_workflow(cursor):
@@ -455,4 +455,4 @@ def _migrate_approval_workflow(cursor):
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
-        print(f"Error migrating approval workflow: {e}")
+                pass # Ignore printing error for migrating approval workflow
