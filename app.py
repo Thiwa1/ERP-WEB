@@ -355,7 +355,8 @@ def setup_master_db():
             print(f"Error initializing default DB ({default_db_name}): {default_db_err}")
 
     except Exception as e:
-        print(f"Error setting up Master DB: {e}")
+        if getattr(e, "errno", None) not in (1050, 1007, 1060, 1061, 1146, 1054, 1304, 1305):
+            print(f"Error setting up Master DB: {e}")
 
 def parse_and_execute_sql(cursor, content):
     """Parses SQL content with DELIMITER support and executes it."""
