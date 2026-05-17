@@ -2690,7 +2690,11 @@ def bank_statement_analysis():
         return redirect(url_for('bulk_upload_gl'))
 
     try:
-        from PIL import Image
+        try:
+            from PIL import Image
+        except ImportError:
+            flash("Error processing image: No module named 'PIL'. Please install it using 'pip install Pillow'.", "danger")
+            return redirect(url_for('bulk_upload_gl'))
         import pytesseract
 
         img = Image.open(file.stream)
