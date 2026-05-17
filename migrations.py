@@ -27,7 +27,7 @@ def run_migrations(conn):
                 cursor.execute("INSERT INTO migrations (migration_name) VALUES (%s)", (name,))
                 conn.commit()
             except mysql.connector.Error as e:
-                if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+                if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
                     logging.error(f"Schema Migration Error: {e}")
             except Exception as e:
                 pass # Ignore printing error for recording migration {name}
@@ -50,7 +50,7 @@ def run_migrations(conn):
         conn.commit()
         cursor.close()
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
         print(f"Schema Migration Error: {e}")
@@ -60,7 +60,7 @@ def _ensure_migration_table(cursor):
     try:
         cursor.execute("CREATE TABLE IF NOT EXISTS migrations (id INT AUTO_INCREMENT PRIMARY KEY, migration_name VARCHAR(255) UNIQUE NOT NULL, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for creating migrations table
@@ -80,7 +80,7 @@ def _migrate_user_rights(cursor):
                 print(f"Migrating: Adding {col} to User_Rights")
                 cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating User_Rights
@@ -102,7 +102,7 @@ def _migrate_currency_table(cursor):
             # Insert default if empty
             cursor.execute("INSERT INTO currency_table (currency_code, currency_name, is_base_currency) VALUES ('LKR', 'Sri Lankan Rupee', 1)")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating currency_table
@@ -115,7 +115,7 @@ def _migrate_account_currency(cursor, conn, is_migration_applied, record_migrati
             record_migration('add_currency_code_to_new_account')
             print("Migrated: add_currency_code_to_new_account")
         except mysql.connector.Error as e:
-            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
                 logging.error(f"Schema Migration Error: {e}")
         except Exception as e:
             if "Duplicate column" in str(e) or "1060" in str(e):
@@ -136,7 +136,7 @@ def _migrate_inventory_items(cursor):
             print("Migrating: Adding uom_conversion_rate to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN uom_conversion_rate DOUBLE DEFAULT 1")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating inventoy_items
@@ -155,7 +155,7 @@ def _migrate_suppliers_table(cursor):
             print("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating suppliers table
@@ -169,7 +169,7 @@ def _migrate_company_table(cursor):
             print("Migrating: Adding vat_registered to company")
             cursor.execute("ALTER TABLE company ADD COLUMN vat_registered TINYINT DEFAULT 0")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating company table
@@ -194,7 +194,7 @@ def _migrate_tax_rates(cursor):
             cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Rent', 10.0, 'Withholding Tax on Rent')")
             cursor.execute("INSERT INTO tax_rates (tax_name, rate, description) VALUES ('WHT - Professional Fees', 5.0, 'Withholding Tax on Professional Fees')")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating tax_rates table
@@ -233,7 +233,7 @@ def _migrate_cheque_print_settings(cursor):
                 )
             """)
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating cheque_print_settings
@@ -253,7 +253,7 @@ def _migrate_wht_payable_account(cursor):
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, CURRENT_DATE, %s, 1, %s)
             """, ('WHT Payable', 6, 'Current liabilities', None, None, None, None, None, 1, None, 0, 'CR'))
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating WHT Payable account
@@ -296,7 +296,7 @@ def _migrate_proforma_invoice(cursor):
                 )
             """)
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating proforma_invoice tables
@@ -307,7 +307,7 @@ def _migrate_password_length(cursor):
         print("Migrating: Extending Password column length in Login_Table")
         cursor.execute("ALTER TABLE Login_Table MODIFY COLUMN Password VARCHAR(255)")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating Password column length (Login_Table)
@@ -316,7 +316,7 @@ def _migrate_password_length(cursor):
         print("Migrating: Extending Password column length in Pose_Setting_Table")
         cursor.execute("ALTER TABLE Pose_Setting_Table MODIFY COLUMN Password VARCHAR(255)")
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating Password column length (Pose_Setting_Table)
@@ -394,7 +394,7 @@ def _migrate_pos_security_features(cursor):
             """)
 
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating pos security features
@@ -452,7 +452,7 @@ def _migrate_approval_workflow(cursor):
             """)
 
     except mysql.connector.Error as e:
-        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating approval workflow

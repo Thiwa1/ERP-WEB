@@ -6562,14 +6562,14 @@ def sales_summary_cashier():
     # 1. Fetch Current User PK (Session stores user_pk as 'id' from Login_Table)
     current_user_pk = session.get('user_pk')
 
-    # Fetch cashier name from pose_setting_table if possible, or Login_Table
-    # The C# error suggests RecodeUserId in pos_sales_invoice_01 is INT (likely Login_Table.id or pose_setting_table.Id)
+    # Fetch cashier name from Pose_Setting_Table if possible, or Login_Table
+    # The C# error suggests RecodeUserId in pos_sales_invoice_01 is INT (likely Login_Table.id or Pose_Setting_Table.Id)
     # But C# uses `control_variable.POS_User_ID` which implies it might be different from Login User.
     # However, given `current_cashier_id = get_current_user_id()` returns `session['user_id']` (User_Code e.g., 'ADM001'),
     # and the error says "Truncated incorrect DOUBLE value: 'ADM001'", it means `RecodeUserId` column is numeric.
     # We should use `session['user_pk']` (the auto-inc ID) for filtering if RecodeUserId stores the ID.
 
-    res = db.execute_query("SELECT User_Name FROM pose_setting_table WHERE Id = %s", (current_user_pk,))
+    res = db.execute_query("SELECT User_Name FROM Pose_Setting_Table WHERE Id = %s", (current_user_pk,))
     cashier_name = res[0]['User_Name'] if res else session.get('username', 'Unknown')
 
     # 2. Build Query
@@ -6594,7 +6594,7 @@ def sales_summary_cashier():
             s.RecodeUserId,
             lt.User_Name as CashierName
         FROM pos_sales_invoice_01 s
-        LEFT JOIN pose_setting_table lt ON s.RecodeUserId = lt.Id
+        LEFT JOIN Pose_Setting_Table lt ON s.RecodeUserId = lt.Id
         WHERE DATE(s.AcctionDate) = %s
         AND s.Revers = 0
     """
@@ -8541,7 +8541,7 @@ def pos_settings():
 
             # Update Query
             query = """
-                UPDATE pose_setting_table SET
+                UPDATE Pose_Setting_Table SET
                     Select_Inventry_Location=%s, Card_Control_AC=%s, Cash_Account=%s,
                     Sales_with_market_price=%s, Sales_with_Special_price=%s, Loyalty_Price=%s, VAT_Enable=%s,
                     Footer_Message=%s, Top_Message=%s
@@ -8565,7 +8565,7 @@ def pos_settings():
 
     # GET
     # 1. Fetch all POS users for dropdown
-    pos_users = db.execute_query("SELECT Id, User_Name FROM pose_setting_table")
+    pos_users = db.execute_query("SELECT Id, User_Name FROM Pose_Setting_Table")
 
     # 2. Determine Selected User
     selected_user_id = request.args.get('user_id')
@@ -8583,7 +8583,7 @@ def pos_settings():
                 selected_user_id = pos_users[0]['Id']
 
         # Fetch settings for selected user
-        res = db.execute_query("SELECT * FROM pose_setting_table WHERE Id = %s", (selected_user_id,))
+        res = db.execute_query("SELECT * FROM Pose_Setting_Table WHERE Id = %s", (selected_user_id,))
         if res:
             current_settings = res[0]
             # Handle Image for Display (Convert bytes to base64)
@@ -8623,7 +8623,7 @@ def add_pos_user():
 
     try:
         # Check duplicate
-        exists = db.execute_query("SELECT Id FROM pose_setting_table WHERE User_Name = %s", (username,))
+        exists = db.execute_query("SELECT Id FROM Pose_Setting_Table WHERE User_Name = %s", (username,))
         if exists:
             flash('Username already exists', 'danger')
             return redirect(url_for('pos_settings'))
@@ -8631,7 +8631,7 @@ def add_pos_user():
         from werkzeug.security import generate_password_hash
         pw_hash = generate_password_hash(password)
         db.execute_query("""
-            INSERT INTO pose_setting_table (Id, User_Name, Password, Mobile_Number)
+            INSERT INTO Pose_Setting_Table (Id, User_Name, Password, Mobile_Number)
             VALUES (0, %s, %s, %s)
         """, (username, pw_hash, mobile), commit=True)
 
@@ -8689,7 +8689,7 @@ def pos_api_login():
         if tenant_db_name and is_safe_db_name(tenant_db_name):
             cursor.execute(f"USE `{tenant_db_name}`")
 
-        cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+        cursor.execute("SELECT * FROM Pose_Setting_Table WHERE User_Name = %s", (username,))
         users = cursor.fetchall()
 
         if not users:
@@ -8711,7 +8711,7 @@ def pos_api_login():
             elif stored_password == password:
                 verified = True
                 new_hash = generate_password_hash(password)
-                cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                cursor.execute("UPDATE Pose_Setting_Table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
                 conn.commit()
         except Exception:
             if stored_password == password:
@@ -8720,16 +8720,16 @@ def pos_api_login():
         if not verified:
             fails = user.get('failed_attempts', 0) + 1
             if fails >= 3:
-                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
                 conn.commit()
                 return {'success': False, 'error': 'Account locked due to too many failed attempts. Contact admin.'}, 403
             else:
-                cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
                 conn.commit()
                 return {'success': False, 'error': 'Invalid username or password'}, 401
 
         # Successful login, reset attempts
-        cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+        cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
         conn.commit()
 
         session['db_name'] = tenant_db_name
@@ -8900,7 +8900,7 @@ def pos_web_login():
                 if tenant_db_name and is_safe_db_name(tenant_db_name):
                     cursor.execute(f"USE `{tenant_db_name}`")
 
-                cursor.execute("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+                cursor.execute("SELECT * FROM Pose_Setting_Table WHERE User_Name = %s", (username,))
                 users = cursor.fetchall()
 
                 if not users:
@@ -8922,7 +8922,7 @@ def pos_web_login():
                     elif stored_password == password:
                         verified = True
                         new_hash = generate_password_hash(password)
-                        cursor.execute("UPDATE pose_setting_table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
+                        cursor.execute("UPDATE Pose_Setting_Table SET Password = %s WHERE Id = %s", (new_hash, user['Id']))
                         conn.commit()
                 except Exception:
                     if stored_password == password:
@@ -8931,17 +8931,17 @@ def pos_web_login():
                 if not verified:
                     fails = user.get('failed_attempts', 0) + 1
                     if fails >= 3:
-                        cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
+                        cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = %s, is_locked = 1 WHERE Id = %s", (fails, user['Id']))
                         conn.commit()
                         flash('Account locked due to too many failed attempts. Contact admin.', 'danger')
                     else:
-                        cursor.execute("UPDATE pose_setting_table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
+                        cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = %s WHERE Id = %s", (fails, user['Id']))
                         conn.commit()
                         flash('Invalid username or password', 'danger')
                     return redirect(url_for('pos_web_login'))
 
                 # Successful auth -> Reset failed attempts
-                cursor.execute("UPDATE pose_setting_table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
+                cursor.execute("UPDATE Pose_Setting_Table SET failed_attempts = 0 WHERE Id = %s", (user['Id'],))
                 conn.commit()
 
                 # Check Device Fingerprint
@@ -9039,12 +9039,12 @@ def pos_verify_2fa():
             cursor.execute("INSERT INTO pos_user_devices (user_id, ip_address, user_agent, last_login) VALUES (%s, %s, %s, %s)", (user_id, ip_address, user_agent, datetime.now()))
 
             # Fetch User to setup session
-            cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+            cursor.execute("SELECT * FROM Pose_Setting_Table WHERE Id = %s", (user_id,))
             user = cursor.fetchone()
             conn.commit()
 
             # Since this is a new device, force password change immediately
-            cursor.execute("UPDATE pose_setting_table SET must_change_password = 1 WHERE Id = %s", (user_id,))
+            cursor.execute("UPDATE Pose_Setting_Table SET must_change_password = 1 WHERE Id = %s", (user_id,))
             conn.commit()
 
             return render_template('pos_reset_password.html')
@@ -9084,9 +9084,9 @@ def pos_reset_password():
             cursor.execute(f"USE `{tenant_db_name}`")
 
         new_hash = generate_password_hash(new_password)
-        cursor.execute("UPDATE pose_setting_table SET Password = %s, must_change_password = 0 WHERE Id = %s", (new_hash, user_id))
+        cursor.execute("UPDATE Pose_Setting_Table SET Password = %s, must_change_password = 0 WHERE Id = %s", (new_hash, user_id))
 
-        cursor.execute("SELECT * FROM pose_setting_table WHERE Id = %s", (user_id,))
+        cursor.execute("SELECT * FROM Pose_Setting_Table WHERE Id = %s", (user_id,))
         user = cursor.fetchone()
         conn.commit()
 
@@ -9111,8 +9111,8 @@ def pos_reset_password():
 def pos_api_settings():
     username = session.get('username')
 
-    # Verify against pose_setting_table
-    users = db.execute_query("SELECT * FROM pose_setting_table WHERE User_Name = %s", (username,))
+    # Verify against Pose_Setting_Table
+    users = db.execute_query("SELECT * FROM Pose_Setting_Table WHERE User_Name = %s", (username,))
 
     if users:
         settings = users[0]
