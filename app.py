@@ -2675,6 +2675,76 @@ def bulk_upload_gl():
 
     return render_template('bulk_upload_gl.html')
 
+
+@app.route('/bank_statement_analysis', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bank_statement_analysis():
+    if 'file' not in request.files:
+        flash('No file uploaded', 'danger')
+        return redirect(url_for('bulk_upload_gl'))
+
+    file = request.files['file']
+    if file.filename == '':
+        flash('No file selected', 'danger')
+        return redirect(url_for('bulk_upload_gl'))
+
+    try:
+        from PIL import Image
+        import pytesseract
+
+        img = Image.open(file.stream)
+        # Convert to grayscale for better OCR
+        img = img.convert('L')
+        text = pytesseract.image_to_string(img)
+
+        # Parse extracted text for transactions (Date, Description, Amount)
+        # We look for simple patterns: Date (05JAN26), Desc, Amount (142,739.00)
+        transactions = []
+
+        # Regex to catch typical bank statement rows
+        # E.g. "05JAN26 CHEQUE NO000025775 142,739.00"
+        # Or "09JAN26 TRANSFER CHQ 567127 200,000.00"
+        lines = text.split('\n')
+        for line in lines:
+            # Look for a date at the start (e.g. DDMMM YY)
+            match = re.search(r"(\d{2}[A-Za-z]{3}\d{2})\s+(.*?)\s+([\d,]+\.\d{2})", line)
+            if match:
+                date_str = match.group(1).strip()
+                desc = match.group(2).strip()
+                amount_str = match.group(3).replace(',', '').strip()
+
+                try:
+                    amount = float(amount_str)
+
+                    # Guess Type based on keywords (Very basic heuristic)
+                    # For a real system, you'd match against the 'DEPOSIT' column vs 'WITHDRAWAL' column,
+                    # but here we use simple text heuristics or assume everything is a payment unless 'DEPOSIT'
+                    if 'DEPOSIT' in desc.upper() or 'RECEIPT' in desc.upper():
+                        txn_type = 'Receipt'
+                    else:
+                        txn_type = 'Payment'
+
+                    transactions.append({
+                        'date': date_str,
+                        'description': desc,
+                        'amount': amount,
+                        'type': txn_type
+                    })
+                except ValueError:
+                    continue
+
+        if not transactions:
+            flash('Could not cleanly extract transactions. Please try a clearer image.', 'warning')
+
+        return render_template('bank_statement_review.html', transactions=transactions)
+
+    except Exception as e:
+        logging.error(f"OCR Error: {e}")
+        flash(f'Error processing image: {str(e)}', 'danger')
+        return redirect(url_for('bulk_upload_gl'))
+
+
 @app.route('/bulk_upload_tb', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Accounting')

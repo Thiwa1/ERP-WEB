@@ -1526,6 +1526,58 @@
                 });
         });
 
+
+        // Auto-fill form fields from query parameters if present (for Bank Statement parsing)
+        document.addEventListener('DOMContentLoaded', function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const amount = urlParams.get('amount');
+            const ref = urlParams.get('ref');
+
+            if (amount) {
+                // Try common amount field IDs or Names
+                const amountFields = ['actualAmount', 'newCustAmount', 'vatAmount'];
+                amountFields.forEach(id => {
+                    const el = document.getElementById(id);
+                    if(el) el.value = amount;
+                });
+
+                // For Customer Receipt
+                const recAmount = document.getElementById('ReceiptAmount');
+                if (recAmount) { recAmount.value = amount; recAmount.dispatchEvent(new Event('input')); }
+
+                // For Bank Payment
+                const payAmount = document.getElementById('Amount');
+                if (payAmount) { payAmount.value = amount; payAmount.dispatchEvent(new Event('input')); }
+
+                // For Journal Entry
+                const jvType = urlParams.get('type');
+                if (jvType === 'receipt') {
+                    const dr1 = document.querySelector('input[name="dr_1"]');
+                    if(dr1) dr1.value = amount;
+                } else if (jvType === 'payment') {
+                    const cr1 = document.querySelector('input[name="cr_1"]');
+                    if(cr1) cr1.value = amount;
+                }
+            }
+
+            if (ref) {
+                const refFields = ['remark', 'Narration', 'description'];
+                refFields.forEach(id => {
+                    const el = document.getElementById(id);
+                    if(el) el.value = ref;
+
+                    const elName = document.querySelector(`input[name="${id}"]`);
+                    if(elName) elName.value = ref;
+                });
+
+                // JV
+                const jvRef = document.querySelector('input[name="narration_1"]');
+                if(jvRef) jvRef.value = ref;
+                const jvHRef = document.querySelector('input[name="header_narration"]');
+                if(jvHRef) jvHRef.value = ref;
+            }
+        });
+
         function updateGlobalCustomer() {
             const select = document.getElementById('globalCustomerSelect');
             const custId = select.value;

@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}Bank Statement Analysis{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="mb-0 fw-bold text-dark"><i class="fas fa-file-invoice-dollar text-primary me-2"></i> Bank Statement Analysis</h4>
+        <a href="/bulk_upload_gl" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back</a>
+    </div>
+
+    <div class="alert alert-info border-0 shadow-sm">
+        <i class="fas fa-info-circle me-2"></i> <strong>Analysis Complete:</strong> Please review the extracted transactions below. You can assign each transaction to the relevant section (Receipt, Payment, JV) to automatically fill standard forms.
+    </div>
+
+    <div class="card border-0 shadow-sm win-card">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Date</th>
+                            <th>Description</th>
+                            <th class="text-end">Amount</th>
+                            <th class="text-center">Detected Type</th>
+                            <th class="text-end">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in transactions %}
+                        <tr>
+                            <td>{{ row.date }}</td>
+                            <td><span class="fw-bold">{{ row.description }}</span></td>
+                            <td class="text-end fw-bold {{ 'text-success' if row.type == 'Receipt' else 'text-danger' }}">
+                                {{ row.amount|currency }}
+                            </td>
+                            <td class="text-center">
+                                {% if row.type == 'Receipt' %}
+                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="fas fa-arrow-down me-1"></i> Receipt</span>
+                                {% else %}
+                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25"><i class="fas fa-arrow-up me-1"></i> Payment</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end">
+                                {% if row.type == 'Receipt' %}
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                            Process As
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="/customer_receipt?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-receipt text-success me-2"></i> Customer Receipt</a></li>
+                                            <li><a class="dropdown-item" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=receipt" target="_blank"><i class="fas fa-book text-primary me-2"></i> Journal Entry (JV)</a></li>
+                                            <li><a class="dropdown-item" href="/invoice_creating?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"><i class="fas fa-file-invoice-dollar text-info me-2"></i> Sales Invoice</a></li>
+                                        </ul>
+                                    </div>
+                                {% else %}
+                                    <div class="btn-group">
+                                        <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                            Process As
+                                        </button>
+                                        <ul class="dropdown-menu dropdown-menu-end">
+                                            <li><a class="dropdown-item" href="/bank_payment?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-university text-danger me-2"></i> Supplier / Bank Payment</a></li>
+                                            <li><a class="dropdown-item" href="/direct_purchasing?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-hand-holding-usd text-warning me-2"></i> Direct Purchase</a></li>
+                                            <li><a class="dropdown-item" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=payment" target="_blank"><i class="fas fa-book text-primary me-2"></i> Journal Entry (JV)</a></li>
+                                            <li><a class="dropdown-item" href="/service_entry?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"><i class="fas fa-file-invoice text-secondary me-2"></i> Service Entry (SRN)</a></li>
+                                        </ul>
+                                    </div>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center py-5 text-muted">
+                                <i class="fas fa-search fa-3x mb-3 text-light"></i>
+                                <h5>No transactions found</h5>
+                                <p>We couldn't extract any valid transactions from the uploaded image. Please try a clearer image.</p>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
