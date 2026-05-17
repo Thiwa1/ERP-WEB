@@ -26,6 +26,26 @@
         </div>
     </div>
 
+
+    <!-- Bank Statement Upload Form -->
+    <div class="card shadow-sm mb-4 border-0 mt-4">
+        <div class="card-body bg-light text-center py-5">
+            <form action="{{ url_for('bank_statement_analysis') }}" method="POST" enctype="multipart/form-data">
+                <i class="fas fa-file-invoice-dollar fa-3x text-primary mb-3"></i>
+                <h5 class="mb-3">Bank Statement Image Analysis</h5>
+                <p class="text-muted small mb-4">Upload an image of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.</p>
+
+                <div class="d-flex justify-content-center">
+                    <input type="file" name="file" class="form-control w-50" accept="image/png, image/jpeg, image/jpg" required>
+                </div>
+
+                <button type="submit" class="btn btn-outline-primary fw-bold mt-4 px-5">
+                    <i class="fas fa-magic me-2"></i> Analyze Image
+                </button>
+            </form>
+        </div>
+    </div>
+
     <!-- Instructions -->
     <div class="alert alert-info">
         <h6 class="fw-bold"><i class="fas fa-info-circle me-2"></i> Instructions</h6>

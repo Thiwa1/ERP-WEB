@@ -3,3 +3,5 @@ mysql-connector-python
 num2words
 python-dotenv
 PyPDF2==3.0.1
+pytesseract==0.3.13
+Pillow>=8.0.0
