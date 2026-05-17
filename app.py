@@ -6253,7 +6253,7 @@ def customer_aging():
             io.invoice_total_oustanding as InvoiceTotal,
             COALESCE(io.invoice_oustanding_Patment, 0) as PaidAmount,
             (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) as Outstanding
-        FROM invoice_oustanding io
+        FROM Invoice_Oustanding io
         INNER JOIN suppliers s ON io.invoice_buinding_Customer = s.sup_id
         WHERE s.Is_Customer = 1
         AND io.oustanding_delete = 0
@@ -6567,7 +6567,7 @@ def sales_summary_cashier():
     current_user_pk = session.get('user_pk')
 
     # Fetch cashier name from Pose_Setting_Table if possible, or Login_Table
-    # The C# error suggests RecodeUserId in pos_sales_invoice_01 is INT (likely Login_Table.id or Pose_Setting_Table.Id)
+    # The C# error suggests RecodeUserId in POS_Sales_Invoice_01 is INT (likely Login_Table.id or Pose_Setting_Table.Id)
     # But C# uses `control_variable.POS_User_ID` which implies it might be different from Login User.
     # However, given `current_cashier_id = get_current_user_id()` returns `session['user_id']` (User_Code e.g., 'ADM001'),
     # and the error says "Truncated incorrect DOUBLE value: 'ADM001'", it means `RecodeUserId` column is numeric.
@@ -6597,7 +6597,7 @@ def sales_summary_cashier():
             s.Loyalty_No,
             s.RecodeUserId,
             lt.User_Name as CashierName
-        FROM pos_sales_invoice_01 s
+        FROM POS_Sales_Invoice_01 s
         LEFT JOIN Pose_Setting_Table lt ON s.RecodeUserId = lt.Id
         WHERE DATE(s.AcctionDate) = %s
         AND s.Revers = 0
@@ -6702,7 +6702,7 @@ def pos_reversal():
     # The C# code fetches grouped by JV for current user and date
     query = """
         SELECT jv, SUM(Total_Value) as Total_payment
-        FROM pos_sales_invoice_01
+        FROM POS_Sales_Invoice_01
         WHERE RecodeUserId = %s AND AcctionDate = %s AND Revers = 0
         GROUP BY jv
         ORDER BY jv
@@ -6729,7 +6729,7 @@ def pos_reversal_details():
     query = """
         SELECT
             Invoice_No, ItemName, QuntirySale, Total_Value
-        FROM pos_sales_invoice_01
+        FROM POS_Sales_Invoice_01
         WHERE jv = %s
     """
     rows = db.execute_query(query, (jv,))
@@ -6756,7 +6756,7 @@ def pos_receipt(jv_no):
             Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
             Loyalty_No, PaymentMethord, QuntirySale, Total_Value,
             RecodeUserId, AcctionDate, CashAccountName
-        FROM pos_sales_invoice_01
+        FROM POS_Sales_Invoice_01
         WHERE jv = %s
     """
     rows = db.execute_query(query, (jv_no,))
@@ -7397,7 +7397,7 @@ def print_receipt(jv_no):
         return "Receipt Not Found", 404
 
     # Get Invoice Details (Invoices settled by this JV)
-    # We join with invoice_oustanding or check `cash_book_suplier_oustanding_id` links
+    # We join with Invoice_Oustanding or check `cash_book_suplier_oustanding_id` links
     # Note: `cash_book_recode` has `cash_book_recode_suplier_oustanding_id` which links to `Invoice_Oustanding.Id`
 
     invoices = []
@@ -8178,7 +8178,7 @@ def dashboard_monthly_revenue():
 
             # Additional revenue from Invoices (if any)
             cursor.execute(
-                "SELECT SUM(invoice_total_oustanding) as total FROM invoice_oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
+                "SELECT SUM(invoice_total_oustanding) as total FROM Invoice_Oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
                 (first_day, last_day)
             )
             inv_row = cursor.fetchone()
@@ -8203,7 +8203,7 @@ def dashboard_monthly_revenue():
         ytd_val = float(row['total'] if row and row['total'] is not None else 0)
 
         cursor.execute(
-            "SELECT SUM(invoice_total_oustanding) as total FROM invoice_oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
+            "SELECT SUM(invoice_total_oustanding) as total FROM Invoice_Oustanding WHERE DATE(invoice_date) BETWEEN %s AND %s AND oustanding_delete = 0",
             (ytd_start, ytd_end)
         )
         inv_row = cursor.fetchone()
@@ -8488,7 +8488,7 @@ def cashier_day_sales():
             SELECT
                 COUNT(*) as total_invoices,
                 SUM(AcctionValue) as total_sales
-            FROM pos_sales_invoice_01
+            FROM POS_Sales_Invoice_01
             WHERE DATE(AcctionDate) = %s AND user_id = %s
         ''', (today, user_id))
 
@@ -9304,7 +9304,7 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
         total_sale_value += total
         total_cost_value += total_item_cost
 
-        # Prepare pos_sales_invoice_01 params
+        # Prepare POS_Sales_Invoice_01 params
         pos_sales_params.append((
             item.get('code'), item.get('name'), item.get('unit'),
             item.get('price_market'), item.get('price_special'), item.get('price_loyalty'),
@@ -9321,10 +9321,10 @@ def _process_pos_cart_items(cursor, cart, settings, current_user, current_user_p
             current_user_pk, jv_no, settings.get('location')
         ))
 
-    # Batch Insert into pos_sales_invoice_01
+    # Batch Insert into POS_Sales_Invoice_01
     if pos_sales_params:
         cursor.executemany("""
-            INSERT INTO pos_sales_invoice_01 (
+            INSERT INTO POS_Sales_Invoice_01 (
                 ItemCoude, ItemName, ItemMesurmet, SllingPrice, ItemPriceComen, ItemLoyalityPrice,
                 Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
                 RecodeUserId, Location, AcctionDate, QuntirySale, InventoryCost, PaymentMethord,
