@@ -4961,100 +4961,6 @@ def balance_sheet():
         GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
     """, (as_at_date,))
 
-@app.route('/customer_balance_sheet')
-@login_required
-@has_permission('Access_Reports')
-def customer_balance_sheet():
-    as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
-    selected_customer = request.args.get('customer_id')
-
-    customers = db.execute_query("SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name")
-
-    customer_sub_account_code = 0
-    if selected_customer:
-        customer_row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (selected_customer,))
-        if customer_row:
-            customer_name = customer_row[0]['supplier_name']
-            sub_row = db.execute_query("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (customer_name,))
-            if sub_row:
-                customer_sub_account_code = sub_row[0]['sub_account_code']
-
-    # Using existing stored procedures if possible, or reproducing logic
-    # Reproducing logic from Balance_sheet.xaml.cs using queries for portablity
-
-    assets = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
-        WHERE na.account_assets = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date, customer_sub_account_code))
-
-    liabilities = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
-        WHERE na.account_liabilities = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date, customer_sub_account_code))
-
-    equity = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0 AND ed.entry_sub_account_code = %s
-        WHERE na.account_equity = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date, customer_sub_account_code))
-
-    # Calculate Retained Earnings (Profit/Loss up to the date)
-    conn = db.get_connection()
-    cursor = conn.cursor(dictionary=True)
-    try:
-        retained_earnings = calculate_retained_earnings(cursor, as_at_date, customer_sub_account_code)
-    finally:
-        cursor.close()
-        conn.close()
-
-    # Process and organize data
-    def process_category(data):
-        cats = {}
-        total = 0.0
-        for r in data:
-            if abs(r['balance']) < 0.01: continue
-            c = r['category'] or 'Uncategorized'
-            if c not in cats: cats[c] = []
-            cats[c].append(r)
-            total += r['balance']
-        return cats, total
-
-    asset_cats, total_assets = process_category(assets)
-    liab_cats, total_liab = process_category(liabilities)
-    eq_cats, total_eq = process_category(equity)
-
-    total_eq += retained_earnings
-    if 'Retained Earnings' not in eq_cats:
-        eq_cats['Retained Earnings'] = []
-    eq_cats['Retained Earnings'].append({'name': 'Retained Earnings', 'balance': retained_earnings})
-
-    return render_template('customer_balance_sheet.html',
-                           as_at_date=as_at_date,
-                           asset_cats=asset_cats, total_assets=total_assets,
-                           liab_cats=liab_cats, total_liab=total_liab,
-                           eq_cats=eq_cats, total_eq=total_eq,
-                           customers=customers,
-                           selected_customer=int(selected_customer) if selected_customer else None)
 
     liabilities = db.execute_query("""
         SELECT
@@ -8011,17 +7917,15 @@ def bs_custom_generate():
     vars_dict = {}
 
     try:
+        # Pass 1: Gather database balances
         for r in rows:
             line_no = r['BS_LIne_Number']
-            desc = r['BS_Text_Description']
             account = r['BS_Text_Colom']
-            calc_instr = r['BS_Calqulation_instraction']
 
             amount = 0.0
 
             if account:
                 if account == "Retained earnings":
-                    # Use existing retained earnings logic
                     amount = calculate_retained_earnings(cursor, as_at_date)
                 else:
                     cursor.execute("SELECT account_basment, account_assets, account_liabilities, account_equity FROM new_account_table WHERE account_name = %s", (account,))
@@ -8047,11 +7951,26 @@ def bs_custom_generate():
                                 else:
                                     amount = cr - dr
 
-            if calc_instr:
-                amount = _safe_eval_expression(calc_instr, vars_dict)
-
             if line_no:
                 vars_dict[line_no] = amount
+
+        # Pass 2: Evaluate Calculations
+        for r in rows:
+            line_no = r['BS_LIne_Number']
+            calc_instr = r['BS_Calqulation_instraction']
+
+            if calc_instr:
+                amount = _safe_eval_expression(calc_instr, vars_dict)
+                if line_no:
+                    vars_dict[line_no] = amount
+
+        # Pass 3: Format Output
+        for r in rows:
+            line_no = r['BS_LIne_Number']
+            desc = r['BS_Text_Description']
+            account = r['BS_Text_Colom']
+
+            amount = vars_dict.get(line_no, 0.0)
 
             results.append({
                 'line': line_no,
