@@ -735,7 +735,17 @@ def login():
 
                 # Removed db_initialized check to unblock users
 
-                if master_user['password'] == password:
+                # Check password (handle both hashed and plaintext for migration)
+                is_valid = False
+                stored_pwd = master_user['password']
+                if stored_pwd.startswith('scrypt:') or stored_pwd.startswith('pbkdf2:'):
+                    from werkzeug.security import check_password_hash
+                    if check_password_hash(stored_pwd, password):
+                        is_valid = True
+                elif stored_pwd == password:
+                    is_valid = True
+
+                if is_valid:
                     # Login Successful on Master
                     session['db_name'] = master_user['db_name']
                     session['username'] = username
@@ -800,7 +810,7 @@ def login():
                         db.execute_query("UPDATE Login_Table SET Password = %s WHERE id = %s", (new_hash, user['id']), commit=True)
                         migrated = True
                     except Exception as e:
-                        logging.error("Error migrating password for user")
+                        logging.error(f"Error migrating password for user: {e}")
 
             if verified:
                 session['user_id'] = user['User_Code']
@@ -4162,6 +4172,7 @@ def admin_reset_password():
             return redirect(url_for('dashboard'))
 
         mobile = user[0]['Mobile_No']
+        import random
         otp = str(random.randint(100000, 999999))
 
         # Save OTP to session
@@ -4197,10 +4208,29 @@ def admin_verify_reset():
 
     # Update Password
     current_user_id = session.get('user_id')
+    from werkzeug.security import generate_password_hash
     pw_hash = generate_password_hash(new_password)
 
     try:
         db.execute_query("UPDATE Login_Table SET Password = %s WHERE User_Code = %s", (pw_hash, current_user_id), commit=True)
+
+        # Sync password change to Master DB users table
+        try:
+            current_db_name = get_session_db_name()
+            tenant_res = master_db.execute_query("SELECT id FROM tenants WHERE db_name = %s", (current_db_name,))
+            if tenant_res:
+                tenant_id = tenant_res[0]['id']
+                # Get the username to update the correct master DB record
+                user_res = db.execute_query("SELECT User_Name FROM Login_Table WHERE User_Code = %s", (current_user_id,))
+                if user_res:
+                    username = user_res[0]['User_Name']
+                    master_db.execute_query(
+                        "UPDATE users SET password = %s WHERE username = %s AND tenant_id = %s",
+                        (pw_hash, username, tenant_id),
+                        commit=True
+                    )
+        except Exception as e:
+            logging.error(f"Error syncing password reset to master DB: {e}")
 
         # Clear session
         session.pop('pwd_reset_otp', None)
