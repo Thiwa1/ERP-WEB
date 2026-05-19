@@ -4148,6 +4148,72 @@ def get_user_rights(user_id):
         return json.dumps(rights[0])
     return json.dumps({})
 
+@app.route('/admin/users/reset_password', methods=['GET', 'POST'])
+@login_required
+def admin_reset_password():
+    if request.method == 'GET':
+        return render_template('admin_reset_password.html')
+    else:
+        # 1. Send OTP to registered mobile number for logged in user
+        current_user_id = session.get('user_id')
+        user = db.execute_query("SELECT Mobile_No FROM Login_Table WHERE User_Code = %s", (current_user_id,))
+        if not user or not user[0]['Mobile_No']:
+            flash('No mobile number registered for your account. Please contact admin.', 'danger')
+            return redirect(url_for('dashboard'))
+
+        mobile = user[0]['Mobile_No']
+        otp = str(random.randint(100000, 999999))
+
+        # Save OTP to session
+        session['pwd_reset_otp'] = otp
+        session['pwd_reset_mobile'] = mobile
+
+        # Send SMS
+        sms_sent = send_sms_otp(mobile, otp)
+
+        if sms_sent:
+            flash(f'An OTP has been sent to your registered mobile number: {mobile[:3]}****{mobile[-3:]}', 'info')
+            return render_template('admin_verify_reset.html')
+        else:
+            flash('Failed to send OTP. Please try again later.', 'danger')
+            return redirect(url_for('dashboard'))
+
+@app.route('/admin/users/verify_reset', methods=['POST'])
+@login_required
+def admin_verify_reset():
+    entered_otp = request.form.get('otp')
+    new_password = request.form.get('new_password')
+    confirm_password = request.form.get('confirm_password')
+
+    saved_otp = session.get('pwd_reset_otp')
+
+    if not saved_otp or entered_otp != saved_otp:
+        flash('Invalid OTP. Please try again.', 'danger')
+        return render_template('admin_verify_reset.html')
+
+    if new_password != confirm_password:
+        flash('Passwords do not match.', 'danger')
+        return render_template('admin_verify_reset.html')
+
+    # Update Password
+    current_user_id = session.get('user_id')
+    pw_hash = generate_password_hash(new_password)
+
+    try:
+        db.execute_query("UPDATE Login_Table SET Password = %s WHERE User_Code = %s", (pw_hash, current_user_id), commit=True)
+
+        # Clear session
+        session.pop('pwd_reset_otp', None)
+        session.pop('pwd_reset_mobile', None)
+
+        flash('Password reset successfully. Please log in with your new password.', 'success')
+        return redirect(url_for('logout'))
+
+    except Exception as e:
+        logging.error(f"Error resetting password: {e}")
+        flash('Error resetting password. Please try again.', 'danger')
+        return render_template('admin_verify_reset.html')
+
 @app.route('/admin/users/rights/update', methods=['POST'])
 @login_required
 @has_permission('Add_New_User')
