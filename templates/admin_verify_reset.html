@@ -1,0 +1,38 @@
+{% extends 'base.html' %}
+
+{% block title %}Verify OTP & Reset Password{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-6">
+            <div class="card shadow-sm win11-card">
+                <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
+                    <h4 class="mb-0 text-center text-primary"><i class="fas fa-check-circle me-2"></i>Verify OTP</h4>
+                </div>
+                <div class="card-body p-4">
+                    <p class="text-center text-muted mb-4">Enter the OTP sent to your mobile number and your new password.</p>
+                    <form method="POST" action="/admin/users/verify_reset">
+                        <div class="mb-3">
+                            <label for="otp" class="form-label">OTP Code</label>
+                            <input type="text" class="form-control form-control-lg text-center fw-bold" id="otp" name="otp" required autocomplete="off" placeholder="Enter 6-digit OTP" maxlength="6">
+                        </div>
+                        <div class="mb-3">
+                            <label for="new_password" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                        </div>
+                        <div class="mb-4">
+                            <label for="confirm_password" class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                        </div>
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-save me-2"></i>Reset Password</button>
+                            <a href="/admin/users/reset_password" class="btn btn-outline-secondary mt-2">Resend OTP</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
