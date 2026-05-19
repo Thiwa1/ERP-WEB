@@ -7887,12 +7887,12 @@ def bs_custom_setup(format_id):
                 cursor.execute('''
                     INSERT INTO BS_Setup (
                         BS_Report_ID, BS_LIne_Number, BS_Text_Description, BS_Text_Colom,
-                        BS_Calqulation_instraction, BS_Text_Format, BS_Text_line, BS_Text_Size
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        BS_Col_A, BS_Col_B, BS_Calqulation_instraction, BS_Text_Format, BS_Text_line, BS_Text_Size
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ''', (
                     str(format_id), r.get('BS_LIne_Number'), r.get('BS_Text_Description'), r.get('BS_Text_Colom'),
-                    r.get('BS_Calqulation_instraction'), r.get('BS_Text_Format'), r.get('BS_Text_line'),
-                    r.get('BS_Text_Size')
+                    r.get('BS_Col_A', ''), r.get('BS_Col_B', ''), r.get('BS_Calqulation_instraction'),
+                    r.get('BS_Text_Format'), r.get('BS_Text_line'), r.get('BS_Text_Size')
                 ))
             conn.commit()
             return {'success': True}
