@@ -10763,7 +10763,10 @@ def fixed_assets():
     classes = db.execute_query("SELECT DISTINCT asset_class FROM fixed_assets_register WHERE asset_class IS NOT NULL AND asset_class != ''")
     locations = db.execute_query("SELECT DISTINCT location FROM fixed_assets_register WHERE location IS NOT NULL AND location != ''")
 
-    return render_template('fixed_assets.html', accounts=accounts, classes=classes, locations=locations)
+    # Fetch suppliers
+    suppliers = db.execute_query("SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name")
+
+    return render_template('fixed_assets.html', accounts=accounts, classes=classes, locations=locations, suppliers=suppliers)
 
 @app.route('/fixed_assets/add', methods=['POST'])
 @login_required
@@ -10783,20 +10786,228 @@ def add_fixed_asset():
         asset_acc = request.form.get('asset_account_id')
         exp_acc = request.form.get('expense_account_id')
         acc_dep_acc = request.form.get('accumulated_dep_account_id')
+        supplier_id = request.form.get('supplier_id') or None
 
         if not asset_acc or not exp_acc or not acc_dep_acc:
              flash('Please select all GL accounts', 'warning')
              return redirect(url_for('fixed_assets'))
 
-        query = """
-            INSERT INTO fixed_assets_register
-            (asset_class, description, brand_name, quantity, serial_no, location, cost_value, purchasing_date, depreciable_life_months, asset_account_id, expense_account_id, accumulated_dep_account_id)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        db.execute_query(query, (class_name, desc, brand, qty, serial, location, cost, p_date, life, asset_acc, exp_acc, acc_dep_acc), commit=True)
+        # Post to GL if requested
+        post_gl = request.form.get('post_gl')
+        credit_acc_id = request.form.get('credit_account_id')
+
+        jv_id = None
+
+        if post_gl and credit_acc_id and cost > 0:
+            current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
+
+            conn = db.get_connection()
+            if conn:
+                cursor = conn.cursor(dictionary=True)
+                try:
+                    conn.start_transaction()
+
+                    # Get account names
+                    cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (asset_acc,))
+                    asset_acc_name = cursor.fetchone()['account_name']
+
+                    cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (credit_acc_id,))
+                    credit_acc_name = cursor.fetchone()['account_name']
+
+                    # Create JV
+                    narration = f"Fixed Asset Purchase - {class_name} ({desc})"
+                    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                                  (f"FA-PUR-{int(datetime.now().timestamp())}", narration))
+                    jv_id = cursor.lastrowid
+
+                    # DR Asset Account
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date,
+                            entry_naration, entry_create_user, entry_jv
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (asset_acc_name, cost, 0, p_date, date.today(), narration, current_user_pk, jv_id))
+
+                    # CR Payment/Liability Account
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date,
+                            entry_naration, entry_create_user, entry_jv
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (credit_acc_name, 0, cost, p_date, date.today(), narration, current_user_pk, jv_id))
+
+                    # Log Liability for Account Payable
+                    if credit_acc_name.lower() == 'account payable' and supplier_id:
+                        cursor.execute("SELECT supplier_code FROM suppliers WHERE sup_id = %s", (supplier_id,))
+                        sup_res = cursor.fetchone()
+                        supplier_code = sup_res['supplier_code'] if sup_res else ""
+
+                        inv_num = f"FA-INV-{jv_id}"
+                        cursor.execute("""
+                            INSERT INTO suppliers_invoice_data (
+                                suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                                suppliers_invoice_total_oustanding, suppliers_invoice_total_payment,
+                                suppliers_invoice_final_date, suppliers_invoice_buinding_supplier,
+                                suppliers_invoice_JV, suppliers_VAT_rate
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """, (supplier_code, inv_num, p_date, cost, 0, p_date, supplier_id, jv_id, 0))
+
+                    # Finally insert Asset (now with JV)
+                    query = """
+                        INSERT INTO fixed_assets_register
+                        (asset_class, description, brand_name, quantity, serial_no, location, cost_value, purchasing_date, depreciable_life_months, asset_account_id, expense_account_id, accumulated_dep_account_id, supplier_id, jv_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(query, (class_name, desc, brand, qty, serial, location, cost, p_date, life, asset_acc, exp_acc, acc_dep_acc, supplier_id, jv_id))
+
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    raise Exception(f"Failed to post to GL/Register: {str(e)}")
+                finally:
+                    cursor.close()
+                    conn.close()
+        else:
+            # Standard Insert without GL
+            query = """
+                INSERT INTO fixed_assets_register
+                (asset_class, description, brand_name, quantity, serial_no, location, cost_value, purchasing_date, depreciable_life_months, asset_account_id, expense_account_id, accumulated_dep_account_id, supplier_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            db.execute_query(query, (class_name, desc, brand, qty, serial, location, cost, p_date, life, asset_acc, exp_acc, acc_dep_acc, supplier_id), commit=True)
+
         flash('Asset added successfully', 'success')
     except Exception as e:
         flash(f'Error adding asset: {str(e)}', 'danger')
+    return redirect(url_for('fixed_assets'))
+
+@app.route('/fixed_assets/delete/<int:asset_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def delete_fixed_asset(asset_id):
+    try:
+        conn = db.get_connection()
+        if not conn:
+            flash("Database connection error.", "danger")
+            return redirect(url_for('fixed_assets'))
+
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+
+        cursor.execute("SELECT * FROM fixed_assets_register WHERE id = %s", (asset_id,))
+        asset = cursor.fetchone()
+
+        if not asset:
+            flash("Asset not found.", "danger")
+            return redirect(url_for('fixed_assets'))
+
+        if asset['is_written_off'] == 1:
+            flash("Asset is already written off.", "warning")
+            return redirect(url_for('fixed_assets'))
+
+        action = request.form.get('action') # 'delete' or 'write_off'
+        jv_id = asset.get('jv_id')
+
+        # Check Payment Status if there is a JV linked
+        payment_made = False
+        if jv_id:
+            cursor.execute("SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE suppliers_invoice_JV = %s", (jv_id,))
+            inv = cursor.fetchone()
+            if inv and float(inv['suppliers_invoice_total_payment'] or 0) > 0:
+                payment_made = True
+
+        if action == 'delete':
+            if payment_made:
+                flash("Cannot delete asset: A payment has already been made against its purchase. Please use 'Write Off' instead.", "danger")
+                return redirect(url_for('fixed_assets'))
+
+            cursor.execute("SELECT COUNT(*) as dep_count FROM asset_depreciation_history WHERE asset_id = %s", (asset_id,))
+            dep_res = cursor.fetchone()
+            if dep_res and dep_res['dep_count'] > 0:
+                flash("Cannot delete asset: It has already been depreciated. Please use 'Write Off' instead.", "danger")
+                return redirect(url_for('fixed_assets'))
+
+            # Safe to Delete: Remove GL entries and Asset
+            if jv_id:
+                cursor.execute("DELETE FROM entry_details WHERE entry_jv = %s", (jv_id,))
+                cursor.execute("DELETE FROM suppliers_invoice_data WHERE suppliers_invoice_JV = %s", (jv_id,))
+                cursor.execute("DELETE FROM jv_numbers WHERE jv_id = %s", (jv_id,))
+
+            cursor.execute("DELETE FROM fixed_assets_register WHERE id = %s", (asset_id,))
+            conn.commit()
+            flash("Asset deleted successfully.", "success")
+
+        elif action == 'write_off':
+            # Write Off Process
+            loss_acc_id = request.form.get('loss_account_id')
+            if not loss_acc_id:
+                flash("Write-Off requires a Loss/Expense account.", "danger")
+                return redirect(url_for('fixed_assets'))
+
+            cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (loss_acc_id,))
+            loss_acc = cursor.fetchone()
+            if not loss_acc:
+                flash("Invalid Loss Account.", "danger")
+                return redirect(url_for('fixed_assets'))
+            loss_acc_name = loss_acc['account_name']
+
+            cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (asset['asset_account_id'],))
+            asset_acc_name = cursor.fetchone()['account_name']
+
+            cursor.execute("SELECT account_name FROM new_account_table WHERE id = %s", (asset['accumulated_dep_account_id'],))
+            acc_dep_name = cursor.fetchone()['account_name']
+
+            # Calculate accumulated depreciation
+            cursor.execute("SELECT SUM(amount) as total FROM asset_depreciation_history WHERE asset_id = %s", (asset_id,))
+            dep_res = cursor.fetchone()
+            acc_dep_total = float(dep_res['total'] or 0)
+
+            nbv = float(asset['cost_value'] or 0) - acc_dep_total
+
+            # Create Write Off JV
+            current_user_pk = get_current_user_pk()
+            today = date.today()
+            narration = f"Write-Off Fixed Asset: {asset['asset_class']} - {asset['serial_no']}"
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", (f"FA-WO-{int(datetime.now().timestamp())}", narration))
+            wo_jv_id = cursor.lastrowid
+
+            # 1. CR Asset Account (Full Cost)
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date, entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (asset_acc_name, 0, asset['cost_value'], today, today, narration, current_user_pk, wo_jv_id))
+
+            # 2. DR Acc Dep Account (Reverse Accumulated Depreciation)
+            if acc_dep_total > 0:
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (acc_dep_name, acc_dep_total, 0, today, today, narration, current_user_pk, wo_jv_id))
+
+            # 3. DR Loss Account (Net Book Value)
+            if nbv > 0:
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date, entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (loss_acc_name, nbv, 0, today, today, narration, current_user_pk, wo_jv_id))
+
+            # Update Asset Register
+            cursor.execute("UPDATE fixed_assets_register SET status = 'Written-Off', is_written_off = 1, write_off_amount = %s WHERE id = %s", (nbv, asset_id))
+
+            conn.commit()
+            flash(f"Asset written off successfully. Loss amount: {nbv}", "success")
+
+    except Exception as e:
+        if 'conn' in locals() and conn: conn.rollback()
+        flash(f"Error processing asset deletion/write-off: {str(e)}", "danger")
+    finally:
+        if 'cursor' in locals() and cursor: cursor.close()
+        if 'conn' in locals() and conn: conn.close()
+
     return redirect(url_for('fixed_assets'))
 
 @app.route('/fixed_assets/calculate_depreciation', methods=['POST'])
@@ -10939,7 +11150,13 @@ def calculate_depreciation():
 @login_required
 def fixed_assets_data():
     # Fetch all assets
-    assets = db.execute_query("SELECT * FROM fixed_assets_register ORDER BY id")
+    assets = db.execute_query("""
+        SELECT f.*,
+               COALESCE(s.suppliers_invoice_total_payment, 0) as jv_payment
+        FROM fixed_assets_register f
+        LEFT JOIN suppliers_invoice_data s ON f.jv_id = s.suppliers_invoice_JV
+        ORDER BY f.id
+    """)
 
     # Fetch all depreciation history
     history = db.execute_query("SELECT * FROM asset_depreciation_history ORDER BY depreciation_date")
@@ -10991,6 +11208,8 @@ def fixed_assets_data():
 
         row['total_dep'] = h_data['total']
         row['nbv'] = float(a['cost_value']) - h_data['total']
+        row['status'] = a.get('status', 'Active')
+        row['payment_made'] = 1 if float(a.get('jv_payment', 0)) > 0 else 0
 
         result['data'].append(row)
 

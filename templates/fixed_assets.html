@@ -129,6 +129,36 @@
                                 {% endfor %}
                             </select>
                         </div>
+
+                        <div class="col-12"><hr><h6 class="text-primary fw-bold">General Ledger Posting</h6></div>
+
+                        <div class="col-md-12 mb-2">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Supplier / Vendor</label>
+                            <select name="supplier_id" class="form-select select2" style="width: 100%;">
+                                <option value="">-- Optional: Link to Supplier --</option>
+                                {% for sup in suppliers %}
+                                <option value="{{ sup.sup_id }}">{{ sup.supplier_code }} - {{ sup.supplier_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="col-md-4">
+                            <div class="form-check form-switch mt-4">
+                                <input class="form-check-input" type="checkbox" id="postGLSwitch" name="post_gl" value="1">
+                                <label class="form-check-label fw-bold" for="postGLSwitch">Post Purchase to GL?</label>
+                            </div>
+                        </div>
+
+                        <div class="col-md-8" id="creditAccountContainer" style="display: none;">
+                            <label class="form-label fw-bold small text-uppercase text-muted">Payment/Credit Account</label>
+                            <select name="credit_account_id" id="creditAccountId" class="form-select select2" style="width: 100%;">
+                                <option value="">-- Select --</option>
+                                {% for acc in accounts %}
+                                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -139,11 +169,57 @@
         </form>
     </div>
 </div>
+
+<!-- Write Off Modal -->
+<div class="modal fade" id="writeOffModal" tabindex="-1">
+    <div class="modal-dialog">
+        <form id="writeOffForm" method="POST" onsubmit="this.action='/fixed_assets/delete/' + document.getElementById('woAssetId').value;">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title">Write-Off Asset</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-danger">This asset cannot be deleted normally because it has already been depreciated or a payment has been recorded against it. You must write it off.</p>
+                    <input type="hidden" name="action" value="write_off">
+                    <input type="hidden" id="woAssetId" value="">
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Select Loss/Expense Account</label>
+                        <select name="loss_account_id" class="form-select select2" style="width: 100%;" required>
+                            <option value="">-- Select Loss Account --</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-warning">Confirm Write-Off</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // Handle Post GL toggle
+        document.getElementById('postGLSwitch').addEventListener('change', function() {
+            const container = document.getElementById('creditAccountContainer');
+            const select = document.getElementById('creditAccountId');
+            if(this.checked) {
+                container.style.display = 'block';
+                select.required = true;
+            } else {
+                container.style.display = 'none';
+                select.required = false;
+            }
+        });
+
         // Re-initialize select2 specifically for modal elements when modal opens
         $('#addAssetModal').on('shown.bs.modal', function () {
             $('.select2').select2({
@@ -177,6 +253,12 @@
         });
     });
 
+    function promptWriteOff(assetId) {
+        document.getElementById('woAssetId').value = assetId;
+        var woModal = new bootstrap.Modal(document.getElementById('writeOffModal'));
+        woModal.show();
+    }
+
     function loadData() {
         fetch('/fixed_assets/data')
         .then(r => r.json())
@@ -193,6 +275,13 @@
                 if(col.includes('-') && col.length < 9) th.classList.add('bg-secondary', 'text-white');
                 thead.appendChild(th);
             });
+            const thStatus = document.createElement('th');
+            thStatus.textContent = 'Status';
+            thead.appendChild(thStatus);
+
+            const thActions = document.createElement('th');
+            thActions.textContent = 'Actions';
+            thead.appendChild(thActions);
 
             // Build Body
             tbody.innerHTML = '';
@@ -227,6 +316,23 @@
                 tdNBV.textContent = row.nbv.toLocaleString(undefined, {minimumFractionDigits: 2});
                 tdNBV.classList.add('fw-bold', 'text-success');
                 tr.appendChild(tdNBV);
+
+                const tdStatus = document.createElement('td');
+                tdStatus.innerHTML = row.status === 'Active' ? `<span class="badge bg-success">Active</span>` : `<span class="badge bg-danger">${row.status}</span>`;
+                tr.appendChild(tdStatus);
+
+                const tdActions = document.createElement('td');
+                if(row.status === 'Active') {
+                    if(row.payment_made === 1 || row.total_dep > 0) {
+                        tdActions.innerHTML = `<button type="button" class="btn btn-sm btn-warning" onclick="promptWriteOff(${row.id})"><i class="fas fa-ban"></i> Write-Off</button>`;
+                    } else {
+                        tdActions.innerHTML = `<form action="/fixed_assets/delete/${row.id}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to completely delete this asset and its Journal Vouchers?');">
+                            <input type="hidden" name="action" value="delete">
+                            <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete</button>
+                        </form>`;
+                    }
+                }
+                tr.appendChild(tdActions);
 
                 tbody.appendChild(tr);
             });

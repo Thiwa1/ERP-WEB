@@ -352,6 +352,26 @@ def _migrate_pos_security_features(cursor):
             print("Migrating: Adding expiry_date to inventoy_items")
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN expiry_date DATE NULL")
 
+        # Fixed Assets vendor and write-off extensions
+        try:
+            cursor.execute("SHOW COLUMNS FROM fixed_assets_register")
+            fa_cols = [row[0] for row in cursor.fetchall()]
+            if 'supplier_id' not in fa_cols:
+                print("Migrating: Adding supplier_id to fixed_assets_register")
+                cursor.execute("ALTER TABLE fixed_assets_register ADD COLUMN supplier_id BIGINT NULL")
+                cursor.execute("ALTER TABLE fixed_assets_register ADD CONSTRAINT fk_supplier_fa FOREIGN KEY (supplier_id) REFERENCES suppliers(sup_id) ON DELETE SET NULL ON UPDATE CASCADE")
+            if 'write_off_amount' not in fa_cols:
+                print("Migrating: Adding write_off_amount to fixed_assets_register")
+                cursor.execute("ALTER TABLE fixed_assets_register ADD COLUMN write_off_amount DOUBLE DEFAULT 0")
+            if 'is_written_off' not in fa_cols:
+                print("Migrating: Adding is_written_off to fixed_assets_register")
+                cursor.execute("ALTER TABLE fixed_assets_register ADD COLUMN is_written_off TINYINT DEFAULT 0")
+            if 'jv_id' not in fa_cols:
+                print("Migrating: Adding jv_id to fixed_assets_register")
+                cursor.execute("ALTER TABLE fixed_assets_register ADD COLUMN jv_id BIGINT NULL")
+        except mysql.connector.Error as e:
+            pass # Table might not exist yet
+
         # pos_user_devices
         cursor.execute("SHOW TABLES LIKE 'pos_user_devices'")
         if not cursor.fetchone():
