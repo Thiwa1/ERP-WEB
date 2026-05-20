@@ -13,11 +13,16 @@ CREATE TABLE IF NOT EXISTS `fixed_assets_register` (
   `expense_account_id` INT NULL,
   `accumulated_dep_account_id` INT NULL,
   `status` VARCHAR(20) DEFAULT 'Active',
+  `supplier_id` BIGINT NULL,
+  `write_off_amount` DOUBLE DEFAULT 0,
+  `is_written_off` TINYINT DEFAULT 0,
+  `jv_id` BIGINT NULL,
   `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `fk_asset_acc_idx` (`asset_account_id` ASC),
   INDEX `fk_exp_acc_idx` (`expense_account_id` ASC),
   INDEX `fk_acc_dep_acc_idx` (`accumulated_dep_account_id` ASC),
+  INDEX `fk_supplier_idx` (`supplier_id` ASC),
   CONSTRAINT `fk_asset_acc`
     FOREIGN KEY (`asset_account_id`)
     REFERENCES `new_account_table` (`id`)
@@ -31,6 +36,11 @@ CREATE TABLE IF NOT EXISTS `fixed_assets_register` (
   CONSTRAINT `fk_acc_dep_acc`
     FOREIGN KEY (`accumulated_dep_account_id`)
     REFERENCES `new_account_table` (`id`)
+    ON DELETE SET NULL
+    ON UPDATE CASCADE,
+  CONSTRAINT `fk_supplier_fa`
+    FOREIGN KEY (`supplier_id`)
+    REFERENCES `suppliers` (`sup_id`)
     ON DELETE SET NULL
     ON UPDATE CASCADE
 ) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
