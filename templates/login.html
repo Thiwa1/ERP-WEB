@@ -6,383 +6,764 @@
     <title>Login - Suwin Accounting</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body, html {
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --brand:        #4188ff;
+            --brand-dark:   #103661;
+            --brand-light:  #649eff;
+            --accent:       #00d4aa;
+            --text-dark:    #0f172a;
+            --text-muted:   #64748b;
+            --card-bg:      rgba(255,255,255,0.10);
+            --card-border:  rgba(255,255,255,0.20);
+            --input-bg:     rgba(255,255,255,0.12);
+            --input-border: rgba(255,255,255,0.25);
+            --radius:       18px;
+            --transition:   0.3s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        html, body {
             height: 100%;
-            margin: 0;
-            font-family: 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif;
-            background-color: #f4f5f8;
-            color: #393a3d;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            overflow-x: hidden;
         }
 
-        /* Navigation */
-        .navbar {
-            background-color: #ffffff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            padding: 15px 0;
-        }
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 24px;
-            color: #4188ff;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .navbar-brand i {
-            color: #649eff; /* QuickBooks Green-ish */
-        }
-        .btn-outline-register {
-            border: 2px solid #4188ff;
-            color: #4188ff;
-            font-weight: 600;
-            border-radius: 20px;
-            padding: 6px 20px;
-        }
-        .btn-outline-register:hover {
-            background-color: #4188ff;
-            color: #fff;
-        }
-
-        /* Hero Section */
-        .hero-section {
-            background: linear-gradient(135deg, #4188ff 0%, #103661 100%);
-            background-size: cover;
-            background-position: center;
+        /* ─── Animated Gradient Background ─── */
+        body {
+            background: linear-gradient(-45deg, #0a1628, #103661, #1a4fa8, #4188ff, #103661, #0a1628);
+            background-size: 400% 400%;
+            animation: gradientShift 18s ease infinite;
             min-height: 100vh;
             display: flex;
-            align-items: center;
-            padding: 60px 0;
-            position: relative;
+            flex-direction: column;
         }
 
-        .hero-text h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 20px;
-            line-height: 1.2;
-        }
-        .hero-text p {
-            font-size: 1.25rem;
-            color: #ffffff;
-            margin-bottom: 40px;
-            opacity: 0.9;
-        }
-        .check-list {
-            list-style: none;
-            padding: 0;
-            color: white;
-            font-size: 1.1rem;
-        }
-        .check-list li {
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-        }
-        .check-list li i {
-            color: #5bef76;
-            margin-right: 15px;
-            font-size: 1.4rem;
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
-        /* Login Card */
-        .login-card {
-            background: #ffffff;
-            border-radius: 12px;
-            border: none;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-            padding: 50px 40px;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .login-header h3 {
-            font-weight: 700;
-            color: #4188ff;
-            font-size: 2rem;
-            margin-bottom: 10px;
-        }
-        .login-header p {
-            color: #6b6c72;
-            font-size: 1rem;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #393a3d;
-            font-size: 0.95rem;
-        }
-        .form-control {
-            border-radius: 6px;
-            padding: 12px 15px;
-            border: 1px solid #c3ced5;
-            background-color: #fff;
-            font-size: 1rem;
-        }
-        .form-control:focus {
-            border-color: #649eff;
-            box-shadow: 0 0 0 0.25rem rgba(44, 160, 28, 0.25);
-        }
-        .btn-login {
-            background-color: #649eff; /* QuickBooks Green */
-            color: #fff;
-            font-weight: 700;
-            border: none;
-            border-radius: 6px;
-            padding: 14px;
-            width: 100%;
-            font-size: 1.1rem;
-            margin-top: 25px;
-            transition: background-color 0.3s;
-        }
-        .btn-login:hover {
-            background-color: #4188ff;
-            color: #fff;
-        }
-        .register-link {
-            text-align: center;
-            margin-top: 25px;
-            font-size: 0.95rem;
-            color: #393a3d;
-        }
-        .register-link a {
-            color: #0077c5;
-            text-decoration: none;
-            font-weight: 600;
-        }
-        .register-link a:hover {
-            text-decoration: underline;
-        }
-
-        /* Responsive */
-        @media (max-width: 991px) {
-            .hero-section {
-                text-align: center;
-                padding: 100px 0 40px 0; /* Add padding top to account for fixed navbar */
-            }
-            .hero-text {
-                margin-bottom: 50px;
-            }
-            .check-list {
-                display: inline-block;
-                text-align: left;
-            }
-        }
-    </style>
-
-    <style>
-        /* Global Page Loader */
-        .global-page-loader {
+        /* ─── Decorative Orbs ─── */
+        .orb {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.25;
+            pointer-events: none;
+            z-index: 0;
+            animation: float 8s ease-in-out infinite;
+        }
+        .orb-1 { width: 500px; height: 500px; background: #4188ff; top: -120px; left: -120px; animation-delay: 0s; }
+        .orb-2 { width: 400px; height: 400px; background: #00d4aa; bottom: -100px; right: -80px; animation-delay: -4s; }
+        .orb-3 { width: 300px; height: 300px; background: #a78bfa; top: 40%; left: 30%; animation-delay: -2s; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) scale(1); }
+            50%       { transform: translateY(-30px) scale(1.05); }
+        }
+
+        /* ─── Grid dots overlay ─── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ─── Page Loader ─── */
+        .page-loader {
+            position: fixed;
+            inset: 0;
+            background: #0a1628;
             z-index: 99999;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            opacity: 1;
-            transition: opacity 0.4s ease-out;
-            pointer-events: all;
+            justify-content: center;
+            transition: opacity 0.5s ease, visibility 0.5s;
         }
+        .page-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
-        .global-page-loader.hidden {
-            opacity: 0;
-            pointer-events: none;
-            visibility: hidden;
-            transition: opacity 0.4s ease-out, visibility 0.4s;
-        }
-
-        .suwin-loader-text {
-            font-size: 2.5rem;
+        .loader-brand {
+            font-size: 2.2rem;
             font-weight: 800;
-            color: #1e293b;
-            letter-spacing: 4px;
-            margin-bottom: 20px;
+            color: #fff;
+            letter-spacing: 6px;
+            margin-bottom: 24px;
             display: flex;
-            gap: 4px;
+            gap: 2px;
         }
-
-        .suwin-loader-text span {
+        .loader-brand span {
             display: inline-block;
-            animation: bounce 1.2s infinite ease-in-out both;
+            animation: bounce 1.4s infinite ease-in-out;
         }
-
-        .suwin-loader-text span:nth-child(1) { animation-delay: -0.6s; color: #3b82f6; }
-        .suwin-loader-text span:nth-child(2) { animation-delay: -0.5s; }
-        .suwin-loader-text span:nth-child(3) { animation-delay: -0.4s; }
-        .suwin-loader-text span:nth-child(4) { animation-delay: -0.3s; }
-        .suwin-loader-text span:nth-child(5) { animation-delay: -0.2s; color: #3b82f6; }
+        .loader-brand span:nth-child(1) { animation-delay: 0s;    color: #4188ff; }
+        .loader-brand span:nth-child(2) { animation-delay: 0.1s; }
+        .loader-brand span:nth-child(3) { animation-delay: 0.2s; }
+        .loader-brand span:nth-child(4) { animation-delay: 0.3s; }
+        .loader-brand span:nth-child(5) { animation-delay: 0.4s; color: #00d4aa; }
 
         @keyframes bounce {
-            0%, 80%, 100% { transform: scale(1) translateY(0); }
-            40% { transform: scale(1.1) translateY(-15px); }
+            0%, 80%, 100% { transform: translateY(0) scale(1); }
+            40%            { transform: translateY(-18px) scale(1.15); }
         }
 
-        .suwin-loader-bar {
-            width: 150px;
-            height: 4px;
-            background: #e2e8f0;
-            border-radius: 4px;
+        .loader-bar {
+            width: 180px; height: 3px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 99px;
             overflow: hidden;
-            position: relative;
         }
-
-        .suwin-loader-progress {
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
+        .loader-bar-fill {
             height: 100%;
-            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
-            animation: slide 1.5s infinite linear;
+            background: linear-gradient(90deg, #4188ff, #00d4aa, #4188ff);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s linear infinite;
+        }
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
-        @keyframes slide {
-            0% { left: -100%; }
-            100% { left: 100%; }
+        /* ─── Navbar ─── */
+        .top-nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(10,22,40,0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #fff;
+            text-decoration: none;
+        }
+        .nav-brand .brand-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #4188ff, #00d4aa);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            color: #fff;
+        }
+
+        .btn-nav-register {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fff;
+            border: 1.5px solid rgba(255,255,255,0.35);
+            border-radius: 99px;
+            padding: 7px 20px;
+            text-decoration: none;
+            background: rgba(255,255,255,0.06);
+            backdrop-filter: blur(8px);
+            transition: var(--transition);
+        }
+        .btn-nav-register:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.6);
+            color: #fff;
+        }
+
+        /* ─── Main Layout ─── */
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 100px 20px 40px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .login-grid {
+            width: 100%;
+            max-width: 1080px;
+            display: grid;
+            grid-template-columns: 1fr 460px;
+            gap: 60px;
+            align-items: center;
+        }
+
+        /* ─── Left Info Panel ─── */
+        .info-panel { color: #fff; }
+
+        .info-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(65,136,255,0.2);
+            border: 1px solid rgba(65,136,255,0.35);
+            color: #93c5fd;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 6px 14px;
+            border-radius: 99px;
+            margin-bottom: 28px;
+        }
+        .info-badge i { color: #4188ff; }
+
+        .info-panel h1 {
+            font-size: clamp(2rem, 4vw, 3.2rem);
+            font-weight: 800;
+            line-height: 1.15;
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+        .info-panel h1 .highlight {
+            background: linear-gradient(90deg, #4188ff, #00d4aa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .info-panel .tagline {
+            font-size: 1.05rem;
+            color: rgba(255,255,255,0.65);
+            line-height: 1.7;
+            margin-bottom: 40px;
+            max-width: 440px;
+        }
+
+        .feature-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            margin-bottom: 44px;
+        }
+        .feature-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+        }
+        .feature-icon {
+            width: 40px; height: 40px;
+            flex-shrink: 0;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+        }
+        .fi-blue  { background: rgba(65,136,255,0.18); color: #649eff; }
+        .fi-green { background: rgba(0,212,170,0.15);  color: #00d4aa; }
+        .fi-purple{ background: rgba(167,139,250,0.15); color: #c4b5fd; }
+
+        .feature-text strong {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 600;
+            margin-bottom: 2px;
+        }
+        .feature-text span {
+            font-size: 0.82rem;
+            color: rgba(255,255,255,0.5);
+            line-height: 1.5;
+        }
+
+        .trust-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.82rem;
+            color: rgba(255,255,255,0.45);
+        }
+        .trust-avatars {
+            display: flex;
+        }
+        .trust-avatar {
+            width: 30px; height: 30px;
+            border-radius: 50%;
+            border: 2px solid rgba(65,136,255,0.6);
+            background: linear-gradient(135deg, #4188ff, #103661);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: #fff;
+            margin-left: -8px;
+        }
+        .trust-avatars .trust-avatar:first-child { margin-left: 0; }
+
+        /* ─── Glass Login Card ─── */
+        .login-card {
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: var(--radius);
+            padding: 44px 40px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #4188ff, #00d4aa, transparent);
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+
+        .card-header-area {
+            margin-bottom: 32px;
+        }
+        .card-logo {
+            width: 48px; height: 48px;
+            background: linear-gradient(135deg, #4188ff 0%, #00d4aa 100%);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            color: #fff;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 24px rgba(65,136,255,0.4);
+        }
+        .card-header-area h2 {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 6px;
+            letter-spacing: -0.3px;
+        }
+        .card-header-area p {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.5);
+        }
+
+        /* ─── Flash Messages ─── */
+        .alert {
+            border-radius: 10px;
+            font-size: 0.875rem;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            border: none;
+        }
+        .alert-danger  { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .alert-success { background: rgba(0,212,170,0.12);  color: #6ee7b7; border: 1px solid rgba(0,212,170,0.3); }
+        .alert-warning { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+        .alert-info    { background: rgba(65,136,255,0.12); color: #93c5fd; border: 1px solid rgba(65,136,255,0.3); }
+
+        /* ─── Floating Label Inputs ─── */
+        .field-group {
+            position: relative;
+            margin-bottom: 20px;
+        }
+        .field-group .field-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255,255,255,0.3);
+            font-size: 0.9rem;
+            pointer-events: none;
+            transition: color var(--transition);
+            z-index: 2;
+        }
+        .field-group:focus-within .field-icon { color: #4188ff; }
+
+        .field-group input {
+            width: 100%;
+            height: 52px;
+            background: rgba(255,255,255,0.07);
+            border: 1.5px solid rgba(255,255,255,0.12);
+            border-radius: 12px;
+            padding: 0 44px 0 44px;
+            font-size: 0.95rem;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            outline: none;
+            transition: all var(--transition);
+        }
+        .field-group input::placeholder { color: rgba(255,255,255,0.35); }
+        .field-group input:focus {
+            background: rgba(65,136,255,0.12);
+            border-color: #4188ff;
+            box-shadow: 0 0 0 4px rgba(65,136,255,0.12);
+        }
+        .field-group input:hover:not(:focus) {
+            border-color: rgba(255,255,255,0.25);
+            background: rgba(255,255,255,0.10);
+        }
+
+        .toggle-pw {
+            position: absolute;
+            right: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.3);
+            cursor: pointer;
+            padding: 4px;
+            font-size: 0.9rem;
+            transition: color var(--transition);
+            z-index: 2;
+        }
+        .toggle-pw:hover { color: rgba(255,255,255,0.7); }
+
+        /* ─── Options Row ─── */
+        .options-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            font-size: 0.85rem;
+        }
+        .remember-me {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            color: rgba(255,255,255,0.55);
+            user-select: none;
+        }
+        .remember-me input[type="checkbox"] { display: none; }
+        .custom-check {
+            width: 18px; height: 18px;
+            border: 1.5px solid rgba(255,255,255,0.2);
+            border-radius: 5px;
+            background: rgba(255,255,255,0.06);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all var(--transition);
+            flex-shrink: 0;
+        }
+        .remember-me input:checked + .custom-check {
+            background: #4188ff;
+            border-color: #4188ff;
+        }
+        .remember-me input:checked + .custom-check::after {
+            content: '';
+            width: 5px; height: 9px;
+            border: 2px solid #fff;
+            border-top: none;
+            border-left: none;
+            transform: rotate(45deg) translateY(-1px);
+            display: block;
+        }
+
+        /* ─── Sign In Button ─── */
+        .btn-signin {
+            width: 100%;
+            height: 52px;
+            background: linear-gradient(135deg, #4188ff 0%, #2563eb 100%);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 8px 24px rgba(65,136,255,0.35);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-signin::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(255,255,255,0.15), transparent);
+            opacity: 0;
+            transition: opacity var(--transition);
+        }
+        .btn-signin:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(65,136,255,0.5); }
+        .btn-signin:hover::before { opacity: 1; }
+        .btn-signin:active { transform: translateY(0); }
+        .btn-signin:disabled { opacity: 0.65; transform: none; cursor: not-allowed; }
+
+        /* ─── Divider ─── */
+        .card-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 24px 0;
+            color: rgba(255,255,255,0.2);
+            font-size: 0.78rem;
+        }
+        .card-divider::before, .card-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: rgba(255,255,255,0.1);
+        }
+
+        /* ─── Footer Links ─── */
+        .card-links {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            text-align: center;
+        }
+        .card-links a {
+            font-size: 0.875rem;
+            font-weight: 500;
+            text-decoration: none;
+            border-radius: 10px;
+            padding: 10px 16px;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+        .link-primary {
+            color: rgba(255,255,255,0.55);
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+        .link-primary:hover {
+            background: rgba(65,136,255,0.12);
+            border-color: rgba(65,136,255,0.3);
+            color: #93c5fd;
+        }
+        .link-primary i { font-size: 0.85rem; }
+
+        .card-register-text {
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.4);
+            text-align: center;
+            margin-top: 20px;
+        }
+        .card-register-text a {
+            color: #649eff;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .card-register-text a:hover { text-decoration: underline; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 900px) {
+            .login-grid { grid-template-columns: 1fr; max-width: 460px; }
+            .info-panel { display: none; }
+            .main-wrapper { padding: 88px 16px 32px; }
+        }
+        @media (max-width: 480px) {
+            .login-card { padding: 32px 24px; }
+            .top-nav { padding: 12px 20px; }
         }
     </style>
-
 </head>
 <body>
-    <!-- Global Page Loader -->
-    <div id="globalPageLoader" class="global-page-loader">
-        <div class="suwin-loader-content">
-            <div class="suwin-loader-text">
-                <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
-            </div>
-            <div class="suwin-loader-bar">
-                <div class="suwin-loader-progress"></div>
-            </div>
+
+    <!-- Page Loader -->
+    <div id="pageLoader" class="page-loader">
+        <div class="loader-brand">
+            <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
         </div>
+        <div class="loader-bar"><div class="loader-bar-fill"></div></div>
     </div>
 
+    <!-- Decorative Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
 
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-chart-pie fa-lg"></i>
-                Suwin Accounting
-            </a>
-            <div class="ms-auto">
-                <a href="{{ url_for('register') }}" class="btn btn-outline-register">Start free trial</a>
-            </div>
-        </div>
+    <!-- Top Navigation -->
+    <nav class="top-nav">
+        <a href="/" class="nav-brand">
+            <div class="brand-icon"><i class="fas fa-chart-pie"></i></div>
+            Suwin Accounting
+        </a>
+        <a href="{{ url_for('register') }}" class="btn-nav-register">Start free trial</a>
     </nav>
 
-    <!-- Hero Section with Login Form -->
-    <section class="hero-section">
-        <div class="container">
-            <div class="row align-items-center">
+    <!-- Main Content -->
+    <main class="main-wrapper">
+        <div class="login-grid">
 
-                <!-- Left Column: Value Proposition -->
-                <div class="col-lg-6 hero-text d-none d-lg-block">
-                    <h1>Smarter business management.</h1>
-                    <p>Log in to access your comprehensive dashboard, track performance, and run your business efficiently.</p>
+            <!-- Left: Info Panel -->
+            <div class="info-panel">
+                <div class="info-badge"><i class="fas fa-circle-check"></i> Trusted ERP Platform</div>
+                <h1>
+                    Run your business<br>
+                    with <span class="highlight">confidence.</span>
+                </h1>
+                <p class="tagline">
+                    Log in to your Suwin dashboard — real-time financials, inventory, POS, and more, all in one place.
+                </p>
 
-                    <ul class="check-list">
-                        <li><i class="fas fa-chart-line"></i> Real-time financial insights</li>
-                        <li><i class="fas fa-shield-alt"></i> Enterprise-grade security</li>
-                        <li><i class="fas fa-users"></i> Seamless team collaboration</li>
-                    </ul>
-                </div>
-
-                <!-- Right Column: Login Form -->
-                <div class="col-lg-5 offset-lg-1 col-md-8 mx-auto mx-lg-0">
-                    <div class="login-card">
-                        <div class="login-header">
-                            <h3>Welcome Back</h3>
-                            <p>Sign in to your Suwin account</p>
+                <ul class="feature-list">
+                    <li>
+                        <div class="feature-icon fi-blue"><i class="fas fa-chart-line"></i></div>
+                        <div class="feature-text">
+                            <strong>Real-time financial insights</strong>
+                            <span>Live P&amp;L, balance sheets, cash flow — always up to date.</span>
                         </div>
+                    </li>
+                    <li>
+                        <div class="feature-icon fi-green"><i class="fas fa-shield-halved"></i></div>
+                        <div class="feature-text">
+                            <strong>Enterprise-grade security</strong>
+                            <span>2FA, role-based access, and encrypted data at rest.</span>
+                        </div>
+                    </li>
+                    <li>
+                        <div class="feature-icon fi-purple"><i class="fas fa-users"></i></div>
+                        <div class="feature-text">
+                            <strong>Seamless team collaboration</strong>
+                            <span>Multi-user, multi-branch support with full audit trails.</span>
+                        </div>
+                    </li>
+                </ul>
 
-                        {% with messages = get_flashed_messages(with_categories=true) %}
-                            {% if messages %}
-                                {% for category, message in messages %}
-                                    <div class="alert alert-{{ category }} mb-4" role="alert">
-                                        {{ message }}
-                                    </div>
-                                {% endfor %}
-                            {% endif %}
-                        {% endwith %}
-
-                        <form action="{{ url_for('login') }}" method="POST">
-                            <div class="mb-4">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username" placeholder="Enter your username" required>
-                            </div>
-
-                            <div class="mb-4">
-                                <label for="password" class="form-label">Password</label>
-                                <input type="password" class="form-control" id="password" name="password" placeholder="Enter your password" required>
-                            </div>
-
-                            <button type="submit" class="btn btn-login btn-loading">Sign In</button>
-
-                            <div class="register-link">
-                                New to Suwin Accounting? <a href="{{ url_for('register') }}">Create an account</a><br><br>
-                                <a href="{{ url_for('pos_web_login') }}" class="text-decoration-none fw-bold" style="color: var(--primary-color);"><i class="fas fa-cash-register me-1"></i> Are you a cashier? Login to POS</a><br><br>
-                                <a href="{{ url_for('superadmin_login') }}" class="text-decoration-none fw-bold text-muted"><i class="fas fa-user-shield me-1"></i> Super Admin Login</a>
-                            </div>
-                        </form>
+                <div class="trust-row">
+                    <div class="trust-avatars">
+                        <div class="trust-avatar">S</div>
+                        <div class="trust-avatar">A</div>
+                        <div class="trust-avatar">R</div>
+                        <div class="trust-avatar">+</div>
                     </div>
+                    Trusted by growing businesses every day
+                </div>
+            </div>
+
+            <!-- Right: Login Card -->
+            <div class="login-card">
+                <div class="card-header-area">
+                    <div class="card-logo"><i class="fas fa-chart-pie"></i></div>
+                    <h2>Welcome back</h2>
+                    <p>Sign in to your Suwin account</p>
                 </div>
 
+                <!-- Flash Messages -->
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" role="alert">
+                                <i class="fas fa-circle-info me-2"></i>{{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form action="{{ url_for('login') }}" method="POST" id="loginForm">
+                    <!-- Username -->
+                    <div class="field-group">
+                        <i class="fas fa-user field-icon"></i>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            placeholder="Username"
+                            autocomplete="username"
+                            required
+                        >
+                    </div>
+
+                    <!-- Password -->
+                    <div class="field-group">
+                        <i class="fas fa-lock field-icon"></i>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            placeholder="Password"
+                            autocomplete="current-password"
+                            required
+                        >
+                        <button type="button" class="toggle-pw" id="togglePw" aria-label="Toggle password visibility">
+                            <i class="fas fa-eye" id="eyeIcon"></i>
+                        </button>
+                    </div>
+
+                    <!-- Options Row -->
+                    <div class="options-row">
+                        <label class="remember-me">
+                            <input type="checkbox" name="remember_me">
+                            <div class="custom-check"></div>
+                            Remember me
+                        </label>
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" class="btn-signin" id="submitBtn">
+                        <span id="btnText">Sign In</span>
+                        <i class="fas fa-arrow-right" id="btnIcon"></i>
+                    </button>
+                </form>
+
+                <div class="card-divider">or continue as</div>
+
+                <div class="card-links">
+                    <a href="{{ url_for('pos_web_login') }}" class="link-primary">
+                        <i class="fas fa-cash-register"></i> POS Cashier Login
+                    </a>
+                    <a href="{{ url_for('superadmin_login') }}" class="link-primary">
+                        <i class="fas fa-user-shield"></i> Super Admin Login
+                    </a>
+                </div>
+
+                <p class="card-register-text">
+                    New to Suwin? <a href="{{ url_for('register') }}">Create an account</a>
+                </p>
             </div>
+
         </div>
-    </section>
-
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script>
-        document.querySelector('form').addEventListener('submit', function() {
-            var btn = this.querySelector('.btn-loading');
-            if(btn) {
-                var originalText = btn.innerHTML;
-                btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Signing in...';
-            }
-        });
-    </script>
+    </main>
 
     <script>
-        // Global Loader Logic
-        window.addEventListener('load', function() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                setTimeout(() => {
-                    loader.classList.add('hidden');
-                }, 300); // Small delay to ensure smooth transition
+        // ─── Page Loader ───
+        const loader = document.getElementById('pageLoader');
+        window.addEventListener('load', () => setTimeout(() => loader.classList.add('hidden'), 250));
+        window.addEventListener('pageshow', e => { if (e.persisted) loader.classList.add('hidden'); });
+
+        // ─── Password Toggle ───
+        document.getElementById('togglePw').addEventListener('click', function() {
+            const pw   = document.getElementById('password');
+            const icon = document.getElementById('eyeIcon');
+            if (pw.type === 'password') {
+                pw.type = 'text';
+                icon.className = 'fas fa-eye-slash';
+            } else {
+                pw.type = 'password';
+                icon.className = 'fas fa-eye';
             }
         });
 
-        // Hide loader when returning via back-forward cache (bfcache)
-        window.addEventListener('pageshow', function(event) {
-            if (event.persisted) {
-                const loader = document.getElementById('globalPageLoader');
-                if (loader) {
-                    loader.classList.add('hidden');
-                }
-            }
-        });
-
-        // Show loader before navigating away
-        window.addEventListener('beforeunload', function() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.classList.remove('hidden');
-            }
-        });
-
-        // Show loader on form submission
-        document.addEventListener('submit', function(e) {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.classList.remove('hidden');
-            }
+        // ─── Form Submit Loading State ───
+        document.getElementById('loginForm').addEventListener('submit', function() {
+            const btn     = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnIcon = document.getElementById('btnIcon');
+            btn.disabled   = true;
+            btnText.textContent = 'Signing in…';
+            btnIcon.className   = 'fas fa-spinner fa-spin';
+            loader.classList.remove('hidden');
         });
     </script>
 
