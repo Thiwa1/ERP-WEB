@@ -837,7 +837,7 @@ def logout():
 @app.route('/')
 def index():
     if 'user_id' not in session:
-        return redirect(url_for('register'))
+        return render_template('landing.html')
 
     # Check if critical migration table exists, if not, force install page
     # In production, use a more robust check (e.g. system_settings table)

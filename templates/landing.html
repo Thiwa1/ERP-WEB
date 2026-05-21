@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Suwin Accounting — Smarter Business Management</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --brand:       #4188ff;
+            --brand-dark:  #103661;
+            --brand-mid:   #1a4fa8;
+            --accent:      #00d4aa;
+            --accent-dim:  rgba(0,212,170,0.15);
+            --text-white:  #ffffff;
+            --text-soft:   rgba(255,255,255,0.65);
+            --text-dim:    rgba(255,255,255,0.38);
+            --card-bg:     rgba(255,255,255,0.06);
+            --card-border: rgba(255,255,255,0.12);
+            --radius:      18px;
+            --ease:        cubic-bezier(0.4,0,0.2,1);
+        }
+
+        html { scroll-behavior: smooth; }
+
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            color: var(--text-white);
+            background: #0a1628;
+            overflow-x: hidden;
+        }
+
+        /* ─── Gradient Background ─── */
+        .bg-gradient-anim {
+            background: linear-gradient(-45deg, #0a1628, #103661, #1a4fa8, #2d6bc4, #103661, #0a1628);
+            background-size: 400% 400%;
+            animation: gradShift 20s ease infinite;
+        }
+        @keyframes gradShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* ─── Dot grid ─── */
+        .dot-grid::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,0.055) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+        }
+
+        /* ─── Orbs ─── */
+        .orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(90px);
+            opacity: 0.18;
+            pointer-events: none;
+            animation: floatOrb 10s ease-in-out infinite;
+        }
+        @keyframes floatOrb {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50%       { transform: translateY(-40px) scale(1.06); }
+        }
+
+        /* ─── Page Loader ─── */
+        .page-loader {
+            position: fixed; inset: 0; background: #0a1628; z-index: 99999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            transition: opacity .5s ease, visibility .5s;
+        }
+        .page-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+        .loader-brand { font-size: 2.2rem; font-weight: 800; letter-spacing: 6px; margin-bottom: 22px; display: flex; gap: 2px; }
+        .loader-brand span { display: inline-block; animation: bounce 1.4s infinite ease-in-out; }
+        .loader-brand span:nth-child(1) { animation-delay: 0s;    color: #4188ff; }
+        .loader-brand span:nth-child(2) { animation-delay: .1s; }
+        .loader-brand span:nth-child(3) { animation-delay: .2s; }
+        .loader-brand span:nth-child(4) { animation-delay: .3s; }
+        .loader-brand span:nth-child(5) { animation-delay: .4s; color: #00d4aa; }
+        @keyframes bounce { 0%,80%,100%{transform:translateY(0) scale(1)} 40%{transform:translateY(-18px) scale(1.15)} }
+        .loader-bar { width: 180px; height: 3px; background: rgba(255,255,255,.08); border-radius: 99px; overflow: hidden; }
+        .loader-bar-fill { height:100%; background: linear-gradient(90deg,#4188ff,#00d4aa,#4188ff); background-size:200% 100%; animation: shimmer 1.4s linear infinite; }
+        @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+        /* ─── Navbar ─── */
+        .top-nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 500;
+            padding: 14px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(10,22,40,0.55);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.07);
+            transition: background .3s;
+        }
+        .top-nav.scrolled { background: rgba(10,22,40,0.88); }
+
+        .nav-brand {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 1.25rem; font-weight: 700; color: #fff; text-decoration: none;
+        }
+        .nav-brand .brand-icon {
+            width: 34px; height: 34px;
+            background: linear-gradient(135deg, #4188ff, #00d4aa);
+            border-radius: 9px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 0.88rem; color: #fff;
+        }
+
+        .nav-links { display: flex; align-items: center; gap: 6px; }
+        .nav-link-item {
+            font-size: 0.875rem; font-weight: 500; color: rgba(255,255,255,.65);
+            text-decoration: none; padding: 7px 14px; border-radius: 8px;
+            transition: all .2s;
+        }
+        .nav-link-item:hover { color: #fff; background: rgba(255,255,255,.07); }
+        .btn-nav-login {
+            font-size: 0.875rem; font-weight: 600; color: #fff;
+            border: 1.5px solid rgba(255,255,255,.3); border-radius: 99px;
+            padding: 7px 20px; text-decoration: none;
+            background: rgba(255,255,255,.06); backdrop-filter: blur(8px);
+            transition: all .25s;
+        }
+        .btn-nav-login:hover { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.55); color: #fff; }
+        .btn-nav-register {
+            font-size: 0.875rem; font-weight: 600;
+            background: linear-gradient(135deg, #4188ff, #2563eb);
+            color: #fff; border: none; border-radius: 99px;
+            padding: 8px 22px; text-decoration: none;
+            box-shadow: 0 4px 14px rgba(65,136,255,.35);
+            transition: all .25s;
+        }
+        .btn-nav-register:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(65,136,255,.5); color: #fff; }
+
+        /* ─── HERO ─── */
+        .hero {
+            position: relative; overflow: hidden; min-height: 100vh;
+            display: flex; align-items: center;
+            padding: 120px 40px 80px;
+        }
+        .hero .orb-1 { width: 600px; height: 600px; background: #4188ff; top: -180px; left: -150px; animation-delay: 0s; }
+        .hero .orb-2 { width: 450px; height: 450px; background: #00d4aa; bottom: -120px; right: -100px; animation-delay: -5s; }
+        .hero .orb-3 { width: 300px; height: 300px; background: #7c3aed; top: 30%; left: 40%; animation-delay: -3s; }
+
+        .hero-inner {
+            position: relative; z-index: 1;
+            max-width: 1100px; margin: 0 auto; width: 100%;
+            display: grid; grid-template-columns: 1fr 480px; gap: 80px; align-items: center;
+        }
+
+        .hero-eyebrow {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(65,136,255,.15);
+            border: 1px solid rgba(65,136,255,.3);
+            color: #93c5fd; font-size: .78rem; font-weight: 600;
+            letter-spacing: .5px; text-transform: uppercase;
+            padding: 6px 14px; border-radius: 99px; margin-bottom: 24px;
+        }
+        .hero-eyebrow i { color: #4188ff; }
+
+        .hero-title {
+            font-size: clamp(2.4rem, 5vw, 4rem);
+            font-weight: 900; line-height: 1.1; letter-spacing: -1px;
+            margin-bottom: 22px;
+        }
+        .hero-title .hl-blue {
+            background: linear-gradient(90deg, #4188ff, #60a5fa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+        .hero-title .hl-teal {
+            background: linear-gradient(90deg, #00d4aa, #34d399);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+        }
+
+        .hero-sub {
+            font-size: 1.1rem; color: var(--text-soft); line-height: 1.75;
+            max-width: 500px; margin-bottom: 40px;
+        }
+
+        .hero-ctas { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 48px; }
+        .btn-hero-primary {
+            display: inline-flex; align-items: center; gap: 9px;
+            background: linear-gradient(135deg, #4188ff, #2563eb);
+            color: #fff; font-size: 1rem; font-weight: 700;
+            padding: 14px 30px; border-radius: 12px; text-decoration: none;
+            box-shadow: 0 8px 28px rgba(65,136,255,.4);
+            transition: all .3s var(--ease);
+        }
+        .btn-hero-primary:hover { transform: translateY(-3px); box-shadow: 0 14px 36px rgba(65,136,255,.55); color: #fff; }
+        .btn-hero-secondary {
+            display: inline-flex; align-items: center; gap: 8px;
+            color: rgba(255,255,255,.75); font-size: 1rem; font-weight: 600;
+            padding: 14px 24px; border-radius: 12px; text-decoration: none;
+            border: 1.5px solid rgba(255,255,255,.18);
+            background: rgba(255,255,255,.05);
+            transition: all .3s var(--ease);
+        }
+        .btn-hero-secondary:hover { color: #fff; background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.35); }
+
+        .hero-trust {
+            display: flex; align-items: center; gap: 12px;
+            font-size: .82rem; color: var(--text-dim);
+        }
+        .trust-ava { display: flex; }
+        .trust-ava span {
+            width: 28px; height: 28px; border-radius: 50%;
+            border: 2px solid rgba(65,136,255,.5);
+            background: linear-gradient(135deg,#4188ff,#103661);
+            display: flex; align-items: center; justify-content: center;
+            font-size: .65rem; font-weight: 700; color: #fff;
+            margin-left: -7px;
+        }
+        .trust-ava span:first-child { margin-left: 0; }
+
+        /* ─── Hero Dashboard Mockup ─── */
+        .hero-mockup {
+            position: relative; z-index: 1;
+        }
+        .mockup-window {
+            background: rgba(255,255,255,.07);
+            backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 40px 100px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.12);
+        }
+        .mockup-bar {
+            background: rgba(255,255,255,.06);
+            padding: 12px 18px;
+            border-bottom: 1px solid rgba(255,255,255,.08);
+            display: flex; align-items: center; gap: 8px;
+        }
+        .mockup-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .mockup-dot.red    { background: #ff5f57; }
+        .mockup-dot.yellow { background: #ffbd2e; }
+        .mockup-dot.green  { background: #28c840; }
+        .mockup-url {
+            flex: 1; margin-left: 8px;
+            background: rgba(255,255,255,.08); border-radius: 6px;
+            padding: 5px 12px; font-size: .75rem; color: rgba(255,255,255,.4);
+        }
+        .mockup-body { padding: 18px; }
+
+        .mock-kpi-row { display: grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-bottom: 14px; }
+        .mock-kpi {
+            background: rgba(255,255,255,.06);
+            border: 1px solid rgba(255,255,255,.1);
+            border-radius: 10px; padding: 14px;
+        }
+        .mock-kpi-lbl { font-size: .62rem; font-weight: 700; color: rgba(255,255,255,.38); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+        .mock-kpi-val { font-size: 1.3rem; font-weight: 800; font-family: 'JetBrains Mono', 'Courier New', monospace; }
+        .mock-kpi-chg { font-size: .65rem; font-weight: 600; margin-top: 4px; display: flex; align-items: center; gap: 4px; }
+        .mk-blue  { color: #60a5fa; }
+        .mk-green { color: #34d399; }
+        .mk-gold  { color: #fbbf24; }
+        .mk-red   { color: #f87171; }
+
+        .mock-chart {
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.08);
+            border-radius: 10px; padding: 14px;
+            margin-bottom: 12px;
+        }
+        .mock-chart-lbl { font-size: .65rem; color: rgba(255,255,255,.35); margin-bottom: 10px; }
+        .mock-bars { display: flex; align-items: flex-end; gap: 6px; height: 52px; }
+        .mock-bar { flex: 1; border-radius: 4px 4px 0 0; min-height: 4px; }
+
+        .mock-tiles { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+        .mock-tile {
+            background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.08);
+            border-radius: 9px; padding: 10px 6px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+        }
+        .mock-tile-icon {
+            width: 30px; height: 30px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; font-size: .7rem; color: #fff;
+        }
+        .mock-tile-lbl { font-size: .55rem; color: rgba(255,255,255,.4); text-align: center; }
+
+        /* ─── STATS BAND ─── */
+        .stats-band {
+            background: rgba(255,255,255,.04);
+            border-top: 1px solid rgba(255,255,255,.07);
+            border-bottom: 1px solid rgba(255,255,255,.07);
+            padding: 40px 40px;
+        }
+        .stats-inner {
+            max-width: 1100px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(4,1fr);
+            gap: 0;
+        }
+        .stat-item {
+            text-align: center;
+            padding: 0 20px;
+            border-right: 1px solid rgba(255,255,255,.08);
+        }
+        .stat-item:last-child { border-right: none; }
+        .stat-num {
+            font-size: 2.4rem; font-weight: 900; letter-spacing: -1px;
+            background: linear-gradient(90deg, #4188ff, #00d4aa);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+            margin-bottom: 6px;
+        }
+        .stat-lbl { font-size: .85rem; color: var(--text-soft); font-weight: 500; }
+
+        /* ─── FEATURES ─── */
+        .features-section {
+            padding: 100px 40px;
+            position: relative; overflow: hidden;
+        }
+        .features-section .orb { position: absolute; }
+        .features-section .orb-a { width: 500px; height: 500px; background: #4188ff; top: -100px; right: -150px; animation-delay: -2s; }
+        .features-section .orb-b { width: 350px; height: 350px; background: #00d4aa; bottom: -80px; left: -80px; animation-delay: 0s; }
+
+        .section-header { text-align: center; max-width: 680px; margin: 0 auto 64px; position: relative; z-index: 1; }
+        .section-eyebrow {
+            display: inline-flex; align-items: center; gap: 8px;
+            background: var(--accent-dim); border: 1px solid rgba(0,212,170,.3);
+            color: #6ee7b7; font-size: .78rem; font-weight: 600;
+            letter-spacing: .5px; text-transform: uppercase;
+            padding: 6px 14px; border-radius: 99px; margin-bottom: 20px;
+        }
+        .section-title { font-size: clamp(1.8rem, 3.5vw, 2.8rem); font-weight: 800; letter-spacing: -.5px; margin-bottom: 16px; }
+        .section-sub { font-size: 1rem; color: var(--text-soft); line-height: 1.7; }
+
+        .features-grid {
+            max-width: 1100px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(3,1fr); gap: 24px;
+            position: relative; z-index: 1;
+        }
+        .feat-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius);
+            padding: 30px;
+            transition: transform .3s var(--ease), box-shadow .3s;
+        }
+        .feat-card:hover { transform: translateY(-6px); box-shadow: 0 24px 60px rgba(0,0,0,.3); }
+        .feat-icon {
+            width: 52px; height: 52px; border-radius: 14px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.2rem; margin-bottom: 20px;
+        }
+        .fi-1 { background: rgba(65,136,255,.18); color: #60a5fa; }
+        .fi-2 { background: rgba(0,212,170,.15); color: #34d399; }
+        .fi-3 { background: rgba(251,191,36,.15); color: #fbbf24; }
+        .fi-4 { background: rgba(239,68,68,.15); color: #f87171; }
+        .fi-5 { background: rgba(167,139,250,.15); color: #c4b5fd; }
+        .fi-6 { background: rgba(34,211,238,.15); color: #67e8f9; }
+        .feat-card h3 { font-size: 1.05rem; font-weight: 700; margin-bottom: 10px; }
+        .feat-card p { font-size: .875rem; color: var(--text-soft); line-height: 1.7; }
+
+        /* ─── HOW IT WORKS ─── */
+        .how-section { padding: 100px 40px; }
+        .steps-grid {
+            max-width: 900px; margin: 0 auto;
+            display: grid; grid-template-columns: repeat(3,1fr); gap: 32px;
+            position: relative; z-index: 1;
+        }
+        .steps-grid::before {
+            content: '';
+            position: absolute;
+            top: 26px; left: calc(16.66% + 26px); right: calc(16.66% + 26px);
+            height: 2px;
+            background: linear-gradient(90deg, #4188ff, #00d4aa);
+            opacity: .35;
+        }
+        .step { text-align: center; }
+        .step-num {
+            width: 52px; height: 52px; border-radius: 50%;
+            background: linear-gradient(135deg, #4188ff, #2563eb);
+            box-shadow: 0 8px 24px rgba(65,136,255,.35);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.1rem; font-weight: 800; color: #fff;
+            margin: 0 auto 20px;
+        }
+        .step h4 { font-size: 1rem; font-weight: 700; margin-bottom: 10px; }
+        .step p { font-size: .875rem; color: var(--text-soft); line-height: 1.65; }
+
+        /* ─── CTA SECTION ─── */
+        .cta-section {
+            padding: 100px 40px;
+            position: relative; overflow: hidden;
+        }
+        .cta-section .orb-c { width: 600px; height: 600px; background: #4188ff; top: 50%; left: 50%; transform: translate(-50%,-50%); opacity: .12; animation-delay: 0s; }
+        .cta-inner {
+            max-width: 680px; margin: 0 auto; text-align: center;
+            position: relative; z-index: 1;
+        }
+        .cta-card {
+            background: rgba(255,255,255,.06);
+            backdrop-filter: blur(32px); -webkit-backdrop-filter: blur(32px);
+            border: 1px solid rgba(255,255,255,.14);
+            border-radius: 24px;
+            padding: 56px 48px;
+            box-shadow: 0 40px 80px rgba(0,0,0,.35);
+            position: relative; overflow: hidden;
+        }
+        .cta-card::before {
+            content: '';
+            position: absolute; top: 0; left: 0; right: 0; height: 2px;
+            background: linear-gradient(90deg, transparent, #4188ff, #00d4aa, transparent);
+        }
+        .cta-card h2 { font-size: 2.2rem; font-weight: 800; letter-spacing: -.5px; margin-bottom: 14px; }
+        .cta-card p { font-size: 1rem; color: var(--text-soft); margin-bottom: 36px; line-height: 1.7; }
+        .cta-btns { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; }
+
+        /* ─── FOOTER ─── */
+        footer {
+            padding: 48px 40px 32px;
+            border-top: 1px solid rgba(255,255,255,.07);
+        }
+        .footer-inner {
+            max-width: 1100px; margin: 0 auto;
+            display: flex; flex-direction: column; gap: 32px;
+        }
+        .footer-top {
+            display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 24px;
+        }
+        .footer-brand { display: flex; align-items: center; gap: 10px; font-size: 1.1rem; font-weight: 700; color: #fff; }
+        .footer-brand .brand-icon { width: 30px; height: 30px; background: linear-gradient(135deg,#4188ff,#00d4aa); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: .8rem; }
+        .footer-tagline { font-size: .875rem; color: var(--text-dim); margin-top: 6px; }
+        .footer-links { display: flex; gap: 32px; flex-wrap: wrap; }
+        .footer-link-group h5 { font-size: .78rem; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-dim); margin-bottom: 12px; }
+        .footer-link-group a { display: block; font-size: .875rem; color: var(--text-soft); text-decoration: none; margin-bottom: 8px; transition: color .2s; }
+        .footer-link-group a:hover { color: #fff; }
+        .footer-bottom {
+            border-top: 1px solid rgba(255,255,255,.07);
+            padding-top: 24px;
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+            font-size: .8rem; color: var(--text-dim);
+        }
+        .footer-bottom a { color: rgba(100,158,255,.7); text-decoration: none; }
+        .footer-bottom a:hover { text-decoration: underline; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 1024px) {
+            .hero-inner { grid-template-columns: 1fr; max-width: 600px; }
+            .hero-mockup { display: none; }
+            .features-grid { grid-template-columns: repeat(2,1fr); }
+            .stats-inner { grid-template-columns: repeat(2,1fr); }
+            .stat-item:nth-child(2) { border-right: none; }
+            .stat-item:nth-child(3) { border-top: 1px solid rgba(255,255,255,.08); }
+            .stat-item:nth-child(4) { border-top: 1px solid rgba(255,255,255,.08); border-right: none; }
+        }
+        @media (max-width: 700px) {
+            .top-nav { padding: 12px 20px; }
+            .nav-links .nav-link-item { display: none; }
+            .hero { padding: 100px 20px 60px; }
+            .features-grid, .steps-grid { grid-template-columns: 1fr; }
+            .steps-grid::before { display: none; }
+            .features-section, .how-section, .cta-section { padding: 70px 20px; }
+            .stats-band { padding: 36px 20px; }
+            .stats-inner { grid-template-columns: repeat(2,1fr); gap: 20px; }
+            .stat-item { border-right: none; border-top: none !important; }
+            .cta-card { padding: 36px 24px; }
+            .footer-top { flex-direction: column; }
+            .footer-links { gap: 20px; }
+            .footer-inner { padding: 0 4px; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- Page Loader -->
+<div id="pageLoader" class="page-loader">
+    <div class="loader-brand"><span>S</span><span>U</span><span>W</span><span>I</span><span>N</span></div>
+    <div class="loader-bar"><div class="loader-bar-fill"></div></div>
+</div>
+
+<!-- Navbar -->
+<nav class="top-nav" id="topNav">
+    <a href="/" class="nav-brand">
+        <div class="brand-icon"><i class="fas fa-chart-pie"></i></div>
+        Suwin Accounting
+    </a>
+    <div class="nav-links">
+        <a href="#features" class="nav-link-item">Features</a>
+        <a href="#how" class="nav-link-item">How it works</a>
+        <a href="{{ url_for('login') }}" class="btn-nav-login">Sign In</a>
+        <a href="{{ url_for('register') }}" class="btn-nav-register">Get started free</a>
+    </div>
+</nav>
+
+<!-- ═══════════════════════ HERO ═══════════════════════ -->
+<section class="hero bg-gradient-anim dot-grid">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+
+    <div class="hero-inner">
+        <div class="hero-content">
+            <div class="hero-eyebrow"><i class="fas fa-circle-check"></i> Trusted by Growing Businesses</div>
+            <h1 class="hero-title">
+                <span class="hl-blue">Automation</span> where<br>
+                it counts.<br>
+                <span class="hl-teal">Human</span> when it matters.
+            </h1>
+            <p class="hero-sub">
+                All-in-one ERP built for growing businesses — invoicing, inventory, POS, banking, and financial reports in one beautifully simple platform.
+            </p>
+            <div class="hero-ctas">
+                <a href="{{ url_for('register') }}" class="btn-hero-primary">
+                    <i class="fas fa-rocket"></i> Start for free
+                </a>
+                <a href="{{ url_for('login') }}" class="btn-hero-secondary">
+                    <i class="fas fa-sign-in-alt"></i> Sign in
+                </a>
+            </div>
+            <div class="hero-trust">
+                <div class="trust-ava">
+                    <span>S</span><span>A</span><span>R</span><span>M</span><span>+</span>
+                </div>
+                No credit card required &nbsp;·&nbsp; Free to start
+            </div>
+        </div>
+
+        <!-- Dashboard Mockup -->
+        <div class="hero-mockup">
+            <div class="mockup-window">
+                <div class="mockup-bar">
+                    <div class="mockup-dot red"></div>
+                    <div class="mockup-dot yellow"></div>
+                    <div class="mockup-dot green"></div>
+                    <div class="mockup-url">suwin.store / dashboard</div>
+                </div>
+                <div class="mockup-body">
+                    <div class="mock-kpi-row">
+                        <div class="mock-kpi">
+                            <div class="mock-kpi-lbl">Total Revenue</div>
+                            <div class="mock-kpi-val mk-blue">142,580</div>
+                            <div class="mock-kpi-chg mk-green"><i class="fas fa-arrow-trend-up"></i> +12.4%</div>
+                        </div>
+                        <div class="mock-kpi">
+                            <div class="mock-kpi-lbl">Cash Receipts</div>
+                            <div class="mock-kpi-val mk-green">89,340</div>
+                            <div class="mock-kpi-chg mk-green"><i class="fas fa-arrow-trend-up"></i> +8.1%</div>
+                        </div>
+                        <div class="mock-kpi">
+                            <div class="mock-kpi-lbl">Payables</div>
+                            <div class="mock-kpi-val mk-gold">34,210</div>
+                            <div class="mock-kpi-chg mk-gold"><i class="fas fa-arrow-trend-up"></i> +3.2%</div>
+                        </div>
+                        <div class="mock-kpi">
+                            <div class="mock-kpi-lbl">Approvals</div>
+                            <div class="mock-kpi-val mk-red">3</div>
+                            <div class="mock-kpi-chg mk-red"><i class="fas fa-triangle-exclamation"></i> Action</div>
+                        </div>
+                    </div>
+                    <div class="mock-chart">
+                        <div class="mock-chart-lbl">Monthly Revenue — Last 5 Months</div>
+                        <div class="mock-bars">
+                            <div class="mock-bar" style="height:55%;background:linear-gradient(180deg,#4188ff,rgba(65,136,255,.2))"></div>
+                            <div class="mock-bar" style="height:70%;background:linear-gradient(180deg,#4188ff,rgba(65,136,255,.2))"></div>
+                            <div class="mock-bar" style="height:48%;background:linear-gradient(180deg,#4188ff,rgba(65,136,255,.2))"></div>
+                            <div class="mock-bar" style="height:85%;background:linear-gradient(180deg,#4188ff,rgba(65,136,255,.2))"></div>
+                            <div class="mock-bar" style="height:100%;background:linear-gradient(180deg,#107C10,rgba(16,124,16,.3))"></div>
+                        </div>
+                    </div>
+                    <div class="mock-tiles">
+                        <div class="mock-tile"><div class="mock-tile-icon" style="background:linear-gradient(135deg,#4188ff,#2563eb)"><i class="fas fa-receipt"></i></div><div class="mock-tile-lbl">Receipts</div></div>
+                        <div class="mock-tile"><div class="mock-tile-icon" style="background:linear-gradient(135deg,#107C10,#0a5c0a)"><i class="fas fa-cash-register"></i></div><div class="mock-tile-lbl">POS</div></div>
+                        <div class="mock-tile"><div class="mock-tile-icon" style="background:linear-gradient(135deg,#C19C00,#9D5D00)"><i class="fas fa-file-invoice-dollar"></i></div><div class="mock-tile-lbl">Invoices</div></div>
+                        <div class="mock-tile"><div class="mock-tile-icon" style="background:linear-gradient(135deg,#C42B1C,#A4262C)"><i class="fas fa-file-invoice"></i></div><div class="mock-tile-lbl">Orders</div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════ STATS ═══════════════════════ -->
+<div class="stats-band">
+    <div class="stats-inner">
+        <div class="stat-item">
+            <div class="stat-num">500+</div>
+            <div class="stat-lbl">Active Businesses</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-num">1M+</div>
+            <div class="stat-lbl">Transactions Processed</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-num">99.9%</div>
+            <div class="stat-lbl">Uptime Guaranteed</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-num">24/7</div>
+            <div class="stat-lbl">Data Backup</div>
+        </div>
+    </div>
+</div>
+
+<!-- ═══════════════════════ FEATURES ═══════════════════════ -->
+<section class="features-section bg-gradient-anim dot-grid" id="features">
+    <div class="orb orb-a"></div>
+    <div class="orb orb-b"></div>
+    <div class="section-header">
+        <div class="section-eyebrow"><i class="fas fa-sparkles"></i> Everything you need</div>
+        <h2 class="section-title">One platform, every tool your business needs</h2>
+        <p class="section-sub">From invoices to inventory, from POS to payroll — Suwin Accounting covers your entire operation in one place.</p>
+    </div>
+    <div class="features-grid">
+        <div class="feat-card">
+            <div class="feat-icon fi-1"><i class="fas fa-file-invoice-dollar"></i></div>
+            <h3>Smart Invoicing</h3>
+            <p>Create, send, and track professional invoices in seconds. Proforma, sales, and custom invoices with automated numbering.</p>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon fi-2"><i class="fas fa-boxes-stacked"></i></div>
+            <h3>Inventory Management</h3>
+            <p>Real-time stock tracking, multi-location transfers, manufacturing production, and low-stock alerts built in.</p>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon fi-3"><i class="fas fa-cash-register"></i></div>
+            <h3>Point of Sale</h3>
+            <p>Full-featured POS with customer display, loyalty points, receipts, and seamless end-of-day cashier reconciliation.</p>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon fi-4"><i class="fas fa-chart-pie"></i></div>
+            <h3>Financial Reports</h3>
+            <p>Balance sheet, profit &amp; loss, trial balance, cash flow, VAT report — all generated in real time from your live data.</p>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon fi-5"><i class="fas fa-university"></i></div>
+            <h3>Banking &amp; Payments</h3>
+            <p>Bank reconciliation, cheque printing, payment vouchers, and full payment reversal workflows with audit trails.</p>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon fi-6"><i class="fas fa-shield-halved"></i></div>
+            <h3>Enterprise Security</h3>
+            <p>2FA, role-based access control, encrypted data at rest, and an approval workflow that keeps sensitive transactions safe.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════ HOW IT WORKS ═══════════════════════ -->
+<section class="how-section" id="how">
+    <div class="section-header">
+        <div class="section-eyebrow"><i class="fas fa-list-check"></i> Simple setup</div>
+        <h2 class="section-title">Up and running in minutes</h2>
+        <p class="section-sub">No complex onboarding. No consultants. Just register and start managing your business today.</p>
+    </div>
+    <div class="steps-grid">
+        <div class="step">
+            <div class="step-num">1</div>
+            <h4>Create your account</h4>
+            <p>Sign up free with your company name, email, and a username — no credit card required.</p>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <h4>Set up your company</h4>
+            <p>Add your chart of accounts, inventory items, customers, and suppliers in a few clicks.</p>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <h4>Run your business</h4>
+            <p>Create invoices, manage POS, reconcile banks, and generate reports — all from one dashboard.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════ CTA ═══════════════════════ -->
+<section class="cta-section">
+    <div class="orb orb-c"></div>
+    <div class="cta-inner">
+        <div class="cta-card">
+            <h2>Ready to run your business smarter?</h2>
+            <p>Join hundreds of businesses using Suwin Accounting to save time, stay accurate, and grow with confidence.</p>
+            <div class="cta-btns">
+                <a href="{{ url_for('register') }}" class="btn-hero-primary">
+                    <i class="fas fa-rocket"></i> Start free trial
+                </a>
+                <a href="{{ url_for('login') }}" class="btn-hero-secondary">
+                    <i class="fas fa-sign-in-alt"></i> Sign in to dashboard
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- ═══════════════════════ FOOTER ═══════════════════════ -->
+<footer>
+    <div class="footer-inner">
+        <div class="footer-top">
+            <div>
+                <div class="footer-brand">
+                    <div class="brand-icon"><i class="fas fa-chart-pie"></i></div>
+                    Suwin Accounting
+                </div>
+                <div class="footer-tagline">Smarter business management for growing teams.</div>
+            </div>
+            <div class="footer-links">
+                <div class="footer-link-group">
+                    <h5>Product</h5>
+                    <a href="#features">Features</a>
+                    <a href="#how">How it works</a>
+                    <a href="{{ url_for('register') }}">Pricing</a>
+                </div>
+                <div class="footer-link-group">
+                    <h5>Account</h5>
+                    <a href="{{ url_for('register') }}">Register</a>
+                    <a href="{{ url_for('login') }}">Sign in</a>
+                    <a href="{{ url_for('pos_web_login') }}">POS Login</a>
+                </div>
+                <div class="footer-link-group">
+                    <h5>Legal</h5>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Privacy Statement</a>
+                </div>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <span>&copy; 2026 Suwin Accounting. All rights reserved.</span>
+            <span>
+                <a href="#">Terms</a> &nbsp;·&nbsp; <a href="#">Privacy</a>
+            </span>
+        </div>
+    </div>
+</footer>
+
+<script>
+    // Page loader
+    const loader = document.getElementById('pageLoader');
+    window.addEventListener('load', () => setTimeout(() => loader.classList.add('hidden'), 250));
+    window.addEventListener('pageshow', e => { if (e.persisted) loader.classList.add('hidden'); });
+
+    // Navbar scroll effect
+    const nav = document.getElementById('topNav');
+    window.addEventListener('scroll', () => {
+        nav.classList.toggle('scrolled', window.scrollY > 60);
+    });
+
+    // Smooth anchor scroll
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+        a.addEventListener('click', e => {
+            const target = document.querySelector(a.getAttribute('href'));
+            if (target) { e.preventDefault(); target.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        });
+    });
+</script>
+
+</body>
+</html>
