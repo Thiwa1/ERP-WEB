@@ -6,415 +6,733 @@
     <title>Register - Suwin Accounting</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body, html {
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --brand:       #4188ff;
+            --brand-dark:  #103661;
+            --brand-light: #649eff;
+            --accent:      #00d4aa;
+            --radius:      18px;
+            --transition:  0.3s cubic-bezier(0.4,0,0.2,1);
+        }
+
+        html, body {
             height: 100%;
-            margin: 0;
-            font-family: 'Avenir Next', 'Segoe UI', Helvetica, Arial, sans-serif;
-            background-color: #f4f5f8;
-            color: #393a3d;
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            overflow-x: hidden;
         }
 
-        /* Navigation */
-        .navbar {
-            background-color: #ffffff;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-            padding: 15px 0;
-        }
-        .navbar-brand {
-            font-weight: 700;
-            font-size: 24px;
-            color: #4188ff;
+        /* ─── Animated Gradient ─── */
+        body {
+            background: linear-gradient(-45deg, #0a1628, #103661, #1a4fa8, #4188ff, #103661, #0a1628);
+            background-size: 400% 400%;
+            animation: gradientShift 18s ease infinite;
+            min-height: 100vh;
             display: flex;
-            align-items: center;
-            gap: 10px;
+            flex-direction: column;
         }
-        .navbar-brand i {
-            color: #649eff; /* QuickBooks Green-ish */
-        }
-        .btn-outline-login {
-            border: 2px solid #4188ff;
-            color: #4188ff;
-            font-weight: 600;
-            border-radius: 20px;
-            padding: 6px 20px;
-        }
-        .btn-outline-login:hover {
-            background-color: #4188ff;
-            color: #fff;
+        @keyframes gradientShift {
+            0%   { background-position: 0% 50%; }
+            50%  { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
         }
 
-        /* Hero Section */
-        .hero-section {
-            background-color: #000;
-            background-image: url('https://quickbooks.intuit.com/oidam/intuit/sbseg/en_us/quickbooks-online/web/image/fusion-gradient-background-desktop-2x.jpg'); /* Use a similar gradient or the one from the example if accessible, fallback to color */
-            background-size: cover;
-            background-position: center;
-            min-height: 100vh; /* Full height including nav area effect */
-            display: flex;
-            align-items: center;
-            padding: 60px 0;
-            position: relative;
-            margin-top: -76px; /* Pull up behind nav if nav was transparent, but nav is white here. Let's just have it separate. */
-            margin-top: 0;
-        }
-
-        /* Fallback gradient if image fails */
-        .hero-section {
-            background: linear-gradient(135deg, #377BF3 0%, #204C88 100%);
-        }
-
-        .hero-text h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            color: #ffffff;
-            margin-bottom: 20px;
-            line-height: 1.2;
-        }
-        .hero-text h1 span {
-            color: #31E8B8; /* Matching the bright mint green from the screenshot */
-            background: unset;
-            -webkit-text-fill-color: unset;
-            -webkit-background-clip: unset;
-        }
-        .hero-text p {
-            font-size: 1.25rem;
-            color: #ffffff;
-            margin-bottom: 40px;
-            opacity: 0.9;
-        }
-        .check-list {
-            list-style: none;
-            padding: 0;
-            color: white;
-            font-size: 1rem;
-        }
-        .check-list li {
-            margin-bottom: 10px;
-            display: flex;
-            align-items: center;
-        }
-        .check-list li i {
-            color: #5bef76;
-            margin-right: 15px;
-            font-size: 1.2rem;
-        }
-
-        /* Registration Card */
-        .register-card {
-            background: #ffffff;
-            border-radius: 12px;
-            border: none;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.2);
-            padding: 40px;
-        }
-        .register-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-        .register-header h3 {
-            font-weight: 700;
-            color: #4188ff;
-        }
-        .form-label {
-            font-weight: 600;
-            color: #393a3d;
-            font-size: 0.9rem;
-        }
-        .form-control {
-            border-radius: 6px;
-            padding: 10px 15px;
-            border: 1px solid #c3ced5;
-            background-color: #fff;
-        }
-        .form-control:focus {
-            border-color: #649eff;
-            box-shadow: 0 0 0 0.25rem rgba(44, 160, 28, 0.25);
-        }
-        .btn-register {
-            background-color: #649eff; /* QuickBooks Green */
-            color: #fff;
-            font-weight: 700;
-            border: none;
-            border-radius: 6px;
-            padding: 12px;
-            width: 100%;
-            font-size: 1.1rem;
-            margin-top: 20px;
-            transition: background-color 0.3s;
-        }
-        .btn-register:hover {
-            background-color: #4188ff;
-            color: #fff;
-        }
-        .terms-text {
-            font-size: 0.8rem;
-            color: #6b6c72;
-            text-align: center;
-            margin-top: 20px;
-        }
-        .terms-text a {
-            color: #0077c5;
-            text-decoration: none;
-        }
-
-        /* Responsive */
-        @media (max-width: 991px) {
-            .hero-section {
-                text-align: center;
-                padding: 40px 0;
-            }
-            .hero-text {
-                margin-bottom: 40px;
-            }
-            .check-list {
-                display: inline-block;
-                text-align: left;
-            }
-        }
-    </style>
-
-    <style>
-        /* Global Page Loader */
-        .global-page-loader {
+        /* ─── Orbs ─── */
+        .orb {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(255, 255, 255, 0.95);
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.22;
+            pointer-events: none;
+            z-index: 0;
+            animation: float 8s ease-in-out infinite;
+        }
+        .orb-1 { width: 500px; height: 500px; background: #4188ff; top: -140px; left: -120px; animation-delay: 0s; }
+        .orb-2 { width: 400px; height: 400px; background: #00d4aa; bottom: -100px; right: -80px; animation-delay: -4s; }
+        .orb-3 { width: 280px; height: 280px; background: #a78bfa; top: 40%; left: 35%; animation-delay: -2s; }
+        @keyframes float {
+            0%, 100% { transform: translateY(0) scale(1); }
+            50%       { transform: translateY(-28px) scale(1.05); }
+        }
+
+        /* ─── Dot grid ─── */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        /* ─── Page Loader ─── */
+        .page-loader {
+            position: fixed;
+            inset: 0;
+            background: #0a1628;
             z-index: 99999;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            opacity: 1;
-            transition: opacity 0.4s ease-out;
-            pointer-events: all;
+            justify-content: center;
+            transition: opacity 0.5s ease, visibility 0.5s;
         }
+        .page-loader.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
 
-        .global-page-loader.hidden {
-            opacity: 0;
-            pointer-events: none;
-            visibility: hidden;
-            transition: opacity 0.4s ease-out, visibility 0.4s;
-        }
-
-        .suwin-loader-text {
-            font-size: 2.5rem;
+        .loader-brand {
+            font-size: 2.2rem;
             font-weight: 800;
-            color: #1e293b;
-            letter-spacing: 4px;
-            margin-bottom: 20px;
+            color: #fff;
+            letter-spacing: 6px;
+            margin-bottom: 24px;
             display: flex;
-            gap: 4px;
+            gap: 2px;
         }
-
-        .suwin-loader-text span {
-            display: inline-block;
-            animation: bounce 1.2s infinite ease-in-out both;
-        }
-
-        .suwin-loader-text span:nth-child(1) { animation-delay: -0.6s; color: #3b82f6; }
-        .suwin-loader-text span:nth-child(2) { animation-delay: -0.5s; }
-        .suwin-loader-text span:nth-child(3) { animation-delay: -0.4s; }
-        .suwin-loader-text span:nth-child(4) { animation-delay: -0.3s; }
-        .suwin-loader-text span:nth-child(5) { animation-delay: -0.2s; color: #3b82f6; }
-
+        .loader-brand span { display: inline-block; animation: bounce 1.4s infinite ease-in-out; }
+        .loader-brand span:nth-child(1) { animation-delay: 0s;    color: #4188ff; }
+        .loader-brand span:nth-child(2) { animation-delay: 0.1s; }
+        .loader-brand span:nth-child(3) { animation-delay: 0.2s; }
+        .loader-brand span:nth-child(4) { animation-delay: 0.3s; }
+        .loader-brand span:nth-child(5) { animation-delay: 0.4s; color: #00d4aa; }
         @keyframes bounce {
-            0%, 80%, 100% { transform: scale(1) translateY(0); }
-            40% { transform: scale(1.1) translateY(-15px); }
+            0%, 80%, 100% { transform: translateY(0) scale(1); }
+            40%            { transform: translateY(-18px) scale(1.15); }
         }
-
-        .suwin-loader-bar {
-            width: 150px;
-            height: 4px;
-            background: #e2e8f0;
-            border-radius: 4px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        .suwin-loader-progress {
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
+        .loader-bar { width: 180px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 99px; overflow: hidden; }
+        .loader-bar-fill {
             height: 100%;
-            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
-            animation: slide 1.5s infinite linear;
+            background: linear-gradient(90deg, #4188ff, #00d4aa, #4188ff);
+            background-size: 200% 100%;
+            animation: shimmer 1.4s linear infinite;
+        }
+        @keyframes shimmer {
+            0%   { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
         }
 
-        @keyframes slide {
-            0% { left: -100%; }
-            100% { left: 100%; }
+        /* ─── Navbar ─── */
+        .top-nav {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            z-index: 100;
+            padding: 16px 32px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(10,22,40,0.45);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #fff;
+            text-decoration: none;
+        }
+        .nav-brand .brand-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #4188ff, #00d4aa);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            color: #fff;
+        }
+        .btn-nav-login {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fff;
+            border: 1.5px solid rgba(255,255,255,0.35);
+            border-radius: 99px;
+            padding: 7px 20px;
+            text-decoration: none;
+            background: rgba(255,255,255,0.06);
+            backdrop-filter: blur(8px);
+            transition: var(--transition);
+        }
+        .btn-nav-login:hover {
+            background: rgba(255,255,255,0.15);
+            border-color: rgba(255,255,255,0.6);
+            color: #fff;
+        }
+
+        /* ─── Layout ─── */
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 100px 20px 48px;
+            position: relative;
+            z-index: 1;
+        }
+        .register-grid {
+            width: 100%;
+            max-width: 1100px;
+            display: grid;
+            grid-template-columns: 1fr 500px;
+            gap: 60px;
+            align-items: start;
+        }
+
+        /* ─── Info Panel ─── */
+        .info-panel { color: #fff; padding-top: 20px; }
+        .info-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0,212,170,0.15);
+            border: 1px solid rgba(0,212,170,0.3);
+            color: #6ee7b7;
+            font-size: 0.78rem;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            padding: 6px 14px;
+            border-radius: 99px;
+            margin-bottom: 28px;
+        }
+        .info-badge i { color: #00d4aa; }
+
+        .info-panel h1 {
+            font-size: clamp(1.9rem, 3.5vw, 3rem);
+            font-weight: 800;
+            line-height: 1.15;
+            margin-bottom: 18px;
+            letter-spacing: -0.5px;
+        }
+        .info-panel h1 .highlight {
+            background: linear-gradient(90deg, #00d4aa, #4188ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .info-panel .tagline {
+            font-size: 1rem;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.7;
+            margin-bottom: 36px;
+            max-width: 420px;
+        }
+
+        .feature-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-bottom: 40px;
+        }
+        .feature-list li {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            font-size: 0.95rem;
+            color: rgba(255,255,255,0.8);
+        }
+        .feat-check {
+            width: 28px; height: 28px;
+            flex-shrink: 0;
+            border-radius: 8px;
+            background: rgba(0,212,170,0.15);
+            border: 1px solid rgba(0,212,170,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #00d4aa;
+            font-size: 0.75rem;
+        }
+
+        .free-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(65,136,255,0.12);
+            border: 1px solid rgba(65,136,255,0.25);
+            border-radius: 12px;
+            padding: 14px 20px;
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.7);
+        }
+        .free-badge strong { color: #fff; font-size: 1rem; }
+        .free-icon {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, #4188ff, #00d4aa);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-size: 0.9rem;
+        }
+
+        /* ─── Glass Card ─── */
+        .register-card {
+            background: rgba(255,255,255,0.07);
+            backdrop-filter: blur(32px);
+            -webkit-backdrop-filter: blur(32px);
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: var(--radius);
+            padding: 40px 36px;
+            box-shadow: 0 32px 80px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.12);
+            position: relative;
+            overflow: hidden;
+        }
+        .register-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #00d4aa, #4188ff, transparent);
+            border-radius: var(--radius) var(--radius) 0 0;
+        }
+
+        .card-header-area { margin-bottom: 28px; }
+        .card-logo {
+            width: 46px; height: 46px;
+            background: linear-gradient(135deg, #00d4aa 0%, #4188ff 100%);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: #fff;
+            margin-bottom: 18px;
+            box-shadow: 0 8px 24px rgba(0,212,170,0.35);
+        }
+        .card-header-area h2 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+            letter-spacing: -0.3px;
+        }
+        .card-header-area p { font-size: 0.875rem; color: rgba(255,255,255,0.45); }
+
+        /* ─── Flash Messages ─── */
+        .alert {
+            border-radius: 10px;
+            font-size: 0.875rem;
+            padding: 12px 16px;
+            margin-bottom: 18px;
+            border: none;
+        }
+        .alert-danger  { background: rgba(239,68,68,0.15);  color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+        .alert-success { background: rgba(0,212,170,0.12);  color: #6ee7b7; border: 1px solid rgba(0,212,170,0.3); }
+        .alert-warning { background: rgba(245,158,11,0.12); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+        .alert-info    { background: rgba(65,136,255,0.12); color: #93c5fd; border: 1px solid rgba(65,136,255,0.3); }
+
+        /* ─── Inputs ─── */
+        .field-group {
+            position: relative;
+            margin-bottom: 14px;
+        }
+        .field-group .field-icon {
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255,255,255,0.28);
+            font-size: 0.85rem;
+            pointer-events: none;
+            transition: color var(--transition);
+            z-index: 2;
+        }
+        .field-group:focus-within .field-icon { color: #4188ff; }
+
+        .field-group input {
+            width: 100%;
+            height: 48px;
+            background: rgba(255,255,255,0.07);
+            border: 1.5px solid rgba(255,255,255,0.12);
+            border-radius: 11px;
+            padding: 0 42px 0 42px;
+            font-size: 0.9rem;
+            font-family: 'Inter', sans-serif;
+            color: #fff;
+            outline: none;
+            transition: all var(--transition);
+        }
+        .field-group input::placeholder { color: rgba(255,255,255,0.32); }
+        .field-group input:focus {
+            background: rgba(65,136,255,0.12);
+            border-color: #4188ff;
+            box-shadow: 0 0 0 4px rgba(65,136,255,0.12);
+        }
+        .field-group input:hover:not(:focus) {
+            border-color: rgba(255,255,255,0.22);
+            background: rgba(255,255,255,0.09);
+        }
+        .field-group input.is-invalid {
+            border-color: rgba(239,68,68,0.7) !important;
+            box-shadow: 0 0 0 4px rgba(239,68,68,0.1) !important;
+        }
+        .field-group input.is-valid {
+            border-color: rgba(0,212,170,0.7) !important;
+            box-shadow: 0 0 0 4px rgba(0,212,170,0.08) !important;
+        }
+
+        .toggle-pw {
+            position: absolute;
+            right: 13px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: rgba(255,255,255,0.28);
+            cursor: pointer;
+            padding: 4px;
+            font-size: 0.85rem;
+            transition: color var(--transition);
+            z-index: 2;
+        }
+        .toggle-pw:hover { color: rgba(255,255,255,0.65); }
+
+        /* ─── Password Row ─── */
+        .pw-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        /* ─── Validation Message ─── */
+        .field-error {
+            font-size: 0.78rem;
+            color: #fca5a5;
+            margin-top: -8px;
+            margin-bottom: 10px;
+            padding-left: 4px;
+            display: none;
+            align-items: center;
+            gap: 6px;
+        }
+        .field-error.visible { display: flex; }
+
+        /* ─── Password Strength ─── */
+        .pw-strength {
+            height: 3px;
+            border-radius: 99px;
+            background: rgba(255,255,255,0.08);
+            margin-top: -10px;
+            margin-bottom: 12px;
+            overflow: hidden;
+        }
+        .pw-strength-fill {
+            height: 100%;
+            border-radius: 99px;
+            width: 0%;
+            transition: width 0.4s ease, background 0.4s ease;
+        }
+
+        /* ─── Submit Button ─── */
+        .btn-register {
+            width: 100%;
+            height: 50px;
+            background: linear-gradient(135deg, #00d4aa 0%, #059669 100%);
+            border: none;
+            border-radius: 12px;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Inter', sans-serif;
+            letter-spacing: 0.3px;
+            cursor: pointer;
+            margin-top: 6px;
+            transition: all var(--transition);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 8px 24px rgba(0,212,170,0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-register::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: rgba(255,255,255,0.1);
+            opacity: 0;
+            transition: opacity var(--transition);
+        }
+        .btn-register:hover { transform: translateY(-2px); box-shadow: 0 12px 32px rgba(0,212,170,0.45); }
+        .btn-register:hover::before { opacity: 1; }
+        .btn-register:active { transform: translateY(0); }
+        .btn-register:disabled { opacity: 0.6; transform: none; cursor: not-allowed; }
+
+        /* ─── Terms ─── */
+        .terms-text {
+            font-size: 0.78rem;
+            color: rgba(255,255,255,0.35);
+            text-align: center;
+            margin-top: 14px;
+            line-height: 1.6;
+        }
+        .terms-text a {
+            color: rgba(100,158,255,0.8);
+            text-decoration: none;
+        }
+        .terms-text a:hover { text-decoration: underline; color: #649eff; }
+
+        /* ─── Login link ─── */
+        .card-login-text {
+            font-size: 0.875rem;
+            color: rgba(255,255,255,0.4);
+            text-align: center;
+            margin-top: 18px;
+        }
+        .card-login-text a {
+            color: #649eff;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .card-login-text a:hover { text-decoration: underline; }
+
+        /* ─── Responsive ─── */
+        @media (max-width: 960px) {
+            .register-grid { grid-template-columns: 1fr; max-width: 500px; }
+            .info-panel { display: none; }
+            .main-wrapper { padding: 88px 16px 40px; }
+        }
+        @media (max-width: 480px) {
+            .register-card { padding: 28px 20px; }
+            .pw-row { grid-template-columns: 1fr; }
+            .top-nav { padding: 12px 20px; }
         }
     </style>
-
 </head>
 <body>
-    <!-- Global Page Loader -->
-    <div id="globalPageLoader" class="global-page-loader">
-        <div class="suwin-loader-content">
-            <div class="suwin-loader-text">
-                <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
-            </div>
-            <div class="suwin-loader-bar">
-                <div class="suwin-loader-progress"></div>
-            </div>
+
+    <!-- Page Loader -->
+    <div id="pageLoader" class="page-loader">
+        <div class="loader-brand">
+            <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
         </div>
+        <div class="loader-bar"><div class="loader-bar-fill"></div></div>
     </div>
 
+    <!-- Orbs -->
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
 
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg fixed-top">
-        <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-chart-pie fa-lg"></i>
-                Suwin Accounting
-            </a>
-            <div class="ms-auto">
-                <a href="{{ url_for('login') }}" class="btn btn-outline-login">Login as Pro Version</a>
-            </div>
-        </div>
+    <!-- Top Nav -->
+    <nav class="top-nav">
+        <a href="/" class="nav-brand">
+            <div class="brand-icon"><i class="fas fa-chart-pie"></i></div>
+            Suwin Accounting
+        </a>
+        <a href="{{ url_for('login') }}" class="btn-nav-login">Login as Pro Version</a>
     </nav>
 
-    <!-- Hero Section with Registration Form -->
-    <section class="hero-section">
-        <div class="container">
-            <div class="row align-items-center">
+    <!-- Main -->
+    <main class="main-wrapper">
+        <div class="register-grid">
 
-                <!-- Left Column: Value Proposition -->
-                <div class="col-lg-6 hero-text">
-                    <h1><span>Automation where it counts.</span><br>Human when it matters.</h1>
-                    <p>Save time and unlock growth with integrated business tools, all in one place.</p>
+            <!-- Left: Info Panel -->
+            <div class="info-panel">
+                <div class="info-badge"><i class="fas fa-rocket"></i> Free Trial — No Card Needed</div>
+                <h1>
+                    Automation where<br>
+                    it counts. <span class="highlight">Human<br>when it matters.</span>
+                </h1>
+                <p class="tagline">
+                    Save time and unlock growth with integrated business tools — invoicing, inventory, and reporting — all in one place.
+                </p>
 
-                    <ul class="check-list">
-                        <li><i class="fas fa-check-circle"></i> Create & send professional invoices</li>
-                        <li><i class="fas fa-check-circle"></i> Track income, expenses, and profit</li>
-                        <li><i class="fas fa-check-circle"></i> Manage multiple currencies & inventory</li>
-                        <li><i class="fas fa-check-circle"></i> Secure data protection & backup</li>
-                    </ul>
-                </div>
+                <ul class="feature-list">
+                    <li><div class="feat-check"><i class="fas fa-check"></i></div> Create &amp; send professional invoices</li>
+                    <li><div class="feat-check"><i class="fas fa-check"></i></div> Track income, expenses, and profit</li>
+                    <li><div class="feat-check"><i class="fas fa-check"></i></div> Manage multiple currencies &amp; inventory</li>
+                    <li><div class="feat-check"><i class="fas fa-check"></i></div> Secure data protection &amp; backup</li>
+                </ul>
 
-                <!-- Right Column: Registration Form -->
-                <div class="col-lg-5 offset-lg-1">
-                    <div class="register-card">
-                        <div class="register-header">
-                            <h3>Start your free trial</h3>
-                            <p class="text-muted">No credit card required</p>
-                        </div>
-
-                        {% with messages = get_flashed_messages(with_categories=true) %}
-                            {% if messages %}
-                                {% for category, message in messages %}
-                                    <div class="alert alert-{{ category }} mb-3" role="alert">
-                                        {{ message }}
-                                    </div>
-                                {% endfor %}
-                            {% endif %}
-                        {% endwith %}
-
-                        <form action="{{ url_for('register') }}" method="POST" id="registerForm">
-                            <div class="mb-3">
-                                <label for="company_name" class="form-label">Company Name</label>
-                                <input type="text" class="form-control" id="company_name" name="company_name" placeholder="Business Name" required>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="email" class="form-label">Email Address</label>
-                                <input type="email" class="form-control" id="email" name="email" placeholder="name@example.com" required>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="mobile" class="form-label">Mobile Number</label>
-                                <input type="tel" class="form-control" id="mobile" name="mobile" placeholder="Mobile Number" required>
-                            </div>
-
-                            <div class="mb-3">
-                                <label for="username" class="form-label">Username</label>
-                                <input type="text" class="form-control" id="username" name="username" placeholder="Create a username" required>
-                            </div>
-
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <label for="password" class="form-label">Password</label>
-                                    <input type="password" class="form-control" id="password" name="password" required>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <label for="confirm_password" class="form-label">Confirm</label>
-                                    <input type="password" class="form-control" id="confirm_password" required>
-                                </div>
-                            </div>
-                            <div class="invalid-feedback d-block" id="passwordError" style="display:none !important;">Passwords do not match.</div>
-
-                            <button type="submit" class="btn btn-register btn-loading">Register</button>
-
-                            <p class="terms-text">
-                                By clicking Register, you agree to our <a href="#">Terms of Service</a> and <a href="#">Privacy Statement</a>.
-                            </p>
-                        </form>
+                <div class="free-badge">
+                    <div class="free-icon"><i class="fas fa-gift"></i></div>
+                    <div>
+                        <strong>Free forever plan available</strong><br>
+                        Upgrade any time — no credit card required.
                     </div>
                 </div>
-
             </div>
+
+            <!-- Right: Register Card -->
+            <div class="register-card">
+                <div class="card-header-area">
+                    <div class="card-logo"><i class="fas fa-user-plus"></i></div>
+                    <h2>Start your free trial</h2>
+                    <p>Set up your account in under a minute</p>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}" role="alert">
+                                <i class="fas fa-circle-info me-2"></i>{{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+
+                <form action="{{ url_for('register') }}" method="POST" id="registerForm" novalidate>
+
+                    <!-- Company Name -->
+                    <div class="field-group">
+                        <i class="fas fa-building field-icon"></i>
+                        <input type="text" id="company_name" name="company_name"
+                               placeholder="Company Name" autocomplete="organization" required>
+                    </div>
+
+                    <!-- Email -->
+                    <div class="field-group">
+                        <i class="fas fa-envelope field-icon"></i>
+                        <input type="email" id="email" name="email"
+                               placeholder="Email Address" autocomplete="email" required>
+                    </div>
+
+                    <!-- Mobile -->
+                    <div class="field-group">
+                        <i class="fas fa-phone field-icon"></i>
+                        <input type="tel" id="mobile" name="mobile"
+                               placeholder="Mobile Number" autocomplete="tel" required>
+                    </div>
+
+                    <!-- Username -->
+                    <div class="field-group">
+                        <i class="fas fa-user field-icon"></i>
+                        <input type="text" id="username" name="username"
+                               placeholder="Choose a Username" autocomplete="username" required>
+                    </div>
+
+                    <!-- Password Row -->
+                    <div class="pw-row">
+                        <div class="field-group">
+                            <i class="fas fa-lock field-icon"></i>
+                            <input type="password" id="password" name="password"
+                                   placeholder="Password" autocomplete="new-password" required>
+                            <button type="button" class="toggle-pw" data-target="password" aria-label="Toggle password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <div class="field-group">
+                            <i class="fas fa-lock field-icon"></i>
+                            <input type="password" id="confirm_password"
+                                   placeholder="Confirm Password" autocomplete="new-password" required>
+                            <button type="button" class="toggle-pw" data-target="confirm_password" aria-label="Toggle password">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Password Strength Bar -->
+                    <div class="pw-strength"><div class="pw-strength-fill" id="pwStrength"></div></div>
+
+                    <!-- Mismatch Error -->
+                    <div class="field-error" id="passwordError">
+                        <i class="fas fa-circle-xmark"></i> Passwords do not match.
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" class="btn-register" id="submitBtn">
+                        <span id="btnText">Create Account</span>
+                        <i class="fas fa-arrow-right" id="btnIcon"></i>
+                    </button>
+
+                    <p class="terms-text">
+                        By creating an account you agree to our
+                        <a href="#">Terms of Service</a> and <a href="#">Privacy Statement</a>.
+                    </p>
+                </form>
+
+                <p class="card-login-text">
+                    Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+                </p>
+            </div>
+
         </div>
-    </section>
+    </main>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        document.getElementById('registerForm').addEventListener('submit', function(event) {
-            var pwd = document.getElementById('password').value;
-            var cpwd = document.getElementById('confirm_password').value;
-            var err = document.getElementById('passwordError');
+        // ─── Page Loader ───
+        const loader = document.getElementById('pageLoader');
+        window.addEventListener('load', () => setTimeout(() => loader.classList.add('hidden'), 250));
+        window.addEventListener('pageshow', e => { if (e.persisted) loader.classList.add('hidden'); });
 
-            if (pwd !== cpwd) {
-                event.preventDefault();
-                document.getElementById('confirm_password').classList.add('is-invalid');
-                err.style.setProperty('display', 'block', 'important');
-            } else {
-                document.getElementById('confirm_password').classList.remove('is-invalid');
-                err.style.setProperty('display', 'none', 'important');
-
-                // Spinner logic
-                var btn = this.querySelector('.btn-loading');
-                if(btn) {
-                    var originalText = btn.innerHTML;
-                    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
-                    // We don't disable to ensure form submits, or we assume browser handles it.
-                    // Actually, disable prevents double submission, form should still submit if event propagation continues.
-                    // But in plain JS, disable immediately after click might stop submit if not carefully handled.
-                    // Bootstrap usually handles this if using standard classes, but here we just show spinner.
+        // ─── Password Toggle ───
+        document.querySelectorAll('.toggle-pw').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const input = document.getElementById(this.dataset.target);
+                const icon  = this.querySelector('i');
+                if (input.type === 'password') {
+                    input.type  = 'text';
+                    icon.className = 'fas fa-eye-slash';
+                } else {
+                    input.type  = 'password';
+                    icon.className = 'fas fa-eye';
                 }
-            }
-        });
-    </script>
-
-    <script>
-        // Global Loader Logic
-        window.addEventListener('load', function() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                setTimeout(() => {
-                    loader.classList.add('hidden');
-                }, 300); // Small delay to ensure smooth transition
-            }
+            });
         });
 
-        // Show loader before navigating away
-        window.addEventListener('beforeunload', function() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.classList.remove('hidden');
-            }
+        // ─── Password Strength ───
+        const pwInput    = document.getElementById('password');
+        const pwStrength = document.getElementById('pwStrength');
+        pwInput.addEventListener('input', function() {
+            const val = this.value;
+            let score = 0;
+            if (val.length >= 8)              score++;
+            if (/[A-Z]/.test(val))            score++;
+            if (/[0-9]/.test(val))            score++;
+            if (/[^A-Za-z0-9]/.test(val))     score++;
+
+            const colors = ['#ef4444', '#f59e0b', '#4188ff', '#00d4aa'];
+            const widths = ['25%', '50%', '75%', '100%'];
+            pwStrength.style.width      = val.length ? widths[score - 1] || '15%' : '0%';
+            pwStrength.style.background = val.length ? colors[score - 1] || '#ef4444' : 'transparent';
         });
 
-        // Show loader on form submission
-        document.addEventListener('submit', function(e) {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.classList.remove('hidden');
+        // ─── Real-time Password Match ───
+        const confirmInput = document.getElementById('confirm_password');
+        const pwError      = document.getElementById('passwordError');
+
+        function checkPwMatch() {
+            if (!confirmInput.value) { pwError.classList.remove('visible'); return; }
+            if (pwInput.value !== confirmInput.value) {
+                confirmInput.classList.add('is-invalid');
+                confirmInput.classList.remove('is-valid');
+                pwError.classList.add('visible');
+            } else {
+                confirmInput.classList.remove('is-invalid');
+                confirmInput.classList.add('is-valid');
+                pwError.classList.remove('visible');
             }
+        }
+        confirmInput.addEventListener('input', checkPwMatch);
+        pwInput.addEventListener('input', () => { if (confirmInput.value) checkPwMatch(); });
+
+        // ─── Form Submit ───
+        document.getElementById('registerForm').addEventListener('submit', function(e) {
+            if (pwInput.value !== confirmInput.value) {
+                e.preventDefault();
+                confirmInput.classList.add('is-invalid');
+                pwError.classList.add('visible');
+                confirmInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return;
+            }
+            const btn     = document.getElementById('submitBtn');
+            const btnText = document.getElementById('btnText');
+            const btnIcon = document.getElementById('btnIcon');
+            btn.disabled        = true;
+            btnText.textContent = 'Creating account…';
+            btnIcon.className   = 'fas fa-spinner fa-spin';
+            loader.classList.remove('hidden');
         });
     </script>
 
