@@ -2,38 +2,63 @@
 {% block title %}Custom Balance Sheet Report Generator{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#005FA3);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,120,212,.35);">
+            <i class="fas fa-file-invoice-dollar text-white" style="font-size:.95rem;"></i>
+        </div>
         <div>
-            <h2 class="text-primary mb-0"><i class="fas fa-file-invoice-dollar me-2"></i>Custom Balance Sheet Generator</h2>
-            <p class="text-muted mb-0">Design and generate custom balance sheet reporting formats.</p>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;font-weight:700;">Custom Balance Sheet</h5>
+            <span style="font-size:.75rem;color:#605E5C;">Financial Reports</span>
         </div>
     </div>
 
     <!-- Tab Navigation -->
-    <ul class="nav nav-tabs mb-4" id="bsTabs" role="tablist">
+    <ul class="nav mb-4" id="bsTabs" role="tablist" style="border-bottom:2px solid #e2e8f0;gap:.25rem;">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active fw-bold" id="editor-tab" data-bs-toggle="tab" data-bs-target="#editor" type="button" role="tab" aria-controls="editor" aria-selected="true"><i class="fas fa-edit me-2"></i>Format Editor</button>
+            <button class="nav-link active fw-bold px-4 py-2" id="editor-tab" data-bs-toggle="tab" data-bs-target="#editor"
+                    type="button" role="tab" aria-controls="editor" aria-selected="true"
+                    style="border:none;border-radius:8px 8px 0 0;font-size:.85rem;color:#605E5C;background:transparent;">
+                <i class="fas fa-edit me-2"></i>Format Editor
+            </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link fw-bold" id="viewer-tab" data-bs-toggle="tab" data-bs-target="#viewer" type="button" role="tab" aria-controls="viewer" aria-selected="false"><i class="fas fa-chart-bar me-2"></i>Report Viewer</button>
+            <button class="nav-link fw-bold px-4 py-2" id="viewer-tab" data-bs-toggle="tab" data-bs-target="#viewer"
+                    type="button" role="tab" aria-controls="viewer" aria-selected="false"
+                    style="border:none;border-radius:8px 8px 0 0;font-size:.85rem;color:#605E5C;background:transparent;">
+                <i class="fas fa-chart-bar me-2"></i>Report Viewer
+            </button>
         </li>
     </ul>
 
+    <style>
+        #bsTabs .nav-link.active { color:#0078D4 !important; border-bottom:2px solid #0078D4 !important; margin-bottom:-2px; background:transparent !important; }
+        #bsTabs .nav-link:hover:not(.active) { color:#0078D4 !important; background:#EFF6FF !important; }
+    </style>
+
     <!-- Tab Content -->
     <div class="tab-content" id="bsTabsContent">
+
         <!-- FORMAT EDITOR TAB -->
         <div class="tab-pane fade show active" id="editor" role="tabpanel" aria-labelledby="editor-tab">
-            <div class="card shadow-sm border-0 mb-4">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold text-primary">Configuration</h5>
-                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#newFormatModal"><i class="fas fa-plus me-1"></i>New Format</button>
+
+            <!-- Configuration Card -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+                <div class="px-4 pt-4 pb-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Configuration</span>
+                    <button data-bs-toggle="modal" data-bs-target="#newFormatModal"
+                            style="background:#EFF6FF;border:1px solid #0078D4;border-radius:8px;color:#0078D4;font-weight:600;font-size:.78rem;padding:.35rem .85rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                        <i class="fas fa-plus"></i> New Format
+                    </button>
                 </div>
-                <div class="card-body bg-light">
-                    <div class="row align-items-center">
+                <div class="p-4">
+                    <div class="row align-items-center g-3">
                         <div class="col-md-5">
-                            <label class="form-label fw-bold">Select Format</label>
-                            <select id="formatSelector" class="form-select" onchange="loadFormat()">
+                            <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Select Format</label>
+                            <select id="formatSelector" class="form-select" onchange="loadFormat()"
+                                    style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                                 <option value="">-- Choose Format --</option>
                                 {% for fmt in formats %}
                                     <option value="{{ fmt.id }}">{{ fmt.Description }}</option>
@@ -41,9 +66,9 @@
                             </select>
                         </div>
                         <div class="col-md-7">
-                            <div class="alert alert-info py-2 mb-0 d-flex align-items-center">
-                                <i class="fas fa-info-circle fs-4 me-3"></i>
-                                <small>
+                            <div class="d-flex align-items-start gap-2 p-3 rounded-3" style="background:#EFF6FF;border:1px solid #BFD9F2;">
+                                <i class="fas fa-info-circle mt-1" style="color:#0078D4;flex-shrink:0;"></i>
+                                <small style="color:#374151;line-height:1.5;">
                                     <strong>Instructions:</strong> Use letters (A, B) for Line No. Use formula like <code>A+B-C</code> in Calculation column. <code>B</code> in Format makes it bold. <code>1</code> in Line adds borders. Save format after editing.
                                 </small>
                             </div>
@@ -53,82 +78,88 @@
             </div>
 
             <!-- Structure Grid -->
-            <div class="card shadow-sm border-0">
-                <div class="card-header bg-primary text-white py-3 d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0 fw-bold">Report Structure Definition</h5>
-                    <div>
-                        <button class="btn btn-sm btn-light text-primary me-2" onclick="addRow()"><i class="fas fa-plus me-1"></i>Add Row</button>
-                        <button class="btn btn-sm btn-outline-light me-2" onclick="clearFormat()"><i class="fas fa-trash me-1"></i>Clear All</button>
-                        <button class="btn btn-sm btn-success shadow-sm" onclick="saveFormat()"><i class="fas fa-save me-1"></i>Save Structure</button>
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="background:linear-gradient(135deg,#0078D4,#005FA3);">
+                    <span style="font-size:.82rem;font-weight:700;color:#fff;">Report Structure Definition</span>
+                    <div class="d-flex gap-2">
+                        <button onclick="addRow()"
+                                style="background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.4);border-radius:7px;color:#fff;font-weight:600;font-size:.78rem;padding:.35rem .85rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                            <i class="fas fa-plus"></i> Add Row
+                        </button>
+                        <button onclick="clearFormat()"
+                                style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.3);border-radius:7px;color:#fff;font-weight:600;font-size:.78rem;padding:.35rem .85rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                            <i class="fas fa-trash"></i> Clear All
+                        </button>
+                        <button onclick="saveFormat()"
+                                style="background:#fff;border:none;border-radius:7px;color:#0078D4;font-weight:700;font-size:.78rem;padding:.35rem .85rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;box-shadow:0 1px 4px rgba(0,0,0,.15);">
+                            <i class="fas fa-save"></i> Save Structure
+                        </button>
                     </div>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-bordered mb-0 align-middle">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="8%">Line No</th>
-                                    <th width="22%">Description</th>
-                                    <th width="20%">Account</th>
-                                    <th width="15%">Calculation</th>
-                                    <th width="10%" class="text-center">Format (B)</th>
-                                    <th width="10%" class="text-center">Line (1)</th>
-                                    <th width="10%" class="text-center">Size (px)</th>
-                                    <th width="5%" class="text-center">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="editorTbody">
-                                <!-- Dynamic Rows Injected via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="width:8%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Line No</th>
+                                <th style="width:22%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Description</th>
+                                <th style="width:20%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Account</th>
+                                <th style="width:15%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Calculation</th>
+                                <th style="width:10%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Format (B)</th>
+                                <th style="width:10%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Line (1)</th>
+                                <th style="width:10%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Size (px)</th>
+                                <th style="width:5%;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Del</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editorTbody">
+                            <!-- Dynamic Rows Injected via JS -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
 
         <!-- REPORT VIEWER TAB -->
         <div class="tab-pane fade" id="viewer" role="tabpanel" aria-labelledby="viewer-tab">
-            <div class="row mb-4">
-                <div class="col-12">
-                    <div class="card shadow-sm border-0">
-                        <div class="card-header bg-white py-3">
-                            <h5 class="mb-0 fw-bold text-primary">Generate Custom Balance Sheet</h5>
+
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+                <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Generate Custom Balance Sheet</span>
+                </div>
+                <div class="p-4">
+                    <div class="row align-items-end g-3">
+                        <div class="col-md-3">
+                            <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">As At Date</label>
+                            <input type="date" id="asAtDate" class="form-control"
+                                   style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                         </div>
-                        <div class="card-body bg-light">
-                            <div class="row align-items-end g-3">
-                                <div class="col-md-3">
-                                    <label class="form-label fw-bold">As At Date</label>
-                                    <input type="date" id="asAtDate" class="form-control">
-                                </div>
-                                <div class="col-md-3">
-                                    <button class="btn btn-primary w-100" onclick="generateReport()"><i class="fas fa-bolt me-2"></i>Run Report</button>
-                                </div>
-                            </div>
+                        <div class="col-md-3">
+                            <button onclick="generateReport()"
+                                    style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.88rem;padding:.6rem 1.2rem;cursor:pointer;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
+                                <i class="fas fa-bolt"></i> Run Report
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Report Output Grid -->
-            <div class="card shadow-sm border-0 d-none" id="reportResultCard">
-                <div class="card-header bg-primary text-white py-3 text-center">
-                    <h4 class="mb-0 fw-bold">STATEMENT OF FINANCIAL POSITION</h4>
-                    <p class="mb-0 small" id="lblAsAtDate">As At: </p>
+            <!-- Report Output -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;" id="reportResultCard" class="d-none">
+                <div class="px-4 py-4 text-center" style="background:linear-gradient(135deg,#0078D4,#005FA3);">
+                    <h5 class="mb-1 fw-bold text-white">STATEMENT OF FINANCIAL POSITION</h5>
+                    <p class="mb-0 text-white" style="opacity:.85;font-size:.82rem;" id="lblAsAtDate">As At: </p>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0" id="reportTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Description</th>
-                                    <th class="text-end">Amount</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reportTbody">
-                                <!-- Results injected via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="reportTable">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Description</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTbody">
+                            <!-- Results injected via JS -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -138,20 +169,24 @@
 <!-- New Format Modal -->
 <div class="modal fade" id="newFormatModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Create New Format</h5>
+        <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+            <div class="modal-header" style="border-bottom:1px solid #f0f0f0;padding:1.25rem 1.5rem;">
+                <h5 class="modal-title fw-bold" style="font-size:.95rem;">Create New Format</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="padding:1.5rem;">
                 <div class="mb-3">
-                    <label class="form-label">Format Name/Description</label>
-                    <input type="text" id="newFormatName" class="form-control">
+                    <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Format Name / Description</label>
+                    <input type="text" id="newFormatName" class="form-control"
+                           style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="createFormat()">Create</button>
+            <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:1rem 1.5rem;">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius:8px;font-weight:600;font-size:.85rem;">Cancel</button>
+                <button type="button" onclick="createFormat()"
+                        style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.5rem 1.2rem;cursor:pointer;">
+                    Create
+                </button>
             </div>
         </div>
     </div>
@@ -172,15 +207,18 @@
         });
 
         tr.innerHTML = `
-            <td><input type="text" class="form-control form-control-sm" name="lineNo" value="${row.BS_LIne_Number || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="description" value="${row.BS_Text_Description || ''}"></td>
-            <td><select class="form-select form-select-sm" name="account">${accountOptions}</select></td>
-            <td><input type="text" class="form-control form-control-sm" name="calc" value="${row.BS_Calqulation_instraction || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm text-center" name="format" value="${row.BS_Text_Format || ''}" placeholder="B"></td>
-            <td><input type="text" class="form-control form-control-sm text-center" name="line" value="${row.BS_Text_line || ''}" placeholder="1"></td>
-            <td><input type="number" class="form-control form-control-sm text-center" name="size" value="${row.BS_Text_Size || ''}" placeholder="14"></td>
-            <td class="text-center">
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="lineNo" value="${row.BS_LIne_Number || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="description" value="${row.BS_Text_Description || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><select class="form-select form-select-sm" name="account" style="border-radius:6px;font-size:.82rem;">${accountOptions}</select></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="calc" value="${row.BS_Calqulation_instraction || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm text-center" name="format" value="${row.BS_Text_Format || ''}" placeholder="B" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm text-center" name="line" value="${row.BS_Text_line || ''}" placeholder="1" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="number" class="form-control form-control-sm text-center" name="size" value="${row.BS_Text_Size || ''}" placeholder="14" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;" class="text-center">
+                <button type="button" onclick="this.closest('tr').remove()"
+                        style="width:28px;height:28px;border-radius:6px;border:1px solid #fecaca;background:#fff5f5;color:#DC3545;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <i class="fas fa-times" style="font-size:.72rem;"></i>
+                </button>
             </td>
         `;
         document.getElementById('editorTbody').appendChild(tr);
@@ -295,7 +333,7 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="${style}">${r.description}</td>
-                    <td class="text-end" style="${style}">${r.amount}</td>
+                    <td class="text-end" style="${style};font-family:monospace;">${r.amount}</td>
                 `;
                 tbody.appendChild(tr);
             });

@@ -1,19 +1,32 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-        <h4 class="mb-0 fw-bold text-dark"><i class="text-primary fas fa-briefcase me-2"></i> Job Profit & Loss Analysis</h4>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7B3F9E,#5E2D7A);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;font-weight:700;">Job Profit Analysis</h5>
+            <small style="color:#605E5C;font-size:.78rem;">Reports</small>
+        </div>
     </div>
 
-    <!-- Filter Controls (Win11 Summary Panel Style) -->
-    <div class="card shadow-sm mb-4 border-0" style="background-color: #E8F4FD; border-radius: 8px;">
-        <div class="card-body">
+    <!-- Filter Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+        <div class="px-4 pt-3 pb-1">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-filter me-1"></i> Report Filters
+            </span>
+        </div>
+        <div class="px-4 pb-4 pt-2">
             <form method="GET" class="row align-items-end g-3">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold text-primary">Job Number</label>
-                    <select name="job_number" class="form-select select2" required>
+                    <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;color:#323130;">Job Number</label>
+                    <select name="job_number" class="form-select select2" required
+                            style="border-radius:8px;border:1px solid #d1d5db;font-size:.88rem;">
                         <option value="">-- Select Job --</option>
                         {% for job in jobs %}
                         <option value="{{ job.job_number }}" {% if selected_job == job.job_number %}selected{% endif %}>
@@ -23,19 +36,25 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-primary">From Date</label>
-                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required>
+                    <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;color:#323130;">From Date</label>
+                    <input type="date" name="from_date" class="form-control" value="{{ from_date }}" required
+                           style="border-radius:8px;border:1px solid #d1d5db;font-size:.88rem;">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-primary">To Date</label>
-                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required>
+                    <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;color:#323130;">To Date</label>
+                    <input type="date" name="to_date" class="form-control" value="{{ to_date }}" required
+                           style="border-radius:8px;border:1px solid #d1d5db;font-size:.88rem;">
                 </div>
-                <div class="col-md-5 text-end">
-                    <button type="submit" class="btn btn-primary fw-bold me-2 px-4">
+                <div class="col-md-5 d-flex align-items-end justify-content-end gap-2">
+                    <button type="submit"
+                            class="btn px-4"
+                            style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;font-size:.88rem;color:#fff;">
                         <i class="fas fa-sync me-1"></i> Load Report
                     </button>
                     {% if selected_job %}
-                    <button type="submit" name="download" value="csv" class="btn btn-success fw-bold px-4">
+                    <button type="submit" name="download" value="csv"
+                            class="btn px-4"
+                            style="background:#e6f4ea;color:#1e7e34;border:1px solid #b7dfbe;border-radius:8px;font-weight:600;font-size:.88rem;">
                         <i class="fas fa-file-csv me-1"></i> Export CSV
                     </button>
                     {% endif %}
@@ -45,189 +64,264 @@
     </div>
 
     {% if selected_job %}
-    <!-- Main Content -->
-    <div class="row">
-        <!-- Left: Tabs for Data -->
-        <div class="col-md-8 mb-4">
-            <div class="card shadow-sm border-0 h-100" style="border-radius: 8px;">
-                <div class="card-header bg-white border-bottom-0 pt-3 pb-0">
-                    <ul class="nav nav-tabs border-bottom-0" id="reportTabs" role="tablist">
+    <!-- Main Content Row -->
+    <div class="row g-3">
+
+        <!-- Left: Tabs -->
+        <div class="col-md-8">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+
+                <!-- Tabs Nav -->
+                <div style="border-bottom:1px solid #e2e8f0;padding:.75rem 1rem 0 1rem;background:#fff;">
+                    <ul class="nav nav-tabs border-0" id="reportTabs" role="tablist" style="gap:.25rem;">
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link active fw-bold text-primary border-0 bg-transparent border-bottom border-primary border-3" id="pl-tab" data-bs-toggle="tab" data-bs-target="#pl" type="button" role="tab" style="border-radius: 0;">Profit & Loss Statement</button>
+                            <button class="nav-link active fw-bold border-0 bg-transparent"
+                                    id="pl-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#pl"
+                                    type="button"
+                                    role="tab"
+                                    style="font-size:.82rem;border-radius:6px 6px 0 0;padding:.5rem .9rem;">
+                                Profit &amp; Loss
+                            </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link fw-bold text-secondary border-0 bg-transparent" id="ratio-tab" data-bs-toggle="tab" data-bs-target="#ratio" type="button" role="tab">Ratio Analysis</button>
+                            <button class="nav-link fw-bold border-0 bg-transparent"
+                                    id="ratio-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#ratio"
+                                    type="button"
+                                    role="tab"
+                                    style="font-size:.82rem;border-radius:6px 6px 0 0;padding:.5rem .9rem;color:#605E5C;">
+                                Ratio Analysis
+                            </button>
                         </li>
                         <li class="nav-item" role="presentation">
-                            <button class="nav-link fw-bold text-secondary border-0 bg-transparent" id="category-tab" data-bs-toggle="tab" data-bs-target="#category" type="button" role="tab">Category Details</button>
+                            <button class="nav-link fw-bold border-0 bg-transparent"
+                                    id="category-tab"
+                                    data-bs-toggle="tab"
+                                    data-bs-target="#category"
+                                    type="button"
+                                    role="tab"
+                                    style="font-size:.82rem;border-radius:6px 6px 0 0;padding:.5rem .9rem;color:#605E5C;">
+                                Category Details
+                            </button>
                         </li>
                     </ul>
                 </div>
-                <div class="card-body p-0">
-                    <div class="tab-content" id="reportTabsContent">
 
-                        <!-- Tab 1: Profit & Loss Statement -->
-                        <div class="tab-pane fade show active" id="pl" role="tabpanel">
-                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                                <table class="table table-hover align-middle mb-0">
-                                    <thead class="table-dark sticky-top text-center">
-                                        <tr>
-                                            <th>Account Type</th>
-                                            <th class="text-start">Account Name</th>
-                                            <th class="text-end">Amount (Rs.)</th>
-                                            <th class="text-end">Percentage</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for cat in profit_loss_data %}
+                <!-- Tab Content -->
+                <div class="tab-content" id="reportTabsContent">
 
-                                        <!-- Category Header Row -->
-                                        <tr class="fw-bold" style="background-color: #2B5B80; color: white;">
-                                            <td class="text-center">{{ cat.AccountType }}</td>
-                                            <td>{{ cat.CategoryName | upper }} (Total: {{ "{:,.2f}".format(cat.CategoryTotal) }})</td>
-                                            <td class="text-end">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
-                                            <td class="text-end">
-                                                {% if cat.AccountType == 'Income' and summary.total_income > 0 %}
-                                                    {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_income) * 100) }}
-                                                {% elif cat.AccountType == 'Expenses' and summary.total_expenses > 0 %}
-                                                    {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_expenses) * 100) }}
-                                                {% else %}
-                                                    0.00%
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-
-                                        <!-- Account Rows inside Category -->
-                                        {% for acc in cat.Accounts %}
-                                        <tr style="background-color: #F7FAFD;">
-                                            <td class="text-center text-muted small">{{ cat.AccountType }}</td>
-                                            <td class="ps-4">{{ acc.AccountName }}</td>
-                                            <td class="text-end">{{ "{:,.2f}".format(acc.Amount) }}</td>
-                                            <td class="text-end">{{ "{:,.2f}%".format(acc.Percentage) }}</td>
-                                        </tr>
-                                        {% endfor %}
-
-                                        <!-- Spacing Row -->
-                                        <tr><td colspan="4" class="p-1 border-0"></td></tr>
-
-                                        {% else %}
-                                        <tr>
-                                            <td colspan="4" class="text-center py-4 text-muted fst-italic">No transactions found for the selected period.</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
+                    <!-- Tab 1: Profit & Loss Statement -->
+                    <div class="tab-pane fade show active" id="pl" role="tabpanel">
+                        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+                                    <tr>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:center;">Account Type</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Account Name</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Amount (Rs.)</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Percentage</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cat in profit_loss_data %}
+                                    <!-- Category Header Row -->
+                                    <tr style="background:#5E2D7A;color:#fff;font-weight:700;">
+                                        <td style="padding:.65rem 1rem;text-align:center;font-size:.8rem;">{{ cat.AccountType }}</td>
+                                        <td style="padding:.65rem 1rem;font-size:.82rem;">
+                                            {{ cat.CategoryName | upper }}
+                                            <span style="opacity:.75;font-weight:500;font-size:.75rem;margin-left:.4rem;">(Total: {{ "{:,.2f}".format(cat.CategoryTotal) }})</span>
+                                        </td>
+                                        <td style="padding:.65rem 1rem;text-align:right;font-family:monospace;font-size:.82rem;">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
+                                        <td style="padding:.65rem 1rem;text-align:right;font-size:.82rem;">
+                                            {% if cat.AccountType == 'Income' and summary.total_income > 0 %}
+                                                {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_income) * 100) }}
+                                            {% elif cat.AccountType == 'Expenses' and summary.total_expenses > 0 %}
+                                                {{ "{:,.2f}%".format((cat.CategoryTotal / summary.total_expenses) * 100) }}
+                                            {% else %}
+                                                0.00%
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <!-- Account Rows -->
+                                    {% for acc in cat.Accounts %}
+                                    <tr style="background:#fafbfc;border-bottom:1px solid #f1f3f4;">
+                                        <td style="padding:.6rem 1rem;text-align:center;font-size:.75rem;color:#605E5C;">{{ cat.AccountType }}</td>
+                                        <td style="padding:.6rem 1rem;padding-left:2rem;font-size:.85rem;color:#323130;">{{ acc.AccountName }}</td>
+                                        <td style="padding:.6rem 1rem;text-align:right;font-family:monospace;font-size:.84rem;color:#1a1a2e;">{{ "{:,.2f}".format(acc.Amount) }}</td>
+                                        <td style="padding:.6rem 1rem;text-align:right;font-size:.84rem;color:#605E5C;">{{ "{:,.2f}%".format(acc.Percentage) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                    <!-- Spacing Row -->
+                                    <tr><td colspan="4" style="padding:.35rem 0;border:none;background:#fff;"></td></tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="4" class="text-center py-5" style="color:#605E5C;font-size:.9rem;font-style:italic;">
+                                            No transactions found for the selected period.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
-
-                        <!-- Tab 2: Ratio Analysis -->
-                        <div class="tab-pane fade" id="ratio" role="tabpanel">
-                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                                <table class="table table-hover align-middle mb-0">
-                                    <thead class="table-dark sticky-top text-center">
-                                        <tr>
-                                            <th class="text-start">Ratio Type</th>
-                                            <th class="text-end">Value</th>
-                                            <th class="text-start">Description</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody style="background-color: #F7FAFD;">
-                                        {% for ratio in ratio_data %}
-                                        <tr>
-                                            <td class="fw-bold text-primary">{{ ratio.RatioType }}</td>
-                                            <td class="text-end fw-bold">{{ "{:,.2f}%".format(ratio.Value) }}</td>
-                                            <td class="text-muted">{{ ratio.Description }}</td>
-                                        </tr>
-                                        {% else %}
-                                        <tr>
-                                            <td colspan="3" class="text-center py-4 text-muted fst-italic">No ratio data available.</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Tab 3: Category Details -->
-                        <div class="tab-pane fade" id="category" role="tabpanel">
-                            <div class="table-responsive" style="max-height: 500px; overflow-y: auto;">
-                                <table class="table table-hover align-middle mb-0">
-                                    <thead class="table-dark sticky-top text-center">
-                                        <tr>
-                                            <th class="text-start">Category</th>
-                                            <th>Account Type</th>
-                                            <th>Order</th>
-                                            <th class="text-end">Total Amount</th>
-                                            <th>Account Count</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody style="background-color: #F7FAFD;">
-                                        {% for cat in profit_loss_data %}
-                                        <tr>
-                                            <td class="fw-bold text-dark">{{ cat.CategoryName }}</td>
-                                            <td class="text-center">
-                                                <span class="badge {% if cat.AccountType == 'Income' %}bg-success{% else %}bg-danger{% endif %}">{{ cat.AccountType }}</span>
-                                            </td>
-                                            <td class="text-center">{{ cat.CategoryOrder }}</td>
-                                            <td class="text-end fw-bold">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
-                                            <td class="text-center">{{ cat.AccountCount }}</td>
-                                        </tr>
-                                        {% else %}
-                                        <tr>
-                                            <td colspan="5" class="text-center py-4 text-muted fst-italic">No category data available.</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-
                     </div>
+
+                    <!-- Tab 2: Ratio Analysis -->
+                    <div class="tab-pane fade" id="ratio" role="tabpanel">
+                        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+                                    <tr>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Ratio Type</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Value</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Description</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ratio in ratio_data %}
+                                    <tr style="background:#fafbfc;border-bottom:1px solid #f1f3f4;">
+                                        <td style="padding:.7rem 1rem;font-weight:700;color:#5E2D7A;font-size:.85rem;">{{ ratio.RatioType }}</td>
+                                        <td style="padding:.7rem 1rem;text-align:right;font-family:monospace;font-weight:700;color:#1a1a2e;font-size:.85rem;">{{ "{:,.2f}%".format(ratio.Value) }}</td>
+                                        <td style="padding:.7rem 1rem;color:#605E5C;font-size:.84rem;">{{ ratio.Description }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="3" class="text-center py-5" style="color:#605E5C;font-size:.9rem;font-style:italic;">
+                                            No ratio data available.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Category Details -->
+                    <div class="tab-pane fade" id="category" role="tabpanel">
+                        <div class="table-responsive" style="max-height:500px;overflow-y:auto;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+                                    <tr>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Category</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:center;">Account Type</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:center;">Order</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Total Amount</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:center;">Accounts</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for cat in profit_loss_data %}
+                                    <tr style="background:#fafbfc;border-bottom:1px solid #f1f3f4;">
+                                        <td style="padding:.7rem 1rem;font-weight:700;color:#1a1a2e;font-size:.85rem;">{{ cat.CategoryName }}</td>
+                                        <td style="padding:.7rem 1rem;text-align:center;">
+                                            <span class="badge"
+                                                  style="border-radius:6px;font-size:.72rem;font-weight:600;padding:.3rem .65rem;
+                                                  {% if cat.AccountType == 'Income' %}background:#e6f4ea;color:#1e7e34;{% else %}background:#fce8e6;color:#C42B1C;{% endif %}">
+                                                {{ cat.AccountType }}
+                                            </span>
+                                        </td>
+                                        <td style="padding:.7rem 1rem;text-align:center;color:#605E5C;font-size:.85rem;">{{ cat.CategoryOrder }}</td>
+                                        <td style="padding:.7rem 1rem;text-align:right;font-family:monospace;font-weight:700;color:#1a1a2e;font-size:.85rem;">{{ "{:,.2f}".format(cat.CategoryTotal) }}</td>
+                                        <td style="padding:.7rem 1rem;text-align:center;color:#605E5C;font-size:.85rem;">{{ cat.AccountCount }}</td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="5" class="text-center py-5" style="color:#605E5C;font-size:.9rem;font-style:italic;">
+                                            No category data available.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </div>
 
-        <!-- Right: Chart and Summary -->
-        <div class="col-md-4 mb-4">
+        <!-- Right: Summary + Chart -->
+        <div class="col-md-4 d-flex flex-column gap-3">
 
-            <!-- Financial Summary -->
-            <div class="card shadow-sm border-0 mb-4" style="background-color: #E8F4FD; border-radius: 8px; border: 2px solid #2B5B80 !important;">
-                <div class="card-body">
-                    <h5 class="fw-bold text-center text-primary mb-4">Financial Summary</h5>
+            <!-- Financial Summary Card -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 pt-3 pb-1">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                        <i class="fas fa-calculator me-1"></i> Financial Summary
+                    </span>
+                </div>
+                <div class="px-4 pb-4 pt-2">
 
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-bold text-primary">Total Income:</span>
-                        <span class="fw-bold text-success">{{ "{:,.2f}".format(summary.total_income) }}</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-bold text-primary">Total Expenses:</span>
-                        <span class="fw-bold text-danger">{{ "{:,.2f}".format(summary.total_expenses) }}</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-2">
-                        <span class="fw-bold text-primary">Gross Profit:</span>
-                        <span class="fw-bold text-primary">{{ "{:,.2f}".format(summary.net_profit) }}</span>
-                    </div>
-                    <div class="d-flex justify-content-between mb-3">
-                        <span class="fw-bold text-primary">Profit Margin:</span>
-                        <span class="fw-bold text-primary">{{ "{:,.2f}%".format(summary.profit_margin) }}</span>
+                    <!-- Income Row -->
+                    <div class="d-flex justify-content-between align-items-center py-2"
+                         style="border-bottom:1px solid #f1f3f4;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:8px;height:8px;border-radius:50%;background:#1e7e34;flex-shrink:0;"></div>
+                            <span style="font-size:.84rem;font-weight:600;color:#323130;">Total Income</span>
+                        </div>
+                        <span style="font-family:monospace;font-weight:700;color:#1e7e34;font-size:.88rem;">
+                            {{ "{:,.2f}".format(summary.total_income) }}
+                        </span>
                     </div>
 
-                    <hr style="border-color: #82A6CE;">
+                    <!-- Expenses Row -->
+                    <div class="d-flex justify-content-between align-items-center py-2"
+                         style="border-bottom:1px solid #f1f3f4;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:8px;height:8px;border-radius:50%;background:#C42B1C;flex-shrink:0;"></div>
+                            <span style="font-size:.84rem;font-weight:600;color:#323130;">Total Expenses</span>
+                        </div>
+                        <span style="font-family:monospace;font-weight:700;color:#C42B1C;font-size:.88rem;">
+                            {{ "{:,.2f}".format(summary.total_expenses) }}
+                        </span>
+                    </div>
 
-                    <div class="d-flex justify-content-between mt-3">
-                        <span class="fw-bold text-primary fs-5">Net Profit/Loss:</span>
-                        <span class="fw-bold fs-5 {% if summary.net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
+                    <!-- Gross Profit Row -->
+                    <div class="d-flex justify-content-between align-items-center py-2"
+                         style="border-bottom:1px solid #f1f3f4;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:8px;height:8px;border-radius:50%;background:#5E2D7A;flex-shrink:0;"></div>
+                            <span style="font-size:.84rem;font-weight:600;color:#323130;">Gross Profit</span>
+                        </div>
+                        <span style="font-family:monospace;font-weight:700;color:#5E2D7A;font-size:.88rem;">
+                            {{ "{:,.2f}".format(summary.net_profit) }}
+                        </span>
+                    </div>
+
+                    <!-- Profit Margin Row -->
+                    <div class="d-flex justify-content-between align-items-center py-2"
+                         style="border-bottom:1px solid #e2e8f0;">
+                        <div class="d-flex align-items-center gap-2">
+                            <div style="width:8px;height:8px;border-radius:50%;background:#7B3F9E;flex-shrink:0;"></div>
+                            <span style="font-size:.84rem;font-weight:600;color:#323130;">Profit Margin</span>
+                        </div>
+                        <span style="font-family:monospace;font-weight:700;color:#7B3F9E;font-size:.88rem;">
+                            {{ "{:,.2f}%".format(summary.profit_margin) }}
+                        </span>
+                    </div>
+
+                    <!-- Net Profit/Loss Total -->
+                    <div class="d-flex justify-content-between align-items-center pt-3 mt-1">
+                        <span style="font-size:.9rem;font-weight:700;color:#1a1a2e;">Net Profit / Loss</span>
+                        <span style="font-family:monospace;font-weight:700;font-size:1rem;
+                              {% if summary.net_profit >= 0 %}color:#1e7e34;{% else %}color:#C42B1C;{% endif %}">
                             {{ "{:,.2f}".format(summary.net_profit) }}
                         </span>
                     </div>
                 </div>
             </div>
 
-            <!-- Chart -->
-            <div class="card shadow-sm border-0" style="background-color: #E8F4FD; border-radius: 8px;">
-                <div class="card-body text-center">
-                    <h5 class="fw-bold text-primary mb-3">Income vs Expenses</h5>
-                    <div style="position: relative; width: 100%; height: 250px;">
+            <!-- Chart Card -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 pt-3 pb-1">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                        <i class="fas fa-chart-pie me-1"></i> Income vs Expenses
+                    </span>
+                </div>
+                <div class="px-4 pb-4 pt-2 text-center">
+                    <div style="position:relative;width:100%;height:230px;">
                         <canvas id="incomeExpenseChart"></canvas>
                     </div>
                 </div>
@@ -239,7 +333,7 @@
 
 </div>
 
-<!-- Tab script for switching tabs styling dynamically -->
+<!-- Tab switching style script -->
 <script>
     document.querySelectorAll('.nav-tabs .nav-link').forEach(tab => {
         tab.addEventListener('click', function() {
@@ -268,7 +362,7 @@
                     labels: ['Income', 'Expenses'],
                     datasets: [{
                         data: [{{ summary.total_income | round(2) }}, {{ summary.total_expenses | round(2) }}],
-                        backgroundColor: ['#28a745', '#dc3545'], // Green and Red
+                        backgroundColor: ['#28a745', '#dc3545'],
                         borderWidth: 1
                     }]
                 },

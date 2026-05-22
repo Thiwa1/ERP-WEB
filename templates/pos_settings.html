@@ -1,299 +1,310 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-cogs me-2"></i> Point Of Sale – Settings Panel</h4>
-</div>
+<div class="container-fluid py-4">
 
-    <!-- User Management Section -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-            <i class="fas fa-users-cog me-2"></i> User Management
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#69797E,#4C5A5E);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-cogs text-white" style="font-size:.95rem;"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#201F1E;line-height:1.2;">POS Settings</h5>
+      <span style="font-size:.75rem;color:#605E5C;">Point of Sale</span>
+    </div>
+  </div>
+
+  <!-- User Management -->
+  <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+      <i class="fas fa-users-cog" style="color:#69797E;font-size:.85rem;"></i>
+      <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">User Management</span>
+    </div>
+    <div style="padding:1.25rem 1.5rem;">
+      <div class="row align-items-end g-3">
+        <div class="col-md-6">
+          <label class="form-label fw-semibold small mb-1">Select Cashier / User</label>
+          <div class="input-group">
+            <select class="form-select" id="posUserSelect" onchange="changeUser()" style="border-radius:8px 0 0 8px;border-color:#e2e8f0;">
+              {% for user in pos_users %}
+              <option value="{{ user.Id }}" {% if selected_user_id == user.Id %}selected{% endif %}>{{ user.User_Name }}</option>
+              {% endfor %}
+            </select>
+            <button class="btn fw-semibold" type="button" data-bs-toggle="modal" data-bs-target="#newCashierModal"
+              style="background:var(--accent-color);border:none;border-radius:0 8px 8px 0;color:#fff;">
+              <i class="fas fa-user-plus me-1"></i> New User
+            </button>
+          </div>
         </div>
-        <div class="card-body bg-white">
-            <div class="row align-items-end g-3">
-                <div class="col-md-6">
-                    <label class="form-label fw-bold">Select Cashier / User</label>
-                    <div class="input-group">
-                        <select class="form-select" id="posUserSelect" onchange="changeUser()">
-                            {% for user in pos_users %}
-                            <option value="{{ user.Id }}" {% if selected_user_id == user.Id %}selected{% endif %}>{{ user.User_Name }}</option>
-                            {% endfor %}
-                        </select>
-                        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#newCashierModal">
-                            <i class="fas fa-user-plus me-1"></i> New User
-                        </button>
-                    </div>
-                </div>
+      </div>
+    </div>
+  </div>
+
+  <form method="POST" action="/pos_settings" enctype="multipart/form-data">
+    <input type="hidden" name="user_id" value="{{ selected_user_id }}">
+
+    <div class="row g-4 mb-4">
+      <!-- General Settings -->
+      <div class="col-md-6">
+        <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+            <i class="fas fa-sliders-h" style="color:#69797E;font-size:.85rem;"></i>
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">General Settings</span>
+          </div>
+          <div style="padding:1.25rem 1.5rem;">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small mb-1">Inventory Location</label>
+              <select name="location" class="form-select select2" style="border-radius:8px;border-color:#e2e8f0;">
+                <option value="">-- Select Location --</option>
+                {% for loc in locations %}
+                <option value="{{ loc.inventory_locations_name }}" {% if settings.Select_Inventry_Location == loc.inventory_locations_name %}selected{% endif %}>
+                  {{ loc.inventory_locations_name }}
+                </option>
+                {% endfor %}
+              </select>
             </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small mb-1">Credit Card Control Account</label>
+              <select name="card_ac" class="form-select select2" style="border-radius:8px;border-color:#e2e8f0;">
+                <option value="">-- Select Account --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.account_name }}" {% if settings.Card_Control_AC == acc.account_name %}selected{% endif %}>
+                  {{ acc.account_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small mb-1">Cash Control Account</label>
+              <select name="cash_ac" class="form-select select2" style="border-radius:8px;border-color:#e2e8f0;">
+                <option value="">-- Select Account --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.account_name }}" {% if settings.Cash_Account == acc.account_name %}selected{% endif %}>
+                  {{ acc.account_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
         </div>
+      </div>
+
+      <!-- Selling Price & VAT -->
+      <div class="col-md-6">
+        <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+            <i class="fas fa-tags" style="color:#69797E;font-size:.85rem;"></i>
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Selling Price &amp; VAT</span>
+          </div>
+          <div style="padding:1.25rem 1.5rem;">
+            {% set switches = [
+              ('market_price',  'marketPrice',  settings.Sales_with_market_price,  'Sales with Market Price'),
+              ('special_price', 'specialPrice', settings.Sales_with_Special_price, 'Sales with Special Price'),
+              ('loyalty_price', 'loyaltyPrice', settings.Loyalty_Price,            'Loyalty Price Enabled'),
+              ('vat_enable',    'vatEnable',    settings.VAT_Enable,               'VAT Enabled'),
+            ] %}
+            {% for name, id, val, label in switches %}
+            <div class="d-flex align-items-center justify-content-between py-3" style="border-bottom:1px solid #f3f2f1;">
+              <label class="fw-semibold small mb-0" for="{{ id }}" style="color:#201F1E;">{{ label }}</label>
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" name="{{ name }}" id="{{ id }}" {% if val == 1 %}checked{% endif %}
+                  style="width:2.4em;height:1.3em;cursor:pointer;">
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Receipt Configuration -->
+      <div class="col-12">
+        <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+          <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+            <i class="fas fa-receipt" style="color:#69797E;font-size:.85rem;"></i>
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Receipt Configuration</span>
+          </div>
+          <div style="padding:1.25rem 1.5rem;">
+            <div class="row g-4">
+              <div class="col-md-6">
+                <div class="mb-3">
+                  <label class="form-label fw-semibold small mb-1">Top Message</label>
+                  <textarea name="top_msg" class="form-control" rows="3" style="border-radius:8px;border-color:#e2e8f0;">{{ settings.Top_Message }}</textarea>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label fw-semibold small mb-1">Footer Message</label>
+                  <textarea name="footer_msg" class="form-control" rows="3" style="border-radius:8px;border-color:#e2e8f0;">{{ settings.Footer_Message }}</textarea>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label fw-semibold small mb-1">Receipt Header Image</label>
+                <div style="border:1px dashed #e2e8f0;border-radius:8px;background:#f8f9fa;padding:1.25rem;text-align:center;margin-bottom:.75rem;min-height:120px;display:flex;align-items:center;justify-content:center;">
+                  {% if settings.ImageBase64 %}
+                  <img src="data:image/jpeg;base64,{{ settings.ImageBase64 }}" alt="Receipt Logo" class="img-fluid" style="max-height:120px;border-radius:4px;">
+                  {% else %}
+                  <div style="color:#605E5C;">
+                    <i class="fas fa-image fa-2x mb-2 d-block" style="opacity:.4;"></i>
+                    <span style="font-size:.8rem;">No image selected</span>
+                  </div>
+                  {% endif %}
+                </div>
+                <input type="file" name="receipt_logo" class="form-control" accept="image/*" style="border-radius:8px;border-color:#e2e8f0;">
+                <div class="form-text" style="color:#605E5C;font-size:.75rem;">Recommended size: 300×120 pixels.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
-    <form method="POST" action="/pos_settings" enctype="multipart/form-data">
-        <input type="hidden" name="user_id" value="{{ selected_user_id }}">
-
-        <div class="row">
-            <!-- General Settings -->
-            <div class="col-md-6">
-                <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-sliders-h me-2"></i> General Settings
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Inventory Location</label>
-                            <select name="location" class="form-select select2">
-                                <option value="">-- Select Location --</option>
-                                {% for loc in locations %}
-                                <option value="{{ loc.inventory_locations_name }}" {% if settings.Select_Inventry_Location == loc.inventory_locations_name %}selected{% endif %}>
-                                    {{ loc.inventory_locations_name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Credit Card Control Account</label>
-                            <select name="card_ac" class="form-select select2">
-                                <option value="">-- Select Account --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.account_name }}" {% if settings.Card_Control_AC == acc.account_name %}selected{% endif %}>
-                                    {{ acc.account_name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold">Cash Control Account</label>
-                            <select name="cash_ac" class="form-select select2">
-                                <option value="">-- Select Account --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.account_name }}" {% if settings.Cash_Account == acc.account_name %}selected{% endif %}>
-                                    {{ acc.account_name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Selling Price Settings -->
-            <div class="col-md-6">
-                <div class="card shadow-sm mb-4 border-0 h-100">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-tags me-2" style="color: #201f1e;"></i> <span style="color: #201f1e;">Selling Price & VAT</span>
-                    </div>
-                    <div class="card-body bg-white pt-4">
-                        <div class="form-check form-switch win11-switch">
-                            <input class="form-check-input" type="checkbox" name="market_price" id="marketPrice" {% if settings.Sales_with_market_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label" for="marketPrice">Sales with Market Price</label>
-                        </div>
-                        <div class="form-check form-switch win11-switch">
-                            <input class="form-check-input" type="checkbox" name="special_price" id="specialPrice" {% if settings.Sales_with_Special_price == 1 %}checked{% endif %}>
-                            <label class="form-check-label" for="specialPrice">Sales with Special Price</label>
-                        </div>
-                        <div class="form-check form-switch win11-switch">
-                            <input class="form-check-input" type="checkbox" name="loyalty_price" id="loyaltyPrice" {% if settings.Loyalty_Price == 1 %}checked{% endif %}>
-                            <label class="form-check-label" for="loyaltyPrice">Loyalty Price Enabled</label>
-                        </div>
-                        <div class="form-check form-switch win11-switch">
-                            <input class="form-check-input" type="checkbox" name="vat_enable" id="vatEnable" {% if settings.VAT_Enable == 1 %}checked{% endif %}>
-                            <label class="form-check-label" for="vatEnable">VAT Enabled</label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Messages & Image -->
-            <div class="col-12">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-receipt me-2"></i> Receipt Configuration
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Top Message</label>
-                                    <textarea name="top_msg" class="form-control" rows="3">{{ settings.Top_Message }}</textarea>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Footer Message</label>
-                                    <textarea name="footer_msg" class="form-control" rows="3">{{ settings.Footer_Message }}</textarea>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Receipt Header Image</label>
-                                <div class="border p-3 rounded bg-light mb-3 text-center">
-                                    {% if settings.ImageBase64 %}
-                                    <img src="data:image/jpeg;base64,{{ settings.ImageBase64 }}" alt="Receipt Logo" class="img-fluid" style="max-height: 120px;">
-                                    {% else %}
-                                    <div class="text-muted py-4"><i class="fas fa-image fa-3x mb-2"></i><br>No Image Selected</div>
-                                    {% endif %}
-                                </div>
-                                <input type="file" name="receipt_logo" class="form-control" accept="image/*">
-                                <div class="form-text text-muted">Recommended size: 300x120 pixels.</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- SMS Delivery Report (Collapsible) -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+      <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between;">
+        <div class="d-flex align-items-center gap-2">
+          <i class="fas fa-sms" style="color:#69797E;font-size:.85rem;"></i>
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">SMS Delivery Report</span>
+          <span style="font-size:.65rem;color:#605E5C;background:#f3f2f1;border-radius:4px;padding:.15rem .5rem;">Advanced</span>
         </div>
-
-        <!-- Advanced Options: SMS Delivery Report -->
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <div><i class="fas fa-sms me-2"></i> SMS Delivery Report (Advanced Options)</div>
-                        <button class="btn btn-sm btn-light fw-bold" type="button" data-bs-toggle="collapse" data-bs-target="#smsReportCollapse" aria-expanded="false" aria-controls="smsReportCollapse">
-                            Toggle View
-                        </button>
-                    </div>
-                    <div class="collapse" id="smsReportCollapse">
-                        <div class="card-body bg-white p-0">
-                            <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
-                                <table class="table table-hover table-striped mb-0 align-middle">
-                                    <thead class="table-light sticky-top">
-                                        <tr>
-                                            <th>Date & Time</th>
-                                            <th>Mobile No</th>
-                                            <th>Message</th>
-                                            <th>Status</th>
-                                            <th>API Response</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% if sms_logs %}
-                                            {% for log in sms_logs %}
-                                            <tr>
-                                                <td class="text-nowrap">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
-                                                <td class="text-nowrap fw-bold">{{ log.mobile }}</td>
-                                                <td><small class="text-muted">{{ log.message }}</small></td>
-                                                <td>
-                                                    {% if log.status == 'success' %}
-                                                        <span class="badge bg-success">Success</span>
-                                                    {% elif log.status == 'failed' %}
-                                                        <span class="badge bg-danger">Failed</span>
-                                                    {% else %}
-                                                        <span class="badge bg-warning">{{ log.status }}</span>
-                                                    {% endif %}
-                                                </td>
-                                                <td><small class="text-break" style="max-width: 250px; display: inline-block;">{{ log.api_response }}</small></td>
-                                            </tr>
-                                            {% endfor %}
-                                        {% else %}
-                                            <tr>
-                                                <td colspan="5" class="text-center text-muted py-4">
-                                                    <i class="fas fa-inbox fa-2x mb-2"></i><br>No SMS delivery logs available.
-                                                </td>
-                                            </tr>
-                                        {% endif %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+        <button class="btn btn-sm fw-semibold" type="button" data-bs-toggle="collapse" data-bs-target="#smsReportCollapse"
+          style="background:#f3f2f1;border:none;border-radius:6px;font-size:.75rem;color:#605E5C;padding:.25rem .75rem;">
+          Toggle View
+        </button>
+      </div>
+      <div class="collapse" id="smsReportCollapse">
+        <div class="table-responsive" style="max-height:400px;overflow-y:auto;">
+          <table class="table table-hover mb-0 align-middle">
+            <thead style="position:sticky;top:0;">
+              <tr style="background:#f8f9fa;">
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">Date &amp; Time</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">Mobile No</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">Message</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">Status</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">API Response</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if sms_logs %}
+                {% for log in sms_logs %}
+                <tr>
+                  <td style="padding:.6rem 1rem;font-size:.8rem;white-space:nowrap;color:#605E5C;">{{ log.created_at.strftime('%Y-%m-%d %H:%M:%S') if log.created_at else '' }}</td>
+                  <td style="padding:.6rem 1rem;font-weight:600;white-space:nowrap;font-size:.875rem;">{{ log.mobile }}</td>
+                  <td style="padding:.6rem 1rem;"><small style="color:#605E5C;font-size:.8rem;">{{ log.message }}</small></td>
+                  <td style="padding:.6rem 1rem;">
+                    {% if log.status == 'success' %}
+                      <span class="badge" style="background:#d4edda;color:#107C10;border-radius:6px;font-size:.7rem;">Success</span>
+                    {% elif log.status == 'failed' %}
+                      <span class="badge" style="background:#fde8e8;color:#C42B1C;border-radius:6px;font-size:.7rem;">Failed</span>
+                    {% else %}
+                      <span class="badge" style="background:#fff3cd;color:#856404;border-radius:6px;font-size:.7rem;">{{ log.status }}</span>
+                    {% endif %}
+                  </td>
+                  <td style="padding:.6rem 1rem;"><small style="word-break:break-all;max-width:250px;display:inline-block;font-size:.75rem;color:#605E5C;">{{ log.api_response }}</small></td>
+                </tr>
+                {% endfor %}
+              {% else %}
+              <tr>
+                <td colspan="5" class="text-center py-5" style="color:#605E5C;">
+                  <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.35;"></i>
+                  No SMS delivery logs available.
+                </td>
+              </tr>
+              {% endif %}
+            </tbody>
+          </table>
         </div>
+      </div>
+    </div>
 
-        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
-            <button type="submit" class="btn btn-primary btn-lg fw-bold px-5 shadow-sm" style="background-color: var(--accent-color); border: none;">
-                <i class="fas fa-save me-2"></i> SAVE ALL SETTINGS
-            </button>
-        </div>
-    </form>
+    <!-- Save Button -->
+    <div class="d-flex justify-content-end mb-4">
+      <button type="submit" class="btn fw-semibold px-5" style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;padding:.55rem 2rem;font-size:.95rem;">
+        <i class="fas fa-save me-2"></i> Save All Settings
+      </button>
+    </div>
+  </form>
+
 </div>
 
 <!-- New Cashier Modal -->
 <div class="modal fade" id="newCashierModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0 shadow-lg">
-            <div class="modal-header text-white" >
-                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus me-2"></i> Cashier Registration</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.15);overflow:hidden;">
+      <div class="modal-header" style="background:linear-gradient(135deg,#69797E,#4C5A5E);border:none;padding:1.25rem 1.5rem;">
+        <h5 class="modal-title fw-bold text-white" style="font-size:.95rem;">
+          <i class="fas fa-user-plus me-2"></i> Cashier Registration
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form action="/add_pos_user" method="POST" onsubmit="return validateCashierForm()">
+        <div class="modal-body" style="padding:1.5rem;background:#f8f9fa;">
+          <div class="mb-3">
+            <label class="form-label fw-semibold small mb-1">Username</label>
+            <input type="text" name="username" class="form-control" required style="border-radius:8px;border-color:#e2e8f0;">
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small mb-1">Password</label>
+            <input type="password" name="password" id="cashierPass" class="form-control" required style="border-radius:8px;border-color:#e2e8f0;">
+            <div class="progress mt-2" style="height:4px;border-radius:4px;">
+              <div class="progress-bar bg-danger" id="passStrength" role="progressbar" style="width:0%;transition:width .3s;"></div>
             </div>
-            <form action="/add_pos_user" method="POST" onsubmit="return validateCashierForm()">
-                <div class="modal-body p-4 bg-light">
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Username</label>
-                        <input type="text" name="username" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Password</label>
-                        <input type="password" name="password" id="cashierPass" class="form-control" required>
-                        <div class="progress mt-2" style="height: 5px;">
-                            <div class="progress-bar bg-danger" id="passStrength" role="progressbar" style="width: 0%"></div>
-                        </div>
-                        <small class="text-muted" id="passText">Enter password</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Mobile Number</label>
-                        <input type="text" name="mobile" id="cashierMobile" class="form-control" value="+94" required>
-                        <div class="form-text">Format: +94XXXXXXXXX</div>
-                    </div>
-                </div>
-                <div class="modal-footer bg-white">
-                    <button type="button" class="btn btn-secondary fw-bold" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">Register</button>
-                </div>
-            </form>
+            <small id="passText" style="font-size:.75rem;color:#605E5C;">Enter password</small>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-semibold small mb-1">Mobile Number</label>
+            <input type="text" name="mobile" id="cashierMobile" class="form-control" value="+94" required style="border-radius:8px;border-color:#e2e8f0;">
+            <div class="form-text" style="font-size:.75rem;color:#605E5C;">Format: +94XXXXXXXXX</div>
+          </div>
         </div>
+        <div class="modal-footer bg-white border-0" style="padding:1rem 1.5rem;">
+          <button type="button" class="btn fw-semibold" data-bs-dismiss="modal"
+            style="background:#f3f2f1;border:none;border-radius:8px;color:#201F1E;padding:.4rem 1.25rem;">Cancel</button>
+          <button type="submit" class="btn fw-semibold" style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;padding:.4rem 1.25rem;">
+            Register
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
 </div>
 
 <script>
-    function changeUser() {
-        const userId = document.getElementById('posUserSelect').value;
-        if(userId) {
-            window.location.href = `/pos_settings?user_id=${userId}`;
-        }
+  function changeUser() {
+    const userId = document.getElementById('posUserSelect').value;
+    if (userId) {
+      window.location.href = `/pos_settings?user_id=${userId}`;
     }
+  }
 
-    // Password Strength
-    document.getElementById('cashierPass').addEventListener('input', function() {
-        const val = this.value;
-        let strength = 0;
-        if(val.length >= 6) strength++;
-        if(/[A-Z]/.test(val)) strength++;
-        if(/[0-9]/.test(val)) strength++;
-        if(/[^A-Za-z0-9]/.test(val)) strength++;
+  document.getElementById('cashierPass').addEventListener('input', function () {
+    const val = this.value;
+    let strength = 0;
+    if (val.length >= 6) strength++;
+    if (/[A-Z]/.test(val)) strength++;
+    if (/[0-9]/.test(val)) strength++;
+    if (/[^A-Za-z0-9]/.test(val)) strength++;
 
-        const bar = document.getElementById('passStrength');
-        const text = document.getElementById('passText');
+    const bar = document.getElementById('passStrength');
+    const text = document.getElementById('passText');
+    const width = (strength / 4) * 100;
+    bar.style.width = width + '%';
 
-        const width = (strength / 4) * 100;
-        bar.style.width = width + '%';
+    if (strength < 2) { bar.className = 'progress-bar bg-danger'; text.innerText = 'Weak'; text.style.color = '#C42B1C'; }
+    else if (strength < 4) { bar.className = 'progress-bar bg-warning'; text.innerText = 'Good'; text.style.color = '#C19C00'; }
+    else { bar.className = 'progress-bar bg-success'; text.innerText = 'Strong'; text.style.color = '#107C10'; }
+  });
 
-        if(strength < 2) { bar.className = 'progress-bar bg-danger'; text.innerText = 'Weak'; text.className = 'text-danger'; }
-        else if(strength < 4) { bar.className = 'progress-bar bg-warning'; text.innerText = 'Good'; text.className = 'text-warning'; }
-        else { bar.className = 'progress-bar bg-success'; text.innerText = 'Strong'; text.className = 'text-success'; }
-    });
+  document.getElementById('cashierMobile').addEventListener('input', function () {
+    let val = this.value.replace(/[^0-9+]/g, '');
+    if (!val.startsWith('+94')) val = '+94' + val.replace(/^\+94/, '');
+    if (val.length > 12) val = val.substring(0, 12);
+    this.value = val;
+  });
 
-    // Mobile Formatting
-    document.getElementById('cashierMobile').addEventListener('input', function() {
-        let val = this.value.replace(/[^0-9+]/g, '');
-        if(!val.startsWith('+94')) val = '+94' + val.replace(/^\+94/, '');
-        if(val.length > 12) val = val.substring(0, 12);
-        this.value = val;
-    });
-
-    function validateCashierForm() {
-        const pass = document.getElementById('cashierPass').value;
-        if(pass.length < 6) {
-            alert('Password must be at least 6 characters');
-            return false;
-        }
-
-        const mobile = document.getElementById('cashierMobile').value;
-        if(!/^\+94[0-9]{9}$/.test(mobile)) {
-            alert('Invalid Mobile Number Format');
-            return false;
-        }
-        return true;
-    }
+  function validateCashierForm() {
+    const pass = document.getElementById('cashierPass').value;
+    if (pass.length < 6) { alert('Password must be at least 6 characters'); return false; }
+    const mobile = document.getElementById('cashierMobile').value;
+    if (!/^\+94[0-9]{9}$/.test(mobile)) { alert('Invalid Mobile Number Format'); return false; }
+    return true;
+  }
 </script>
 {% endblock %}

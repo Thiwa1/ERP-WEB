@@ -1,59 +1,92 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-upload me-2"></i> Bulk Upload Gl Accounts</h4>
-</div>
+<div class="container-fluid py-4">
 
-    <!-- Upload Form -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-body bg-light text-center py-5">
-            <form method="POST" enctype="multipart/form-data">
-                <i class="fas fa-cloud-upload-alt fa-3x text-muted mb-3"></i>
-                <h5 class="mb-3">Select CSV File to Upload</h5>
-                <p class="text-muted small mb-4">Required Headers: Account Name, Account Type (Income/Expense/Asset/Liability/Equity), Category (Optional), Cash Flow (Optional)</p>
-
-                <div class="d-flex justify-content-center">
-                    <input type="file" name="file" class="form-control w-50" accept=".csv" required>
-                </div>
-
-                <button type="submit" class="btn btn-primary fw-bold mt-4 px-5">
-                    <i class="fas fa-check me-2"></i> Upload & Review
-                </button>
-            </form>
-        </div>
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#5c6bc0,#3949ab);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-file-upload text-white" style="font-size:.95rem;"></i>
     </div>
-
-
-    <!-- Bank Statement Upload Form -->
-    <div class="card shadow-sm mb-4 border-0 mt-4">
-        <div class="card-body bg-light text-center py-5">
-            <form action="{{ url_for('bank_statement_analysis') }}" method="POST" enctype="multipart/form-data">
-                <i class="fas fa-file-invoice-dollar fa-3x text-primary mb-3"></i>
-                <h5 class="mb-3">Bank Statement Image Analysis</h5>
-                <p class="text-muted small mb-4">Upload an image of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.</p>
-
-                <div class="d-flex justify-content-center">
-                    <input type="file" name="file" class="form-control w-50" accept="image/png, image/jpeg, image/jpg" required>
-                </div>
-
-                <button type="submit" class="btn btn-outline-primary fw-bold mt-4 px-5">
-                    <i class="fas fa-magic me-2"></i> Analyze Image
-                </button>
-            </form>
-        </div>
+    <div>
+      <h5 class="mb-0 fw-700 text-dark" style="font-weight:700;">Bulk Upload &mdash; GL</h5>
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">General Ledger</div>
     </div>
+  </div>
 
-    <!-- Instructions -->
-    <div class="alert alert-info">
-        <h6 class="fw-bold"><i class="fas fa-info-circle me-2"></i> Instructions</h6>
-        <ul class="mb-0 small">
-            <li>Ensure the file is in <strong>CSV format</strong>.</li>
-            <li>Duplicate account names will update the existing record.</li>
-            <li>You can review and map categories in the next step.</li>
+  <!-- CSV Upload Card -->
+  <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 pt-4 pb-2">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+        <i class="fas fa-table me-1"></i> CSV Account Import
+      </div>
+    </div>
+    <div class="card-body p-4">
+      <form method="POST" enctype="multipart/form-data">
+        <div class="text-center py-4" style="border:2px dashed #c7d0e0;border-radius:10px;background:#f8f9fc;transition:background .2s;"
+          onmouseover="this.style.background='#eef1f9'" onmouseout="this.style.background='#f8f9fc'">
+          <i class="fas fa-cloud-upload-alt fa-3x mb-3" style="color:#5c6bc0;"></i>
+          <h6 class="fw-bold mb-1">Select CSV File to Upload</h6>
+          <p class="text-muted small mb-3" style="max-width:480px;margin:0 auto;">
+            Required headers: <strong>Account Name</strong>, <strong>Account Type</strong> (Income / Expense / Asset / Liability / Equity),
+            <strong>Category</strong> (Optional), <strong>Cash Flow</strong> (Optional)
+          </p>
+          <div class="d-flex justify-content-center mt-3">
+            <input type="file" name="file" class="form-control" style="max-width:360px;border-radius:8px;" accept=".csv" required>
+          </div>
+        </div>
+        <div class="text-center mt-4">
+          <button type="submit" style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.55rem 2rem;" class="btn text-white">
+            <i class="fas fa-check me-2"></i> Upload &amp; Review
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Bank Statement Upload Card -->
+  <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 pt-4 pb-2">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+        <i class="fas fa-file-invoice-dollar me-1"></i> Bank Statement Image Analysis
+      </div>
+    </div>
+    <div class="card-body p-4">
+      <form action="{{ url_for('bank_statement_analysis') }}" method="POST" enctype="multipart/form-data">
+        <div class="text-center py-4" style="border:2px dashed #c7d0e0;border-radius:10px;background:#f8f9fc;transition:background .2s;"
+          onmouseover="this.style.background='#eef1f9'" onmouseout="this.style.background='#f8f9fc'">
+          <i class="fas fa-file-invoice-dollar fa-3x mb-3" style="color:#3949ab;"></i>
+          <h6 class="fw-bold mb-1">Upload Bank Statement Image</h6>
+          <p class="text-muted small mb-3" style="max-width:520px;margin:0 auto;">
+            Upload an image of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.
+          </p>
+          <div class="d-flex justify-content-center mt-3">
+            <input type="file" name="file" class="form-control" style="max-width:360px;border-radius:8px;" accept="image/png, image/jpeg, image/jpg" required>
+          </div>
+        </div>
+        <div class="text-center mt-4">
+          <button type="submit" style="border:2px solid var(--accent-color);border-radius:8px;font-weight:600;padding:.5rem 2rem;color:var(--accent-color);background:transparent;" class="btn">
+            <i class="fas fa-magic me-2"></i> Analyze Image
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Instructions -->
+  <div style="border-radius:10px;border:1px solid #bee3f8;background:#ebf8ff;padding:1rem 1.25rem;">
+    <div class="d-flex gap-2 align-items-start">
+      <i class="fas fa-info-circle mt-1" style="color:#2b6cb0;"></i>
+      <div>
+        <div class="fw-bold small mb-1" style="color:#2b6cb0;">Instructions</div>
+        <ul class="mb-0 small" style="color:#2d3748;padding-left:1rem;">
+          <li>Ensure the file is in <strong>CSV format</strong>.</li>
+          <li>Duplicate account names will update the existing record.</li>
+          <li>You can review and map categories in the next step.</li>
         </ul>
+      </div>
     </div>
+  </div>
+
 </div>
 {% endblock %}

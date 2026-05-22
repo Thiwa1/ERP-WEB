@@ -1,83 +1,96 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-book-open me-2"></i> Ledger Account View</h4>
-</div>
+<div class="container-fluid py-4">
 
-    <!-- Filters Section -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-body bg-light">
-            <div class="row g-3 align-items-end">
-                <!-- Account Selector -->
-                <div class="col-md-4">
-                    <label class="form-label fw-bold">Select Account</label>
-                    <select id="accountSelect" class="form-select select2">
-                        <option value="">-- Select Account --</option>
-                        <optgroup label="P&L Accounts">
-                            {% for acc in pl_accounts %}
-                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
-                            {% endfor %}
-                        </optgroup>
-                        <optgroup label="Balance Sheet Accounts">
-                            {% for acc in bs_accounts %}
-                            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
-                            {% endfor %}
-                        </optgroup>
-                    </select>
-                </div>
-
-                <!-- Date Range -->
-                <div class="col-md-2">
-                    <label class="form-label fw-bold">From Date</label>
-                    <input type="date" id="fromDate" class="form-control" value="{{ default_from }}">
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-bold">To Date</label>
-                    <input type="date" id="toDate" class="form-control" value="{{ default_to }}">
-                </div>
-
-                <!-- Load Button -->
-                <div class="col-md-2">
-                    <button type="button" class="btn btn-primary w-100 fw-bold" onclick="loadLedger()" style="background-color: var(--accent-color); border: none;">
-                        <i class="fas fa-sync-alt me-1"></i> Load Details
-                    </button>
-                </div>
-
-                <!-- Search Box -->
-                <div class="col-md-2">
-                    <label class="form-label fw-bold">Search</label>
-                    <input type="text" id="searchBox" class="form-control" placeholder="Search entries..." onkeyup="filterTable()">
-                </div>
-            </div>
-        </div>
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#005FA3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-book-open text-white" style="font-size:.95rem;"></i>
     </div>
-
-    <!-- Data Grid -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0 table-responsive" style="max-height: 600px;">
-            <table class="table table-bordered table-striped table-hover mb-0" id="ledgerTable">
-                <thead class="text-white sticky-top" >
-                    <tr>
-                        <th width="5%">No</th>
-                        <th width="15%">Date</th>
-                        <th width="10%">JV No</th>
-                        <th width="40%">Narration</th>
-                        <th width="10%" class="text-end">Debit</th>
-                        <th width="10%" class="text-end">Credit</th>
-                        <th width="10%" class="text-end">Balance</th>
-                    </tr>
-                </thead>
-                <tbody id="tableBody">
-                    <tr>
-                        <td colspan="7" class="text-center py-5 text-muted fst-italic">Select an account and click Load to view transactions.</td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
+    <div>
+      <h5 class="mb-0 fw-bold text-dark">Ledger View</h5>
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">General Ledger</div>
     </div>
+  </div>
+
+  <!-- Filters Card -->
+  <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+    <div class="row g-3 align-items-end">
+      <!-- Account Selector -->
+      <div class="col-md-4">
+        <label class="form-label fw-bold small" style="color:#374151;">Select Account</label>
+        <select id="accountSelect" class="form-select select2" style="border-radius:8px;">
+          <option value="">-- Select Account --</option>
+          <optgroup label="P&L Accounts">
+            {% for acc in pl_accounts %}
+            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+            {% endfor %}
+          </optgroup>
+          <optgroup label="Balance Sheet Accounts">
+            {% for acc in bs_accounts %}
+            <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+            {% endfor %}
+          </optgroup>
+        </select>
+      </div>
+
+      <!-- From Date -->
+      <div class="col-md-2">
+        <label class="form-label fw-bold small" style="color:#374151;">From Date</label>
+        <input type="date" id="fromDate" class="form-control" value="{{ default_from }}" style="border-radius:8px;">
+      </div>
+
+      <!-- To Date -->
+      <div class="col-md-2">
+        <label class="form-label fw-bold small" style="color:#374151;">To Date</label>
+        <input type="date" id="toDate" class="form-control" value="{{ default_to }}" style="border-radius:8px;">
+      </div>
+
+      <!-- Load Button -->
+      <div class="col-md-2">
+        <button type="button" class="btn w-100 fw-bold text-white" onclick="loadLedger()"
+          style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.55rem 0;">
+          <i class="fas fa-sync-alt me-1"></i> Load Details
+        </button>
+      </div>
+
+      <!-- Search Box -->
+      <div class="col-md-2">
+        <label class="form-label fw-bold small" style="color:#374151;">Search</label>
+        <input type="text" id="searchBox" class="form-control" placeholder="Search entries..." onkeyup="filterTable()"
+          style="border-radius:8px;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Ledger Table Card -->
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="table-responsive" style="max-height:600px;">
+      <table class="table table-hover mb-0" id="ledgerTable">
+        <thead style="position:sticky;top:0;z-index:2;background:#f8f9fa;">
+          <tr>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:5%;">No</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:12%;">Date</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:10%;">JV No</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:40%;">Narration</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:11%;text-align:right;">Debit</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:11%;text-align:right;">Credit</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;width:11%;text-align:right;">Balance</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr>
+            <td colspan="7" class="text-center py-5 text-muted fst-italic" style="border:none;">
+              <i class="fas fa-book-open fa-2x mb-2 d-block" style="color:#ccc;"></i>
+              Select an account and click Load to view transactions.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
 <script>
@@ -132,14 +145,14 @@
                 const jv = row.jv_no || '-';
 
                 const tr = `
-                    <tr class="${rowClass}">
-                        <td class="text-center">${no}</td>
-                        <td>${row.date}</td>
-                        <td class="text-center">${jv}</td>
-                        <td class="${narrationStyle}">${row.narration}</td>
-                        <td class="text-end text-danger">${dr}</td>
-                        <td class="text-end text-success">${cr}</td>
-                        <td class="text-end fw-bold">${bal}</td>
+                    <tr class="${rowClass}" style="border-bottom:1px solid #f1f3f5;">
+                        <td style="padding:.65rem 1rem;text-align:center;">${no}</td>
+                        <td style="padding:.65rem 1rem;">${row.date}</td>
+                        <td style="padding:.65rem 1rem;text-align:center;font-family:'Courier New',monospace;font-size:.85rem;">${jv}</td>
+                        <td style="padding:.65rem 1rem;" class="${narrationStyle}">${row.narration}</td>
+                        <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;color:#dc2626;">${dr}</td>
+                        <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;color:#059669;">${cr}</td>
+                        <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;font-weight:700;">${bal}</td>
                     </tr>
                 `;
                 tbody.innerHTML += tr;

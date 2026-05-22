@@ -3,35 +3,67 @@
 {% block title %}Verify OTP & Reset Password{% endblock %}
 
 {% block content %}
-<div class="container mt-5">
+<div class="container py-5">
     <div class="row justify-content-center">
-        <div class="col-md-6">
-            <div class="card shadow-sm win11-card">
-                <div class="card-header bg-white border-bottom-0 pt-4 pb-0">
-                    <h4 class="mb-0 text-center text-primary"><i class="fas fa-check-circle me-2"></i>Verify OTP</h4>
+        <div class="col-md-5 col-lg-4">
+
+            <!-- Page Header -->
+            <div class="d-flex align-items-center gap-3 mb-4">
+                <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-shield-alt text-white" style="font-size:.95rem;"></i>
                 </div>
-                <div class="card-body p-4">
-                    <p class="text-center text-muted mb-4">Enter the OTP sent to your mobile number and your new password.</p>
+                <div>
+                    <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Verify &amp; Reset</h5>
+                    <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Administration</div>
+                </div>
+            </div>
+
+            <!-- Card -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+                <!-- Card accent bar -->
+                <div style="height:4px;background:linear-gradient(90deg,#C42B1C,#a4262c);"></div>
+
+                <div class="p-4">
+                    <p style="font-size:.82rem;color:#605E5C;margin-bottom:20px;">Enter the OTP sent to your mobile number and choose a new password.</p>
+
                     <form method="POST" action="/admin/users/verify_reset">
+
+                        <!-- OTP Section -->
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;margin-bottom:8px;">One-Time Password</div>
                         <div class="mb-3">
-                            <label for="otp" class="form-label">OTP Code</label>
-                            <input type="text" class="form-control form-control-lg text-center fw-bold" id="otp" name="otp" required autocomplete="off" placeholder="Enter 6-digit OTP" maxlength="6">
+                            <label for="otp" style="font-size:.8rem;font-weight:600;color:#323130;" class="form-label">OTP Code</label>
+                            <input type="text" class="form-control text-center fw-bold"
+                                   id="otp" name="otp" required autocomplete="off"
+                                   placeholder="• • • • • •" maxlength="6"
+                                   style="border-radius:8px;font-size:1.2rem;letter-spacing:.5rem;border:1px solid #e2e8f0;">
                         </div>
+
+                        <!-- New Password Section -->
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;margin-bottom:8px;margin-top:20px;">New Password</div>
                         <div class="mb-3">
-                            <label for="new_password" class="form-label">New Password</label>
-                            <input type="password" class="form-control" id="new_password" name="new_password" required>
+                            <label for="new_password" style="font-size:.8rem;font-weight:600;color:#323130;" class="form-label">New Password</label>
+                            <input type="password" class="form-control" id="new_password" name="new_password" required
+                                   style="border-radius:8px;border:1px solid #e2e8f0;">
                         </div>
                         <div class="mb-4">
-                            <label for="confirm_password" class="form-label">Confirm New Password</label>
-                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                            <label for="confirm_password" style="font-size:.8rem;font-weight:600;color:#323130;" class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-control" id="confirm_password" name="confirm_password" required
+                                   style="border-radius:8px;border:1px solid #e2e8f0;">
                         </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-success btn-lg"><i class="fas fa-save me-2"></i>Reset Password</button>
-                            <a href="/admin/users/reset_password" class="btn btn-outline-secondary mt-2">Resend OTP</a>
-                        </div>
+
+                        <button type="submit" class="btn w-100 fw-600 d-flex align-items-center justify-content-center gap-2"
+                                style="background:linear-gradient(135deg,#C42B1C,#a4262c);border:none;border-radius:8px;color:#fff;font-weight:600;padding:10px 0;font-size:.88rem;">
+                            <i class="fas fa-save"></i> Reset Password
+                        </button>
+                        <a href="/admin/users/reset_password" class="btn w-100 mt-2 fw-600"
+                           style="border-radius:8px;font-weight:600;font-size:.85rem;color:#605E5C;border:1px solid #e2e8f0;background:#f8f9fa;">
+                            <i class="fas fa-redo me-1"></i> Resend OTP
+                        </a>
                     </form>
                 </div>
             </div>
+
         </div>
     </div>
 </div>

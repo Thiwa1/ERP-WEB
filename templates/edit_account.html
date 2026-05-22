@@ -1,59 +1,74 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold mb-0 text-dark"><i class="fas fa-edit me-2 text-primary"></i>Edit Account</h2>
-        <a href="/chart_of_accounts" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-2"></i>Back to Chart of Accounts</a>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);background:linear-gradient(135deg,#5c6bc0,#3949ab);flex-shrink:0;">
+            <i class="fas fa-edit"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold text-dark">Edit GL Account</h5>
+            <div style="font-size:.78rem;" class="text-muted">Chart of Accounts</div>
+        </div>
+        <div class="ms-auto">
+            <a href="/chart_of_accounts" class="btn btn-outline-secondary btn-sm" style="border-radius:8px;">
+                <i class="fas fa-arrow-left me-1"></i> Back to Chart of Accounts
+            </a>
+        </div>
     </div>
 
     <form method="POST" action="/edit_account/{{ account.id }}">
-        <!-- Account Type Badges -->
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header bg-dark text-white fw-bold">
-                <i class="fas fa-tags me-2"></i> Account Type (Select one)
-            </div>
-            <div class="card-body bg-light">
+
+        <!-- Account Type Selection -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+            <div class="px-4 pt-4 pb-3">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                    <i class="fas fa-tags me-1"></i> Account Type (Select one)
+                </div>
                 <div class="d-flex flex-wrap gap-4">
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="account_type" value="income" id="check_income" {% if account.account_income == 1 %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="check_income">Income Account</label>
+                        <label class="form-check-label" style="font-size:.8rem;font-weight:600;color:#323130;" for="check_income">Income Account</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="account_type" value="expense" id="check_expense" {% if account.account_expenses == 1 %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="check_expense">Expenses Account</label>
+                        <label class="form-check-label" style="font-size:.8rem;font-weight:600;color:#323130;" for="check_expense">Expenses Account</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="account_type" value="liability" id="check_liability" {% if account.account_liabilities == 1 %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="check_liability">Liability Account</label>
+                        <label class="form-check-label" style="font-size:.8rem;font-weight:600;color:#323130;" for="check_liability">Liability Account</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="account_type" value="equity" id="check_equity" {% if account.account_equity == 1 %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="check_equity">Equity Account</label>
+                        <label class="form-check-label" style="font-size:.8rem;font-weight:600;color:#323130;" for="check_equity">Equity Account</label>
                     </div>
                     <div class="form-check">
                         <input class="form-check-input" type="checkbox" name="account_type" value="asset" id="check_asset" {% if account.account_assets == 1 %}checked{% endif %}>
-                        <label class="form-check-label fw-bold" style="color: var(--primary-color);" for="check_asset">Assets Account</label>
+                        <label class="form-check-label" style="font-size:.8rem;font-weight:600;color:#323130;" for="check_asset">Assets Account</label>
                     </div>
                 </div>
             </div>
         </div>
 
-        <div class="row">
+        <div class="row g-4 mb-4">
             <!-- Left Column: Account Details -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                        <i class="fas fa-info-circle me-2"></i> Account Details
+            <div class="col-md-6">
+                <div class="h-100" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                    <div class="px-4 pt-4 pb-2">
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                            <i class="fas fa-info-circle me-1"></i> Account Details
+                        </div>
                     </div>
-                    <div class="card-body bg-white">
+                    <div class="px-4 pb-4">
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Account Name</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Account Name</label>
                             <input type="text" class="form-control" name="account_name" value="{{ account.account_name }}" required>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Currency</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Currency</label>
                             <select class="form-select" name="currency_code">
                                 {% for curr in currencies %}
                                 <option value="{{ curr.currency_code }}" {% if curr.currency_code == account.currency_code %}selected{% endif %}>{{ curr.currency_code }} - {{ curr.currency_name }}</option>
@@ -62,23 +77,25 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold text-muted">Basement</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#605E5C;">Basement</label>
                             <input type="text" class="form-control bg-light" value="{{ account.account_basment }}" readonly>
-                            <small class="form-text text-muted">Basement (Debit/Credit) is set automatically.</small>
+                            <div class="form-text text-muted" style="font-size:.75rem;">Basement (Debit/Credit) is set automatically.</div>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- Right Column: Category Selection -->
-            <div class="col-md-6 mb-4">
-                <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                        <i class="fas fa-list-ul me-2"></i> Category Selection
+            <div class="col-md-6">
+                <div class="h-100" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                    <div class="px-4 pt-4 pb-2">
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                            <i class="fas fa-list-ul me-1"></i> Category Selection
+                        </div>
                     </div>
-                    <div class="card-body bg-white">
+                    <div class="px-4 pb-4">
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Balance Sheet Category</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Balance Sheet Category</label>
                             <select class="form-select" name="bs_category">
                                 <option value="">Please select</option>
                                 {% for cat in bs_categories %}
@@ -88,7 +105,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Income Category (P&L)</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Income Category (P&amp;L)</label>
                             <select class="form-select" name="income_category">
                                 <option value="">Please select</option>
                                 {% for cat in pl_categories %}
@@ -98,7 +115,7 @@
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label fw-bold" style="color: var(--primary-color);">Cash Flow Category</label>
+                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Cash Flow Category</label>
                             <select class="form-select" name="cf_category">
                                 <option value="">-- Select Cash Flow Category --</option>
                                 {% for cat in cf_categories %}
@@ -112,9 +129,9 @@
         </div>
 
         <!-- Footer Actions -->
-        <div class="card shadow-sm border-0">
-            <div class="card-body d-flex justify-content-end gap-2 bg-white">
-                <button type="submit" class="btn btn-primary fw-bold px-4" style="background-color: var(--accent-color); border: none;">
+        <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+            <div class="px-4 py-3 d-flex justify-content-end">
+                <button type="submit" class="btn px-4 fw-bold" style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;">
                     <i class="fas fa-save me-1"></i> Save Changes
                 </button>
             </div>

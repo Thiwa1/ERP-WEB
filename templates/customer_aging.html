@@ -1,19 +1,83 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-primary fas fa-user-clock me-2"></i> Customer Aging Report</h4>
-</div>
+<style>
+    .report-page-icon {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; color: #fff; flex-shrink: 0;
+    }
+    .report-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff; overflow: hidden;
+    }
+    .filter-card-header {
+        background: #f8f9fa; border-bottom: 1px solid #e2e8f0;
+        padding: .6rem 1.25rem; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+    }
+    /* KPI chips */
+    .aging-chip {
+        border-radius: 10px; padding: .75rem 1rem; background: #fff;
+        box-shadow: 0 1px 4px rgba(0,0,0,.07); border: 1px solid #e2e8f0;
+        border-top: 3px solid transparent; transition: transform .15s;
+    }
+    .aging-chip:hover { transform: translateY(-2px); }
+    .aging-chip .chip-label { font-size: .65rem; font-weight: 700;
+        letter-spacing: .6px; text-transform: uppercase; margin-bottom: .2rem; }
+    .aging-chip .chip-value { font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: 1rem; font-weight: 700; }
+    /* Table */
+    .report-table thead th {
+        background: #f8f9fa; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+        border-bottom: 2px solid #e2e8f0; vertical-align: middle;
+    }
+    .report-table tbody tr:hover { background: #fff5f5; }
+    .num-cell { font-family: 'JetBrains Mono','Courier New',monospace; text-align: right; }
+    .total-row { font-weight: 700; background: #f0f4ff; }
+    .grand-total-cell { font-weight: 800; font-size: 1rem; color: var(--accent-color); }
+    .win11-btn { border-radius: 6px; font-size: .8rem; font-weight: 600;
+        padding: .3rem .75rem; display: inline-flex; align-items: center; gap: .35rem; }
+    .win11-btn-secondary { border: 1px solid #8a8886; color: #323130; background: #fff; }
+    .win11-btn-secondary:hover { background: #f3f2f1; border-color: #605E5C; }
+    .bg-light-success { background-color: #f0fff4 !important; }
+    .bg-light-warning { background-color: #fffbeb !important; }
+    .bg-light-danger  { background-color: #fff5f5 !important; }
+    .bg-orange { background-color: #fd7e14; color: white; }
+    @media print {
+        .no-print { display: none !important; }
+        .report-card { box-shadow: none !important; border: none !important; }
+        .badge { border: 1px solid #000; color: #000 !important; background: none !important; }
+    }
+</style>
 
-    <!-- Filters -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-body bg-light">
+<div class="container-fluid py-3">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="report-page-icon" style="background: linear-gradient(135deg,#C42B1C,#a4262c);">
+            <i class="fas fa-user-clock"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold">Customer Aging Report</h5>
+            <small class="text-muted">Receivables</small>
+        </div>
+        <div class="ms-auto d-flex gap-2 no-print">
+            <a href="{{ url_for('customer_aging') }}" class="win11-btn win11-btn-secondary text-decoration-none">
+                <i class="fas fa-list"></i> Show All
+            </a>
+        </div>
+    </div>
+
+    <!-- Filter Card -->
+    <div class="report-card mb-4 no-print">
+        <div class="filter-card-header"><i class="fas fa-filter me-2"></i>Filters &amp; Options</div>
+        <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label fw-bold">Select Customer</label>
-                    <select name="customer_id" class="form-select select2" onchange="this.form.submit()">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">Select Customer</label>
+                    <select name="customer_id" class="form-select form-select-sm select2" onchange="this.form.submit()">
                         <option value="">-- All Customers --</option>
                         {% for c in customers %}
                         <option value="{{ c.sup_id }}" {% if selected_customer == c.sup_id %}selected{% endif %}>
@@ -22,70 +86,57 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-8 text-end">
-                    <a href="{{ url_for('customer_aging') }}" class="btn btn-info text-white fw-bold me-2">
-                        <i class="fas fa-list me-1"></i> Show All
-                    </a>
-                    <button type="submit" name="download" value="csv" class="btn btn-success fw-bold me-2">
-                        <i class="fas fa-file-csv me-1"></i> Export CSV
+                <div class="col-md-8 d-flex gap-2 justify-content-end">
+                    <button type="submit" name="download" value="csv" class="win11-btn win11-btn-secondary">
+                        <i class="fas fa-file-csv"></i> Export CSV
                     </button>
-                    <button type="button" onclick="window.print()" class="btn btn-danger fw-bold">
-                        <i class="fas fa-print me-1"></i> Print
+                    <button type="button" onclick="window.print()" class="win11-btn win11-btn-secondary">
+                        <i class="fas fa-print"></i> Print
                     </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Summary Cards -->
-    <div class="row mb-4 text-center g-3">
+    <!-- KPI Chips -->
+    <div class="row g-3 mb-4">
         <div class="col">
-            <div class="card border-0 shadow-sm" style="background-color: #E8F5E8;">
-                <div class="card-body py-2">
-                    <div class="small fw-bold text-success">CURRENT</div>
-                    <div class="h5 fw-bold mb-0 text-success">{{ "{:,.2f}".format(buckets['Current']) }}</div>
-                </div>
+            <div class="aging-chip" style="border-top-color:#107C10;">
+                <div class="chip-label" style="color:#107C10;">Current</div>
+                <div class="chip-value text-success">{{ "{:,.2f}".format(buckets['Current']) }}</div>
             </div>
         </div>
         <div class="col">
-            <div class="card border-0 shadow-sm" style="background-color: #FFF4E6;">
-                <div class="card-body py-2">
-                    <div class="small fw-bold text-warning">1-30 DAYS</div>
-                    <div class="h5 fw-bold mb-0 text-warning">{{ "{:,.2f}".format(buckets['1-30 Days']) }}</div>
-                </div>
+            <div class="aging-chip" style="border-top-color:#C19C00;">
+                <div class="chip-label" style="color:#C19C00;">1–30 Days</div>
+                <div class="chip-value" style="color:#C19C00;">{{ "{:,.2f}".format(buckets['1-30 Days']) }}</div>
             </div>
         </div>
         <div class="col">
-            <div class="card border-0 shadow-sm" style="background-color: #FFECE6;">
-                <div class="card-body py-2">
-                    <div class="small fw-bold" style="color: #E67E22;">31-60 DAYS</div>
-                    <div class="h5 fw-bold mb-0" style="color: #E67E22;">{{ "{:,.2f}".format(buckets['31-60 Days']) }}</div>
-                </div>
+            <div class="aging-chip" style="border-top-color:#CA5010;">
+                <div class="chip-label" style="color:#CA5010;">31–60 Days</div>
+                <div class="chip-value" style="color:#CA5010;">{{ "{:,.2f}".format(buckets['31-60 Days']) }}</div>
             </div>
         </div>
         <div class="col">
-            <div class="card border-0 shadow-sm" style="background-color: #FFE6E6;">
-                <div class="card-body py-2">
-                    <div class="small fw-bold text-danger">61-90 DAYS</div>
-                    <div class="h5 fw-bold mb-0 text-danger">{{ "{:,.2f}".format(buckets['61-90 Days']) }}</div>
-                </div>
+            <div class="aging-chip" style="border-top-color:#C42B1C;">
+                <div class="chip-label" style="color:#C42B1C;">61–90 Days</div>
+                <div class="chip-value text-danger">{{ "{:,.2f}".format(buckets['61-90 Days']) }}</div>
             </div>
         </div>
         <div class="col">
-            <div class="card border-0 shadow-sm" style="background-color: #FFD1D1;">
-                <div class="card-body py-2">
-                    <div class="small fw-bold" style="color: #C0392B;">OVER 90 DAYS</div>
-                    <div class="h5 fw-bold mb-0" style="color: #C0392B;">{{ "{:,.2f}".format(buckets['Over 90 Days']) }}</div>
-                </div>
+            <div class="aging-chip" style="border-top-color:#750b1c;">
+                <div class="chip-label" style="color:#750b1c;">Over 90 Days</div>
+                <div class="chip-value" style="color:#750b1c;">{{ "{:,.2f}".format(buckets['Over 90 Days']) }}</div>
             </div>
         </div>
     </div>
 
     <!-- Data Table -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0 table-responsive">
-            <table class="table table-bordered table-hover mb-0 align-middle">
-                <thead class="table-dark text-white">
+    <div class="report-card">
+        <div class="table-responsive">
+            <table class="table table-hover report-table mb-0 align-middle">
+                <thead>
                     <tr>
                         <th>Customer</th>
                         <th>Invoice No</th>
@@ -106,24 +157,26 @@
                     {% elif row.AgingBucket == 'Over 90 Days' %}{% set row_bg = 'bg-light-danger' %}
                     {% endif %}
 
-                    <tr>
-                        <td class="fw-bold text-secondary">{{ row.CustomerName }}</td>
-                        <td>{{ row.InvoiceNumber }}</td>
-                        <td>{{ row.InvoiceDate }}</td>
-                        <td>{{ row.FinalDate }}</td>
-                        <td class="text-end">{{ "{:,.2f}".format(row.InvoiceTotal) }}</td>
-                        <td class="text-end text-muted">{{ "{:,.2f}".format(row.PaidAmount) }}</td>
-                        <td class="text-end fw-bold">{{ "{:,.2f}".format(row.Outstanding) }}</td>
-                        <td class="text-center
-                            {% if row.AgeDays <= 0 %}text-success{% elif row.AgeDays > 90 %}text-danger fw-bold{% endif %}">
+                    <tr class="{{ row_bg }}">
+                        <td class="fw-semibold">{{ row.CustomerName }}</td>
+                        <td style="font-size:.85rem;">{{ row.InvoiceNumber }}</td>
+                        <td style="font-size:.85rem;">{{ row.InvoiceDate }}</td>
+                        <td style="font-size:.85rem;">{{ row.FinalDate }}</td>
+                        <td class="num-cell">{{ "{:,.2f}".format(row.InvoiceTotal) }}</td>
+                        <td class="num-cell text-muted">{{ "{:,.2f}".format(row.PaidAmount) }}</td>
+                        <td class="num-cell fw-bold">{{ "{:,.2f}".format(row.Outstanding) }}</td>
+                        <td class="text-center fw-semibold
+                            {% if row.AgeDays <= 0 %}text-success{% elif row.AgeDays > 90 %}text-danger{% endif %}"
+                            style="font-family:'JetBrains Mono','Courier New',monospace; font-size:.85rem;">
                             {{ row.AgeDays }}
                         </td>
                         <td class="text-center">
-                            <span class="badge
-                                {% if row.AgingBucket == 'Current' %}bg-success
-                                {% elif row.AgingBucket == '1-30 Days' %}bg-warning text-dark
-                                {% elif row.AgingBucket == '31-60 Days' %}bg-orange
-                                {% else %}bg-danger{% endif %}">
+                            <span class="badge"
+                                style="font-size:.7rem;
+                                {% if row.AgingBucket == 'Current' %}background:#107C10;
+                                {% elif row.AgingBucket == '1-30 Days' %}background:#C19C00;color:#fff;
+                                {% elif row.AgingBucket == '31-60 Days' %}background:#CA5010;color:#fff;
+                                {% else %}background:#C42B1C;color:#fff;{% endif %}">
                                 {{ row.AgingBucket }}
                             </span>
                         </td>
@@ -134,35 +187,23 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot class="table-light fw-bold">
-                    <tr>
-                        <td colspan="4" class="text-end">TOTALS:</td>
-                        <td class="text-end">-</td>
-                        <td class="text-end">-</td>
-                        <td class="text-end">{{ "{:,.2f}".format(summary.total_outstanding) }}</td>
+                <tfoot>
+                    <tr class="total-row" style="border-top:2px solid #e2e8f0;">
+                        <td colspan="4" class="text-end fw-bold" style="font-size:.78rem;letter-spacing:.5px;text-transform:uppercase;">Totals</td>
+                        <td class="num-cell">-</td>
+                        <td class="num-cell">-</td>
+                        <td class="num-cell grand-total-cell">{{ "{:,.2f}".format(summary.total_outstanding) }}</td>
                         <td colspan="2"></td>
                     </tr>
                 </tfoot>
             </table>
         </div>
-        <div class="card-footer bg-secondary text-white small d-flex justify-content-between">
-            <span>Total Customers: {{ summary.total_customers }}</span>
-            <span>Total Invoices: {{ summary.total_invoices }}</span>
-            <span>Report Date: {{ summary.report_date }}</span>
+        <div class="p-3 border-top d-flex justify-content-between align-items-center" style="background:#fafafa; font-size:.78rem; color:#605E5C;">
+            <span><i class="fas fa-users me-1"></i> <strong>{{ summary.total_customers }}</strong> Customers</span>
+            <span><i class="fas fa-file-invoice me-1"></i> <strong>{{ summary.total_invoices }}</strong> Invoices</span>
+            <span><i class="fas fa-calendar me-1"></i> Report Date: <strong>{{ summary.report_date }}</strong></span>
         </div>
     </div>
+
 </div>
-
-<style>
-    .bg-light-success { background-color: #E8F5E8 !important; }
-    .bg-light-warning { background-color: #FFF4E6 !important; }
-    .bg-light-danger { background-color: #FFD1D1 !important; }
-    .bg-orange { background-color: #fd7e14; color: white; }
-
-    @media print {
-        .btn, form { display: none !important; }
-        .card { border: none !important; shadow: none !important; }
-        .badge { border: 1px solid #000; color: #000 !important; background: none !important; }
-    }
-</style>
 {% endblock %}

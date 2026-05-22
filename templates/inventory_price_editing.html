@@ -1,20 +1,31 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
+<div class="container-fluid py-4">
 
-    <h2 class="mb-4 text-primary fw-bold">Inventory Price Adjustment</h2>
-
-    <!-- Add New Price Tier -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-header bg-success text-white fw-bold">
-            <i class="fas fa-plus-circle me-1"></i> Add New Price Tier to Existing Item
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C19C00,#9D5D00);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-tag"></i>
         </div>
-        <div class="card-body bg-light">
-            <form method="POST" action="/add_new_price_tier" class="row g-3">
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Price Management</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory</div>
+        </div>
+    </div>
+
+    <!-- Add New Price Tier Card -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;">
+            <i class="fas fa-plus-circle" style="color:#107C41;font-size:.85rem;"></i>
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Add New Price Tier to Existing Item</div>
+        </div>
+        <div class="px-4 py-4" style="background:#f9fffe;">
+            <form method="POST" action="/add_new_price_tier" class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold text-success">Select Inventory Item</label>
-                    <select class="form-select select2" name="item_id" required>
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Select Inventory Item</label>
+                    <select class="form-select select2" name="item_id" required
+                            style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                         <option value="">-- Search Item --</option>
                         {% for i in all_items %}
                         <option value="{{ i.id }}">{{ i.inventoy_code }} - {{ i.inventoy_name }}</option>
@@ -22,85 +33,111 @@
                     </select>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">New Cost</label>
-                    <input type="number" step="0.01" name="cost_price" class="form-control" placeholder="0.00" required>
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">New Cost</label>
+                    <input type="number" step="0.01" name="cost_price" class="form-control" placeholder="0.00" required
+                           style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Market Price</label>
-                    <input type="number" step="0.01" name="selling_price" class="form-control" placeholder="0.00" required>
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Market Price</label>
+                    <input type="number" step="0.01" name="selling_price" class="form-control" placeholder="0.00" required
+                           style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Special Price</label>
-                    <input type="number" step="0.01" name="special_price" class="form-control" placeholder="0.00">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Special Price</label>
+                    <input type="number" step="0.01" name="special_price" class="form-control" placeholder="0.00"
+                           style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label fw-bold text-success">Loyalty Price</label>
-                    <input type="number" step="0.01" name="loyalty_price" class="form-control" placeholder="0.00">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Loyalty Price</label>
+                    <input type="number" step="0.01" name="loyalty_price" class="form-control" placeholder="0.00"
+                           style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
                 </div>
                 <div class="col-md-1 d-flex align-items-end">
-                    <button type="submit" class="btn btn-success w-100"><i class="fas fa-save"></i> Add</button>
+                    <button type="submit"
+                            style="background:#107C41;border:none;border-radius:8px;font-weight:600;font-size:.82rem;padding:.52rem 0;color:#fff;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
+                        <i class="fas fa-save" style="font-size:.78rem;"></i> Add
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Edit Existing Prices -->
-    <div class="card shadow-sm mb-4">
-
-        <div class="card-header bg-warning text-dark">Filter Options</div>
-        <div class="card-body">
-            <form method="GET" action="/inventory_price_editing" class="row g-3">
-                <div class="col-md-4">
-                    <input type="text" name="search" class="form-control" placeholder="Search Item Name/Code" value="{{ search_query }}">
+    <!-- Filter Card -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Filter Items</div>
+        </div>
+        <div class="px-4 py-3">
+            <form method="GET" action="/inventory_price_editing" class="d-flex gap-3 align-items-end">
+                <div style="flex:1;max-width:380px;">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Search by Item Name or Code</label>
+                    <input type="text" name="search" class="form-control" placeholder="Type to search..." value="{{ search_query }}"
+                           style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                 </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-primary w-100">Filter</button>
-                </div>
+                <button type="submit"
+                        style="background:var(--accent-color,#C19C00);border:none;border-radius:8px;font-weight:600;font-size:.85rem;padding:.5rem 1.4rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;white-space:nowrap;">
+                    <i class="fas fa-search" style="font-size:.78rem;"></i> Filter
+                </button>
             </form>
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header">Inventory Items</div>
-        <div class="card-body">
-            <form method="POST" action="/inventory_price_editing/update">
-                <table class="table table-bordered">
+    <!-- Price Table Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Inventory Price List</div>
+        </div>
+        <form method="POST" action="/inventory_price_editing/update">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
                     <thead>
-                        <tr>
-                            <th>Item Name</th>
-                            <th>Code</th>
-                            <th>Cost Price</th>
-                            <th>Market Price</th>
-                            <th>SPM Price</th>
-                            <th>Loyalty Price</th>
+                        <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Code</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Cost Price</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Market Price</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">SPM Price</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Loyalty Price</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in items %}
-                        <tr>
-                            <td>{{ item.inventoy_name }}</td>
-                            <td>{{ item.inventoy_code }}</td>
-                            <td>{{ item.inventory_price_purcharsing }}</td>
-                            <td>
+                        <tr style="border-bottom:1px solid #f1f3f5;">
+                            <td class="px-4" style="font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ item.inventoy_name }}</td>
+                            <td class="px-4">
+                                <span style="font-family:monospace;font-size:.82rem;color:#605E5C;background:#f8f9fa;padding:2px 6px;border-radius:4px;">{{ item.inventoy_code }}</span>
+                            </td>
+                            <td class="px-4" style="font-family:monospace;font-size:.87rem;color:#605E5C;">{{ item.inventory_price_purcharsing }}</td>
+                            <td class="px-4">
                                 <input type="hidden" name="item_ids[]" value="{{ item.id }}">
-                                <input type="number" step="0.01" name="market_prices[]" value="{{ item.inventory_price_selling }}" class="form-control">
+                                <input type="number" step="0.01" name="market_prices[]"
+                                       value="{{ item.inventory_price_selling }}" class="form-control"
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;min-width:110px;">
                             </td>
-                            <td>
-                                <input type="number" step="0.01" name="spm_prices[]" value="{{ item.inventory_price_profit_marging_comen }}" class="form-control">
+                            <td class="px-4">
+                                <input type="number" step="0.01" name="spm_prices[]"
+                                       value="{{ item.inventory_price_profit_marging_comen }}" class="form-control"
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;min-width:110px;">
                             </td>
-                            <td>
-                                <input type="number" step="0.01" name="loyalty_prices[]" value="{{ item.inventory_price_for_Loyality_customer }}" class="form-control">
+                            <td class="px-4">
+                                <input type="number" step="0.01" name="loyalty_prices[]"
+                                       value="{{ item.inventory_price_for_Loyality_customer }}" class="form-control"
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;min-width:110px;">
                             </td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
-                <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-success px-5">Submit Changes</button>
-                </div>
-            </form>
-        </div>
+            </div>
+            <div class="px-4 py-3 d-flex justify-content-end" style="border-top:1px solid #f1f3f5;background:#fafafa;">
+                <button type="submit"
+                        style="background:var(--accent-color,#C19C00);border:none;border-radius:8px;font-weight:600;font-size:.88rem;padding:.55rem 2rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                    <i class="fas fa-save"></i> Submit Changes
+                </button>
+            </div>
+        </form>
     </div>
+
 </div>
 
 <script>

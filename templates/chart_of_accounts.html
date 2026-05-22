@@ -1,71 +1,107 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <h2 class="mb-4">Chart of Accounts</h2>
+<div class="container-fluid py-4">
 
-    <div class="row">
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);background:linear-gradient(135deg,#0078D4,#005FA3);flex-shrink:0;">
+            <i class="fas fa-sitemap"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold text-dark">Chart of Accounts</h5>
+            <div style="font-size:.78rem;" class="text-muted">General Ledger</div>
+        </div>
+        <div class="ms-auto">
+            <a href="/add_new_account" class="btn btn-sm fw-bold px-3" style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;">
+                <i class="fas fa-plus me-1"></i> Add Account
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row g-3 mb-4">
         <div class="col-md-4">
-            <div class="card text-center mb-3">
-                <div class="card-body">
-                    <h5 class="card-title">Total Accounts</h5>
-                    <p class="card-text fs-4">{{ total_accounts }}</p>
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-1">Total Accounts</div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-3 fw-bold text-dark">{{ total_accounts }}</span>
+                    <span class="text-muted" style="font-size:.8rem;">accounts registered</span>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card text-center mb-3">
-                <div class="card-body">
-                    <h5 class="card-title">P&L Categories</h5>
-                    <p class="card-text fs-4">{{ pl_count }}</p>
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-1">P&amp;L Categories</div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-3 fw-bold text-dark">{{ pl_count }}</span>
+                    <span class="text-muted" style="font-size:.8rem;">profit &amp; loss</span>
                 </div>
             </div>
         </div>
         <div class="col-md-4">
-            <div class="card text-center mb-3">
-                <div class="card-body">
-                    <h5 class="card-title">B/S Categories</h5>
-                    <p class="card-text fs-4">{{ bs_count }}</p>
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-1">B/S Categories</div>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="fs-3 fw-bold text-dark">{{ bs_count }}</span>
+                    <span class="text-muted" style="font-size:.8rem;">balance sheet</span>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="card shadow-sm">
-        <div class="card-header">Account List</div>
-        <div class="card-body">
-            <table class="table table-hover">
-                <thead>
+    <!-- Account List Table -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-2">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list me-1"></i> Account List
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead style="background:#f8f9fa;">
                     <tr>
-                        <th>Account Name</th>
-                        <th>Type (P&L / BS)</th>
-                        <th>Category</th>
-                        <th>Basement</th>
-                        <th class="text-center">Actions</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1.25rem;">Account Name</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Type (P&amp;L / BS)</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Category</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Basement</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;" class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for acc in accounts %}
-                    <tr>
-                        <td>{{ acc.account_name }}</td>
-                        <td>
+                    <tr style="border-bottom:1px solid #f1f3f5;">
+                        <td style="padding:.75rem 1.25rem;font-weight:600;color:#1a1a2e;">{{ acc.account_name }}</td>
+                        <td style="padding:.75rem 1rem;">
                             {% if acc.account_name_of_catogory_PL %}
-                                Profit & Loss
+                                <span class="badge" style="background:#e8f4fd;color:#0078D4;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Profit &amp; Loss</span>
                             {% elif acc.account_name_of_catogory_Balace_sheet %}
-                                Balance Sheet
+                                <span class="badge" style="background:#f0f4ff;color:#3949ab;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Balance Sheet</span>
                             {% else %}
-                                -
+                                <span class="text-muted" style="font-size:.8rem;">—</span>
                             {% endif %}
                         </td>
-                        <td>
+                        <td style="padding:.75rem 1rem;color:#605E5C;font-size:.85rem;">
                             {{ acc.account_name_of_catogory_PL if acc.account_name_of_catogory_PL else acc.account_name_of_catogory_Balace_sheet }}
                         </td>
-                        <td>
+                        <td style="padding:.75rem 1rem;">
                             {% if acc.account_basment == 'DR' %}
-                                <span class="badge bg-primary">Debit</span>
+                                <span class="badge" style="background:#e8f4fd;color:#0078D4;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Debit</span>
                             {% else %}
-                                <span class="badge bg-success">Credit</span>
+                                <span class="badge" style="background:#e8f9e8;color:#107C10;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Credit</span>
                             {% endif %}
+                        </td>
+                        <td style="padding:.75rem 1rem;" class="text-center">
+                            <a href="/edit_account/{{ acc.id }}" class="btn btn-sm btn-outline-primary" style="border-radius:6px;font-size:.75rem;" title="Edit">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center text-muted py-5" style="font-size:.85rem;">
+                            <i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>
+                            No accounts found. <a href="/add_new_account" class="text-decoration-none">Add your first account.</a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -73,5 +109,6 @@
             </table>
         </div>
     </div>
+
 </div>
 {% endblock %}

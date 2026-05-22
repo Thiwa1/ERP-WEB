@@ -3,20 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <title>Print Cheque</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { margin: 0; padding: 0; }
+        /* ── Base reset ── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', Arial, sans-serif;
+            background: #f5f7fa;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* ── No-print preview bar ── */
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        }
+        .no-print-bar .bar-label {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .bar-size {
+            color: #60a5fa;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: #1e40af22;
+            border: 1px solid #3b82f644;
+            border-radius: 5px;
+            padding: 3px 10px;
+        }
+        .btn-print {
+            background: #0078D4;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-print:hover { background: #005a9e; }
+        .btn-close-win {
+            background: #334155;
+            color: #cbd5e1;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .btn-close-win:hover { background: #475569; color: #fff; }
+
+        /* ── Cheque page setup — preserve exact positioning ── */
         @page {
             size: {{ settings.paper_width_mm }}mm {{ settings.paper_height_mm }}mm;
             margin: 0;
         }
 
+        /* ── Cheque container — exact sizing from settings ── */
         .cheque-container {
             position: relative;
             width: {{ settings.paper_width_mm }}mm;
             height: {{ settings.paper_height_mm }}mm;
         }
 
+        /* ── Positioned elements — all coordinates from settings ── */
         .element {
             position: absolute;
             font-family: Arial, sans-serif;
@@ -27,7 +97,7 @@
             left: {{ settings.date_x }}mm;
             top: {{ settings.date_y }}mm;
             font-size: {{ settings.date_font_size }}pt;
-            letter-spacing: 2px; /* Spacing for date boxes */
+            letter-spacing: 2px;
         }
 
         .payee {
@@ -41,7 +111,7 @@
             left: {{ settings.amount_words_x }}mm;
             top: {{ settings.amount_words_y }}mm;
             font-size: {{ settings.amount_words_font_size }}pt;
-            width: {{ settings.amount_words_width or 130 }}mm; /* Wrap text */
+            width: {{ settings.amount_words_width or 130 }}mm;
             white-space: normal;
             line-height: 1.5;
         }
@@ -66,24 +136,29 @@
             padding: 2px 0;
         }
 
+        /* ── Print media ── */
         @media print {
-            .no-print { display: none; }
+            body { background: white; }
+            .no-print { display: none !important; }
+            .no-print-bar { display: none !important; }
         }
     </style>
 </head>
 <body onload="window.print()">
 
-    <div class="no-print" style="padding: 10px; background: #f0f0f0; border-bottom: 1px solid #ccc; margin-bottom: 20px;">
-        <button onclick="window.print()">Print Now</button>
-        <button onclick="window.close()">Close</button>
-        <span style="margin-left: 20px;">Size: {{ settings.paper_width_mm }}mm x {{ settings.paper_height_mm }}mm</span>
+    <!-- Preview bar (hidden on print) -->
+    <div class="no-print-bar no-print">
+        <span class="bar-label">Cheque Preview</span>
+        <span class="bar-size">{{ settings.paper_width_mm }}mm &times; {{ settings.paper_height_mm }}mm</span>
+        <button class="btn-print" onclick="window.print()">&#128438; Print Cheque</button>
+        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
     </div>
 
+    <!-- Cheque — exact positioning preserved from settings variables -->
     <div class="cheque-container">
-        <!-- Date (DD MM YYYY format usually requires spacing) -->
+
         <div class="element date">
             {% if payment.date %}
-                {# Simple spacing, ideally split into DD MM YYYY logic in Python or JS if boxes exist #}
                 {{ payment.date.strftime('%d%m%Y') | list | join('  ') }}
             {% endif %}
         </div>
@@ -105,6 +180,7 @@
             A/C PAYEE ONLY
         </div>
         {% endif %}
+
     </div>
 
 </body>

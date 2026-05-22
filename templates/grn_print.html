@@ -2,87 +2,394 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>GRN Receipt</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Goods Received Note - {{ grn_no }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { font-family: monospace; font-size: 14px; }
-        .receipt-container { max-width: 800px; margin: 20px auto; padding: 20px; border: 1px solid #ccc; }
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #f5f7fa;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #1e293b;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        }
+        .no-print-bar .bar-label {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .btn-print {
+            background: #0078D4;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-print:hover { background: #005a9e; }
+        .btn-close-win {
+            background: #334155;
+            color: #cbd5e1;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-close-win:hover { background: #475569; color: #fff; }
+
+        .print-box {
+            max-width: 800px;
+            margin: 32px auto 48px auto;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            overflow: hidden;
+            position: relative;
+        }
+        .print-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #0078D4 0%, #005a9e 60%, #003d6b 100%);
+        }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 32px 32px 24px 32px;
+            gap: 24px;
+        }
+        .company-block .company-name {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 8px;
+        }
+        .company-block .company-line {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.7;
+        }
+
+        .meta-block { text-align: right; flex-shrink: 0; }
+        .meta-block .doc-title-text {
+            font-size: 28px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            text-transform: uppercase;
+        }
+        .meta-block .doc-number-badge {
+            display: inline-block;
+            margin-top: 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.03em;
+        }
+        .meta-table {
+            margin-top: 10px;
+            margin-left: auto;
+            border-collapse: collapse;
+        }
+        .meta-table td {
+            padding: 3px 0 3px 14px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .meta-table td:first-child {
+            color: #64748b;
+            font-weight: 600;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .meta-table td:last-child {
+            color: #0f172a;
+            font-weight: 700;
+            text-align: right;
+        }
+
+        .info-section {
+            padding: 0 32px 20px 32px;
+            display: flex;
+            gap: 16px;
+        }
+        .info-card {
+            flex: 1;
+            border-left: 3px solid #0078D4;
+            background: #f8fafc;
+            border-radius: 0 8px 8px 0;
+            padding: 14px 18px;
+        }
+        .info-card .info-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .info-card .info-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+        }
+        .info-card .info-sub {
+            font-size: 12px;
+            color: #64748b;
+            margin-top: 2px;
+        }
+
+        .items-section { padding: 0 32px 8px 32px; }
+
+        .table-doc {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table-doc thead tr {
+            background: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc thead th {
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 11px 12px;
+            border: none;
+        }
+        .table-doc thead th:first-child { border-radius: 8px 0 0 0; }
+        .table-doc thead th:last-child  { border-radius: 0 8px 0 0; }
+        .table-doc thead th.text-right { text-align: right; }
+        .table-doc thead th.text-center { text-align: center; }
+        .table-doc tbody tr:nth-child(even) {
+            background: #f8f9fa;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc tbody tr:nth-child(odd) { background: #ffffff; }
+        .table-doc tbody td {
+            padding: 11px 12px;
+            font-size: 12.5px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        .table-doc tbody tr:last-child td { border-bottom: none; }
+        .col-item { font-weight: 500; color: #0f172a; }
+        .col-center { text-align: center; color: #64748b; }
+        .col-amount { width: 120px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #0f172a; }
+
+        .bottom-section {
+            display: flex;
+            justify-content: flex-end;
+            padding: 12px 32px 0 32px;
+        }
+        .totals-block { width: 45%; min-width: 240px; }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 6px 10px; font-size: 12.5px; }
+        .totals-table .t-label { text-align: right; color: #64748b; font-weight: 600; }
+        .totals-table .t-value {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            color: #1e293b;
+            width: 110px;
+        }
+        .totals-table .grand-row td {
+            padding-top: 10px;
+            border-top: 2px solid #e2e8f0;
+            font-size: 14px;
+            font-weight: 800;
+            color: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .totals-table .grand-row .t-label { color: #0f172a; }
+
+        .signatures-section {
+            padding: 32px 32px 28px 32px;
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+        }
+        .sig-block { flex: 1; text-align: center; }
+        .sig-line {
+            border-top: 1px solid #cbd5e1;
+            padding-top: 8px;
+            font-size: 11.5px;
+            color: #64748b;
+            font-weight: 600;
+            margin-top: 40px;
+        }
+
+        .doc-footer {
+            border-top: 1px dashed #cbd5e1;
+            margin: 0 32px;
+            padding: 16px 0 24px 0;
+            text-align: center;
+        }
+        .doc-footer .thank-you { font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+        .doc-footer .footer-sub { font-size: 11px; color: #94a3b8; }
+
         @media print {
-            .no-print { display: none; }
-            .receipt-container { border: none; }
+            body { background: white; }
+            .no-print { display: none !important; }
+            .no-print-bar { display: none !important; }
+            .print-box { box-shadow: none; margin: 0; max-width: 100%; border-radius: 0; }
         }
     </style>
 </head>
-<body>
-    <div class="receipt-container">
-        <div class="text-center mb-4">
-            <h3 class="fw-bold">GOODS RECEIVED NOTE</h3>
-            <p>GRN No: {{ grn_no }}</p>
-        </div>
+<body onload="window.print()">
 
-        <div class="row mb-3">
-            <div class="col-6">
-                <strong>Supplier:</strong> {{ supplier }}<br>
-                <strong>Date:</strong> {{ date }}
-            </div>
-            <div class="col-6 text-end">
-                <strong>Invoice No:</strong> {{ invoice_no }}<br>
-                <strong>Location:</strong> {{ location }}
-            </div>
-        </div>
-
-        <table class="table table-bordered">
-            <thead>
-                <tr>
-                    <th>Item</th>
-                    <th>Qty</th>
-                    <th>Unit Cost</th>
-                    <th>Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                <tr>
-                    <td>{{ item.name }}</td>
-                    <td>{{ item.qty }}</td>
-                    <td>{{ item.cost }}</td>
-                    <td>{{ item.total }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td colspan="3" class="text-end fw-bold">Total Value:</td>
-                    <td>{{ total_value }}</td>
-                </tr>
-                {% if vat_amount > 0 %}
-                <tr>
-                    <td colspan="3" class="text-end fw-bold">VAT:</td>
-                    <td>{{ vat_amount }}</td>
-                </tr>
-                {% endif %}
-                <tr>
-                    <td colspan="3" class="text-end fw-bold">Grand Total:</td>
-                    <td>{{ grand_total }}</td>
-                </tr>
-            </tfoot>
-        </table>
-
-        <div class="mt-5 row">
-            <div class="col-6">
-                _________________<br>
-                Prepared By
-            </div>
-            <div class="col-6 text-end">
-                _________________<br>
-                Authorized By
-            </div>
-        </div>
-
-        <div class="text-center mt-4 no-print">
-            <button onclick="window.print()" class="btn btn-primary">Print</button>
-            <a href="/grn" class="btn btn-secondary">Back to GRN</a>
-        </div>
+    <div class="no-print-bar no-print">
+        <span class="bar-label">GRN Preview</span>
+        <button class="btn-print" onclick="window.print()">&#128438; Print GRN</button>
+        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
     </div>
+
+    <div class="print-box">
+
+        <!-- Header -->
+        <div class="doc-header">
+            <div class="company-block">
+                <div class="company-name">{{ company.company_name if company is defined else 'SUWIN ERP' }}</div>
+                <div class="company-line">
+                    {{ company.company_addras_1 if company is defined else '' }}
+                </div>
+            </div>
+            <div class="meta-block">
+                <div class="doc-title-text">Goods Received Note</div>
+                <div class="doc-number-badge"># {{ grn_no }}</div>
+                <table class="meta-table">
+                    <tr>
+                        <td>Date:</td>
+                        <td>{{ date }}</td>
+                    </tr>
+                    <tr>
+                        <td>Invoice No:</td>
+                        <td>{{ invoice_no }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Supplier / Location -->
+        <div class="info-section">
+            <div class="info-card">
+                <div class="info-label">Supplier</div>
+                <div class="info-value">{{ supplier }}</div>
+            </div>
+            <div class="info-card">
+                <div class="info-label">Delivery Location</div>
+                <div class="info-value">{{ location }}</div>
+            </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="items-section">
+            <table class="table-doc">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th class="text-center">Qty</th>
+                        <th class="text-right">Unit Cost</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    <tr>
+                        <td class="col-item">{{ item.name }}</td>
+                        <td class="col-center">{{ item.qty }}</td>
+                        <td class="col-amount">{{ item.cost }}</td>
+                        <td class="col-amount">{{ item.total }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Totals -->
+        <div class="bottom-section">
+            <div class="totals-block">
+                <table class="totals-table">
+                    <tr>
+                        <td class="t-label">Total Value</td>
+                        <td class="t-value">{{ total_value }}</td>
+                    </tr>
+                    {% if vat_amount > 0 %}
+                    <tr>
+                        <td class="t-label">VAT</td>
+                        <td class="t-value">{{ vat_amount }}</td>
+                    </tr>
+                    {% endif %}
+                    <tr class="grand-row">
+                        <td class="t-label">Grand Total</td>
+                        <td class="t-value">{{ grand_total }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Signatures -->
+        <div class="signatures-section">
+            <div class="sig-block">
+                <div class="sig-line">Prepared By</div>
+            </div>
+            <div class="sig-block">
+                <div class="sig-line">Authorized By</div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="doc-footer">
+            <div class="thank-you">Goods Received Note</div>
+            <div class="footer-sub">This is a computer-generated document.</div>
+        </div>
+
+    </div>
+
 </body>
 </html>

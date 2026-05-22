@@ -4,140 +4,405 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Service Entry - {{ header.jv_user_code }}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
-        body { background: #f8f9fa; padding: 20px; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
-        .sheet-container {
-            background: white;
-            padding: 40px;
-            max-width: 900px;
-            margin: 0 auto;
-            border: 1px solid #ddd;
-            box-shadow: 0 0 15px rgba(0,0,0,0.05);
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: #f5f7fa;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #1e293b;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
         }
-        .header-title {
-            text-transform: uppercase;
+
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        }
+        .no-print-bar .bar-label {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .btn-print {
+            background: #0078D4;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-print:hover { background: #005a9e; }
+        .btn-close-win {
+            background: #334155;
+            color: #cbd5e1;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-close-win:hover { background: #475569; color: #fff; }
+
+        .print-box {
+            max-width: 800px;
+            margin: 32px auto 48px auto;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            overflow: hidden;
+            position: relative;
+        }
+        .print-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #0078D4 0%, #005a9e 60%, #003d6b 100%);
+        }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 32px 32px 24px 32px;
+            gap: 24px;
+        }
+        .company-block .company-name {
+            font-size: 18px;
             font-weight: 800;
-            color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 10px;
-            margin-bottom: 30px;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 8px;
         }
-        .info-box {
-            background-color: #f8f9fa;
-            border-left: 4px solid #3498db;
-            padding: 15px;
-            margin-bottom: 20px;
+        .company-block .company-line {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.7;
         }
-        .table-custom th {
-            background-color: #34495e;
-            color: white;
+
+        .meta-block { text-align: right; flex-shrink: 0; }
+        .meta-block .doc-title-text {
+            font-size: 26px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: -0.02em;
+            line-height: 1;
             text-transform: uppercase;
-            font-size: 0.85rem;
         }
+        .meta-block .doc-number-badge {
+            display: inline-block;
+            margin-top: 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.03em;
+        }
+        .meta-table {
+            margin-top: 10px;
+            margin-left: auto;
+            border-collapse: collapse;
+        }
+        .meta-table td {
+            padding: 3px 0 3px 14px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .meta-table td:first-child {
+            color: #64748b;
+            font-weight: 600;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .meta-table td:last-child {
+            color: #0f172a;
+            font-weight: 700;
+            text-align: right;
+        }
+
+        .info-section {
+            padding: 0 32px 20px 32px;
+            display: flex;
+            gap: 16px;
+        }
+        .info-card {
+            flex: 1;
+            border-left: 3px solid #0078D4;
+            background: #f8fafc;
+            border-radius: 0 8px 8px 0;
+            padding: 14px 18px;
+        }
+        .info-card.accent-yellow { border-left-color: #f59e0b; }
+        .info-card .info-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .info-card.accent-yellow .info-label { color: #92400e; }
+        .info-table { width: 100%; border-collapse: collapse; }
+        .info-table td { padding: 4px 0; font-size: 12px; vertical-align: top; }
+        .info-table td:first-child {
+            color: #64748b;
+            font-weight: 600;
+            width: 110px;
+            white-space: nowrap;
+        }
+        .info-table td:last-child { color: #0f172a; font-weight: 600; }
+        .narration-text { font-size: 12.5px; color: #334155; line-height: 1.6; }
+
+        .section-title {
+            padding: 0 32px 10px 32px;
+            font-size: 11px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .items-section { padding: 0 32px 8px 32px; }
+
+        .table-doc {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table-doc thead tr {
+            background: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc thead th {
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 11px 12px;
+            border: none;
+        }
+        .table-doc thead th:first-child { border-radius: 8px 0 0 0; }
+        .table-doc thead th:last-child  { border-radius: 0 8px 0 0; }
+        .table-doc thead th.text-right { text-align: right; }
+        .table-doc tbody tr:nth-child(even) {
+            background: #f8f9fa;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc tbody tr:nth-child(odd) { background: #ffffff; }
+        .table-doc tbody td {
+            padding: 11px 12px;
+            font-size: 12.5px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        .table-doc tbody tr:last-child td { border-bottom: none; }
+        .col-account { font-weight: 600; color: #0f172a; }
+        .col-job { color: #64748b; }
+        .col-narration { font-size: 11.5px; color: #64748b; }
+        .col-amount { width: 130px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #0f172a; }
+
+        .tfoot-row {
+            background: #f8fafc;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .tfoot-row td {
+            padding: 12px 12px;
+            border-top: 2px solid #e2e8f0;
+        }
+        .tfoot-row .t-label {
+            text-align: right;
+            font-size: 11px;
+            font-weight: 800;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .tfoot-row .t-value {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-size: 15px;
+            font-weight: 800;
+            color: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        .signatures-section {
+            padding: 32px 32px 28px 32px;
+            display: flex;
+            justify-content: space-between;
+            gap: 24px;
+        }
+        .sig-block { flex: 1; text-align: center; }
+        .sig-line {
+            border-top: 1px solid #cbd5e1;
+            padding-top: 8px;
+            font-size: 11.5px;
+            color: #64748b;
+            font-weight: 600;
+            margin-top: 40px;
+        }
+
+        .doc-footer {
+            border-top: 1px dashed #cbd5e1;
+            margin: 0 32px;
+            padding: 16px 0 24px 0;
+            text-align: center;
+        }
+        .doc-footer .thank-you { font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+        .doc-footer .footer-sub { font-size: 11px; color: #94a3b8; }
+
         @media print {
-            body { background: white; padding: 0; }
-            .sheet-container { box-shadow: none; border: none; padding: 0; max-width: 100%; margin: 0; }
-            .btn-print { display: none; }
+            body { background: white; }
+            .no-print { display: none !important; }
+            .no-print-bar { display: none !important; }
+            .print-box { box-shadow: none; margin: 0; max-width: 100%; border-radius: 0; }
         }
     </style>
 </head>
-<body>
+<body onload="window.print()">
 
-<div class="text-center mb-4">
-    <button onclick="window.print()" class="btn btn-primary btn-print px-4 fw-bold">
-        <i class="fas fa-print me-2"></i>Print Sheet
-    </button>
-</div>
-
-<div class="sheet-container">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-start mb-4">
-        <div>
-            <h2 class="fw-bold mb-1">{{ company.company_name }}</h2>
-            <div class="text-muted small">
-                {{ company.company_addras_1 }}<br>
-                {{ company.company_addras_2 }}
-            </div>
-        </div>
-        <div class="text-end">
-            <h4 class="text-primary fw-bold mb-0">SERVICE ENTRY SHEET</h4>
-            <small class="text-muted">Ref: {{ header.jv_user_code }}</small>
-        </div>
+    <div class="no-print-bar no-print">
+        <span class="bar-label">Service Entry Preview</span>
+        <button class="btn-print" onclick="window.print()">&#128438; Print Sheet</button>
+        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
     </div>
 
-    <hr class="mb-4">
+    <div class="print-box">
 
-    <!-- Info Section -->
-    <div class="row g-4 mb-4">
-        <div class="col-md-6">
-            <div class="info-box">
-                <table class="table table-borderless table-sm mb-0">
+        <!-- Header -->
+        <div class="doc-header">
+            <div class="company-block">
+                <div class="company-name">{{ company.company_name }}</div>
+                <div class="company-line">
+                    {{ company.company_addras_1 or '' }}<br>
+                    {{ company.company_addras_2 or '' }}
+                </div>
+            </div>
+            <div class="meta-block">
+                <div class="doc-title-text">Service Entry Sheet</div>
+                <div class="doc-number-badge"># {{ header.jv_user_code }}</div>
+                <table class="meta-table">
                     <tr>
-                        <td class="fw-bold text-muted w-50">Document No:</td>
-                        <td class="fw-bold">{{ header.jv_user_code }}</td>
-                    </tr>
-                    <tr>
-                        <td class="fw-bold text-muted">Date:</td>
+                        <td>Date:</td>
                         <td>{{ header.entry_date }}</td>
                     </tr>
                     <tr>
-                        <td class="fw-bold text-muted">Invoice Ref:</td>
+                        <td>Invoice Ref:</td>
                         <td>{{ header.inv_no or '-' }}</td>
                     </tr>
                 </table>
             </div>
         </div>
-        <div class="col-md-6">
-            <div class="info-box border-warning" style="border-left-color: #f1c40f;">
-                <h6 class="fw-bold text-muted mb-2">Narration</h6>
-                <p class="mb-0 small">{{ header.jv_naration }}</p>
+
+        <!-- Info / Narration -->
+        <div class="info-section">
+            <div class="info-card">
+                <div class="info-label">Document Details</div>
+                <table class="info-table">
+                    <tr>
+                        <td>Document No:</td>
+                        <td>{{ header.jv_user_code }}</td>
+                    </tr>
+                    <tr>
+                        <td>Date:</td>
+                        <td>{{ header.entry_date }}</td>
+                    </tr>
+                    <tr>
+                        <td>Invoice Ref:</td>
+                        <td>{{ header.inv_no or '-' }}</td>
+                    </tr>
+                </table>
+            </div>
+            <div class="info-card accent-yellow">
+                <div class="info-label">Narration</div>
+                <div class="narration-text">{{ header.jv_naration }}</div>
             </div>
         </div>
-    </div>
 
-    <!-- Details Table -->
-    <h5 class="fw-bold mb-3 text-secondary">Service / Expense Allocation</h5>
-    <table class="table table-bordered table-custom mb-4">
-        <thead>
-            <tr>
-                <th style="width: 40%">Account Description</th>
-                <th style="width: 20%">Job No</th>
-                <th style="width: 25%">Narration</th>
-                <th class="text-end" style="width: 15%">Amount</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in details %}
-            <tr>
-                <td class="fw-bold">{{ row.account_name }}</td>
-                <td>{{ row.entry_job_number or '-' }}</td>
-                <td class="small text-muted">{{ row.entry_naration }}</td>
-                <td class="text-end">{{ "{:,.2f}".format(row.enty_values_DR or 0) }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-        <tfoot>
-            <tr class="table-light">
-                <td colspan="3" class="text-end fw-bold text-uppercase">Total Value</td>
-                <td class="text-end fw-bold fs-5">{{ "{:,.2f}".format(total) }}</td>
-            </tr>
-        </tfoot>
-    </table>
+        <!-- Service / Expense Table -->
+        <div class="section-title">Service / Expense Allocation</div>
+        <div class="items-section">
+            <table class="table-doc">
+                <thead>
+                    <tr>
+                        <th class="col-account">Account Description</th>
+                        <th class="col-job">Job No</th>
+                        <th class="col-narration">Narration</th>
+                        <th class="text-right col-amount">Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in details %}
+                    <tr>
+                        <td class="col-account">{{ row.account_name }}</td>
+                        <td class="col-job">{{ row.entry_job_number or '-' }}</td>
+                        <td class="col-narration">{{ row.entry_naration }}</td>
+                        <td class="col-amount">{{ "{:,.2f}".format(row.enty_values_DR or 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot>
+                    <tr class="tfoot-row">
+                        <td colspan="3" class="t-label">Total Value</td>
+                        <td class="t-value">{{ "{:,.2f}".format(total) }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
 
-    <!-- Footer Signatures -->
-    <div class="row mt-5 pt-5">
-        <div class="col-4 text-center">
-            <div class="border-top border-secondary pt-2 w-75 mx-auto">Prepared By</div>
+        <!-- Signatures -->
+        <div class="signatures-section">
+            <div class="sig-block">
+                <div class="sig-line">Prepared By</div>
+            </div>
+            <div class="sig-block">
+                <div class="sig-line">Authorized By</div>
+            </div>
+            <div class="sig-block">
+                <div class="sig-line">Received By</div>
+            </div>
         </div>
-        <div class="col-4 text-center">
-            <div class="border-top border-secondary pt-2 w-75 mx-auto">Authorized By</div>
+
+        <!-- Footer -->
+        <div class="doc-footer">
+            <div class="thank-you">Service Entry Sheet</div>
+            <div class="footer-sub">{{ company.company_name or 'SUWIN ERP' }} &mdash; This is a computer-generated document.</div>
         </div>
-        <div class="col-4 text-center">
-            <div class="border-top border-secondary pt-2 w-75 mx-auto">Received By</div>
-        </div>
+
     </div>
-</div>
 
 </body>
 </html>

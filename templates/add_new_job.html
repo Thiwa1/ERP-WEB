@@ -1,43 +1,78 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-briefcase me-2"></i> ADD NEW JOB</h4>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7B3F9E,#5E2D7A);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-briefcase"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;font-weight:700;">Create New Job</h5>
+            <small style="color:#605E5C;font-size:.78rem;">Job Management</small>
         </div>
     </div>
 
+    <!-- Form Card -->
     <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card shadow-sm border-0">
-                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                    <i class="fas fa-info-circle me-2"></i> Job Details
+        <div class="col-lg-7 col-md-9">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+                <!-- Card Section Label -->
+                <div class="px-4 pt-4 pb-2">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                        <i class="fas fa-info-circle me-1"></i> Job Details
+                    </span>
                 </div>
-                <div class="card-body bg-white">
+
+                <div class="px-4 pb-4">
                     <form method="POST" action="{{ url_for('create_job') }}">
-                        <div class="mb-3 row">
-                            <label class="col-sm-3 col-form-label fw-bold" style="color: var(--primary-color);">Job No</label>
-                            <div class="col-sm-9">
-                                <input type="number" class="form-control" name="job_no" required placeholder="Enter Job Number">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-3 col-form-label fw-bold" style="color: var(--primary-color);">Job Description</label>
-                            <div class="col-sm-9">
-                                <input type="text" class="form-control" name="job_description" required placeholder="Enter Job Description">
-                            </div>
+
+                        <!-- Job No -->
+                        <div class="mb-3">
+                            <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;color:#323130;">Job No</label>
+                            <input type="number"
+                                   class="form-control"
+                                   name="job_no"
+                                   required
+                                   placeholder="Enter job number"
+                                   style="border-radius:8px;border:1px solid #d1d5db;font-size:.9rem;padding:.55rem .85rem;">
                         </div>
 
-                        <div class="d-flex justify-content-end mt-4">
-                            <button type="submit" class="btn btn-primary fw-bold px-5 shadow-sm" style="background-color: var(--accent-color); border: none;">
+                        <!-- Job Description -->
+                        <div class="mb-4">
+                            <label class="form-label mb-1" style="font-size:.8rem;font-weight:600;color:#323130;">Job Description</label>
+                            <input type="text"
+                                   class="form-control"
+                                   name="job_description"
+                                   required
+                                   placeholder="Enter job description"
+                                   style="border-radius:8px;border:1px solid #d1d5db;font-size:.9rem;padding:.55rem .85rem;">
+                        </div>
+
+                        <!-- Divider -->
+                        <hr style="border-color:#e2e8f0;margin-bottom:1.2rem;">
+
+                        <!-- Actions -->
+                        <div class="d-flex justify-content-end gap-2">
+                            <a href="{{ url_for('job_management') }}"
+                               class="btn btn-light px-4"
+                               style="border-radius:8px;font-weight:600;font-size:.88rem;border:1px solid #d1d5db;color:#323130;">
+                                Cancel
+                            </a>
+                            <button type="submit"
+                                    class="btn px-4"
+                                    style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;font-size:.88rem;color:#fff;">
                                 <i class="fas fa-save me-2"></i> Create New Job
                             </button>
                         </div>
+
                     </form>
                 </div>
             </div>
         </div>
     </div>
+
 </div>
 {% endblock %}

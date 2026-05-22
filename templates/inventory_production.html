@@ -3,107 +3,128 @@
 {% block title %}Manufacturing / Production{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-industry me-2 text-warning"></i> Manufacturing Operations</h2>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#69797E,#4C5A5E);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-industry"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Production Entry</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Manufacturing</div>
+        </div>
     </div>
 
     <!-- Navigation Tabs -->
-    <ul class="nav nav-tabs mb-4" id="productionTabs" role="tablist">
+    <ul class="nav mb-4 gap-1" id="productionTabs" role="tablist" style="border-bottom:2px solid #e2e8f0;padding-bottom:0;">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active fw-bold" id="issue-tab" data-bs-toggle="tab" data-bs-target="#issue" type="button" role="tab" aria-controls="issue" aria-selected="true">
-                <i class="fas fa-sign-out-alt me-2"></i> Issue to Production (Consumption)
+            <button class="nav-link active fw-600" id="issue-tab" data-bs-toggle="tab" data-bs-target="#issue"
+                    type="button" role="tab" aria-controls="issue" aria-selected="true"
+                    style="font-size:.85rem;font-weight:600;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;padding:.6rem 1.2rem;color:#605E5C;border-radius:0;background:none;">
+                <i class="fas fa-sign-out-alt me-2" style="color:#69797E;"></i> Issue to Production
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link fw-bold" id="receive-tab" data-bs-toggle="tab" data-bs-target="#receive" type="button" role="tab" aria-controls="receive" aria-selected="false">
-                <i class="fas fa-sign-in-alt me-2"></i> Receive from Production (Finished Goods)
+            <button class="nav-link fw-600" id="receive-tab" data-bs-toggle="tab" data-bs-target="#receive"
+                    type="button" role="tab" aria-controls="receive" aria-selected="false"
+                    style="font-size:.85rem;font-weight:600;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;padding:.6rem 1.2rem;color:#605E5C;border-radius:0;background:none;">
+                <i class="fas fa-sign-in-alt me-2" style="color:#107C41;"></i> Receive from Production
             </button>
         </li>
     </ul>
+
+    <style>
+        #productionTabs .nav-link.active { color:#4C5A5E !important; border-bottom:2px solid #69797E !important; }
+        #productionTabs .nav-link:hover { color:#4C5A5E !important; background:#f8f9fa !important; border-radius:6px 6px 0 0; }
+    </style>
 
     <div class="tab-content" id="productionTabContent">
 
         <!-- ISSUE TAB (Raw Material Consumption) -->
         <div class="tab-pane fade show active" id="issue" role="tabpanel" aria-labelledby="issue-tab">
             <form action="{{ url_for('submit_production_issue') }}" method="POST" id="issueForm">
-                <div class="card shadow mb-4 border-left-warning">
-                    <div class="card-header py-3 text-primary">
-                        <h6 class="m-0 font-weight-bold text-warning text-primary">Issue Details (Stock OUT)</h6>
+
+                <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+                    <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:#D67E1A;display:inline-block;"></span>
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Issue Details — Stock OUT</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Date</label>
-                                <input type="date" class="form-control" name="issue_date" value="{{ today_date }}" required>
+                    <div class="px-4 py-4">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Date</label>
+                                <input type="date" class="form-control" name="issue_date" value="{{ today_date }}" required
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Job Number (Optional)</label>
-                                <select class="form-select select2" name="job_no">
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Job Number <span style="font-weight:400;color:#A0A0A0;">(Optional)</span></label>
+                                <select class="form-select select2" name="job_no" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Job --</option>
                                     {% for job in jobs %}
                                     <option value="{{ job.job_number }}">{{ job.job_number }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Source Location</label>
-                                <select class="form-select select2" name="source_location" required>
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Source Location <span style="color:#D13438;">*</span></label>
+                                <select class="form-select select2" name="source_location" required
+                                        style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Source --</option>
                                     {% for loc in locations %}
                                     <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Cost Account (Debit)</label>
-                                <select class="form-select select2" name="cost_account" required>
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Cost Account (Debit) <span style="color:#D13438;">*</span></label>
+                                <select class="form-select select2" name="cost_account" required
+                                        style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Expense Account --</option>
                                     {% for acc in expense_accounts %}
                                     <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
                                     {% endfor %}
                                 </select>
-                                <small class="text-muted">Account to charge cost to (e.g., WIP/COGS)</small>
+                                <div style="font-size:.75rem;color:#A0A0A0;margin-top:4px;">Account to charge cost to (e.g., WIP/COGS)</div>
                             </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">Narration</label>
-                                <input type="text" class="form-control" name="narration" placeholder="Raw material issue for..." required>
+                            <div class="col-md-12">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Narration <span style="color:#D13438;">*</span></label>
+                                <input type="text" class="form-control" name="narration" placeholder="Raw material issue for..." required
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Items Table -->
-                <div class="card shadow mb-4">
-                    <div class="card-header py-3 d-flex justify-content-between align-items-center text-primary">
-                        <h6 class="m-0 font-weight-bold text-secondary text-primary">Raw Materials to Issue</h6>
-                        <button type="button" class="btn btn-sm btn-warning" onclick="addItemRow('issueTable')">
-                            <i class="fas fa-plus"></i> Add Material
+                <!-- Issue Items Table -->
+                <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                    <div class="px-4 py-3 d-flex justify-content-between align-items-center" style="border-bottom:1px solid #f1f3f5;">
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Raw Materials to Issue</div>
+                        <button type="button" onclick="addItemRow('issueTable')"
+                                style="background:#fffbf5;border:1px solid #f7d7a0;border-radius:8px;font-size:.8rem;font-weight:600;color:#7A5800;padding:.35rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                            <i class="fas fa-plus" style="font-size:.72rem;"></i> Add Material
                         </button>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table  table-hover mb-0" id="issueTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width: 40%;">Item</th>
-                                        <th style="width: 15%;">Unit</th>
-                                        <th style="width: 20%;">Quantity</th>
-                                        <th style="width: 15%;">Unit Cost</th>
-                                        <th style="width: 10%;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="issueTable">
+                            <thead>
+                                <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:40%;">Item</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Unit</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:20%;">Quantity</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Unit Cost</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
 
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
-                    <button type="submit" class="btn btn-warning btn-lg px-5 text-white">
-                        <i class="fas fa-check-circle me-2"></i> Issue Material
+                <div class="d-flex justify-content-end mb-4">
+                    <button type="submit"
+                            style="background:linear-gradient(135deg,#69797E,#4C5A5E);border:none;border-radius:8px;font-weight:600;font-size:.88rem;padding:.55rem 2rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-check-circle"></i> Issue Material
                     </button>
                 </div>
             </form>
@@ -112,95 +133,101 @@
         <!-- RECEIVE TAB (Finished Goods Production) -->
         <div class="tab-pane fade" id="receive" role="tabpanel" aria-labelledby="receive-tab">
             <form action="{{ url_for('submit_production_receive') }}" method="POST" id="receiveForm">
-                <div class="card shadow mb-4 border-left-success">
-                    <div class="card-header py-3 text-primary">
-                        <h6 class="m-0 font-weight-bold text-success text-primary">Production Receipt (Stock IN)</h6>
+
+                <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+                    <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;">
+                        <span style="width:6px;height:6px;border-radius:50%;background:#107C41;display:inline-block;"></span>
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Production Receipt — Stock IN</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Date</label>
-                                <input type="date" class="form-control" name="receive_date" value="{{ today_date }}" required>
+                    <div class="px-4 py-4">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Date</label>
+                                <input type="date" class="form-control" name="receive_date" value="{{ today_date }}" required
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Job Number (Optional)</label>
-                                <select class="form-select select2" name="job_no">
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Job Number <span style="font-weight:400;color:#A0A0A0;">(Optional)</span></label>
+                                <select class="form-select select2" name="job_no" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Job --</option>
                                     {% for job in jobs %}
                                     <option value="{{ job.job_number }}">{{ job.job_number }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Target Location</label>
-                                <select class="form-select select2" name="target_location" required>
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Target Location <span style="color:#D13438;">*</span></label>
+                                <select class="form-select select2" name="target_location" required
+                                        style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Destination --</option>
                                     {% for loc in locations %}
                                     <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-3 mb-3">
-                                <label class="form-label">Credit Account (Source of Value)</label>
-                                <select class="form-select select2" name="credit_account" required>
+                            <div class="col-md-3">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Credit Account (Source of Value) <span style="color:#D13438;">*</span></label>
+                                <select class="form-select select2" name="credit_account" required
+                                        style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                                     <option value="">-- Select Source Account --</option>
                                     {% for acc in expense_accounts %}
                                     <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
                                     {% endfor %}
                                 </select>
-                                <small class="text-muted">Account to credit value from (e.g., WIP)</small>
+                                <div style="font-size:.75rem;color:#A0A0A0;margin-top:4px;">Account to credit value from (e.g., WIP)</div>
                             </div>
-                        </div>
-                        <div class="row">
-                            <div class="col-md-12 mb-3">
-                                <label class="form-label">Narration</label>
-                                <input type="text" class="form-control" name="narration" placeholder="Finished goods receipt for..." required>
+                            <div class="col-md-12">
+                                <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Narration <span style="color:#D13438;">*</span></label>
+                                <input type="text" class="form-control" name="narration" placeholder="Finished goods receipt for..." required
+                                       style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Items Table -->
-                <div class="card shadow mb-4">
-                    <div class="card-header py-3 d-flex justify-content-between align-items-center text-primary">
-                        <h6 class="m-0 font-weight-bold text-secondary text-primary">Finished Goods to Receive</h6>
-                        <button type="button" class="btn btn-sm btn-success" onclick="addItemRow('receiveTable')">
-                            <i class="fas fa-plus"></i> Add Product
+                <!-- Receive Items Table -->
+                <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                    <div class="px-4 py-3 d-flex justify-content-between align-items-center" style="border-bottom:1px solid #f1f3f5;">
+                        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Finished Goods to Receive</div>
+                        <button type="button" onclick="addItemRow('receiveTable')"
+                                style="background:#f0faf5;border:1px solid #a8d8bf;border-radius:8px;font-size:.8rem;font-weight:600;color:#107C41;padding:.35rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                            <i class="fas fa-plus" style="font-size:.72rem;"></i> Add Product
                         </button>
                     </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table  table-hover mb-0" id="receiveTable">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th style="width: 40%;">Item</th>
-                                        <th style="width: 15%;">Unit</th>
-                                        <th style="width: 20%;">Quantity</th>
-                                        <th style="width: 15%;">Unit Cost (Value)</th>
-                                        <th style="width: 10%;">Action</th>
-                                    </tr>
-                                </thead>
-                                <tbody></tbody>
-                            </table>
-                        </div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="receiveTable">
+                            <thead>
+                                <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:40%;">Item</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Unit</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:20%;">Quantity</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Unit Cost (Value)</th>
+                                    <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;"></th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
                     </div>
                 </div>
 
-                <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
-                    <button type="submit" class="btn btn-success btn-lg px-5">
-                        <i class="fas fa-check-circle me-2"></i> Receive Goods
+                <div class="d-flex justify-content-end mb-4">
+                    <button type="submit"
+                            style="background:linear-gradient(135deg,#107C41,#0A5C2E);border:none;border-radius:8px;font-weight:600;font-size:.88rem;padding:.55rem 2rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-check-circle"></i> Receive Goods
                     </button>
                 </div>
             </form>
         </div>
+
     </div>
 </div>
 
 <!-- Template for new row -->
 <template id="rowTemplate">
-    <tr>
-        <td>
-            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)">
+    <tr style="border-bottom:1px solid #f1f3f5;">
+        <td class="px-4">
+            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)"
+                    style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                 <option value="">-- Select Item --</option>
                 {% for item in items %}
                 <option value="{{ item.inventoy_name }}"
@@ -213,19 +240,23 @@
             </select>
             <input type="hidden" name="item_code[]" class="item-code">
         </td>
-        <td>
-            <input type="text" class="form-control-plaintext item-unit" readonly>
+        <td class="px-4">
+            <input type="text" class="form-control-plaintext item-unit" readonly
+                   style="font-size:.85rem;color:#605E5C;">
             <input type="hidden" name="item_unit[]" class="item-unit-input">
         </td>
-        <td>
-            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00">
+        <td class="px-4">
+            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00"
+                   style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
         </td>
-        <td>
-            <input type="number" class="form-control item-cost" name="unit_cost[]" step="0.01" min="0.01" required placeholder="0.00">
+        <td class="px-4">
+            <input type="number" class="form-control item-cost" name="unit_cost[]" step="0.01" min="0.01" required placeholder="0.00"
+                   style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
         </td>
-        <td class="text-center">
-            <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
-                <i class="fas fa-trash"></i>
+        <td class="px-4 text-center">
+            <button type="button" onclick="removeRow(this)"
+                    style="background:#fff0f0;border:1px solid #ffd0d0;border-radius:7px;color:#D13438;padding:.3rem .6rem;cursor:pointer;">
+                <i class="fas fa-trash" style="font-size:.78rem;"></i>
             </button>
         </td>
     </tr>

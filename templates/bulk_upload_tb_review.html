@@ -1,191 +1,199 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-search-dollar me-2"></i> REVIEW TRIAL BALANCE UPLOAD</h4>
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#69797E,#4C5A5E);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-search-dollar text-white" style="font-size:.95rem;"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold text-dark">Review Upload</h5>
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Trial Balance</div>
+    </div>
+  </div>
+
+  <!-- Missing Accounts Alert -->
+  {% set missing_count = rows|selectattr('status', 'equalto', 'Missing')|list|length %}
+  {% if missing_count > 0 %}
+  <div class="d-flex align-items-start gap-3 mb-4" style="border-radius:10px;border:1px solid #fde68a;background:#fffbeb;padding:1rem 1.25rem;">
+    <i class="fas fa-exclamation-triangle fa-lg mt-1" style="color:#d97706;flex-shrink:0;"></i>
+    <div>
+      <div class="fw-bold mb-1" style="color:#92400e;">Action Required: {{ missing_count }} Account{{ 's' if missing_count != 1 }} Missing</div>
+      <p class="mb-2 small" style="color:#78350f;">Some accounts in the uploaded file do not exist in the system. You must create them before posting the opening balance.</p>
+      <button class="btn btn-sm fw-bold" data-bs-toggle="modal" data-bs-target="#createMissingModal"
+        style="background:#92400e;border:none;border-radius:8px;color:#fff;font-size:.8rem;padding:.35rem 1rem;">
+        <i class="fas fa-magic me-1"></i> Quick Create Missing Accounts
+      </button>
+    </div>
+  </div>
+  {% endif %}
+
+  <form method="POST">
+    <input type="hidden" name="save_tb" value="1">
+
+    <!-- Date Selection -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-4">
+          <label class="form-label fw-bold small" style="color:#374151;">Opening Balance Date</label>
+          <input type="date" class="form-control" id="opening_date" name="opening_date" value="{{ today_date }}" style="border-radius:8px;">
         </div>
+      </div>
     </div>
 
-    <!-- Alert for Missing -->
-    {% set missing_count = rows|selectattr('status', 'equalto', 'Missing')|list|length %}
-    {% if missing_count > 0 %}
-    <div class="alert alert-warning d-flex align-items-center mb-4 shadow-sm" role="alert">
-        <i class="fas fa-exclamation-triangle fa-2x me-3"></i>
-        <div>
-            <h5 class="alert-heading fw-bold">Action Required: {{ missing_count }} Accounts Missing</h5>
-            <p class="mb-0">Some accounts in the uploaded file do not exist in the system. You must create them before posting the opening balance.</p>
-            <button class="btn btn-sm btn-dark mt-2" data-bs-toggle="modal" data-bs-target="#createMissingModal">
-                <i class="fas fa-magic me-1"></i> Quick Create Missing Accounts
-            </button>
-        </div>
+    <!-- Review Table Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+      <div class="table-responsive" style="max-height:700px;">
+        <table class="table table-hover mb-0 align-middle">
+          <thead style="position:sticky;top:0;z-index:2;background:#f8f9fa;">
+            <tr>
+              <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Account Name</th>
+              <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Debit</th>
+              <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Credit</th>
+              <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;text-align:center;">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr style="{% if row.status == 'Missing' %}background:#fff1f2;{% endif %}border-bottom:1px solid #f1f3f5;">
+              <td style="padding:.65rem 1rem;font-weight:500;">
+                <input type="hidden" name="account_name[]" value="{{ row.name }}">
+                {{ row.name }}
+              </td>
+              <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;">
+                <input type="hidden" name="dr[]" value="{{ row.dr }}">
+                {{ "{:,.2f}".format(row.dr) }}
+              </td>
+              <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;">
+                <input type="hidden" name="cr[]" value="{{ row.cr }}">
+                {{ "{:,.2f}".format(row.cr) }}
+              </td>
+              <td style="padding:.65rem 1rem;text-align:center;">
+                {% if row.status == 'Missing' %}
+                <span class="badge" style="background:#fee2e2;color:#991b1b;border-radius:6px;font-size:.72rem;font-weight:700;padding:.3rem .65rem;">Missing</span>
+                {% else %}
+                <span class="badge" style="background:#d1fae5;color:#065f46;border-radius:6px;font-size:.72rem;font-weight:700;padding:.3rem .65rem;">OK</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            {% set diff = (total_dr - total_cr) | abs %}
+            <tr style="{% if diff > 0.01 %}background:#fff1f2;{% else %}background:#f0fdf4;{% endif %}font-weight:700;border-top:2px solid #e2e8f0;">
+              <td style="padding:.75rem 1rem;text-align:right;font-size:.72rem;text-transform:uppercase;color:#605E5C;letter-spacing:.5px;">Totals</td>
+              <td style="padding:.75rem 1rem;text-align:right;font-family:'Courier New',monospace;">{{ "{:,.2f}".format(total_dr) }}</td>
+              <td style="padding:.75rem 1rem;text-align:right;font-family:'Courier New',monospace;">{{ "{:,.2f}".format(total_cr) }}</td>
+              <td style="padding:.75rem 1rem;text-align:center;">
+                {% if diff > 0.01 %}
+                <span style="color:#dc2626;font-size:.82rem;"><i class="fas fa-times-circle me-1"></i>Diff: {{ "{:,.2f}".format(total_dr - total_cr) }}</span>
+                {% else %}
+                <span style="color:#059669;font-size:.82rem;"><i class="fas fa-check-circle me-1"></i>Balanced</span>
+                {% endif %}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <!-- Footer Actions -->
+      <div style="padding:1rem 1.25rem;border-top:1px solid #e2e8f0;background:#f8f9fa;display:flex;justify-content:flex-end;gap:.75rem;border-radius:0 0 12px 12px;">
+        <a href="{{ url_for('bulk_upload_tb') }}" class="btn btn-sm" style="border-radius:8px;font-weight:600;border:1px solid #dee2e6;background:#fff;color:#374151;padding:.45rem 1.25rem;">
+          <i class="fas fa-arrow-left me-1"></i> Cancel
+        </a>
+        {% set is_disabled = missing_count > 0 or diff > 0.01 %}
+        <button type="submit" class="btn btn-sm text-white" style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.45rem 1.5rem;" {% if is_disabled %}disabled{% endif %}>
+          <i class="fas fa-save me-2"></i> Post Opening Balances
+        </button>
+      </div>
     </div>
-    {% endif %}
+  </form>
 
-    <form method="POST">
-        <input type="hidden" name="save_tb" value="1">
-
-        <!-- Date Selection -->
-        <div class="row mb-3">
-            <div class="col-md-4">
-                <label for="opening_date" class="form-label fw-bold">Opening Balance Date:</label>
-                <input type="date" class="form-control" id="opening_date" name="opening_date" value="{{ today_date }}" >
-            </div>
-        </div>
-
-        <div class="card shadow-sm border-0">
-            <div class="card-body p-0 table-responsive" style="max-height: 700px;">
-                <table class="table table-bordered table-hover mb-0 align-middle">
-                    <thead class="table-light sticky-top">
-                        <tr>
-                            <th>Account Name</th>
-                            <th class="text-end">Debit</th>
-                            <th class="text-end">Credit</th>
-                            <th class="text-center">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in rows %}
-                        <tr class="{% if row.status == 'Missing' %}table-danger{% endif %}">
-                            <td>
-                                <input type="hidden" name="account_name[]" value="{{ row.name }}">
-                                {{ row.name }}
-                            </td>
-                            <td class="text-end">
-                                <input type="hidden" name="dr[]" value="{{ row.dr }}">
-                                {{ "{:,.2f}".format(row.dr) }}
-                            </td>
-                            <td class="text-end">
-                                <input type="hidden" name="cr[]" value="{{ row.cr }}">
-                                {{ "{:,.2f}".format(row.cr) }}
-                            </td>
-                            <td class="text-center">
-                                {% if row.status == 'Missing' %}
-                                <span class="badge bg-danger">Missing</span>
-                                {% else %}
-                                <span class="badge bg-success">OK</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                    <tfoot class="table-light fw-bold">
-                        {% set diff = (total_dr - total_cr) | abs %}
-                        <tr class="{% if diff > 0.01 %}table-danger{% else %}table-success{% endif %}">
-                            <td class="text-end">TOTALS:</td>
-                            <td class="text-end">{{ "{:,.2f}".format(total_dr) }}</td>
-                            <td class="text-end">{{ "{:,.2f}".format(total_cr) }}</td>
-                            <td class="text-center">
-                                {% if diff > 0.01 %}
-                                <span class="text-danger"><i class="fas fa-times-circle"></i> Diff: {{ "{:,.2f}".format(total_dr - total_cr) }}</span>
-                                {% else %}
-                                <span class="text-success"><i class="fas fa-check-circle"></i> Balanced</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                    </tfoot>
-                </table>
-            </div>
-
-            <div class="card-footer bg-white text-end">
-                <a href="{{ url_for('bulk_upload_tb') }}" class="btn btn-secondary me-2">Cancel</a>
-                {% set is_disabled = missing_count > 0 or diff > 0.01 %}
-                <button type="submit" class="btn btn-success fw-bold px-4" {% if is_disabled %}disabled{% endif %}>
-                    <i class="fas fa-save me-2"></i> Post Opening Balances
-                </button>
-            </div>
-        </div>
-    </form>
 </div>
 
 <!-- Modal for Quick Create -->
 <div class="modal fade" id="createMissingModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header bg-dark text-white">
-                <h5 class="modal-title"><i class="fas fa-plus-circle me-2"></i> Create Missing Accounts</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0">
-                <!-- Using same logic as GL Bulk Upload Review but strictly for missing ones -->
-                <!-- We can reuse the GL Bulk route by posting these missing rows to it? -->
-                <!-- Or implement a mini-form here. Let's redirect to GL Bulk Logic or use an iframe/form submission to a helper. -->
-
-                <form action="{{ url_for('bulk_upload_gl') }}" method="POST" id="quickCreateForm">
-                    <input type="hidden" name="save_data" value="1">
-                    <div class="table-responsive">
-                        <table class="table table-bordered mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Account Name</th>
-                                    <th>Type</th>
-                                    <th>Category</th>
-                                    <th>Cash Flow</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for row in rows if row.status == 'Missing' %}
-                                <tr>
-                                    <td>
-                                        <input type="text" class="form-control form-control-sm fw-bold" name="account_name[]" value="{{ row.name }}" readonly>
-
-                                    </td>
-                                    <td>
-                                        <select class="select2" name="account_type[]" style="width: 100%;">
-                                            <option value="Asset">Asset (BS)</option>
-                                            <option value="Liability">Liability (BS)</option>
-                                            <option value="Equity">Equity (BS)</option>
-                                            <option value="Income">Income (PL)</option>
-                                            <option value="Expense">Expense (PL)</option>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select class="select2" name="category[]">
-                                            <option value="">-- Select --</option>
-                                            <optgroup label="Balance Sheet">
-                                                {% for c in bs_cats %}
-                                                <option value="{{ c.name_of_category }},{{ c.holding_position }}|BS">{{ c.name_of_category }}</option>
-                                                {% endfor %}
-                                            </optgroup>
-                                            <optgroup label="Profit & Loss">
-                                                {% for c in pl_cats %}
-                                                <option value="{{ c.name_of_category }},{{ c.holding_position }}|PL">{{ c.name_of_category }}</option>
-                                                {% endfor %}
-                                            </optgroup>
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select class="select2" name="cf_category[]" style="width: 100%;">
-                                            <option value="">-- Select --</option>
-                                            {% for cf in cf_cats %}
-                                            <option value="{{ cf.catogory_name }}">{{ cf.catogory_name }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                    <td>
-                                        <select class="form-select form-select-sm" name="action[]">
-                                            <option value="skip" selected>Skip</option>
-                                            <option value="save">Save</option>
-                                        </select>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    <div class="p-3 text-end bg-light border-top">
-                        <button type="submit" class="btn btn-primary fw-bold">Create Accounts & Return</button>
-                    </div>
-                </form>
-            </div>
-        </div>
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+      <div class="modal-header" style="background:linear-gradient(135deg,#69797E,#4C5A5E);border-radius:12px 12px 0 0;">
+        <h5 class="modal-title text-white fw-bold"><i class="fas fa-plus-circle me-2"></i> Create Missing Accounts</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-0">
+        <form action="{{ url_for('bulk_upload_gl') }}" method="POST" id="quickCreateForm">
+          <input type="hidden" name="save_data" value="1">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead style="background:#f8f9fa;">
+                <tr>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Account Name</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Type</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Category</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Cash Flow</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for row in rows if row.status == 'Missing' %}
+                <tr style="border-bottom:1px solid #f1f3f5;">
+                  <td style="padding:.65rem 1rem;">
+                    <input type="text" class="form-control form-control-sm fw-bold" name="account_name[]" value="{{ row.name }}" readonly style="border-radius:6px;background:#f8f9fa;border:1px solid #e2e8f0;">
+                  </td>
+                  <td style="padding:.65rem 1rem;">
+                    <select class="select2" name="account_type[]" style="width:100%;">
+                      <option value="Asset">Asset (BS)</option>
+                      <option value="Liability">Liability (BS)</option>
+                      <option value="Equity">Equity (BS)</option>
+                      <option value="Income">Income (PL)</option>
+                      <option value="Expense">Expense (PL)</option>
+                    </select>
+                  </td>
+                  <td style="padding:.65rem 1rem;">
+                    <select class="select2" name="category[]">
+                      <option value="">-- Select --</option>
+                      <optgroup label="Balance Sheet">
+                        {% for c in bs_cats %}
+                        <option value="{{ c.name_of_category }},{{ c.holding_position }}|BS">{{ c.name_of_category }}</option>
+                        {% endfor %}
+                      </optgroup>
+                      <optgroup label="Profit & Loss">
+                        {% for c in pl_cats %}
+                        <option value="{{ c.name_of_category }},{{ c.holding_position }}|PL">{{ c.name_of_category }}</option>
+                        {% endfor %}
+                      </optgroup>
+                    </select>
+                  </td>
+                  <td style="padding:.65rem 1rem;">
+                    <select class="select2" name="cf_category[]" style="width:100%;">
+                      <option value="">-- Select --</option>
+                      {% for cf in cf_cats %}
+                      <option value="{{ cf.catogory_name }}">{{ cf.catogory_name }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                  <td style="padding:.65rem 1rem;">
+                    <select class="form-select form-select-sm" name="action[]" style="border-radius:6px;">
+                      <option value="skip" selected>Skip</option>
+                      <option value="save">Save</option>
+                    </select>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <div class="p-3 text-end" style="background:#f8f9fa;border-top:1px solid #e2e8f0;">
+            <button type="submit" class="btn fw-bold text-white" style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.5rem 1.5rem;">
+              <i class="fas fa-save me-2"></i> Create Accounts &amp; Return
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
+  </div>
 </div>
-
-
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -225,7 +233,5 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 </script>
-
-
 
 {% endblock %}

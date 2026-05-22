@@ -1,57 +1,97 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <div class="card shadow-sm">
-        <div class="card-header bg-transparent border-0 pb-0 pt-4">
-            <h5 class="mb-0 text-primary">Service Entry Reversal</h5>
-            <small class="text-muted">Reverse supplier liabilities (SRN) and associated GL entries</small>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-undo-alt"></i>
         </div>
-        <div class="card-body">
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4 fw-bold">
-                    Recent Service Entries
-                </div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0" id="srnTable">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>JV Number</th>
-                                <th>Supplier</th>
-                                <th>Invoice No</th>
-                                <th>Date</th>
-                                <th class="text-end">Total Amount</th>
-                                <th class="text-center" style="width: 150px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if rows %}
-                                {% for row in rows %}
-                                <tr>
-                                    <td class="fw-bold">{{ row.jv_user_code }} (JV-{{ row.jv }})</td>
-                                    <td>{{ row.SupplierName }}</td>
-                                    <td>{{ row.InvoiceNo }}</td>
-                                    <td>{{ row.Date }}</td>
-                                    <td class="text-end text-danger fw-bold">{{ "{:,.2f}".format(row.Amount) }}</td>
-                                    <td class="text-center">
-                                        <form method="POST" action="/service_entry_reversal/process" onsubmit="return confirm('Are you sure you want to reverse this Service Entry? This action cannot be undone.');">
-                                            <input type="hidden" name="jv" value="{{ row.jv }}">
-                                            <a href="/service_entry/print/{{ row.jv }}" class="btn btn-sm btn-outline-primary me-1" target="_blank"><i class="fas fa-print"></i> Print</a>
-                                            <button type="submit" class="btn btn-sm btn-outline-danger">
-                                                <i class="fas fa-undo-alt"></i> Reverse
-                                            </button>
-                                        </form>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr><td colspan="6" class="text-center text-muted py-4">No recent service entries found.</td></tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;font-weight:700;">Service Entry Reversal</h5>
+            <small style="color:#605E5C;font-size:.78rem;">Reversals</small>
         </div>
     </div>
+
+    <!-- Notice Banner -->
+    <div class="d-flex align-items-center gap-2 mb-4 px-3 py-2"
+         style="background:#fff4f3;border:1px solid #f5c6c2;border-radius:8px;font-size:.83rem;color:#a4262c;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>Reversing a service entry will cancel the supplier liability (SRN) and all associated GL entries. This action cannot be undone.</span>
+    </div>
+
+    <!-- Table Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+        <!-- Card Header -->
+        <div class="d-flex align-items-center px-4 py-3" style="border-bottom:1px solid #e2e8f0;">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list me-1"></i> Recent Service Entries
+            </span>
+        </div>
+
+        <!-- Table -->
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="srnTable">
+                <thead style="background:#f8f9fa;">
+                    <tr>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">JV Number</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Supplier</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Invoice No</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Date</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:right;">Total Amount</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;text-align:center;width:170px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if rows %}
+                        {% for row in rows %}
+                        <tr style="border-bottom:1px solid #f1f3f4;">
+                            <td style="padding:.75rem 1rem;">
+                                <span class="fw-bold" style="font-family:monospace;color:#1a1a2e;">{{ row.jv_user_code }}</span>
+                                <span style="font-size:.75rem;color:#605E5C;margin-left:.3rem;">(JV-{{ row.jv }})</span>
+                            </td>
+                            <td style="padding:.75rem 1rem;color:#323130;">{{ row.SupplierName }}</td>
+                            <td style="padding:.75rem 1rem;font-family:monospace;color:#323130;">{{ row.InvoiceNo }}</td>
+                            <td style="padding:.75rem 1rem;color:#605E5C;font-size:.85rem;">{{ row.Date }}</td>
+                            <td style="padding:.75rem 1rem;text-align:right;font-family:monospace;font-weight:700;color:#C42B1C;">
+                                {{ "{:,.2f}".format(row.Amount) }}
+                            </td>
+                            <td style="padding:.75rem 1rem;text-align:center;">
+                                <form method="POST"
+                                      action="/service_entry_reversal/process"
+                                      onsubmit="return confirm('Are you sure you want to reverse this Service Entry? This action cannot be undone.');">
+                                    <input type="hidden" name="jv" value="{{ row.jv }}">
+                                    <div class="d-flex justify-content-center gap-1">
+                                        <a href="/service_entry/print/{{ row.jv }}"
+                                           class="btn btn-sm"
+                                           target="_blank"
+                                           style="border-radius:6px;font-size:.78rem;font-weight:600;background:#f0f4ff;color:#4361ee;border:1px solid #c7d2fc;">
+                                            <i class="fas fa-print me-1"></i> Print
+                                        </a>
+                                        <button type="submit"
+                                                class="btn btn-sm"
+                                                style="border-radius:6px;font-size:.78rem;font-weight:600;background:#fce8e6;color:#C42B1C;border:1px solid #f5c6c2;">
+                                            <i class="fas fa-undo-alt me-1"></i> Reverse
+                                        </button>
+                                    </div>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-5" style="color:#605E5C;font-size:.9rem;">
+                                <i class="fas fa-inbox mb-2 d-block" style="font-size:1.8rem;opacity:.4;"></i>
+                                No recent service entries found.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
 </div>
 {% endblock %}

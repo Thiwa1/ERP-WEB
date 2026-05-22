@@ -1,29 +1,138 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-        <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-upload me-2"></i> System Restore</h4>
+<style>
+  .sr-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .danger-card {
+    border-radius: 12px;
+    border: 1px solid rgba(196,43,28,.2);
+    background: rgba(253,231,233,.3);
+    box-shadow: 0 2px 8px rgba(196,43,28,.06);
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #C42B1C, #a4262c);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .danger-icon-tile {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    background: rgba(196,43,28,.12);
+    display: flex; align-items: center; justify-content: center;
+    color: #C42B1C;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+  }
+  .action-btn-danger {
+    background: #C42B1C;
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+    color: #fff;
+  }
+  .action-btn-danger:hover {
+    background: #a4262c;
+    color: #fff;
+  }
+  .warning-list li {
+    font-size: .82rem;
+    color: #605E5C;
+    padding: 4px 0;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .warning-list li::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #C42B1C;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile">
+      <i class="fas fa-upload"></i>
     </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">System Restore</h5>
+      <div class="section-label mb-0">Administration</div>
+    </div>
+  </div>
 
-    <!-- Upload Form -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-body bg-light text-center py-5">
-            <form method="POST" enctype="multipart/form-data">
-                <i class="fas fa-database fa-3x text-muted mb-3"></i>
-                <h5 class="mb-3">Select Database Backup File (.sql)</h5>
-                <p class="text-muted small mb-4">Warning: Restoring a database will overwrite all existing data. This action cannot be undone.</p>
+  <div class="row g-4 justify-content-center">
+    <div class="col-lg-7">
 
-                <div class="d-flex justify-content-center">
-                    <input type="file" name="backup_file" class="form-control w-50" accept=".sql" required>
-                </div>
-
-                <button type="submit" class="btn btn-danger fw-bold mt-4 px-5" onclick="return confirm('Are you absolutely sure you want to restore the database? This will overwrite your current data.')">
-                    <i class="fas fa-exclamation-triangle me-2"></i> Restore Database
-                </button>
-            </form>
+      <!-- Info Card -->
+      <div class="sr-card mb-4">
+        <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0"><i class="fas fa-info-circle me-2" style="color:#605E5C;"></i>Before You Restore</div>
         </div>
+        <div class="p-4">
+          <ul class="warning-list list-unstyled mb-0">
+            <li>All existing data will be permanently overwritten — this cannot be undone.</li>
+            <li>Ensure the backup file matches your current database schema version.</li>
+            <li>Only upload files with the <strong>.sql</strong> extension.</li>
+            <li>It is recommended to export a current backup before proceeding.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Danger Zone Card -->
+      <div class="danger-card">
+        <div class="p-4 pb-3 border-bottom" style="border-color:rgba(196,43,28,.15) !important;">
+          <div class="d-flex align-items-center gap-3">
+            <div class="danger-icon-tile">
+              <i class="fas fa-exclamation-triangle"></i>
+            </div>
+            <div>
+              <div style="font-size:.8rem; font-weight:700; color:#C42B1C; letter-spacing:.5px; text-transform:uppercase;">Danger Zone</div>
+              <div style="font-size:.85rem; font-weight:600; color:#323130; margin-top:2px;">Restore Database from Backup</div>
+            </div>
+          </div>
+        </div>
+        <div class="p-4">
+          <form method="POST" enctype="multipart/form-data">
+            <div class="mb-4">
+              <label class="form-label" style="font-size:.8rem; font-weight:600; color:#323130;">Select Backup File (.sql)</label>
+              <input type="file" name="backup_file" class="form-control form-control-sm" accept=".sql" required style="border-radius:8px; border-color:rgba(196,43,28,.25);">
+              <div class="mt-2" style="font-size:.75rem; color:#a4262c; font-weight:500;">
+                <i class="fas fa-lock me-1"></i>Only .sql backup files are accepted.
+              </div>
+            </div>
+            <div class="d-grid">
+              <button type="submit" class="btn action-btn-danger py-2 fw-semibold" onclick="return confirm('Are you absolutely sure you want to restore the database? This will overwrite your current data.')">
+                <i class="fas fa-exclamation-triangle me-2"></i>Restore Database
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
     </div>
+  </div>
 </div>
 {% endblock %}

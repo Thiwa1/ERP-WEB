@@ -3,159 +3,219 @@
 {% block title %}Purchase Order Management{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice me-2"></i> Purchase Order Management</h4>
-</div>
+<style>
+    .page-icon-tile {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        flex-shrink: 0;
+    }
+    .section-label {
+        font-size: .7rem; font-weight: 700; letter-spacing: .8px;
+        text-transform: uppercase; color: #605E5C;
+        margin-bottom: .6rem; display: block;
+    }
+    .form-label {
+        font-size: .8rem !important; font-weight: 600 !important; color: #323130 !important;
+    }
+    .panel-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff;
+    }
+    .amount-cell {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+    }
+    /* Fluent tabs */
+    .fluent-tabs {
+        border-bottom: 1px solid #e2e8f0;
+        margin-bottom: 1.5rem;
+        display: flex; gap: 4px;
+    }
+    .fluent-tab {
+        padding: 9px 18px; font-size: .875rem; font-weight: 600;
+        color: #605E5C; border: none; background: transparent;
+        border-bottom: 2px solid transparent; cursor: pointer;
+        transition: color .15s, border-color .15s;
+        margin-bottom: -1px;
+    }
+    .fluent-tab:hover { color: #201f1e; }
+    .fluent-tab.active {
+        color: #201f1e;
+        border-bottom-color: var(--accent-color);
+    }
+    .totals-block {
+        background: #f8f9fa; border-radius: 8px; padding: 14px 16px;
+    }
+    .totals-block .label { font-size: .8rem; color: #605E5C; font-weight: 600; }
+    .totals-block .value {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: .9rem; font-weight: 700; color: #201f1e;
+    }
+    .totals-block .grand .label { color: #201f1e; }
+    .totals-block .grand .value { font-size: 1.05rem; color: var(--accent-color); }
+</style>
 
-    <ul class="nav nav-tabs mb-4" id="poTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active fw-bold" id="create-tab" data-bs-toggle="tab" data-bs-target="#create" type="button" role="tab">
-                <i class="fas fa-plus-circle me-2"></i>Create Purchase Order
-            </button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link fw-bold" id="manage-tab" data-bs-toggle="tab" data-bs-target="#manage" type="button" role="tab">
-                <i class="fas fa-list me-2"></i>Manage Purchase Orders
-            </button>
-        </li>
-    </ul>
+<div class="container-fluid">
 
-    <div class="tab-content" id="poTabsContent">
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-icon-tile" style="background: linear-gradient(135deg,#69797E,#4C5A5E);">
+            <i class="fas fa-file-invoice"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Purchase Order</h5>
+            <small style="color:#605E5C; font-size:.78rem;">Purchasing</small>
+        </div>
+    </div>
 
-        <!-- CREATE TAB -->
-        <div class="tab-pane fade show active" id="create" role="tabpanel">
-            <form id="createPoForm" action="/purchase_orders/save" method="POST">
-                <div class="row">
-                    <!-- Left: Items Grid -->
-                    <div class="col-md-8">
-                        <div class="card shadow-sm mb-3 border-0">
-                            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                                <i class="fas fa-cubes me-2"></i> PO Items
+    <!-- Fluent Tabs -->
+    <div class="fluent-tabs" id="poTabsNav">
+        <button class="fluent-tab active" id="create-tab" onclick="switchTab('create')">
+            <i class="fas fa-plus-circle me-2" style="font-size:.8rem;"></i>Create Purchase Order
+        </button>
+        <button class="fluent-tab" id="manage-tab" onclick="switchTab('manage'); loadPos()">
+            <i class="fas fa-list me-2" style="font-size:.8rem;"></i>Manage Purchase Orders
+        </button>
+    </div>
+
+    <!-- CREATE TAB -->
+    <div id="tab-create">
+        <form id="createPoForm" action="/purchase_orders/save" method="POST">
+            <div class="row g-4">
+
+                <!-- Left: Items Grid -->
+                <div class="col-md-8">
+                    <div class="panel-card">
+                        <div class="card-body p-0">
+                            <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+                                <span class="section-label mb-0">PO Line Items</span>
+                                <button type="button" class="btn btn-sm fw-bold"
+                                        style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-size:.8rem;padding:5px 14px;"
+                                        onclick="addPoRow()">
+                                    <i class="fas fa-plus me-1"></i>Add Row
+                                </button>
                             </div>
-                            <div class="card-body p-0">
-                                <table class="table  table-striped mb-0" id="poItemsTable">
-                                    <thead class="table-dark">
+                            <div class="table-responsive" style="border-radius:0;border:none;box-shadow:none;margin-bottom:0;">
+                                <table class="table table-hover mb-0" id="poItemsTable">
+                                    <thead style="background:#f8f9fa;">
                                         <tr>
-                                            <th>Item Name</th>
-                                            <th>Description</th>
-                                            <th width="100">Qty</th>
-                                            <th width="120">Unit Price</th>
-                                            <th width="100">Unit</th>
-                                            <th width="60">Action</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Description</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:100px;">Qty</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:120px;">Unit Price</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:100px;">Unit</th>
+                                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:50px;"></th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <!-- Rows added via JS -->
                                     </tbody>
                                 </table>
-                                <div class="p-2 text-end bg-white border-top">
-                                    <button type="button" class="btn btn-sm btn-primary fw-bold" style="background-color: var(--accent-color); border:none;" onclick="addPoRow()">
-                                        <i class="fas fa-plus me-1"></i> Add Row
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Right: Header Details -->
-                    <div class="col-md-4">
-                        <div class="card shadow-sm border-0">
-                            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                                <i class="fas fa-info-circle me-2"></i> Order Details
-                            </div>
-                            <div class="card-body bg-white">
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Supplier</label>
-                                    <select class="form-select select2" name="supplier" required>
-                                        <option value="">Select Supplier</option>
-                                        {% for s in suppliers %}
-                                        <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Custom PO Number</label>
-                                    <input type="text" class="form-control" name="po_number">
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Delivery Date</label>
-                                    <input type="date" class="form-control" name="delivery_date" required>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Delivery Location</label>
-                                    <textarea class="form-control" name="location" rows="2"></textarea>
-                                </div>
-                                <div class="mb-3">
-                                    <label class="form-label fw-bold">Special Comments</label>
-                                    <textarea class="form-control" name="comments" rows="2"></textarea>
-                                </div>
-
-                                <hr>
-
-                                <div class="mb-2 row">
-                                    <label class="col-6 col-form-label fw-bold">Total Value</label>
-                                    <div class="col-6">
-                                        <input type="text" class="form-control text-end" id="totalValue" readonly value="0.00">
-                                    </div>
-                                </div>
-                                <div class="mb-2 row">
-                                    <label class="col-6 col-form-label fw-bold">VAT Rate (%)</label>
-                                    <div class="col-6">
-                                        <input type="number" class="form-control text-end" id="vatRate" name="vat_rate" value="0" oninput="calculateTotals()">
-                                    </div>
-                                </div>
-                                <div class="mb-3 row">
-                                    <label class="col-6 col-form-label fw-bold text-primary">Grand Total</label>
-                                    <div class="col-6">
-                                        <input type="text" class="form-control text-end fw-bold" id="grandTotal" readonly value="0.00" style="font-size: 1.1rem;">
-                                    </div>
-                                </div>
-
-                                <button type="submit" class="btn btn-primary w-100 fw-bold py-2" style="background-color: var(--accent-color); border:none;">
-                                    <i class="fas fa-save me-2"></i> Save Purchase Order
-                                </button>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- Hidden Input for Items JSON -->
-                <input type="hidden" name="items_json" id="itemsJson">
-            </form>
-        </div>
 
-        <!-- MANAGE TAB -->
-        <div class="tab-pane fade" id="manage" role="tabpanel">
-            <div class="card shadow-sm border-0">
-                <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                    <div class="row align-items-center">
-                        <div class="col-md-4">
-                            <i class="fas fa-list-alt me-2"></i> Purchase Orders List
-                        </div>
-                        <div class="col-md-4">
-                            <select class="form-select form-select-sm text-dark fw-bold" id="manageSupplierFilter" onchange="filterPos()">
-                                <option value="">All Suppliers</option>
-                                {% for s in suppliers %}
-                                <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-4 text-end">
-                            <input type="text" class="form-control form-control-sm" id="poSearch" placeholder="Search PO Number..." onkeyup="filterPos()">
+                <!-- Right: Order Details -->
+                <div class="col-md-4">
+                    <div class="panel-card">
+                        <div class="card-body px-4 py-4">
+                            <span class="section-label">Order Details</span>
+
+                            <div class="mb-3">
+                                <label class="form-label">Supplier</label>
+                                <select class="form-select select2" name="supplier" required>
+                                    <option value="">Select Supplier</option>
+                                    {% for s in suppliers %}
+                                    <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Custom PO Number</label>
+                                <input type="text" class="form-control" name="po_number" placeholder="Auto-generated if blank">
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Delivery Date</label>
+                                <input type="date" class="form-control" name="delivery_date" required>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Delivery Location</label>
+                                <textarea class="form-control" name="location" rows="2" placeholder="Delivery address…"></textarea>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Special Comments</label>
+                                <textarea class="form-control" name="comments" rows="2" placeholder="Any special instructions…"></textarea>
+                            </div>
+
+                            <!-- Totals block -->
+                            <div class="totals-block mb-4">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="label">Total Value</span>
+                                    <input type="text" id="totalValue" readonly value="0.00"
+                                           class="value amount-cell text-end border-0 bg-transparent p-0"
+                                           style="width:120px;">
+                                </div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="label">VAT Rate (%)</span>
+                                    <input type="number" id="vatRate" name="vat_rate" value="0"
+                                           oninput="calculateTotals()"
+                                           class="form-control form-control-sm text-end amount-cell"
+                                           style="width:80px;">
+                                </div>
+                                <hr class="my-2" style="border-color:#e2e8f0;">
+                                <div class="d-flex justify-content-between align-items-center grand">
+                                    <span class="label fw-bold" style="font-size:.85rem;color:#201f1e;">Grand Total</span>
+                                    <input type="text" id="grandTotal" readonly value="0.00"
+                                           class="value amount-cell text-end border-0 bg-transparent p-0"
+                                           style="width:120px;">
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn w-100 py-2"
+                                    style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;color:#fff;">
+                                <i class="fas fa-save me-2"></i>Save Purchase Order
+                            </button>
                         </div>
                     </div>
                 </div>
-                <div class="card-body p-0">
-                    <table class="table table-hover table-striped mb-0">
-                        <thead class="table-dark">
+            </div>
+            <!-- Hidden Input for Items JSON -->
+            <input type="hidden" name="items_json" id="itemsJson">
+        </form>
+    </div>
+
+    <!-- MANAGE TAB -->
+    <div id="tab-manage" style="display:none;">
+        <div class="panel-card">
+            <div class="card-body p-0">
+                <div class="px-4 pt-4 pb-3 d-flex flex-wrap align-items-center gap-3">
+                    <span class="section-label mb-0" style="flex:1 1 160px;">Purchase Orders List</span>
+                    <select class="form-select form-select-sm" id="manageSupplierFilter" onchange="filterPos()"
+                            style="max-width:220px;font-weight:600;">
+                        <option value="">All Suppliers</option>
+                        {% for s in suppliers %}
+                        <option value="{{ s.supplier_name }}">{{ s.supplier_name }}</option>
+                        {% endfor %}
+                    </select>
+                    <input type="text" class="form-control form-control-sm" id="poSearch"
+                           placeholder="Search PO number…" onkeyup="filterPos()" style="max-width:200px;">
+                </div>
+                <div class="table-responsive" style="border-radius:0;border:none;box-shadow:none;margin-bottom:0;">
+                    <table class="table table-hover mb-0">
+                        <thead style="background:#f8f9fa;">
                             <tr>
-                                <th>PO #</th>
-                                <th>Date</th>
-                                <th>Supplier</th>
-                                <th>Status</th>
-                                <th>Total</th>
-                                <th class="text-end">Actions</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">PO #</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Supplier</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Status</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Actions</th>
                             </tr>
                         </thead>
                         <tbody id="poListTable">
@@ -165,8 +225,8 @@
                 </div>
             </div>
         </div>
-
     </div>
+
 </div>
 
 <!-- Data for JS -->
@@ -177,6 +237,13 @@
 </datalist>
 
 <script>
+function switchTab(name) {
+    document.getElementById('tab-create').style.display = name === 'create' ? '' : 'none';
+    document.getElementById('tab-manage').style.display = name === 'manage' ? '' : 'none';
+    document.querySelectorAll('.fluent-tab').forEach(t => t.classList.remove('active'));
+    document.getElementById(name + '-tab').classList.add('active');
+}
+
 function addPoRow() {
     const tbody = document.querySelector("#poItemsTable tbody");
     const row = document.createElement("tr");
@@ -240,8 +307,6 @@ document.getElementById("createPoForm").onsubmit = function(e) {
 };
 
 // Manage Tab Logic
-document.getElementById("manage-tab").addEventListener("click", loadPos);
-
 function loadPos() {
     fetch('/purchase_orders/list')
         .then(response => response.json())
@@ -259,11 +324,11 @@ function loadPos() {
 
                 tbody.innerHTML += `
                     <tr>
-                        <td>${po.po_number}</td>
-                        <td>${po.date}</td>
-                        <td>${po.supplier}</td>
+                        <td style="font-size:.875rem;font-weight:600;">${po.po_number}</td>
+                        <td style="font-size:.875rem;color:#605E5C;">${po.date}</td>
+                        <td style="font-size:.875rem;">${po.supplier}</td>
                         <td>${statusBadge}</td>
-                        <td>${parseFloat(po.total).toFixed(2)}</td>
+                        <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${parseFloat(po.total).toFixed(2)}</td>
                         <td class="text-end">
                             ${approveBtn}
                             <a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i></a>
@@ -272,6 +337,17 @@ function loadPos() {
                 `;
             });
         });
+}
+
+function filterPos() {
+    const supplier = document.getElementById("manageSupplierFilter").value.toLowerCase();
+    const search = document.getElementById("poSearch").value.toLowerCase();
+    document.querySelectorAll("#poListTable tr").forEach(row => {
+        const text = row.textContent.toLowerCase();
+        const supplierMatch = !supplier || text.includes(supplier);
+        const searchMatch = !search || text.includes(search);
+        row.style.display = (supplierMatch && searchMatch) ? '' : 'none';
+    });
 }
 
 function approvePo(id) {

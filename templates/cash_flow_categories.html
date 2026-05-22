@@ -1,101 +1,129 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-stream me-2"></i> MANAGE CASH FLOW CATEGORIES</h4>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#018574,#005E52);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(1,133,116,.35);">
+            <i class="fas fa-stream text-white" style="font-size:.95rem;"></i>
+        </div>
+        <div>
+            <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Cash Flow Categories</h5>
+            <span style="font-size:.75rem;color:#605E5C;">Financial Reports</span>
         </div>
     </div>
 
-    <div class="row">
+    <div class="row g-4">
         <!-- Left Column: Data Grid -->
-        <div class="col-md-8 mb-4">
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                    <i class="fas fa-list me-2"></i> Existing Categories
+        <div class="col-md-8">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 pt-4 pb-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                        <i class="fas fa-list me-2" style="color:#018574;"></i>Existing Categories
+                    </span>
+                    <span class="px-2 py-1 rounded-pill" style="font-size:.7rem;font-weight:700;background:#E6F4F2;color:#018574;">
+                        {{ categories|length }} Records
+                    </span>
                 </div>
-                <div class="card-body p-0 table-responsive">
+
+                <div class="table-responsive">
                     <form id="deleteForm" method="POST" action="{{ url_for('delete_cash_flow_category') }}">
-                        <table class="table table-bordered table-striped table-hover mb-0">
-                            <thead class="text-white" style="background-color: var(--secondary-color);">
-                                <tr>
-                                    <th style="width: 40px;" class="text-center">
-                                        <input type="checkbox" id="selectAll" onclick="toggleSelectAll()">
+                        <table class="table table-hover mb-0 align-middle">
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="width:40px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">
+                                        <input type="checkbox" id="selectAll" onclick="toggleSelectAll()" style="width:15px;height:15px;accent-color:#018574;">
                                     </th>
-                                    <th>ID</th>
-                                    <th>Category Name</th>
-                                    <th>Level</th>
-                                    <th style="width: 80px;">Action</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">ID</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Category Name</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Level</th>
+                                    <th style="width:80px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {% for cat in categories %}
-                                <tr>
-                                    <td class="text-center">
-                                        <input type="checkbox" name="selected_ids" value="{{ cat.id }}">
+                                <tr style="border-bottom:1px solid #f5f5f5;">
+                                    <td class="text-center" style="padding:.7rem 1rem;">
+                                        <input type="checkbox" name="selected_ids" value="{{ cat.id }}" style="width:15px;height:15px;accent-color:#018574;">
                                     </td>
-                                    <td>{{ cat.id }}</td>
-                                    <td>{{ cat.catogory_name }}</td>
-                                    <td>
-                                        <span class="badge bg-secondary">Level {{ cat.hold_level }}</span>
+                                    <td style="padding:.7rem 1rem;font-family:monospace;font-size:.82rem;color:#605E5C;">{{ cat.id }}</td>
+                                    <td style="padding:.7rem 1rem;font-weight:600;color:#1a1a2e;">{{ cat.catogory_name }}</td>
+                                    <td style="padding:.7rem 1rem;">
+                                        <span class="px-2 py-1 rounded" style="font-size:.72rem;font-weight:700;background:#E6F4F2;color:#018574;">
+                                            Level {{ cat.hold_level }}
+                                        </span>
                                     </td>
-                                    <td class="text-center">
-                                        <button type="button" class="btn btn-sm btn-info text-white"
-                                                onclick="editCategory('{{ cat.id }}', '{{ cat.catogory_name }}', '{{ cat.hold_level }}')">
-                                            <i class="fas fa-edit"></i>
+                                    <td class="text-center" style="padding:.7rem 1rem;">
+                                        <button type="button"
+                                                onclick="editCategory('{{ cat.id }}', '{{ cat.catogory_name }}', '{{ cat.hold_level }}')"
+                                                style="width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#018574;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;"
+                                                onmouseover="this.style.background='#E6F4F2'" onmouseout="this.style.background='#fff'">
+                                            <i class="fas fa-edit" style="font-size:.75rem;"></i>
                                         </button>
                                     </td>
                                 </tr>
                                 {% else %}
                                 <tr>
-                                    <td colspan="5" class="text-center text-muted fst-italic">No categories found.</td>
+                                    <td colspan="5" class="text-center py-5" style="color:#a0aec0;">
+                                        <i class="fas fa-folder-open fa-2x mb-2 d-block" style="opacity:.4;"></i>
+                                        <span style="font-size:.85rem;">No categories found.</span>
+                                    </td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </form>
                 </div>
-                <div class="card-footer bg-white d-flex justify-content-between">
-                    <button type="submit" form="deleteForm" class="btn btn-danger fw-bold" onclick="return confirm('Are you sure you want to delete selected items?')">
-                        <i class="fas fa-trash me-1"></i> Delete Selected
+
+                <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="border-top:1px solid #f0f0f0;background:#fafafa;">
+                    <button type="submit" form="deleteForm"
+                            onclick="return confirm('Are you sure you want to delete selected items?')"
+                            style="background:#DC3545;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.82rem;padding:.45rem 1rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                        <i class="fas fa-trash"></i> Delete Selected
                     </button>
-                    <span class="text-muted fw-bold align-self-center">{{ categories|length }} Records</span>
+                    <span style="font-size:.78rem;color:#605E5C;font-weight:600;">{{ categories|length }} total records</span>
                 </div>
             </div>
         </div>
 
         <!-- Right Column: Form -->
-        <div class="col-md-4 mb-4">
-            <div class="card shadow-sm h-100 border-0">
-                <div class="card-header fw-bold text-white" style="background-color: var(--secondary-color);">
-                    <i class="fas fa-edit me-2"></i> Add / Edit Category
+        <div class="col-md-4">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                        <i class="fas fa-edit me-2" style="color:#018574;"></i>Add / Edit Category
+                    </span>
                 </div>
-                <div class="card-body bg-white">
+
+                <div class="p-4">
                     <form method="POST" action="{{ url_for('cash_flow_categories') }}">
                         <input type="hidden" name="category_id" id="categoryId" value="0">
 
                         <div class="mb-3">
-                            <label for="categoryName" class="form-label fw-bold" style="color: var(--primary-color);">Category Name</label>
-                            <input type="text" class="form-control" id="categoryName" name="category_name" required placeholder="e.g. Operating Activities">
+                            <label for="categoryName" class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Category Name</label>
+                            <input type="text" class="form-control" id="categoryName" name="category_name" required placeholder="e.g. Operating Activities"
+                                   style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                         </div>
 
-                        <div class="mb-3">
-                            <label for="holdLevel" class="form-label fw-bold" style="color: var(--primary-color);">Level</label>
-                            <select class="form-select" id="holdLevel" name="hold_level">
+                        <div class="mb-4">
+                            <label for="holdLevel" class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Level</label>
+                            <select class="form-select" id="holdLevel" name="hold_level"
+                                    style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                                 <option value="1">Level 1 (Main)</option>
                                 <option value="2">Level 2 (Sub)</option>
                                 <option value="3">Level 3 (Detail)</option>
                             </select>
                         </div>
 
-                        <div class="d-grid gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary fw-bold" style="background-color: var(--accent-color); border: none;">
-                                <i class="fas fa-save me-1"></i> Save Category
+                        <div class="d-grid gap-2">
+                            <button type="submit"
+                                    style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.88rem;padding:.6rem 1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
+                                <i class="fas fa-save"></i> Save Category
                             </button>
-                            <button type="button" class="btn btn-secondary fw-bold" onclick="resetForm()">
-                                <i class="fas fa-undo me-1"></i> Reset
+                            <button type="button" onclick="resetForm()"
+                                    style="background:#f3f4f6;border:1px solid #e2e8f0;border-radius:8px;color:#374151;font-weight:600;font-size:.88rem;padding:.6rem 1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
+                                <i class="fas fa-undo"></i> Reset
                             </button>
                         </div>
                     </form>

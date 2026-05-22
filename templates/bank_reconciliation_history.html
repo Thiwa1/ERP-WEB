@@ -1,18 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="fw-bold mb-0 text-dark"><i class="fas fa-history me-2 text-primary"></i>Reconciliation History</h2>
-        <a href="{{ url_for('bank_reconciliation') }}" class="btn btn-outline-primary"><i class="fas fa-arrow-left me-2"></i>Back to Reconcile</a>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#008B8B,#006B6B);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,139,139,.35);">
+            <i class="fas fa-history text-white" style="font-size:.95rem;"></i>
+        </div>
+        <div>
+            <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Reconciliation History</h5>
+            <span style="font-size:.75rem;color:#605E5C;">Banking</span>
+        </div>
+        <div class="ms-auto">
+            <a href="{{ url_for('bank_reconciliation') }}"
+               style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#374151;font-weight:600;font-size:.82rem;text-decoration:none;transition:all .15s;"
+               onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='#fff'">
+                <i class="fas fa-arrow-left" style="font-size:.75rem;"></i> Back to Reconcile
+            </a>
+        </div>
     </div>
 
     <!-- Account Selection -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-body bg-light rounded">
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+        <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-university me-2" style="color:#008B8B;"></i>Account Selection
+            </span>
+        </div>
+        <div class="p-4">
             <form method="GET" action="{{ url_for('bank_reconciliation_history') }}" class="row g-3 align-items-end">
                 <div class="col-md-5">
-                    <label class="form-label fw-bold text-muted">Select Bank Account</label>
-                    <select name="bank_account" class="form-select select2 shadow-sm" required onchange="this.form.submit()">
+                    <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Select Bank Account</label>
+                    <select name="bank_account" class="form-select select2" required onchange="this.form.submit()"
+                            style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                         <option value="">-- Choose Account --</option>
                         {% for acc in bank_accounts %}
                         <option value="{{ acc.bank_bookcol_account_number }}" {% if selected_account == acc.bank_bookcol_account_number %}selected{% endif %}>
@@ -26,68 +46,93 @@
     </div>
 
     {% if selected_account %}
-    <div class="card shadow-sm border-0">
-        <div class="card-header bg-white border-bottom py-3">
-            <h5 class="mb-0 fw-bold"><i class="fas fa-list-alt me-2 text-primary"></i>History for {{ selected_account }}</h5>
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f0f0f0;">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list-alt me-2" style="color:#008B8B;"></i>History for
+            </span>
+            <span style="font-size:.82rem;font-weight:700;color:#008B8B;">{{ selected_account }}</span>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light text-muted">
-                        <tr>
-                            <th>ID</th>
-                            <th>Period</th>
-                            <th class="text-end">Opening Bal</th>
-                            <th class="text-end">Closing Bal</th>
-                            <th class="text-end">Statement Bal</th>
-                            <th class="text-end">Difference</th>
-                            <th class="text-center">Status</th>
-                            <th class="text-center">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for h in history %}
-                        <tr>
-                            <td class="fw-bold">#{{ h.id }}</td>
-                            <td>
-                                <div><small class="text-muted">From:</small> {{ h.opene_date.strftime('%Y-%m-%d') if h.opene_date else '-' }}</div>
-                                <div><small class="text-muted">To:</small> {{ h.closing_date.strftime('%Y-%m-%d') if h.closing_date else '-' }}</div>
-                            </td>
-                            <td class="text-end">{{ h.opene_balance|currency }}</td>
-                            <td class="text-end fw-bold">{{ h.closing_balance|currency }}</td>
-                            <td class="text-end">{{ h.Bank_statment_Balance|currency }}</td>
-                            <td class="text-end">
-                                {% set diff = h.closing_balance - h.Bank_statment_Balance %}
-                                <span class="{% if diff|abs < 0.01 %}text-success{% else %}text-danger{% endif %}">
-                                    {{ diff|currency }}
-                                </span>
-                            </td>
-                            <td class="text-center">
-                                <span class="badge {% if h.period_close_or_open == 1 %}bg-success{% else %}bg-warning{% endif %} rounded-pill">
-                                    {{ 'Closed' if h.period_close_or_open == 1 else 'Open' }}
-                                </span>
-                            </td>
-                            <td class="text-center">
-                                <a href="{{ url_for('bank_reconciliation_report', rec_id=h.id) }}" class="btn btn-sm btn-outline-primary" title="View Report">
-                                    <i class="fas fa-file-alt"></i>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">ID</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Period</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Opening Bal</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Closing Bal</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Statement Bal</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Difference</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Status</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for h in history %}
+                    <tr style="border-bottom:1px solid #f5f5f5;">
+                        <td style="padding:.75rem 1rem;">
+                            <span style="font-family:monospace;font-size:.82rem;font-weight:700;color:#374151;">#{{ h.id }}</span>
+                        </td>
+                        <td style="padding:.75rem 1rem;">
+                            <div style="font-size:.78rem;color:#605E5C;line-height:1.6;">
+                                <span style="font-size:.7rem;text-transform:uppercase;font-weight:600;color:#a0aec0;">From:</span>
+                                <span class="ms-1" style="font-weight:600;color:#374151;">{{ h.opene_date.strftime('%Y-%m-%d') if h.opene_date else '-' }}</span>
+                            </div>
+                            <div style="font-size:.78rem;color:#605E5C;line-height:1.6;">
+                                <span style="font-size:.7rem;text-transform:uppercase;font-weight:600;color:#a0aec0;">To:</span>
+                                <span class="ms-1" style="font-weight:600;color:#374151;">{{ h.closing_date.strftime('%Y-%m-%d') if h.closing_date else '-' }}</span>
+                            </div>
+                        </td>
+                        <td style="padding:.75rem 1rem;font-family:monospace;font-size:.85rem;" class="text-end">{{ h.opene_balance|currency }}</td>
+                        <td style="padding:.75rem 1rem;font-family:monospace;font-size:.85rem;font-weight:700;" class="text-end">{{ h.closing_balance|currency }}</td>
+                        <td style="padding:.75rem 1rem;font-family:monospace;font-size:.85rem;" class="text-end">{{ h.Bank_statment_Balance|currency }}</td>
+                        <td style="padding:.75rem 1rem;font-family:monospace;font-size:.85rem;font-weight:700;" class="text-end">
+                            {% set diff = h.closing_balance - h.Bank_statment_Balance %}
+                            <span style="color:{% if diff|abs < 0.01 %}#107C10{% else %}#DC3545{% endif %};">
+                                {{ diff|currency }}
+                            </span>
+                        </td>
+                        <td style="padding:.75rem 1rem;" class="text-center">
+                            <span class="px-2 py-1 rounded-pill" style="font-size:.72rem;font-weight:700;
+                                background:{% if h.period_close_or_open == 1 %}#E8F5E9{% else %}#FFF8E1{% endif %};
+                                color:{% if h.period_close_or_open == 1 %}#107C10{% else %}#856404{% endif %};">
+                                {% if h.period_close_or_open == 1 %}
+                                    <i class="fas fa-lock me-1"></i>Closed
+                                {% else %}
+                                    <i class="fas fa-lock-open me-1"></i>Open
+                                {% endif %}
+                            </span>
+                        </td>
+                        <td style="padding:.75rem 1rem;" class="text-center">
+                            <div class="d-flex align-items-center justify-content-center gap-1">
+                                <a href="{{ url_for('bank_reconciliation_report', rec_id=h.id) }}"
+                                   style="width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#008B8B;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;transition:all .15s;"
+                                   onmouseover="this.style.background='#E0F5F5'" onmouseout="this.style.background='#fff'"
+                                   title="View Report">
+                                    <i class="fas fa-file-alt" style="font-size:.75rem;"></i>
                                 </a>
-                                <button type="button" class="btn btn-sm btn-outline-danger" title="Reverse Reconciliation" onclick="showReverseModal({{ h.id }}, '{{ h.closing_date.strftime('%Y-%m-%d') }}')">
-                                    <i class="fas fa-undo"></i>
+                                <button type="button"
+                                        onclick="showReverseModal({{ h.id }}, '{{ h.closing_date.strftime('%Y-%m-%d') }}')"
+                                        style="width:30px;height:30px;border-radius:6px;border:1px solid #fecaca;background:#fff5f5;color:#DC3545;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;"
+                                        onmouseover="this.style.background='#fee2e2'" onmouseout="this.style.background='#fff5f5'"
+                                        title="Reverse Reconciliation">
+                                    <i class="fas fa-undo" style="font-size:.75rem;"></i>
                                 </button>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="8" class="text-center py-5 text-muted">
-                                <i class="fas fa-info-circle fa-2x mb-3 text-light"></i>
-                                <h5>No reconciliation history found</h5>
-                                <p>Reconciliations processed for this account will appear here.</p>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="8" class="text-center py-5" style="color:#a0aec0;">
+                            <i class="fas fa-inbox fa-2x mb-3 d-block" style="opacity:.35;"></i>
+                            <div style="font-weight:600;font-size:.9rem;color:#374151;margin-bottom:.25rem;">No reconciliation history found</div>
+                            <div style="font-size:.82rem;">Reconciliations processed for this account will appear here.</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
     {% endif %}
@@ -96,25 +141,36 @@
 <!-- Reversal Modal -->
 <div class="modal fade" id="reverseModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content border-0 shadow">
-            <div class="modal-header bg-danger text-white">
-                <h5 class="modal-title"><i class="fas fa-exclamation-triangle me-2"></i>Reverse Reconciliation</h5>
+        <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+            <div class="modal-header" style="background:linear-gradient(135deg,#DC3545,#b02a37);border-bottom:none;border-radius:12px 12px 0 0;padding:1.25rem 1.5rem;">
+                <h5 class="modal-title fw-bold text-white" style="font-size:.95rem;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>Reverse Reconciliation
+                </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <form action="{{ url_for('reverse_reconciliation') }}" method="POST">
-                <div class="modal-body">
-                    <p>Are you sure you want to reverse the reconciliation from <strong id="reverseDate"></strong>?</p>
-                    <p class="text-danger small"><i class="fas fa-info-circle me-1"></i>This will mark all associated transactions as uncleared.</p>
-
+                <div class="modal-body" style="padding:1.5rem;">
+                    <p style="font-size:.88rem;color:#374151;">Are you sure you want to reverse the reconciliation from <strong id="reverseDate"></strong>?</p>
+                    <div class="d-flex align-items-start gap-2 p-3 rounded-3 mb-3" style="background:#fff5f5;border:1px solid #fecaca;">
+                        <i class="fas fa-info-circle mt-1" style="color:#DC3545;flex-shrink:0;font-size:.82rem;"></i>
+                        <small style="color:#DC3545;line-height:1.5;">This will mark all associated transactions as uncleared.</small>
+                    </div>
                     <input type="hidden" name="rec_id" id="reverseId">
                     <div class="mb-3">
-                        <label class="form-label fw-bold">Reason for Reversal <span class="text-danger">*</span></label>
-                        <textarea name="reason" class="form-control" rows="3" required placeholder="Please provide a reason..."></textarea>
+                        <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">
+                            Reason for Reversal <span style="color:#DC3545;">*</span>
+                        </label>
+                        <textarea name="reason" class="form-control" rows="3" required placeholder="Please provide a reason..."
+                                  style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;resize:vertical;"></textarea>
                     </div>
                 </div>
-                <div class="modal-footer bg-light">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-danger"><i class="fas fa-undo me-2"></i>Confirm Reversal</button>
+                <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:1rem 1.5rem;background:#fafafa;border-radius:0 0 12px 12px;">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"
+                            style="border-radius:8px;font-weight:600;font-size:.85rem;">Cancel</button>
+                    <button type="submit"
+                            style="background:#DC3545;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.5rem 1.2rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                        <i class="fas fa-undo"></i> Confirm Reversal
+                    </button>
                 </div>
             </form>
         </div>

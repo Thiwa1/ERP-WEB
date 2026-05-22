@@ -1,166 +1,278 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="d-flex justify-content-between align-items-center mb-4 pb-2 border-bottom">
-        <h4 class="mb-0 fw-bold text-dark"><i class="text-primary fas fa-cogs me-2"></i> Control Panel</h4>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb mb-0">
-                <li class="breadcrumb-item"><a href="{{ url_for('index') }}" class="text-decoration-none">Dashboard</a></li>
-                <li class="breadcrumb-item active">Settings</li>
-                <li class="breadcrumb-item active" aria-current="page">Control Panel</li>
-            </ol>
-        </nav>
+<style>
+  .cp-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .form-label-sm {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #5c6bc0, #3949ab);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .action-btn {
+    background: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .nav-tabs .nav-link {
+    font-size: .82rem;
+    font-weight: 600;
+    color: #605E5C;
+    border: none;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 10px 18px;
+    transition: color .15s, border-color .15s;
+  }
+  .nav-tabs .nav-link:hover { color: #3949ab; }
+  .nav-tabs .nav-link.active {
+    color: #3949ab;
+    border-bottom: 2px solid #3949ab;
+    background: transparent;
+  }
+  .nav-tabs { border-bottom: 1px solid #e2e8f0; }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    padding: 14px 0;
+    border-bottom: 1px solid #f0f2f5;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid #f0f2f5;
+  }
+  .toggle-row:last-child { border-bottom: none; }
+  .toggle-label { font-size: .85rem; font-weight: 600; color: #323130; }
+  .toggle-desc { font-size: .76rem; color: #605E5C; margin-top: 2px; }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile">
+      <i class="fas fa-cogs"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Control Panel</h5>
+      <div class="section-label mb-0">System Settings</div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <ul class="nav nav-tabs mb-4" id="controlPanelTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active" id="pl-tab" data-bs-toggle="tab" data-bs-target="#pl-content" type="button" role="tab">
+        <i class="fas fa-chart-line me-2" style="font-size:.8rem;"></i>P&amp;L Corrections
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="bs-tab" data-bs-toggle="tab" data-bs-target="#bs-content" type="button" role="tab">
+        <i class="fas fa-balance-scale me-2" style="font-size:.8rem;"></i>Balance Sheet Corrections
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-content" type="button" role="tab">
+        <i class="fas fa-sliders-h me-2" style="font-size:.8rem;"></i>System Settings
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content" id="controlPanelTabsContent">
+
+    <!-- P&L Content -->
+    <div class="tab-pane fade show active" id="pl-content" role="tabpanel">
+      <div class="cp-card">
+        <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0"><i class="fas fa-chart-line me-2" style="color:#5c6bc0;"></i>Unassigned P&amp;L Accounts</div>
+        </div>
+        <form method="POST" action="{{ url_for('control_panel_update') }}">
+          <input type="hidden" name="update_type" value="pl">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" style="font-size:.85rem;">
+              <thead style="background:#f8f9fb;">
+                <tr>
+                  <th class="section-label fw-normal border-0 ps-4" style="padding-top:10px;padding-bottom:10px;width:80px;">ID</th>
+                  <th class="section-label fw-normal border-0">Account Name</th>
+                  <th class="section-label fw-normal border-0 pe-4" style="width:300px;">Assign Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for acc in unassigned_pl %}
+                <tr>
+                  <td class="ps-4 text-muted">{{ acc.id }}</td>
+                  <td class="fw-semibold" style="color:#1a1a2e;">{{ acc.account_name }}</td>
+                  <td class="pe-4">
+                    <select class="form-select form-select-sm" name="category_{{ acc.id }}" style="border-radius:8px;">
+                      <option value="">Select Category</option>
+                      {% for cat in pl_categories %}
+                      <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="3" class="text-center py-5" style="color:#a0aab4;">
+                    <i class="fas fa-check-circle fa-2x mb-2 d-block" style="color:#5c6bc0;opacity:.4;"></i>
+                    No unassigned P&amp;L accounts found.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if unassigned_pl %}
+          <div class="p-4 border-top d-flex justify-content-end" style="border-color:#e2e8f0 !important;">
+            <button type="submit" class="btn btn-sm action-btn text-white px-4 py-2">
+              <i class="fas fa-tag me-2"></i>Assign P&amp;L Categories
+            </button>
+          </div>
+          {% endif %}
+        </form>
+      </div>
     </div>
 
-    <ul class="nav nav-tabs mb-3" id="controlPanelTabs" role="tablist">
-        <li class="nav-item" role="presentation">
-            <button class="nav-link active fw-bold" id="pl-tab" data-bs-toggle="tab" data-bs-target="#pl-content" type="button" role="tab">P&L Corrections</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link fw-bold" id="bs-tab" data-bs-toggle="tab" data-bs-target="#bs-content" type="button" role="tab">Balance Sheet Corrections</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings-content" type="button" role="tab">System Settings</button>
-        </li>
-    </ul>
-
-    <div class="tab-content" id="controlPanelTabsContent">
-        <!-- P&L Content -->
-        <div class="tab-pane fade show active" id="pl-content" role="tabpanel">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                    <h6 class="mb-0 fw-bold text-primary">Unassigned P&L Accounts</h6>
-                </div>
-                <div class="card-body p-0">
-                    <form method="POST" action="{{ url_for('control_panel_update') }}">
-                        <input type="hidden" name="update_type" value="pl">
-                        <table class="table table-bordered table-striped mb-0">
-                            <thead class="bg-secondary text-white">
-                                <tr>
-                                    <th style="width: 80px;">ID</th>
-                                    <th>Account Name</th>
-                                    <th style="width: 300px;">Assign Category</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for acc in unassigned_pl %}
-                                <tr>
-                                    <td>{{ acc.id }}</td>
-                                    <td>{{ acc.account_name }}</td>
-                                    <td>
-                                        <select class="form-select form-select-sm" name="category_{{ acc.id }}">
-                                            <option value="">Select Category</option>
-                                            {% for cat in pl_categories %}
-                                            <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">No unassigned P&L accounts found.</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-
-                        {% if unassigned_pl %}
-                        <div class="p-3 text-end bg-light border-top">
-                            <button type="submit" class="btn btn-primary fw-bold">Assign P&L Categories</button>
-                        </div>
-                        {% endif %}
-                    </form>
-                </div>
-            </div>
+    <!-- Balance Sheet Content -->
+    <div class="tab-pane fade" id="bs-content" role="tabpanel">
+      <div class="cp-card">
+        <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0"><i class="fas fa-balance-scale me-2" style="color:#5c6bc0;"></i>Unassigned Balance Sheet Accounts</div>
         </div>
-
-        <!-- Balance Sheet Content -->
-        <div class="tab-pane fade" id="bs-content" role="tabpanel">
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                    <h6 class="mb-0 fw-bold text-primary">Unassigned Balance Sheet Accounts</h6>
-                </div>
-                <div class="card-body p-0">
-                    <form method="POST" action="{{ url_for('control_panel_update') }}">
-                        <input type="hidden" name="update_type" value="bs">
-                        <table class="table table-bordered table-striped mb-0">
-                            <thead class="bg-secondary text-white">
-                                <tr>
-                                    <th style="width: 80px;">ID</th>
-                                    <th>Account Name</th>
-                                    <th style="width: 300px;">Assign Category</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for acc in unassigned_bs %}
-                                <tr>
-                                    <td>{{ acc.id }}</td>
-                                    <td>{{ acc.account_name }}</td>
-                                    <td>
-                                        <select class="form-select form-select-sm" name="bscategory_{{ acc.id }}">
-                                            <option value="">Select Category</option>
-                                            {% for cat in bs_categories %}
-                                            <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
-                                            {% endfor %}
-                                        </select>
-                                    </td>
-                                </tr>
-                                {% else %}
-                                <tr>
-                                    <td colspan="3" class="text-center text-muted">No unassigned Balance Sheet accounts found.</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-
-                        {% if unassigned_bs %}
-                        <div class="p-3 text-end bg-light border-top">
-                            <button type="submit" class="btn btn-primary fw-bold">Assign BS Categories</button>
-                        </div>
-                        {% endif %}
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <!-- Settings Content -->
-        <div class="tab-pane fade" id="settings-content" role="tabpanel">
-            <div class="card shadow-sm">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                    <h6 class="mb-0 fw-bold text-primary">System Settings</h6>
-                </div>
-                <div class="card-body">
-                    <form method="POST" action="{{ url_for('control_panel') }}">
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="warrantyCheck" name="warranty_enabled" {% if warranty_enabled %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="warrantyCheck">Enable Warranty Period Features</label>
-                        </div>
-                        <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" id="approvalCheck" name="approval_enabled" {% if approval_enabled %}checked{% endif %}>
-                            <label class="form-check-label fw-bold" for="approvalCheck">Enable Park & Post Workflow</label>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label fw-bold" for="systemTheme">System Theme</label>
-                            <select class="form-select" id="systemTheme" name="system_theme">
-                                {% for key, theme in themes.items() %}
-                                <option value="{{ key }}" {% if key == current_theme_key %}selected{% endif %}>{{ theme.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="form-label fw-bold" for="invoiceTerms">Invoice Terms & Conditions</label>
-                            <textarea class="form-control" id="invoiceTerms" name="invoice_terms" rows="4" placeholder="Enter terms and conditions to display on printed invoices...">{{ invoice_terms }}</textarea>
-                            <div class="form-text">This text will be printed at the bottom of all sales invoices.</div>
-                        </div>
-
-                        <button type="submit" class="btn btn-primary btn-sm fw-bold">Save Settings</button>
-                    </form>
-                </div>
-            </div>
-        </div>
+        <form method="POST" action="{{ url_for('control_panel_update') }}">
+          <input type="hidden" name="update_type" value="bs">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle" style="font-size:.85rem;">
+              <thead style="background:#f8f9fb;">
+                <tr>
+                  <th class="section-label fw-normal border-0 ps-4" style="padding-top:10px;padding-bottom:10px;width:80px;">ID</th>
+                  <th class="section-label fw-normal border-0">Account Name</th>
+                  <th class="section-label fw-normal border-0 pe-4" style="width:300px;">Assign Category</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for acc in unassigned_bs %}
+                <tr>
+                  <td class="ps-4 text-muted">{{ acc.id }}</td>
+                  <td class="fw-semibold" style="color:#1a1a2e;">{{ acc.account_name }}</td>
+                  <td class="pe-4">
+                    <select class="form-select form-select-sm" name="bscategory_{{ acc.id }}" style="border-radius:8px;">
+                      <option value="">Select Category</option>
+                      {% for cat in bs_categories %}
+                      <option value="{{ cat.name_of_category }},{{ cat.holding_position }}">{{ cat.name_of_category }}</option>
+                      {% endfor %}
+                    </select>
+                  </td>
+                </tr>
+                {% else %}
+                <tr>
+                  <td colspan="3" class="text-center py-5" style="color:#a0aab4;">
+                    <i class="fas fa-check-circle fa-2x mb-2 d-block" style="color:#5c6bc0;opacity:.4;"></i>
+                    No unassigned Balance Sheet accounts found.
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% if unassigned_bs %}
+          <div class="p-4 border-top d-flex justify-content-end" style="border-color:#e2e8f0 !important;">
+            <button type="submit" class="btn btn-sm action-btn text-white px-4 py-2">
+              <i class="fas fa-tag me-2"></i>Assign BS Categories
+            </button>
+          </div>
+          {% endif %}
+        </form>
+      </div>
     </div>
+
+    <!-- System Settings Content -->
+    <div class="tab-pane fade" id="settings-content" role="tabpanel">
+      <div class="cp-card">
+        <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0"><i class="fas fa-sliders-h me-2" style="color:#5c6bc0;"></i>System Configuration</div>
+        </div>
+        <form method="POST" action="{{ url_for('control_panel') }}">
+          <div class="px-4 py-2">
+
+            <!-- Feature Toggles -->
+            <div class="section-label mt-3 mb-1">Feature Toggles</div>
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Enable Warranty Period Features</div>
+                <div class="toggle-desc">Track and manage product warranty periods across inventory.</div>
+              </div>
+              <div class="form-check form-switch mb-0 ms-4">
+                <input class="form-check-input" type="checkbox" id="warrantyCheck" name="warranty_enabled" {% if warranty_enabled %}checked{% endif %} style="width:2.4em;height:1.2em;">
+              </div>
+            </div>
+            <div class="toggle-row">
+              <div>
+                <div class="toggle-label">Enable Park &amp; Post Workflow</div>
+                <div class="toggle-desc">Require approval before posting financial transactions.</div>
+              </div>
+              <div class="form-check form-switch mb-0 ms-4">
+                <input class="form-check-input" type="checkbox" id="approvalCheck" name="approval_enabled" {% if approval_enabled %}checked{% endif %} style="width:2.4em;height:1.2em;">
+              </div>
+            </div>
+
+            <!-- Theme -->
+            <div class="section-label mt-4 mb-2">Appearance</div>
+            <div class="settings-row">
+              <div style="flex:0 0 180px; font-size:.8rem; font-weight:600; color:#323130;">System Theme</div>
+              <div style="flex:1;">
+                <select class="form-select form-select-sm" id="systemTheme" name="system_theme" style="border-radius:8px; max-width:300px;">
+                  {% for key, theme in themes.items() %}
+                  <option value="{{ key }}" {% if key == current_theme_key %}selected{% endif %}>{{ theme.name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+
+            <!-- Invoice Terms -->
+            <div class="section-label mt-4 mb-2">Invoice Configuration</div>
+            <div class="mb-3">
+              <label class="form-label form-label-sm" for="invoiceTerms">Terms &amp; Conditions</label>
+              <textarea class="form-control form-control-sm" id="invoiceTerms" name="invoice_terms" rows="4" placeholder="Enter terms and conditions to display on printed invoices..." style="border-radius:8px; resize:vertical;">{{ invoice_terms }}</textarea>
+              <div class="mt-1" style="font-size:.75rem; color:#605E5C;">This text will be printed at the bottom of all sales invoices.</div>
+            </div>
+
+          </div>
+          <div class="px-4 pb-4 pt-2 border-top d-flex justify-content-end" style="border-color:#e2e8f0 !important;">
+            <button type="submit" class="btn btn-sm action-btn text-white px-4 py-2">
+              <i class="fas fa-save me-2"></i>Save Settings
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+  </div>
 </div>
 {% endblock %}

@@ -1,58 +1,150 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-check-double me-2"></i> Pending Approvals</h4>
-</div>
+<style>
+  .ap-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #C19C00, #9D5D00);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .btn-approve {
+    background: #107C10;
+    border: none;
+    border-radius: 7px;
+    font-weight: 600;
+    color: #fff;
+    font-size: .78rem;
+    padding: 5px 14px;
+    transition: background .15s;
+  }
+  .btn-approve:hover { background: #0a5c0a; color: #fff; }
+  .btn-reject {
+    background: #fce8e6;
+    border: none;
+    border-radius: 7px;
+    font-weight: 600;
+    color: #C42B1C;
+    font-size: .78rem;
+    padding: 5px 14px;
+    transition: background .15s;
+  }
+  .btn-reject:hover { background: #f5c6c2; color: #a4262c; }
+  .type-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    letter-spacing: .3px;
+  }
+  .type-bank   { background: #e3f2fd; color: #1565c0; }
+  .type-journal { background: #f3e5f5; color: #7b1fa2; }
+  .type-po     { background: #e8f5e9; color: #2e7d32; }
+  .type-other  { background: #f0f4f8; color: #605E5C; }
+  .amount-col  { font-family: 'Courier New', monospace; font-weight: 700; color: #1a1a2e; }
+</style>
 
-    <!-- Data Grid -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-0 table-responsive">
-            <table class="table table-hover mb-0 align-middle">
-                <thead class="table-light">
-                    <tr>
-                        <th>Date</th>
-                        <th>Ref No</th>
-                        <th>Type</th>
-                        <th>Party / Description</th>
-                        <th class="text-end">Amount</th>
-                        <th class="text-center" width="200px">Action</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for item in items %}
-                    <tr>
-                        <td>{{ item.date }}</td>
-                        <td class="fw-bold">{{ item.ref_no }}</td>
-                        <td><span class="badge bg-secondary">{{ item.type }}</span></td>
-                        <td>{{ item.party }}</td>
-                        <td class="text-end fw-bold">{{ "{:,.2f}".format(item.amount) }}</td>
-                        <td class="text-center">
-                            <form method="POST" action="{{ url_for('approval_action') }}" class="d-inline">
-                                <input type="hidden" name="id" value="{{ item.id }}">
-                                <input type="hidden" name="source" value="{{ item.source }}">
-                                <button type="submit" name="action" value="approve" class="btn btn-sm btn-success fw-bold me-1">
-                                    <i class="fas fa-check"></i> Post
-                                </button>
-                                <button type="submit" name="action" value="reject" class="btn btn-sm btn-danger fw-bold" onclick="return confirm('Reject this transaction?');">
-                                    <i class="fas fa-times"></i> Reject
-                                </button>
-                            </form>
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="6" class="text-center py-5 text-muted fst-italic">
-                            <i class="fas fa-check-circle fa-2x mb-3 text-success d-block"></i>
-                            No pending approvals.
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile">
+      <i class="fas fa-check-double"></i>
     </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Pending Approvals</h5>
+      <div class="section-label mb-0">Workflow</div>
+    </div>
+  </div>
+
+  <!-- Approvals Table -->
+  <div class="ap-card">
+    <div class="p-4 pb-3 border-bottom d-flex align-items-center justify-content-between" style="border-color:#e2e8f0 !important;">
+      <div class="section-label mb-0"><i class="fas fa-clock me-2" style="color:#C19C00;"></i>Items Awaiting Action</div>
+      {% if items %}
+      <span class="badge rounded-pill" style="background:#fef9e7; color:#9D5D00; font-size:.7rem; font-weight:700; letter-spacing:.5px;">
+        {{ items | length }} pending
+      </span>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle" style="font-size:.85rem;">
+        <thead style="background:#fdfaf0;">
+          <tr>
+            <th class="section-label fw-normal border-0 ps-4" style="padding-top:10px;padding-bottom:10px;">Date</th>
+            <th class="section-label fw-normal border-0">Ref No</th>
+            <th class="section-label fw-normal border-0">Type</th>
+            <th class="section-label fw-normal border-0">Party / Description</th>
+            <th class="section-label fw-normal border-0 text-end">Amount</th>
+            <th class="section-label fw-normal border-0 text-center pe-4" style="width:180px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="ps-4" style="color:#605E5C; font-size:.82rem;">{{ item.date }}</td>
+            <td class="fw-semibold" style="color:#1a1a2e;">{{ item.ref_no }}</td>
+            <td>
+              {% set t = item.type | lower %}
+              {% if 'bank' in t %}
+                <span class="type-badge type-bank"><i class="fas fa-university me-1" style="font-size:.65rem;"></i>{{ item.type }}</span>
+              {% elif 'journal' in t %}
+                <span class="type-badge type-journal"><i class="fas fa-book me-1" style="font-size:.65rem;"></i>{{ item.type }}</span>
+              {% elif 'po' in t or 'purchase' in t %}
+                <span class="type-badge type-po"><i class="fas fa-shopping-cart me-1" style="font-size:.65rem;"></i>{{ item.type }}</span>
+              {% else %}
+                <span class="type-badge type-other">{{ item.type }}</span>
+              {% endif %}
+            </td>
+            <td style="color:#323130;">{{ item.party }}</td>
+            <td class="text-end amount-col">{{ "{:,.2f}".format(item.amount) }}</td>
+            <td class="text-center pe-4">
+              <form method="POST" action="{{ url_for('approval_action') }}" class="d-inline-flex gap-2 justify-content-center">
+                <input type="hidden" name="id" value="{{ item.id }}">
+                <input type="hidden" name="source" value="{{ item.source }}">
+                <button type="submit" name="action" value="approve" class="btn-approve">
+                  <i class="fas fa-check me-1"></i>Post
+                </button>
+                <button type="submit" name="action" value="reject" class="btn-reject" onclick="return confirm('Reject this transaction?');">
+                  <i class="fas fa-times me-1"></i>Reject
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="6" class="text-center py-5">
+              <div style="color:#a0aab4;">
+                <i class="fas fa-check-circle fa-2x mb-3 d-block" style="color:#107C10; opacity:.5;"></i>
+                <div style="font-weight:600; color:#605E5C; font-size:.9rem;">All clear</div>
+                <div style="font-size:.82rem; margin-top:4px;">No pending approvals at this time.</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

@@ -1,132 +1,224 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-building me-2"></i> Setup The Company Profile</h4>
-</div>
+<style>
+  .cp-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .form-label-sm {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #0078D4, #005FA3);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+  }
+  .settings-row {
+    display: flex;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f2f5;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row .row-label {
+    flex: 0 0 160px;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+  }
+  .settings-row .row-control { flex: 1; }
+  .action-btn {
+    background: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    font-weight: 600;
+  }
+  .logo-dropzone {
+    border: 2px dashed #d1d9e0;
+    border-radius: 10px;
+    background: #f8f9fb;
+    height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    transition: border-color .2s;
+  }
+  .logo-dropzone:hover { border-color: #0078D4; }
+</style>
 
-    <form method="POST" action="{{ url_for('company_profile') }}" enctype="multipart/form-data">
-        <div class="row">
-            <!-- Left Panel: Form Fields -->
-            <div class="col-md-8">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-info-circle me-2"></i> Company Information
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Company Name</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="company_name" value="{{ company.company_name }}" required>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Address No</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="address_no" value="{{ company.company_addras_1 }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">City</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="city" value="{{ company.company_addras_2 }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Province</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="province" value="{{ company.company_addras_3 }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Country</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="country" value="{{ company.company_addras_4 }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Postal Code</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="postal_code" value="{{ company.company_addras_5 }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Land No</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="land_no" value="{{ company.company_land_line }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Fax No</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="fax_no" value="{{ company.company_fax_line }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">VAT No</label>
-                            <div class="col-sm-8">
-                                <input type="text" class="form-control" name="vat_no" value="{{ company.company_vate_code }}">
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">Currency Symbol</label>
-                            <div class="col-sm-8">
-                                <select class="form-select fw-bold" name="currency" required>
-                                    <option value="" disabled>Select Currency</option>
-                                    {% for curr in currencies %}
-                                    <option value="{{ curr.currency_code }}" {% if company.company_curency == curr.currency_code %}selected{% endif %}>
-                                        {{ curr.currency_code }} - {{ curr.currency_name }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                                <div class="form-text text-muted small">System-wide currency symbol (e.g., LKR, USD, EUR)</div>
-                            </div>
-                        </div>
-                        <div class="mb-3 row">
-                            <label class="col-sm-4 col-form-label fw-bold">VAT Registered</label>
-                            <div class="col-sm-8 d-flex align-items-center">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" name="vat_registered" id="vatRegistered" {% if company.vat_registered == 1 %}checked{% endif %}>
-                                    <label class="form-check-label" for="vatRegistered">Company is VAT Registered</label>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile">
+      <i class="fas fa-building"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Company Profile</h5>
+      <div class="section-label mb-0">Settings</div>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('company_profile') }}" enctype="multipart/form-data">
+    <div class="row g-4">
+
+      <!-- Left Panel: Form Fields -->
+      <div class="col-md-8">
+
+        <!-- Company Information -->
+        <div class="cp-card mb-4">
+          <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+            <div class="section-label mb-0"><i class="fas fa-info-circle me-2" style="color:#0078D4;"></i>Company Information</div>
+          </div>
+          <div class="px-4 py-2">
+            <div class="settings-row">
+              <div class="row-label">Company Name</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="company_name" value="{{ company.company_name }}" required style="border-radius:8px;">
+              </div>
             </div>
-
-            <!-- Right Panel: Logo Section -->
-            <div class="col-md-4">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-image me-2"></i> Company Logo
-                    </div>
-                    <div class="card-body bg-white text-center">
-                        <div class="border rounded p-2 mb-3 bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
-                            {% if company.company_log %}
-                            <img src="data:image/jpeg;base64,{{ company.company_log }}" alt="Company Logo" class="img-fluid" style="max-height: 100%;">
-                            {% else %}
-                            <span class="text-muted">No Logo</span>
-                            {% endif %}
-                        </div>
-                        <div class="mb-3">
-                            <input class="form-control" type="file" name="logo" accept="image/jpeg, image/png">
-                        </div>
-                        <p class="small text-muted">Recommended: 300x300px PNG with transparent background</p>
-                    </div>
-                </div>
-
-                <!-- Footer Actions -->
-                <div class="card shadow-sm border-0">
-                    <div class="card-body d-grid">
-                        <button type="submit" class="btn btn-primary fw-bold py-2 shadow-sm" style="background-color: var(--accent-color); border: none;">
-                            <i class="fas fa-save me-2"></i> Submit Company Details
-                        </button>
-                    </div>
-                </div>
+            <div class="settings-row">
+              <div class="row-label">Address No</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="address_no" value="{{ company.company_addras_1 }}" style="border-radius:8px;">
+              </div>
             </div>
+            <div class="settings-row">
+              <div class="row-label">City</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="city" value="{{ company.company_addras_2 }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">Province</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="province" value="{{ company.company_addras_3 }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">Country</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="country" value="{{ company.company_addras_4 }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">Postal Code</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="postal_code" value="{{ company.company_addras_5 }}" style="border-radius:8px;">
+              </div>
+            </div>
+          </div>
         </div>
-    </form>
+
+        <!-- Contact & Tax -->
+        <div class="cp-card">
+          <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+            <div class="section-label mb-0"><i class="fas fa-phone me-2" style="color:#0078D4;"></i>Contact &amp; Tax Details</div>
+          </div>
+          <div class="px-4 py-2">
+            <div class="settings-row">
+              <div class="row-label">Land No</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="land_no" value="{{ company.company_land_line }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">Fax No</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="fax_no" value="{{ company.company_fax_line }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">VAT No</div>
+              <div class="row-control">
+                <input type="text" class="form-control form-control-sm" name="vat_no" value="{{ company.company_vate_code }}" style="border-radius:8px;">
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">Currency Symbol</div>
+              <div class="row-control">
+                <select class="form-select form-select-sm" name="currency" required style="border-radius:8px;">
+                  <option value="" disabled>Select Currency</option>
+                  {% for curr in currencies %}
+                  <option value="{{ curr.currency_code }}" {% if company.company_curency == curr.currency_code %}selected{% endif %}>
+                    {{ curr.currency_code }} — {{ curr.currency_name }}
+                  </option>
+                  {% endfor %}
+                </select>
+                <div class="mt-1" style="font-size:.75rem; color:#605E5C;">System-wide currency symbol (e.g., LKR, USD, EUR)</div>
+              </div>
+            </div>
+            <div class="settings-row">
+              <div class="row-label">VAT Registered</div>
+              <div class="row-control">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" name="vat_registered" id="vatRegistered" {% if company.vat_registered == 1 %}checked{% endif %}>
+                  <label class="form-check-label" style="font-size:.82rem; color:#323130;" for="vatRegistered">Company is VAT Registered</label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Panel: Logo + Save -->
+      <div class="col-md-4 d-flex flex-column gap-4">
+
+        <!-- Logo Card -->
+        <div class="cp-card">
+          <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+            <div class="section-label mb-0"><i class="fas fa-image me-2" style="color:#0078D4;"></i>Company Logo</div>
+          </div>
+          <div class="p-4">
+            <div class="logo-dropzone mb-3">
+              {% if company.company_log %}
+              <img src="data:image/jpeg;base64,{{ company.company_log }}" alt="Company Logo" class="img-fluid" style="max-height:140px; object-fit:contain;">
+              {% else %}
+              <div class="text-center" style="color:#a0aab4;">
+                <i class="fas fa-image fa-2x mb-2 d-block"></i>
+                <span style="font-size:.8rem;">No logo uploaded</span>
+              </div>
+              {% endif %}
+            </div>
+            <input class="form-control form-control-sm" type="file" name="logo" accept="image/jpeg, image/png" style="border-radius:8px;">
+            <div class="mt-2" style="font-size:.75rem; color:#605E5C;">Recommended: 300×300px PNG with transparent background</div>
+          </div>
+        </div>
+
+        <!-- Save Card -->
+        <div class="cp-card">
+          <div class="p-4">
+            <div class="section-label">Ready to save?</div>
+            <p style="font-size:.82rem; color:#605E5C; margin-bottom:16px;">Review all fields before submitting. Changes will take effect immediately across the system.</p>
+            <div class="d-grid">
+              <button type="submit" class="btn action-btn text-white py-2 fw-semibold">
+                <i class="fas fa-save me-2"></i>Submit Company Details
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </form>
 </div>
 {% endblock %}

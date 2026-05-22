@@ -1,153 +1,170 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-undo me-2"></i> Pos Payment Reversal</h4>
-</div>
+<div class="container-fluid py-4">
 
-    <div class="card shadow-sm border-0">
-        <div class="card-body p-4">
-            <!-- Sales History DataGrid -->
-            <div class="card mb-4 border-0 shadow-sm">
-                <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                    <i class="fas fa-history me-2"></i> Sales History
-                </div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0" id="salesTable">
-                        <thead class="table-dark">
-                            <tr>
-                                <th style="width: 60px;">No</th>
-                                <th>JV No</th>
-                                <th class="text-end">Total Payment</th>
-                                <th style="width: 100px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if jv_list %}
-                                {% for item in jv_list %}
-                                <tr onclick="selectJV('{{ item.jv }}', this)" style="cursor: pointer;">
-                                    <td>{{ item.No }}</td>
-                                    <td>{{ item.jv }}</td>
-                                    <td class="text-end fw-bold">{{ item.Total_payment|currency }}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); selectJV('{{ item.jv }}', this.closest('tr'))">Select</button>
-                                        <a href="/pos_receipt/{{ item.jv }}" target="_blank" class="btn btn-sm btn-outline-secondary ms-1" onclick="event.stopPropagation();">Receipt</a>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="4" class="text-center py-3 text-muted">No transactions found for today.</td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            <!-- Details Display -->
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card mb-4 border-0 shadow-sm h-100">
-                        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                            <i class="fas fa-info-circle me-2"></i> Payment Details
-                        </div>
-                        <div class="card-body bg-light">
-                            <textarea id="detailsBox" class="form-control h-100" rows="6" readonly
-                                      style="font-family: monospace; font-weight: bold; font-size: 0.9rem; background-color: #f8fafc; border: 1px solid #e2e8f0;"></textarea>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- GL Entry Preview -->
-                <div class="col-md-6">
-                    <div class="card mb-4 border-0 shadow-sm h-100">
-                        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                            <i class="fas fa-list-alt me-2"></i> GL & Inventory Impact
-                        </div>
-                        <div class="card-body">
-                            <ul class="list-group list-group-flush" id="glPreview">
-                                <li class="list-group-item bg-transparent text-muted text-center py-4">Select a transaction to view impact...</li>
-                            </ul>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Actions -->
-            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded shadow-sm mt-2">
-                <div class="d-flex align-items-center">
-                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 12px; height: 12px;"></div>
-                    <span id="statusLabel" class="fw-bold text-secondary">Ready to process reversal</span>
-                </div>
-                <div>
-                    <form id="reversalForm" method="POST" action="/pos_reversal/process" style="display: inline;">
-                        <input type="hidden" name="jv" id="selectedJV">
-                        <button type="submit" id="processBtn" class="btn btn-primary fw-bold px-4 shadow-sm" style="background-color: var(--accent-color); border:none;" disabled>
-                            <i class="fas fa-undo me-2"></i> Process Reversal
-                        </button>
-                    </form>
-                    <a href="/" class="btn btn-secondary fw-bold px-4 ms-2 shadow-sm">
-                        <i class="fas fa-times me-2"></i> Close
-                    </a>
-                </div>
-            </div>
-        </div>
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-undo text-white" style="font-size:.95rem;"></i>
     </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#201F1E;line-height:1.2;">POS Reversal</h5>
+      <span style="font-size:.75rem;color:#605E5C;">Point of Sale</span>
+    </div>
+  </div>
+
+  <!-- Sales History Table -->
+  <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+      <i class="fas fa-history" style="color:#C42B1C;font-size:.85rem;"></i>
+      <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Sales History</span>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle" id="salesTable">
+        <thead>
+          <tr style="background:#f8f9fa;">
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;width:60px;">#</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;">JV No</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;text-align:right;">Total Payment</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;border-bottom:1px solid #e2e8f0;width:130px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if jv_list %}
+            {% for item in jv_list %}
+            <tr onclick="selectJV('{{ item.jv }}', this)" style="cursor:pointer;">
+              <td style="padding:.65rem 1rem;font-size:.875rem;color:#605E5C;">{{ item.No }}</td>
+              <td style="padding:.65rem 1rem;font-weight:600;color:#201F1E;font-size:.875rem;">{{ item.jv }}</td>
+              <td style="padding:.65rem 1rem;text-align:right;font-family:monospace;font-weight:700;color:#201F1E;font-size:.875rem;">{{ item.Total_payment|currency }}</td>
+              <td style="padding:.65rem 1rem;">
+                <button class="btn btn-sm fw-semibold me-1" onclick="event.stopPropagation(); selectJV('{{ item.jv }}', this.closest('tr'))"
+                  style="background:#f3f2f1;border:none;border-radius:6px;font-size:.75rem;color:#201F1E;padding:.25rem .65rem;">Select</button>
+                <a href="/pos_receipt/{{ item.jv }}" target="_blank" class="btn btn-sm fw-semibold" onclick="event.stopPropagation();"
+                  style="background:#f3f2f1;border:none;border-radius:6px;font-size:.75rem;color:#605E5C;padding:.25rem .65rem;">Receipt</a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+          <tr>
+            <td colspan="4" class="text-center py-5" style="color:#605E5C;">
+              <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.35;"></i>
+              No transactions found for today.
+            </td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Details & GL Preview -->
+  <div class="row g-3 mb-4">
+    <!-- Payment Details -->
+    <div class="col-md-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+          <i class="fas fa-info-circle" style="color:#C42B1C;font-size:.85rem;"></i>
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Payment Details</span>
+        </div>
+        <div style="padding:1rem 1.25rem;background:#f8f9fa;height:calc(100% - 46px);">
+          <textarea id="detailsBox" class="form-control h-100" rows="6" readonly
+            style="font-family:monospace;font-weight:bold;font-size:.875rem;background:#f8f9fa;border:1px solid #e2e8f0;border-radius:8px;resize:none;min-height:160px;"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- GL & Inventory Impact -->
+    <div class="col-md-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:.5rem;">
+          <i class="fas fa-list-alt" style="color:#C42B1C;font-size:.85rem;"></i>
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">GL &amp; Inventory Impact</span>
+        </div>
+        <div style="padding:1rem 1.25rem;">
+          <ul class="list-group list-group-flush" id="glPreview">
+            <li class="list-group-item bg-transparent text-center py-4" style="color:#605E5C;font-size:.875rem;border:none;">
+              Select a transaction to view impact...
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Bar -->
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;">
+    <div class="d-flex align-items-center gap-2">
+      <div id="statusIndicator" style="width:10px;height:10px;border-radius:50%;background:#ccc;flex-shrink:0;"></div>
+      <span id="statusLabel" class="fw-semibold" style="font-size:.875rem;color:#605E5C;">Ready to process reversal</span>
+    </div>
+    <div class="d-flex gap-2">
+      <form id="reversalForm" method="POST" action="/pos_reversal/process" style="display:inline;">
+        <input type="hidden" name="jv" id="selectedJV">
+        <button type="submit" id="processBtn" class="btn fw-semibold" disabled
+          style="background:linear-gradient(135deg,#C42B1C,#a4262c);border:none;border-radius:8px;color:#fff;padding:.45rem 1.5rem;">
+          <i class="fas fa-undo me-1"></i> Process Reversal
+        </button>
+      </form>
+      <a href="/" class="btn fw-semibold" style="background:#f3f2f1;border:none;border-radius:8px;color:#201F1E;padding:.45rem 1.25rem;">
+        <i class="fas fa-times me-1"></i> Close
+      </a>
+    </div>
+  </div>
+
 </div>
 
 {% block scripts %}
 <script>
-    function selectJV(jv, row) {
-        // Highlight row
-        document.querySelectorAll('#salesTable tbody tr').forEach(r => r.classList.remove('table-active'));
-        row.classList.add('table-active');
+  function selectJV(jv, row) {
+    document.querySelectorAll('#salesTable tbody tr').forEach(r => r.classList.remove('table-active'));
+    row.classList.add('table-active');
 
-        // Set hidden input
-        document.getElementById('selectedJV').value = jv;
-        document.getElementById('processBtn').disabled = false;
+    document.getElementById('selectedJV').value = jv;
+    document.getElementById('processBtn').disabled = false;
 
-        // Fetch Details
-        fetch(`/pos_reversal/get_details?jv=${jv}`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.details) {
-                    typeWriter(data.details, "detailsBox");
-                    updateGLPreview(jv);
-                }
-            });
-    }
+    const indicator = document.getElementById('statusIndicator');
+    indicator.style.background = '#C42B1C';
+    document.getElementById('statusLabel').textContent = 'Transaction selected — ready to reverse';
+    document.getElementById('statusLabel').style.color = '#C42B1C';
 
-    function typeWriter(text, elementId) {
-        const el = document.getElementById(elementId);
-        el.value = "";
-        let i = 0;
-        const speed = 10; // Typing speed
-
-        function type() {
-            if (i < text.length) {
-                el.value += text.charAt(i);
-                i++;
-                el.scrollTop = el.scrollHeight;
-                setTimeout(type, speed);
-            }
+    fetch(`/pos_reversal/get_details?jv=${jv}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.details) {
+          typeWriter(data.details, "detailsBox");
+          updateGLPreview(jv);
         }
-        type();
-    }
+      });
+  }
 
-    function updateGLPreview(jv) {
-        const glList = document.getElementById('glPreview');
-        glList.innerHTML = `
-            <li class="list-group-item bg-transparent font-monospace small">DR Cash Account / Bank</li>
-            <li class="list-group-item bg-transparent font-monospace small">CR Sales Account</li>
-            <li class="list-group-item bg-transparent fw-bold text-danger mt-2">--- REVERSAL WILL CREATE ---</li>
-            <li class="list-group-item bg-transparent font-monospace small">CR Cash Account / Bank</li>
-            <li class="list-group-item bg-transparent font-monospace small">DR Sales Account</li>
-            <li class="list-group-item bg-transparent font-monospace small">Inventory items will be restored</li>
-        `;
+  function typeWriter(text, elementId) {
+    const el = document.getElementById(elementId);
+    el.value = "";
+    let i = 0;
+    const speed = 10;
+    function type() {
+      if (i < text.length) {
+        el.value += text.charAt(i);
+        i++;
+        el.scrollTop = el.scrollHeight;
+        setTimeout(type, speed);
+      }
     }
+    type();
+  }
+
+  function updateGLPreview(jv) {
+    const glList = document.getElementById('glPreview');
+    glList.innerHTML = `
+      <li class="list-group-item bg-transparent font-monospace small" style="border:none;padding:.35rem 0;color:#605E5C;">DR Cash Account / Bank</li>
+      <li class="list-group-item bg-transparent font-monospace small" style="border:none;padding:.35rem 0;color:#605E5C;">CR Sales Account</li>
+      <li class="list-group-item bg-transparent fw-bold mt-2" style="border:none;padding:.35rem 0;color:#C42B1C;font-size:.75rem;letter-spacing:.5px;text-transform:uppercase;">— Reversal will create —</li>
+      <li class="list-group-item bg-transparent font-monospace small" style="border:none;padding:.35rem 0;color:#605E5C;">CR Cash Account / Bank</li>
+      <li class="list-group-item bg-transparent font-monospace small" style="border:none;padding:.35rem 0;color:#605E5C;">DR Sales Account</li>
+      <li class="list-group-item bg-transparent font-monospace small" style="border:none;padding:.35rem 0;color:#605E5C;">Inventory items will be restored</li>
+    `;
+  }
 </script>
 {% endblock %}
 {% endblock %}

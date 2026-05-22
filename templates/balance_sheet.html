@@ -1,91 +1,172 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <h2 class="mb-4">Balance Sheet</h2>
+<style>
+    .report-page-icon {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; color: #fff; flex-shrink: 0;
+    }
+    .report-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff; overflow: hidden;
+    }
+    .filter-card-header {
+        background: #f8f9fa; border-bottom: 1px solid #e2e8f0;
+        padding: .6rem 1.25rem; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+    }
+    .report-table thead th {
+        background: #f8f9fa; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+        border-bottom: 2px solid #e2e8f0; vertical-align: middle;
+    }
+    .report-table td { vertical-align: middle; }
+    .num-cell { font-family: 'JetBrains Mono','Courier New',monospace; text-align: right; }
+    .section-heading {
+        font-size: .7rem; font-weight: 800; letter-spacing: 1px;
+        text-transform: uppercase; padding: .55rem 1rem;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .category-heading {
+        font-size: .72rem; font-weight: 700; color: #605E5C;
+        text-transform: uppercase; letter-spacing: .4px;
+        background: #f8f9fa; padding: .45rem 1rem .45rem 1.5rem;
+    }
+    .account-row td { padding: .42rem 1rem .42rem 2rem; font-size: .875rem; }
+    .total-row { font-weight: 700; background: #f0f4ff; }
+    .total-row td { padding: .6rem 1rem; }
+    .grand-total-row { font-weight: 800; font-size: 1rem; color: var(--accent-color); }
+    .section-divider { border-top: 2px solid #e2e8f0; }
+    .win11-btn { border-radius: 6px; font-size: .8rem; font-weight: 600;
+        padding: .3rem .75rem; display: inline-flex; align-items: center; gap: .35rem; }
+    .win11-btn-secondary { border: 1px solid #8a8886; color: #323130;
+        background: #fff; }
+    .win11-btn-secondary:hover { background: #f3f2f1; border-color: #605E5C; }
+    @media print {
+        .no-print { display: none !important; }
+        .report-card { box-shadow: none !important; border: none !important; }
+    }
+</style>
 
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-transparent border-0 pb-0 pt-4">Generate Report</div>
+<div class="container-fluid py-3">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="report-page-icon" style="background: linear-gradient(135deg,#0078D4,#005FA3);">
+            <i class="fas fa-balance-scale"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold">Balance Sheet</h5>
+            <small class="text-muted">Financial Reports</small>
+        </div>
+        {% if report_data %}
+        <div class="ms-auto d-flex gap-2 no-print">
+            <button class="win11-btn win11-btn-secondary" onclick="window.print()">
+                <i class="fas fa-print"></i> Print
+            </button>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Filter Card -->
+    <div class="report-card mb-4 no-print">
+        <div class="filter-card-header"><i class="fas fa-filter me-2"></i>Filters &amp; Date Range</div>
         <div class="card-body">
-            <form method="GET" action="/balance_sheet" class="row g-3">
+            <form method="GET" action="/balance_sheet" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label">As At Date</label>
-                    <input type="date" name="as_at_date" class="form-control" value="{{ as_at_date }}" required>
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">As At Date</label>
+                    <input type="date" name="as_at_date" class="form-control form-control-sm" value="{{ as_at_date }}" required>
                 </div>
-                <div class="col-md-2 d-flex align-items-end">
-                    <button type="submit" class="btn btn-primary w-100">Generate</button>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100 fw-semibold">
+                        <i class="fas fa-sync me-1"></i> Generate
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
     {% if report_data %}
-    <div class="card shadow-sm">
-        <div class="card-header text-center fw-bold">
-            STATEMENT OF FINANCIAL POSITION<br>
-            <small>As at {{ as_at_date }}</small>
+    <!-- Report Card -->
+    <div class="report-card">
+        <!-- Report Title Banner -->
+        <div class="text-center py-3 border-bottom" style="background:linear-gradient(135deg,#0078D4,#005FA3);">
+            <div class="text-white fw-bold" style="letter-spacing:.5px;">STATEMENT OF FINANCIAL POSITION</div>
+            <div class="text-white opacity-75" style="font-size:.82rem;">As at {{ as_at_date }}</div>
         </div>
-        <div class="card-body">
-            <div class="row">
-                <!-- Assets -->
-                <div class="col-md-6">
-                    <h5 class="text-primary border-bottom pb-2">ASSETS</h5>
-                    {% for category, accounts in report_data.assets.items() %}
-                        <h6 class="mt-3 text-secondary">{{ category }}</h6>
-                        <table class="table table-sm table-borderless">
-                            {% for acc in accounts %}
-                            <tr>
-                                <td>{{ acc.name }}</td>
-                                <td class="text-end">{{ acc.balance|currency }}</td>
-                            </tr>
-                            {% endfor %}
-                        </table>
-                    {% endfor %}
-                    <div class="alert alert-info mt-3 d-flex justify-content-between">
-                        <strong>TOTAL ASSETS</strong>
-                        <strong>{{ totals.assets|currency }}</strong>
-                    </div>
+
+        <div class="row g-0">
+            <!-- ASSETS COLUMN -->
+            <div class="col-md-6" style="border-right:1px solid #e2e8f0;">
+                <div class="section-heading" style="color:#0078D4; background:#EFF6FF;">
+                    <i class="fas fa-landmark me-2"></i>ASSETS
                 </div>
-
-                <!-- Liabilities & Equity -->
-                <div class="col-md-6">
-                    <h5 class="text-primary border-bottom pb-2">EQUITY AND LIABILITIES</h5>
-
-                    <h6 class="mt-3 text-secondary">Equity</h6>
-                    <table class="table table-sm table-borderless">
-                        {% for acc in report_data.equity %}
-                        <tr>
-                            <td>{{ acc.name }}</td>
-                            <td class="text-end">{{ acc.balance|currency }}</td>
-                        </tr>
-                        {% endfor %}
-                        <tr>
-                            <td>Retained Earnings</td>
-                            <td class="text-end">{{ totals.retained_earnings|currency }}</td>
-                        </tr>
-                    </table>
-
-                    <h6 class="mt-3 text-secondary">Liabilities</h6>
-                    {% for category, accounts in report_data.liabilities.items() %}
-                        <h6 class="mt-2 fst-italic text-muted ps-2">{{ category }}</h6>
-                        <table class="table table-sm table-borderless">
+                <div class="table-responsive">
+                    <table class="table report-table mb-0">
+                        <tbody>
+                        {% for category, accounts in report_data.assets.items() %}
+                            <tr><td colspan="2" class="category-heading">{{ category }}</td></tr>
                             {% for acc in accounts %}
-                            <tr>
+                            <tr class="account-row">
                                 <td>{{ acc.name }}</td>
-                                <td class="text-end">{{ acc.balance|currency }}</td>
+                                <td class="num-cell">{{ acc.balance|currency }}</td>
                             </tr>
                             {% endfor %}
-                        </table>
-                    {% endfor %}
+                        {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="total-row section-divider">
+                                <td class="fw-bold" style="padding:.7rem 1rem;">TOTAL ASSETS</td>
+                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ totals.assets|currency }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
 
-                    <div class="alert alert-info mt-3 d-flex justify-content-between">
-                        <strong>TOTAL EQUITY & LIABILITIES</strong>
-                        <strong>{{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</strong>
-                    </div>
+            <!-- EQUITY & LIABILITIES COLUMN -->
+            <div class="col-md-6">
+                <div class="section-heading" style="color:#107C10; background:#F0FFF0;">
+                    <i class="fas fa-university me-2"></i>EQUITY AND LIABILITIES
+                </div>
+                <div class="table-responsive">
+                    <table class="table report-table mb-0">
+                        <tbody>
+                            <tr><td colspan="2" class="category-heading">Equity</td></tr>
+                            {% for acc in report_data.equity %}
+                            <tr class="account-row">
+                                <td>{{ acc.name }}</td>
+                                <td class="num-cell">{{ acc.balance|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                            <tr class="account-row">
+                                <td>Retained Earnings</td>
+                                <td class="num-cell">{{ totals.retained_earnings|currency }}</td>
+                            </tr>
+
+                            {% for category, accounts in report_data.liabilities.items() %}
+                            <tr><td colspan="2" class="category-heading">{{ category }}</td></tr>
+                            {% for acc in accounts %}
+                            <tr class="account-row">
+                                <td>{{ acc.name }}</td>
+                                <td class="num-cell">{{ acc.balance|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% endfor %}
+                        </tbody>
+                        <tfoot>
+                            <tr class="total-row section-divider">
+                                <td class="fw-bold" style="padding:.7rem 1rem;">TOTAL EQUITY &amp; LIABILITIES</td>
+                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
     {% endif %}
+
 </div>
 {% endblock %}

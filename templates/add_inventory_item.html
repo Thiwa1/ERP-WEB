@@ -1,31 +1,116 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .page-header-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+
+    .fluent-card {
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    }
+
+    .section-label {
+        font-size: .7rem;
+        font-weight: 700;
+        letter-spacing: .8px;
+        text-transform: uppercase;
+        color: var(--accent-color, #0078D4);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 0;
+    }
+
+    .field-label {
+        font-size: .8rem;
+        font-weight: 600;
+        color: #323130;
+        margin-bottom: 4px;
+    }
+
+    .table thead th {
+        background: #f8f9fa;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+        color: #605E5C;
+        border-color: #e9ecef;
+    }
+
+    .table td {
+        border-color: #e9ecef;
+        font-size: .875rem;
+    }
+
+    .mono {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    .submit-btn {
+        background: var(--accent-color, #0078D4);
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    .submit-btn:hover {
+        filter: brightness(1.1);
+    }
+
+    .action-sidebar-btn {
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: .82rem;
+        border: none;
+    }
+</style>
+
 <div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-boxes me-2"></i> Manage The Inventory Items</h4>
-</div>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-header-icon" style="background: linear-gradient(135deg, #008B8B, #006B6B);">
+            <i class="fas fa-boxes"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold">Add Inventory Item</h5>
+            <div class="text-muted" style="font-size:.78rem">Inventory Management</div>
+        </div>
+    </div>
 
     <form method="POST" action="{{ url_for('add_inventory_item') }}" enctype="multipart/form-data">
-        <div class="row">
-            <!-- Left Column: Form Fields -->
+        <div class="row g-4">
+
+            <!-- LEFT COLUMN: Form sections -->
             <div class="col-md-9">
+
                 <!-- Group 1: Basic Information -->
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                        <i class="fas fa-info-circle me-1"></i> BASIC INFORMATION
+                <div class="fluent-card mb-4">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-info-circle"></i> Basic Information</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <label class="col-sm-3 col-form-label fw-bold">Item Name</label>
-                            <div class="col-sm-9">
+                    <div class="p-4 pt-3">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="field-label">Item Name <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="item_name" required>
                             </div>
-                        </div>
-                        <div class="row mb-3">
-                            <label class="col-sm-3 col-form-label fw-bold">Measurement Unit</label>
-                            <div class="col-sm-9">
+                            <div class="col-md-6">
+                                <label class="field-label">Measurement Unit <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="measurement_unit" required>
                             </div>
                         </div>
@@ -33,101 +118,97 @@
                 </div>
 
                 <!-- Group 2: Item Codes -->
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                        <i class="fas fa-barcode me-1"></i> ITEM CODES
+                <div class="fluent-card mb-4">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-barcode"></i> Item Codes</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Item Code</label>
+                    <div class="p-4 pt-3">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="field-label">Item Code <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" name="item_code" required>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Batch Code</label>
+                            <div class="col-md-4">
+                                <label class="field-label">Batch Code</label>
                                 <input type="text" class="form-control" name="batch_code">
                             </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-12">
-                                <label class="form-label fw-bold">Supplier Code</label>
+                            <div class="col-md-4">
+                                <label class="field-label">Supplier Code</label>
                                 <input type="text" class="form-control" name="supplier_code">
                             </div>
                         </div>
                     </div>
                 </div>
 
-
-                <!-- Group 3: Pricing Information -->
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                        <i class="fas fa-tags me-1"></i> PRICING VARIATIONS
+                <!-- Group 3: Pricing Variations -->
+                <div class="fluent-card mb-4">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-tags"></i> Pricing Variations</div>
                     </div>
-                    <div class="card-body p-0 table-responsive">
-                        <table class="table table-bordered table-hover mb-0" id="pricingTable">
-                            <thead class="table-light text-center">
-                                <tr>
-                                    <th width="20%">Purchasing Cost</th>
-                                    <th width="20%">Selling Price (Market)</th>
-                                    <th width="20%">Special Price (Common)</th>
-                                    <th width="20%">Loyalty Price</th>
-                                    <th width="10%">Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td>
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text">{{ company_currency }}</span>
-                                            <input type="number" step="0.01" name="cost_price[]" class="form-control" placeholder="0.00" required>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text">{{ company_currency }}</span>
-                                            <input type="number" step="0.01" name="selling_price[]" class="form-control" placeholder="0.00" required>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text">{{ company_currency }}</span>
-                                            <input type="number" step="0.01" name="special_price[]" class="form-control" placeholder="0.00">
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="input-group input-group-sm">
-                                            <span class="input-group-text">{{ company_currency }}</span>
-                                            <input type="number" step="0.01" name="loyalty_price[]" class="form-control" placeholder="0.00">
-                                        </div>
-                                    </td>
-                                    <td class="text-center align-middle">
-                                        <button type="button" class="btn btn-sm btn-outline-danger remove-price-row" disabled>
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div class="p-2 text-end bg-light border-top">
-                            <button type="button" class="btn btn-sm btn-outline-success fw-bold" id="addPriceRowBtn">
-                                <i class="fas fa-plus"></i> Add Another Price Variation
+                    <div class="pt-3">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0" id="pricingTable">
+                                <thead>
+                                    <tr>
+                                        <th class="text-center" width="22%">Purchasing Cost</th>
+                                        <th class="text-center" width="22%">Selling Price (Market)</th>
+                                        <th class="text-center" width="22%">Special Price (Common)</th>
+                                        <th class="text-center" width="22%">Loyalty Price</th>
+                                        <th class="text-center" width="12%">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text mono">{{ company_currency }}</span>
+                                                <input type="number" step="0.01" name="cost_price[]" class="form-control mono" placeholder="0.00" required>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text mono">{{ company_currency }}</span>
+                                                <input type="number" step="0.01" name="selling_price[]" class="form-control mono" placeholder="0.00" required>
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text mono">{{ company_currency }}</span>
+                                                <input type="number" step="0.01" name="special_price[]" class="form-control mono" placeholder="0.00">
+                                            </div>
+                                        </td>
+                                        <td>
+                                            <div class="input-group input-group-sm">
+                                                <span class="input-group-text mono">{{ company_currency }}</span>
+                                                <input type="number" step="0.01" name="loyalty_price[]" class="form-control mono" placeholder="0.00">
+                                            </div>
+                                        </td>
+                                        <td class="text-center align-middle">
+                                            <button type="button" class="btn btn-sm btn-outline-danger remove-price-row" style="border-radius:6px;" disabled>
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="px-3 py-2 d-flex justify-content-end" style="background:#f8f9fa; border-top:1px solid #e9ecef; border-radius:0 0 12px 12px;">
+                            <button type="button" class="btn btn-sm btn-outline-success fw-bold" id="addPriceRowBtn" style="border-radius:6px; font-size:.78rem;">
+                                <i class="fas fa-plus me-1"></i> Add Another Price Variation
                             </button>
                         </div>
                     </div>
                 </div>
 
-                    </div>
-                </div>
-
                 <!-- Group 4: Categories & Inventory -->
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                        <i class="fas fa-sitemap me-1"></i> CATEGORIES & INVENTORY
+                <div class="fluent-card mb-4">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-sitemap"></i> Categories &amp; Inventory</div>
                     </div>
-                    <div class="card-body">
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Main Category</label>
+                    <div class="p-4 pt-3">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="field-label">Main Category</label>
                                 <select class="form-select select2" name="main_category">
                                     <option value="">Select...</option>
                                     {% for cat in main_categories %}
@@ -135,8 +216,8 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Sub Category</label>
+                            <div class="col-md-4">
+                                <label class="field-label">Sub Category</label>
                                 <select class="form-select select2" name="sub_category">
                                     <option value="">Select...</option>
                                     {% for cat in sub_categories %}
@@ -144,49 +225,61 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                        </div>
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Minimum Quantity</label>
-                                <input type="number" step="0.01" class="form-control" name="min_qty" value="0">
+                            <div class="col-md-4">
+                                <label class="field-label">Minimum Quantity</label>
+                                <input type="number" step="0.01" class="form-control mono" name="min_qty" value="0">
                             </div>
                         </div>
                     </div>
                 </div>
+
             </div>
 
-            <!-- Right Column: Image & Actions -->
+            <!-- RIGHT COLUMN: Image & Actions -->
             <div class="col-md-3">
-                <!-- Image Section -->
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        ITEM IMAGE
+
+                <!-- Item Image -->
+                <div class="fluent-card mb-4">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-image"></i> Item Image</div>
                     </div>
-                    <div class="card-body text-center bg-white">
-                        <div class="border rounded p-2 mb-3 bg-light d-flex align-items-center justify-content-center" style="height: 180px;">
-                            <img id="previewImage" src="#" alt="Preview" class="img-fluid" style="max-height: 100%; display: none;">
-                            <span id="previewPlaceholder" class="text-muted">No Image Selected</span>
+                    <div class="p-4 pt-3">
+                        <div class="rounded d-flex align-items-center justify-content-center mb-3"
+                             style="height:180px; background:#f8f9fa; border:2px dashed #e2e8f0; overflow:hidden;">
+                            <img id="previewImage" src="#" alt="Preview" class="img-fluid" style="max-height:100%; display:none; border-radius:6px;">
+                            <span id="previewPlaceholder" class="text-muted" style="font-size:.8rem;">
+                                <i class="fas fa-image fa-2x d-block mb-2 text-center opacity-25"></i>
+                                No Image Selected
+                            </span>
                         </div>
-                        <input class="form-control mb-2" type="file" name="item_image" accept="image/jpeg, image/png" onchange="previewFile()">
-                        <small class="text-muted">Recommended: JPEG/PNG</small>
+                        <input class="form-control form-control-sm mb-2" type="file" name="item_image" accept="image/jpeg, image/png" onchange="previewFile()">
+                        <small class="text-muted" style="font-size:.72rem;">Recommended: JPEG / PNG</small>
                     </div>
                 </div>
 
                 <!-- Actions -->
-                <div class="d-grid gap-2">
-                    <button type="submit" class="btn btn-primary fw-bold py-2 shadow-sm" style="background-color: var(--accent-color); border: none;">
-                        <i class="fas fa-save me-2"></i> Create Item
-                    </button>
-                    <a href="{{ url_for('add_inventory_item') }}" class="btn btn-secondary fw-bold py-2 shadow-sm">
-                        <i class="fas fa-eraser me-2"></i> Clear Form
-                    </a>
-                    <a href="{{ url_for('inventory_price_editing') }}" class="btn btn-info fw-bold py-2 shadow-sm text-white">
-                        <i class="fas fa-tags me-2"></i> Price Editing
-                    </a>
-                    <a href="{{ url_for('inventory_category') }}" class="btn btn-warning fw-bold py-2 shadow-sm text-white">
-                        <i class="fas fa-folder-open me-2"></i> Categories
-                    </a>
+                <div class="fluent-card">
+                    <div class="p-4 pb-0">
+                        <div class="section-label"><i class="fas fa-bolt"></i> Actions</div>
+                    </div>
+                    <div class="p-4 pt-3">
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-primary fw-bold py-2 submit-btn">
+                                <i class="fas fa-save me-2"></i> Create Item
+                            </button>
+                            <a href="{{ url_for('add_inventory_item') }}" class="btn btn-secondary fw-bold py-2 action-sidebar-btn">
+                                <i class="fas fa-eraser me-2"></i> Clear Form
+                            </a>
+                            <a href="{{ url_for('inventory_price_editing') }}" class="btn fw-bold py-2 action-sidebar-btn text-white" style="background:#0078D4;">
+                                <i class="fas fa-tags me-2"></i> Price Editing
+                            </a>
+                            <a href="{{ url_for('inventory_category') }}" class="btn fw-bold py-2 action-sidebar-btn text-white" style="background:#ca5010;">
+                                <i class="fas fa-folder-open me-2"></i> Categories
+                            </a>
+                        </div>
+                    </div>
                 </div>
+
             </div>
         </div>
     </form>
@@ -211,7 +304,6 @@
     }
 </script>
 
-
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const tableBody = document.querySelector('#pricingTable tbody');
@@ -223,30 +315,30 @@ document.addEventListener('DOMContentLoaded', function() {
             row.innerHTML = `
                 <td>
                     <div class="input-group input-group-sm">
-                        <span class="input-group-text">{{ company_currency }}</span>
-                        <input type="number" step="0.01" name="cost_price[]" class="form-control" placeholder="0.00" required>
+                        <span class="input-group-text mono">{{ company_currency }}</span>
+                        <input type="number" step="0.01" name="cost_price[]" class="form-control mono" placeholder="0.00" required>
                     </div>
                 </td>
                 <td>
                     <div class="input-group input-group-sm">
-                        <span class="input-group-text">{{ company_currency }}</span>
-                        <input type="number" step="0.01" name="selling_price[]" class="form-control" placeholder="0.00" required>
+                        <span class="input-group-text mono">{{ company_currency }}</span>
+                        <input type="number" step="0.01" name="selling_price[]" class="form-control mono" placeholder="0.00" required>
                     </div>
                 </td>
                 <td>
                     <div class="input-group input-group-sm">
-                        <span class="input-group-text">{{ company_currency }}</span>
-                        <input type="number" step="0.01" name="special_price[]" class="form-control" placeholder="0.00">
+                        <span class="input-group-text mono">{{ company_currency }}</span>
+                        <input type="number" step="0.01" name="special_price[]" class="form-control mono" placeholder="0.00">
                     </div>
                 </td>
                 <td>
                     <div class="input-group input-group-sm">
-                        <span class="input-group-text">{{ company_currency }}</span>
-                        <input type="number" step="0.01" name="loyalty_price[]" class="form-control" placeholder="0.00">
+                        <span class="input-group-text mono">{{ company_currency }}</span>
+                        <input type="number" step="0.01" name="loyalty_price[]" class="form-control mono" placeholder="0.00">
                     </div>
                 </td>
                 <td class="text-center align-middle">
-                    <button type="button" class="btn btn-sm btn-outline-danger remove-price-row">
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-price-row" style="border-radius:6px;">
                         <i class="fas fa-trash"></i>
                     </button>
                 </td>

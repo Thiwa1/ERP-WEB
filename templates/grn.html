@@ -1,51 +1,108 @@
 {% extends "base.html" %}
 
+{% block title %}Goods Received Note{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3">
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-truck-loading me-2"></i> Goods Received Note Management</h4>
-</div>
+<style>
+    .page-icon-tile {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        flex-shrink: 0;
+    }
+    .section-label {
+        font-size: .7rem; font-weight: 700; letter-spacing: .8px;
+        text-transform: uppercase; color: #605E5C;
+        margin-bottom: .6rem; display: block;
+    }
+    .form-label {
+        font-size: .8rem !important; font-weight: 600 !important; color: #323130 !important;
+    }
+    .panel-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff;
+        margin-bottom: 1rem;
+    }
+    .amount-cell {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+    }
+    .totals-block {
+        background: #f0faf8; border-radius: 8px; padding: 14px 16px;
+        border: 1px solid #c6e9e4;
+    }
+    .totals-block .t-label { font-size: .8rem; color: #605E5C; font-weight: 600; }
+    .totals-block .t-value {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: .88rem; font-weight: 700; color: #201f1e;
+    }
+    .totals-block .grand .t-label { color: #201f1e; font-size:.88rem; }
+    .totals-block .grand .t-value { font-size: 1.05rem; color: #018574; }
+    .input-group-text {
+        font-size: .8rem; font-weight: 600; color: #605E5C;
+        background: #f8f9fa; border-color: rgba(0,0,0,.1);
+    }
+</style>
+
+<div class="container-fluid">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-icon-tile" style="background: linear-gradient(135deg,#018574,#005E52);">
+            <i class="fas fa-truck-loading"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Goods Received Note</h5>
+            <small style="color:#605E5C; font-size:.78rem;">Inventory — Receiving</small>
+        </div>
+    </div>
 
     <form method="POST" action="{{ url_for('grn') }}" id="grnForm">
-        <div class="row">
-            <!-- Left Panel: Item List -->
+        <div class="row g-4">
+
+            <!-- LEFT: Item List Table -->
             <div class="col-md-7">
-                <div class="card shadow-sm mb-4 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-list me-2"></i> Items Added
-                    </div>
+                <div class="panel-card">
                     <div class="card-body p-0">
-                        <table class="table  table-striped mb-0" id="itemsTable">
-                            <thead class="table-dark">
-                                <tr>
-                                    <th>Item Name</th>
-                                    <th>Code</th>
-                                    <th>Unit</th>
-                                    <th>Qty</th>
-                                    <th>Cost</th>
-                                    <th>Total</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Rows will be added here via JS -->
-                            </tbody>
-                        </table>
+                        <div class="px-4 pt-4 pb-2">
+                            <span class="section-label">Items Added</span>
+                        </div>
+                        <div class="table-responsive" style="border-radius:0;border:none;box-shadow:none;margin-bottom:0;">
+                            <table class="table table-hover mb-0" id="itemsTable">
+                                <thead style="background:#f8f9fa;">
+                                    <tr>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Code</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Unit</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Qty</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Cost</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
+                                        <th style="width:40px;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Rows added via JS -->
+                                </tbody>
+                            </table>
+                            <div id="emptyState" class="text-center py-5" style="color:#a0aec0;">
+                                <i class="fas fa-boxes fa-2x mb-2 d-block" style="opacity:.35;"></i>
+                                No items added yet. Use the form on the right to add items.
+                            </div>
+                        </div>
                         <input type="hidden" name="items_json" id="itemsJson">
                     </div>
                 </div>
             </div>
 
-            <!-- Right Panel: Controls -->
+            <!-- RIGHT: Controls -->
             <div class="col-md-5">
-                <!-- Supplier Section -->
-                <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-user-tag me-2"></i> Supplier Selection
-                    </div>
-                    <div class="card-body bg-white">
+
+                <!-- Supplier Selection -->
+                <div class="panel-card">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">Supplier Selection</span>
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Supplier List</label>
+                            <label class="form-label">Supplier</label>
                             <select class="form-select select2" name="supplier" id="supplierSelect" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
@@ -54,7 +111,7 @@
                             </select>
                         </div>
                         <div class="mb-0">
-                            <label class="form-label fw-bold">Auto-Fill from PO</label>
+                            <label class="form-label">Auto-Fill from Approved PO</label>
                             <select class="form-select select2" id="poSelect" name="po_id" onchange="loadPoDetails()">
                                 <option value="">Select Purchase Order</option>
                                 <!-- Filled via JS -->
@@ -63,50 +120,51 @@
                     </div>
                 </div>
 
-                <!-- Item Entry Section -->
-                <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-plus-circle me-2"></i> Item Entry
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-5">
-                                <label class="form-label fw-bold">Item Name</label>
-                                <select class="form-select select2" id="itemSelect">
-                                    <option value="">Select Item</option>
-                                    {% for item in items %}
-                                    <option value="{{ item.inventoy_name }}" data-code="{{ item.inventoy_code }}" data-unit="{{ item.inventoy_items_messurment_unit }}">{{ item.inventoy_name }}</option>
-                                    {% endfor %}
-                                </select>
+                <!-- Item Entry -->
+                <div class="panel-card">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">Item Entry</span>
+                        <div class="mb-3">
+                            <label class="form-label">Item Name</label>
+                            <select class="form-select select2" id="itemSelect">
+                                <option value="">Select Item</option>
+                                {% for item in items %}
+                                <option value="{{ item.inventoy_name }}"
+                                        data-code="{{ item.inventoy_code }}"
+                                        data-unit="{{ item.inventoy_items_messurment_unit }}">
+                                    {{ item.inventoy_name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-3">
+                            <div class="col-4">
+                                <label class="form-label">Qty</label>
+                                <input type="number" class="form-control" id="itemQty" step="0.01" placeholder="0.00">
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label fw-bold">Qty</label>
-                                <input type="number" class="form-control" id="itemQty" step="0.01">
+                            <div class="col-4">
+                                <label class="form-label">Cost</label>
+                                <input type="number" class="form-control" id="itemCost" step="0.01" placeholder="0.00">
                             </div>
-                            <div class="col-md-2">
-                                <label class="form-label fw-bold">Cost</label>
-                                <input type="number" class="form-control" id="itemCost" step="0.01">
-                            </div>
-                            <div class="col-md-3">
-                                <label class="form-label fw-bold">Total</label>
-                                <input type="number" class="form-control" id="itemTotal" readonly>
+                            <div class="col-4">
+                                <label class="form-label">Total</label>
+                                <input type="number" class="form-control amount-cell" id="itemTotal" readonly placeholder="0.00">
                             </div>
                         </div>
-                        <button type="button" class="btn btn-primary w-100 fw-bold" style="background-color: var(--accent-color); border: none;" onclick="addItem()">
-                            <i class="fas fa-plus me-1"></i> Add New Row
+                        <button type="button" class="btn w-100 fw-bold" onclick="addItem()"
+                                style="background:linear-gradient(135deg,#018574,#005E52);border:none;border-radius:8px;color:#fff;">
+                            <i class="fas fa-plus me-2"></i>Add to List
                         </button>
                     </div>
                 </div>
 
-                <!-- Job & Location Section -->
-                <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-map-marker-alt me-2"></i> Job & Location
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Job No</label>
+                <!-- Job & Location -->
+                <div class="panel-card">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">Job &amp; Location</span>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="form-label">Job No</label>
                                 <select class="form-select" name="job_no">
                                     <option value="">Select Job</option>
                                     {% for job in jobs %}
@@ -114,8 +172,8 @@
                                     {% endfor %}
                                 </select>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Location</label>
+                            <div class="col-6">
+                                <label class="form-label">Location</label>
                                 <select class="form-select" name="location" required>
                                     <option value="">Select Location</option>
                                     {% for loc in locations %}
@@ -127,98 +185,86 @@
                     </div>
                 </div>
 
-                <!-- Invoice Details Section -->
-                <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-file-alt me-2"></i> Invoice Details
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row g-2 mb-2">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Invoice No</label>
-                                <input type="text" class="form-control" name="invoice_no" required>
+                <!-- Invoice Details -->
+                <div class="panel-card">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">Invoice Details</span>
+                        <div class="row g-3 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Invoice No</label>
+                                <input type="text" class="form-control" name="invoice_no" required placeholder="INV-0001">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Date</label>
+                            <div class="col-6">
+                                <label class="form-label">Date</label>
                                 <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
                             </div>
                         </div>
-                        <div class="row g-2">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">Due Date</label>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="form-label">Due Date</label>
                                 <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold">J/V Narration</label>
-                                <input type="text" class="form-control" name="narration" required>
+                            <div class="col-6">
+                                <label class="form-label">J/V Narration</label>
+                                <input type="text" class="form-control" name="narration" required placeholder="GRN note…">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Totals Section -->
-                <div class="card shadow-sm border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-calculator me-2"></i> Totals & VAT
-                    </div>
-                    <div class="card-body bg-white">
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0">Total Value</label>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="input-group">
+                <!-- Totals & VAT -->
+                <div class="panel-card">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">Totals &amp; VAT</span>
+                        <div class="totals-block mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="t-label">Total Value</span>
+                                <div class="input-group" style="width:160px;">
                                     <span class="input-group-text">{{ company_currency }}</span>
-                                    <input type="number" class="form-control text-end" id="totalValue" name="total_value" readonly>
+                                    <input type="number" class="form-control form-control-sm text-end amount-cell"
+                                           id="totalValue" name="total_value" readonly>
                                 </div>
                             </div>
-                        </div>
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-4">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="vatCheck" name="vat_liable" onchange="calculateTotals()">
-                                    <label class="form-check-label fw-bold" for="vatCheck">VAT Liable</label>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="form-check mb-0" style="min-width:110px;">
+                                    <input class="form-check-input" type="checkbox" id="vatCheck"
+                                           name="vat_liable" onchange="calculateTotals()">
+                                    <label class="form-check-label t-label" for="vatCheck">VAT Liable</label>
                                 </div>
-                            </div>
-                            <div class="col-md-3">
-                                <div class="input-group">
-                                    <input type="number" class="form-control text-end" id="vatRate" name="vat_rate" value="0" onchange="calculateTotals()">
+                                <div class="input-group" style="width:120px;">
+                                    <input type="number" class="form-control form-control-sm text-end amount-cell"
+                                           id="vatRate" name="vat_rate" value="0" onchange="calculateTotals()">
                                     <span class="input-group-text">%</span>
                                 </div>
                             </div>
-                        </div>
-                        <div class="row mb-2 align-items-center">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0">VAT Amount</label>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="input-group">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="t-label">VAT Amount</span>
+                                <div class="input-group" style="width:160px;">
                                     <span class="input-group-text">{{ company_currency }}</span>
-                                    <input type="number" class="form-control text-end" id="vatAmount" name="vat_amount" readonly>
+                                    <input type="number" class="form-control form-control-sm text-end amount-cell"
+                                           id="vatAmount" name="vat_amount" readonly>
                                 </div>
                             </div>
-                        </div>
-                        <div class="row align-items-center">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold mb-0">Total Amount</label>
-                            </div>
-                            <div class="col-md-8">
-                                <div class="input-group">
+                            <hr class="my-2" style="border-color:#c6e9e4;">
+                            <div class="d-flex justify-content-between align-items-center grand">
+                                <span class="t-label">Total Amount</span>
+                                <div class="input-group" style="width:160px;">
                                     <span class="input-group-text fw-bold">{{ company_currency }}</span>
-                                    <input type="number" class="form-control text-end fw-bold" id="grandTotal" name="grand_total" readonly style="font-size: 1.1rem;">
+                                    <input type="number" class="form-control form-control-sm text-end amount-cell fw-bold"
+                                           id="grandTotal" name="grand_total" readonly
+                                           style="font-size:1rem;color:#018574;">
                                 </div>
                             </div>
                         </div>
+
+                        <button type="submit" class="btn w-100 py-2"
+                                style="background:linear-gradient(135deg,#018574,#005E52);border:none;border-radius:8px;font-weight:600;color:#fff;">
+                            <i class="fas fa-save me-2"></i>PROCEED
+                        </button>
                     </div>
                 </div>
 
-                <!-- Action Buttons -->
-                <div class="d-grid gap-2 mt-4 d-md-flex justify-content-md-end">
-                    <button type="submit" class="btn btn-primary px-5 py-2 fw-bold shadow-sm" style="background-color: var(--accent-color); border: none;">
-                        <i class="fas fa-save me-2"></i> PROCEED
-                    </button>
-                </div>
-            </div>
+            </div><!-- end right col -->
         </div>
     </form>
 </div>
@@ -264,6 +310,7 @@
 
         // Reset inputs
         select.value = "";
+        if (typeof $ !== 'undefined') { $('#itemSelect').val('').trigger('change'); }
         qtyInput.value = "";
         costInput.value = "";
         totalInput.value = "";
@@ -277,21 +324,28 @@
 
     function renderTable() {
         const tbody = document.querySelector('#itemsTable tbody');
+        const empty = document.getElementById('emptyState');
         tbody.innerHTML = '';
-        items.forEach((item, index) => {
-            const row = `
-                <tr>
-                    <td>${item.name}</td>
-                    <td>${item.code}</td>
-                    <td>${item.unit}</td>
-                    <td>${item.qty}</td>
-                    <td>${item.cost.toFixed(2)}</td>
-                    <td>${item.total.toFixed(2)}</td>
-                    <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem(${index})"><i class="fas fa-trash"></i></button></td>
-                </tr>
-            `;
-            tbody.innerHTML += row;
-        });
+
+        if (items.length === 0) {
+            empty.style.display = '';
+        } else {
+            empty.style.display = 'none';
+            items.forEach((item, index) => {
+                const row = `
+                    <tr>
+                        <td style="font-size:.875rem;font-weight:500;">${item.name}</td>
+                        <td style="font-size:.875rem;color:#605E5C;">${item.code}</td>
+                        <td style="font-size:.875rem;color:#605E5C;">${item.unit}</td>
+                        <td class="text-end amount-cell" style="font-size:.875rem;">${item.qty}</td>
+                        <td class="text-end amount-cell" style="font-size:.875rem;">${item.cost.toFixed(2)}</td>
+                        <td class="text-end amount-cell fw-bold" style="font-size:.875rem;">${item.total.toFixed(2)}</td>
+                        <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem(${index})"><i class="fas fa-trash"></i></button></td>
+                    </tr>
+                `;
+                tbody.innerHTML += row;
+            });
+        }
         document.getElementById('itemsJson').value = JSON.stringify(items);
     }
 
@@ -343,8 +397,6 @@
                 });
 
                 // Add Items
-                // Instead of replacing, we push to the items array
-                // But better to clear first if user wants to override
                 if(confirm("This will clear current items. Continue?")) {
                     items = [];
                     data.items.forEach(item => {

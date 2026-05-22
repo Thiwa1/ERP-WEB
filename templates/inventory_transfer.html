@@ -3,106 +3,123 @@
 {% block title %}Inventory Transfer{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-exchange-alt me-2 text-primary"></i> Inventory Transfer</h2>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#008B8B,#006B6B);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-exchange-alt"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Stock Transfer</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory Management</div>
+        </div>
     </div>
 
     <form action="{{ url_for('submit_inventory_transfer') }}" method="POST" id="transferForm">
-        <!-- Header Section -->
-        <div class="card shadow mb-4">
-            <div class="card-header py-3">
-                <h6 class="m-0 font-weight-bold text-primary">Transfer Details</h6>
+
+        <!-- Transfer Details Card -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+            <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Transfer Details</div>
             </div>
-            <div class="card-body">
-                <div class="row">
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Date</label>
-                        <input type="date" class="form-control" name="transfer_date" value="{{ today_date }}" required>
+            <div class="px-4 py-4">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Date</label>
+                        <input type="date" class="form-control" name="transfer_date" value="{{ today_date }}" required
+                               style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">Job Number (Optional)</label>
-                        <select class="form-select select2" name="job_no">
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Job Number <span style="font-weight:400;color:#A0A0A0;">(Optional)</span></label>
+                        <select class="form-select select2" name="job_no" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             <option value="">-- Select Job --</option>
                             {% for job in jobs %}
                             <option value="{{ job.job_number }}">{{ job.job_number }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">From Location (Source)</label>
-                        <select class="form-select select2" name="from_location" id="fromLocation" required>
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">From Location <span style="color:#D13438;">*</span></label>
+                        <select class="form-select select2" name="from_location" id="fromLocation" required
+                                style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             <option value="">-- Select Source --</option>
                             {% for loc in locations %}
                             <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3 mb-3">
-                        <label class="form-label">To Location (Destination)</label>
-                        <select class="form-select select2" name="to_location" id="toLocation" required>
+                    <div class="col-md-3">
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">To Location <span style="color:#D13438;">*</span></label>
+                        <select class="form-select select2" name="to_location" id="toLocation" required
+                                style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                             <option value="">-- Select Destination --</option>
                             {% for loc in locations %}
                             <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
                             {% endfor %}
                         </select>
                     </div>
-                </div>
-                <div class="row">
-                    <div class="col-md-12 mb-3">
-                        <label class="form-label">Narration / Memo</label>
-                        <input type="text" class="form-control" name="narration" placeholder="Enter transfer details..." required>
+                    <div class="col-md-12">
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Narration / Memo <span style="color:#D13438;">*</span></label>
+                        <input type="text" class="form-control" name="narration" placeholder="Enter transfer details..." required
+                               style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Items Section -->
-        <div class="card shadow mb-4">
-            <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 font-weight-bold text-primary">Items to Transfer</h6>
-                <button type="button" class="btn btn-sm btn-success" onclick="addItemRow()">
-                    <i class="fas fa-plus"></i> Add Item
+        <!-- Items to Transfer Card -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+            <div class="px-4 py-3 d-flex justify-content-between align-items-center" style="border-bottom:1px solid #f1f3f5;">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Items to Transfer</div>
+                <button type="button" onclick="addItemRow()"
+                        style="background:#f0faf8;border:1px solid #b2dfdb;border-radius:8px;font-size:.8rem;font-weight:600;color:#008B8B;padding:.35rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.4rem;">
+                    <i class="fas fa-plus" style="font-size:.72rem;"></i> Add Item
                 </button>
             </div>
-            <div class="card-body p-0">
-                <div class="table-responsive">
-                    <table class="table  table-hover mb-0" id="itemsTable">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width: 40%;">Item</th>
-                                <th style="width: 15%;">Unit</th>
-                                <th style="width: 15%;">Available Qty (Source)</th>
-                                <th style="width: 20%;">Transfer Qty</th>
-                                <th style="width: 10%;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Rows will be added dynamically -->
-                        </tbody>
-                    </table>
-                </div>
-                <div class="p-3 text-center text-muted" id="emptyMessage">
-                    No items added. Click "Add Item" to start.
-                </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="itemsTable">
+                    <thead>
+                        <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:40%;">Item</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Unit</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Available Qty</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:20%;">Transfer Qty</th>
+                            <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <!-- Rows will be added dynamically -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="px-4 py-5 text-center" id="emptyMessage" style="color:#A0A0A0;font-size:.87rem;">
+                <i class="fas fa-inbox mb-2" style="font-size:1.4rem;display:block;opacity:.35;"></i>
+                No items added. Click "Add Item" to start.
             </div>
         </div>
 
-        <!-- Submit Button -->
-        <div class="d-grid gap-2 d-md-flex justify-content-md-end mb-4">
-            <a href="{{ url_for('index') }}" class="btn btn-secondary me-md-2">Cancel</a>
-            <button type="submit" class="btn btn-primary btn-lg px-5">
-                <i class="fas fa-check-circle me-2"></i> Process Transfer
+        <!-- Actions -->
+        <div class="d-flex justify-content-end gap-2 mb-4">
+            <a href="{{ url_for('index') }}"
+               style="border:1px solid #e2e8f0;border-radius:8px;font-size:.85rem;font-weight:600;color:#605E5C;padding:.5rem 1.4rem;text-decoration:none;display:inline-flex;align-items:center;">
+                Cancel
+            </a>
+            <button type="submit"
+                    style="background:var(--accent-color,#008B8B);border:none;border-radius:8px;font-weight:600;font-size:.88rem;padding:.55rem 2rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                <i class="fas fa-check-circle"></i> Process Transfer
             </button>
         </div>
+
     </form>
 </div>
 
 <!-- Template for new row -->
 <template id="rowTemplate">
-    <tr>
-        <td>
-            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)">
+    <tr style="border-bottom:1px solid #f1f3f5;">
+        <td class="px-4">
+            <select class="form-select item-select" name="item_name[]" required onchange="updateItemDetails(this)"
+                    style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                 <option value="">-- Select Item --</option>
                 {% for item in items %}
                 <option value="{{ item.inventoy_name }}"
@@ -116,19 +133,22 @@
             <input type="hidden" name="item_code[]" class="item-code">
             <input type="hidden" name="item_cost[]" class="item-cost">
         </td>
-        <td>
-            <input type="text" class="form-control-plaintext item-unit" readonly>
+        <td class="px-4">
+            <input type="text" class="form-control-plaintext item-unit" readonly
+                   style="font-size:.85rem;color:#605E5C;">
             <input type="hidden" name="item_unit[]" class="item-unit-input">
         </td>
-        <td>
-            <span class="badge bg-info text-dark item-stock">-</span>
+        <td class="px-4">
+            <span class="item-stock" style="font-family:monospace;font-size:.83rem;font-weight:600;color:#008B8B;background:#f0faf8;padding:3px 8px;border-radius:6px;border:1px solid #b2dfdb;">-</span>
         </td>
-        <td>
-            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00">
+        <td class="px-4">
+            <input type="number" class="form-control" name="qty[]" step="0.01" min="0.01" required placeholder="0.00"
+                   style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;">
         </td>
-        <td class="text-center">
-            <button type="button" class="btn btn-danger btn-sm" onclick="removeRow(this)">
-                <i class="fas fa-trash"></i>
+        <td class="px-4 text-center">
+            <button type="button" onclick="removeRow(this)"
+                    style="background:#fff0f0;border:1px solid #ffd0d0;border-radius:7px;color:#D13438;padding:.3rem .6rem;cursor:pointer;">
+                <i class="fas fa-trash" style="font-size:.78rem;"></i>
             </button>
         </td>
     </tr>

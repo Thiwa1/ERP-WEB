@@ -3,68 +3,92 @@
 {% block title %}Inventory Locations{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-warehouse me-2 text-primary"></i> Inventory Locations</h2>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#005FA3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-warehouse"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Inventory Locations</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory Management</div>
+        </div>
     </div>
 
     <!-- Create Location Card -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Manage Inventory House</h6>
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Add New Location</div>
         </div>
-        <div class="card-body">
+        <div class="px-4 py-4">
             <form method="POST" action="/inventory_locations">
-                <div class="row">
-                    <div class="col-md-6 mb-3">
-                        <label for="house_name" class="form-label fw-bold text-secondary">House Name</label>
-                        <input type="text" class="form-control" id="house_name" name="house_name" placeholder="Enter location name" required>
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <label for="house_name" class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">House / Location Name</label>
+                        <input type="text" class="form-control" id="house_name" name="house_name"
+                               placeholder="Enter location name" required
+                               style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                     </div>
-                    <div class="col-md-6 mb-3">
-                        <label for="description" class="form-label fw-bold text-secondary">Short Description</label>
-                        <input type="text" class="form-control" id="description" name="description" placeholder="Enter description" required>
+                    <div class="col-md-5">
+                        <label for="description" class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Short Description</label>
+                        <input type="text" class="form-control" id="description" name="description"
+                               placeholder="Enter description" required
+                               style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                     </div>
-                </div>
-                <div class="d-flex justify-content-end">
-                    <button type="submit" class="btn btn-primary px-4 fw-bold">
-                        <i class="fas fa-plus-circle me-2"></i> Create New House
-                    </button>
+                    <div class="col-md-2 d-flex align-items-end">
+                        <button type="submit"
+                                style="background:var(--accent-color,#0078D4);border:none;border-radius:8px;font-weight:600;font-size:.85rem;padding:.52rem 1.2rem;color:#fff;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.5rem;">
+                            <i class="fas fa-plus-circle" style="font-size:.8rem;"></i> Create House
+                        </button>
+                    </div>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- Existing Locations Card -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Existing Locations</h6>
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Existing Locations</div>
         </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th style="width: 10%">ID</th>
-                            <th style="width: 40%">Name</th>
-                            <th style="width: 50%">Description</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for loc in locations %}
-                        <tr>
-                            <td>{{ loc.id }}</td>
-                            <td class="fw-bold text-dark">{{ loc.inventory_locations_name }}</td>
-                            <td>{{ loc.inventory_locations_descriptions }}</td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="3" class="text-center text-muted py-3">No locations found.</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">ID</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:35%;">Name</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:55%;">Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for loc in locations %}
+                    <tr style="border-bottom:1px solid #f1f3f5;">
+                        <td class="px-4">
+                            <span style="font-family:monospace;font-size:.82rem;color:#A0A0A0;background:#f8f9fa;padding:2px 8px;border-radius:4px;">{{ loc.id }}</span>
+                        </td>
+                        <td class="px-4">
+                            <div style="display:inline-flex;align-items:center;gap:8px;">
+                                <div style="width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#e3f0fc,#c9e2f8);display:flex;align-items:center;justify-content:center;">
+                                    <i class="fas fa-warehouse" style="font-size:.65rem;color:#0078D4;"></i>
+                                </div>
+                                <span style="font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ loc.inventory_locations_name }}</span>
+                            </div>
+                        </td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ loc.inventory_locations_descriptions }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3" class="text-center py-5" style="color:#A0A0A0;font-size:.87rem;">
+                            <i class="fas fa-warehouse mb-2" style="font-size:1.4rem;display:block;opacity:.3;"></i>
+                            No locations found.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
+
 </div>
 {% endblock %}

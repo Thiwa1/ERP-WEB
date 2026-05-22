@@ -2,83 +2,168 @@
 {% block title %}Cash Flow Statement{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
+<style>
+    .report-page-icon {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; color: #fff; flex-shrink: 0;
+    }
+    .report-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff; overflow: hidden;
+    }
+    .filter-card-header {
+        background: #f8f9fa; border-bottom: 1px solid #e2e8f0;
+        padding: .6rem 1.25rem; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+    }
+    .cf-table { width: 100%; border-collapse: collapse; }
+    .cf-table td { padding: .45rem 1rem; font-size: .875rem; vertical-align: middle; }
+    .cf-section-header td {
+        background: linear-gradient(90deg, #018574 0%, #005E52 100%);
+        color: #fff; font-weight: 700; font-size: .72rem;
+        letter-spacing: .8px; text-transform: uppercase; padding: .55rem 1rem;
+    }
+    .cf-sub-header td {
+        background: #f0fdfa; font-weight: 600; color: #018574;
+        font-size: .78rem; border-bottom: 1px solid #b2dfdb;
+        padding: .4rem 1rem .4rem 2rem;
+    }
+    .cf-data-row td:first-child { padding-left: 3rem; color: #323130; }
+    .cf-data-row td:last-child {
+        text-align: right;
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        padding-right: 1.5rem;
+    }
+    .cf-bold-row td { font-weight: 700; }
+    .cf-bold-row td:first-child { padding-left: 3rem; }
+    .cf-bold-row td:last-child {
+        text-align: right;
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        padding-right: 1.5rem;
+    }
+    .cf-total-row { border-top: 2px solid #018574; }
+    .cf-total-row td { font-weight: 700; padding: .6rem 1rem; }
+    .cf-total-row td:first-child { color: #323130; }
+    .cf-total-row td:last-child {
+        text-align: right;
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        padding-right: 1.5rem; color: #018574;
+    }
+    .cf-spacer td { height: 16px; background: #f8f9fa; }
+    .net-change-chip {
+        border-radius: 10px; padding: .75rem 1.5rem;
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: 1.2rem; font-weight: 800;
+        border: 2px solid #e2e8f0; background: #fff;
+        min-width: 180px; text-align: right;
+    }
+    .kpi-chip {
+        border-left: 4px solid #018574; border-radius: 8px;
+        background: #fff; padding: .6rem 1rem;
+        box-shadow: 0 1px 4px rgba(0,0,0,.06);
+    }
+    .kpi-chip .kpi-label { font-size: .65rem; font-weight: 700;
+        letter-spacing: .6px; text-transform: uppercase; color: #605E5C; }
+    .kpi-chip .kpi-value { font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: 1rem; font-weight: 700; color: #018574; }
+    .win11-btn { border-radius: 6px; font-size: .8rem; font-weight: 600;
+        padding: .3rem .75rem; display: inline-flex; align-items: center; gap: .35rem; }
+    .win11-btn-secondary { border: 1px solid #8a8886; color: #323130; background: #fff; }
+    .win11-btn-secondary:hover { background: #f3f2f1; border-color: #605E5C; }
+    @media print {
+        .no-print { display: none !important; }
+        .report-card { box-shadow: none !important; }
+    }
+</style>
+
+<div class="container-fluid py-3">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="report-page-icon" style="background: linear-gradient(135deg,#018574,#005E52);">
+            <i class="fas fa-money-bill-wave"></i>
+        </div>
         <div>
-            <h2 class="text-primary mb-0"><i class="fas fa-money-bill-wave me-2"></i>Cash Flow Statement</h2>
-            <p class="text-muted mb-0">Generate and analyze cash flow activities.</p>
+            <h5 class="mb-0 fw-bold">Cash Flow Statement</h5>
+            <small class="text-muted">Financial Reports</small>
+        </div>
+        <div class="ms-auto d-flex gap-2 no-print">
+            <button class="win11-btn win11-btn-secondary" onclick="exportCSV()">
+                <i class="fas fa-file-csv"></i> Export CSV
+            </button>
+            <button class="win11-btn win11-btn-secondary" onclick="window.print()">
+                <i class="fas fa-print"></i> Print
+            </button>
         </div>
     </div>
 
-    <!-- Filter Panel -->
-    <div class="card shadow-sm border-0 mb-4">
-        <div class="card-header bg-primary text-white py-3">
-            <h5 class="mb-0 fw-bold">Report Configuration</h5>
-        </div>
-        <div class="card-body bg-light">
+    <!-- Filter Card -->
+    <div class="report-card mb-4 no-print">
+        <div class="filter-card-header"><i class="fas fa-filter me-2"></i>Filters &amp; Date Range</div>
+        <div class="card-body">
             <form id="cfForm" class="row g-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold text-primary">From Date</label>
-                    <input type="date" id="fromDate" name="from_date" class="form-control" value="{{ from_date }}">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">From Date</label>
+                    <input type="date" id="fromDate" name="from_date" class="form-control form-control-sm" value="{{ from_date }}">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-bold text-primary">To Date</label>
-                    <input type="date" id="toDate" name="to_date" class="form-control" value="{{ to_date }}">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">To Date</label>
+                    <input type="date" id="toDate" name="to_date" class="form-control form-control-sm" value="{{ to_date }}">
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-bold text-primary">Filter</label>
-                    <div class="d-flex bg-white p-2 border rounded">
-                        <div class="form-check me-4">
+                    <label class="form-label fw-semibold" style="font-size:.82rem;">Filter</label>
+                    <div class="d-flex gap-4 bg-white border rounded p-2" style="border-radius:6px!important;">
+                        <div class="form-check mb-0">
                             <input class="form-check-input" type="radio" name="recFilter" id="rbRecAll" value="0" checked>
-                            <label class="form-check-label" for="rbRecAll">All Transactions</label>
+                            <label class="form-check-label small" for="rbRecAll">All Transactions</label>
                         </div>
-                        <div class="form-check">
+                        <div class="form-check mb-0">
                             <input class="form-check-input" type="radio" name="recFilter" id="rbRecDone" value="1">
-                            <label class="form-check-label" for="rbRecDone">Reconciled Only</label>
+                            <label class="form-check-label small" for="rbRecDone">Reconciled Only</label>
                         </div>
                     </div>
                 </div>
-                <div class="col-md-2 d-flex gap-2">
-                    <button type="submit" class="btn btn-primary flex-grow-1"><i class="fas fa-bolt me-2"></i>Generate</button>
-                    <button type="button" class="btn btn-success" onclick="exportCSV()"><i class="fas fa-file-csv"></i></button>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm btn-primary w-100 fw-semibold">
+                        <i class="fas fa-bolt me-1"></i> Generate
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- Report Area -->
-    <div class="card shadow-sm border-0 d-none" id="reportCard">
-        <div class="card-body p-0">
-            <div class="text-center py-4 bg-white border-bottom">
-                <h4 class="fw-bold text-primary mb-1">CASH FLOW STATEMENT</h4>
-                <p class="text-muted fst-italic mb-0" id="reportPeriodText">For the period: </p>
-            </div>
+    <div class="report-card d-none" id="reportCard">
+        <!-- Report Banner -->
+        <div class="text-center py-3 border-bottom" style="background:linear-gradient(135deg,#018574,#005E52);">
+            <div class="text-white fw-bold" style="letter-spacing:.5px;">CASH FLOW STATEMENT</div>
+            <div class="text-white opacity-75" style="font-size:.82rem;" id="reportPeriodText">For the period: </div>
+        </div>
 
-            <div class="p-4 bg-white">
-                <div id="reportContent" class="table-responsive">
-                    <table class="table table-hover table-borderless align-middle" id="cfTable">
-                        <tbody id="cfTbody">
-                            <!-- Injected by JS -->
-                        </tbody>
-                    </table>
-                </div>
+        <!-- Table -->
+        <div class="p-0" id="reportContent">
+            <div class="table-responsive">
+                <table class="cf-table" id="cfTable">
+                    <tbody id="cfTbody">
+                        <!-- Injected by JS -->
+                    </tbody>
+                </table>
             </div>
+        </div>
 
-            <!-- Footer Summary -->
-            <div class="card-footer bg-light border-top py-4">
-                <div class="row align-items-center">
-                    <div class="col-md-8 text-end">
-                        <h5 class="fw-bold text-primary mb-0">NET INCREASE/(DECREASE) IN CASH:</h5>
-                    </div>
-                    <div class="col-md-4">
-                        <div class="bg-white border rounded p-3 text-end shadow-sm">
-                            <h4 class="fw-bold mb-0" id="netChangeTotal">0.00</h4>
-                        </div>
-                    </div>
+        <!-- Net Change Footer -->
+        <div class="border-top p-4" style="background:#f8fffe;">
+            <div class="d-flex align-items-center justify-content-between">
+                <div>
+                    <div style="font-size:.7rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Net Increase / (Decrease) in Cash</div>
+                    <div class="text-muted" style="font-size:.78rem;">Cash &amp; Cash Equivalents Movement</div>
                 </div>
+                <div class="net-change-chip" id="netChangeTotal">0.00</div>
             </div>
         </div>
     </div>
+
 </div>
 
 <script>
@@ -130,25 +215,24 @@
     }
 
     function createMainHeader(text) {
-        return `<tr style="background: rgba(43, 91, 128, 0.9); color: white;"><td colspan="2" class="fw-bold py-2 px-3">${text}</td></tr>`;
+        return `<tr class="cf-section-header"><td colspan="2">${text}</td></tr>`;
     }
 
     function createSubHeader(text) {
-        return `<tr class="bg-light"><td colspan="2" class="fw-semibold py-2 px-4 border-bottom">${text}</td></tr>`;
+        return `<tr class="cf-sub-header"><td colspan="2">${text}</td></tr>`;
     }
 
     function createRow(desc, amount, isBold = false, isIndent = true) {
-        const fw = isBold ? 'fw-bold' : '';
-        const pl = isIndent ? 'ps-5' : 'ps-3';
-        return `<tr><td class="${fw} ${pl}">${desc}</td><td class="text-end ${fw} pe-4">${formatAmount(amount)}</td></tr>`;
+        const cls = isBold ? 'cf-bold-row' : 'cf-data-row';
+        return `<tr class="${cls}"><td>${desc}</td><td>${formatAmount(amount)}</td></tr>`;
     }
 
     function createTotalRow(desc, amount) {
-        return `<tr style="border-top: 2px solid #2b5b80;"><td class="fw-bold ps-4 py-3">${desc}</td><td class="text-end fw-bold pe-4 py-3">${formatAmount(amount)}</td></tr>`;
+        return `<tr class="cf-total-row"><td>${desc}</td><td>${formatAmount(amount)}</td></tr>`;
     }
 
     function createSpacer() {
-        return `<tr><td colspan="2" style="height: 20px;"></td></tr>`;
+        return `<tr class="cf-spacer"><td colspan="2"></td></tr>`;
     }
 
     function renderReport(data, start, end) {
@@ -223,7 +307,8 @@
         // Set Net Change at bottom
         const netChangeEl = document.getElementById('netChangeTotal');
         netChangeEl.textContent = formatAmount(netChange);
-        netChangeEl.className = netChange >= 0 ? "fw-bold mb-0 text-success" : "fw-bold mb-0 text-danger";
+        netChangeEl.style.color = netChange >= 0 ? '#107C10' : '#C42B1C';
+        netChangeEl.style.borderColor = netChange >= 0 ? '#a5d6a7' : '#f5c6c6';
 
         // Show report
         document.getElementById('reportCard').classList.remove('d-none');

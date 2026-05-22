@@ -3,143 +3,178 @@
 {% block title %}Custom Profit & Loss Report{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
-    <div class="row mb-3">
-        <div class="col-md-8">
-            <h2 class="h4 mb-0"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i>Custom P&L Report Builder</h2>
-            <p class="text-muted small">Design and generate dynamic comparative financial statements.</p>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#107C10,#0a5c0a);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(16,124,16,.35);">
+            <i class="fas fa-chart-line text-white" style="font-size:.95rem;"></i>
         </div>
-        <div class="col-md-4 text-end">
-            <div class="input-group">
-                <span class="input-group-text bg-white"><i class="fas fa-folder-open text-muted"></i></span>
-                <select id="formatSelector" class="form-select" onchange="loadFormat()">
+        <div>
+            <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Custom Profit &amp; Loss</h5>
+            <span style="font-size:.75rem;color:#605E5C;">Financial Reports</span>
+        </div>
+        <div class="ms-auto">
+            <div class="input-group" style="max-width:380px;">
+                <span class="input-group-text" style="background:#fff;border:1px solid #e2e8f0;border-right:none;border-radius:8px 0 0 8px;">
+                    <i class="fas fa-folder-open" style="color:#605E5C;font-size:.82rem;"></i>
+                </span>
+                <select id="formatSelector" class="form-select" onchange="loadFormat()"
+                        style="border:1px solid #e2e8f0;border-left:none;border-right:none;font-size:.85rem;padding:.5rem .75rem;">
                     <option value="">-- Select Saved Format --</option>
                     {% for fmt in formats %}
                     <option value="{{ fmt.id }}">{{ fmt.Description }}</option>
                     {% endfor %}
                 </select>
-                <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#newFormatModal">
+                <button data-bs-toggle="modal" data-bs-target="#newFormatModal"
+                        style="background:#107C10;border:none;border-radius:0 8px 8px 0;color:#fff;font-weight:600;font-size:.82rem;padding:.5rem 1rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
                     <i class="fas fa-plus"></i> New
                 </button>
             </div>
         </div>
     </div>
 
-    <!-- Main View Switcher -->
-    <ul class="nav nav-tabs mb-3" id="plTabs" role="tablist">
+    <!-- Tab Navigation -->
+    <ul class="nav mb-4" id="plTabs" role="tablist" style="border-bottom:2px solid #e2e8f0;gap:.25rem;">
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="editor-tab" data-bs-toggle="tab" data-bs-target="#editor" type="button" role="tab">
-                <i class="fas fa-edit me-1"></i> Format Editor
+            <button class="nav-link active fw-bold px-4 py-2" id="editor-tab" data-bs-toggle="tab" data-bs-target="#editor"
+                    type="button" role="tab"
+                    style="border:none;border-radius:8px 8px 0 0;font-size:.85rem;color:#605E5C;background:transparent;">
+                <i class="fas fa-edit me-2"></i>Format Editor
             </button>
         </li>
         <li class="nav-item" role="presentation">
-            <button class="nav-link" id="viewer-tab" data-bs-toggle="tab" data-bs-target="#viewer" type="button" role="tab">
-                <i class="fas fa-table me-1"></i> Report Viewer
+            <button class="nav-link fw-bold px-4 py-2" id="viewer-tab" data-bs-toggle="tab" data-bs-target="#viewer"
+                    type="button" role="tab"
+                    style="border:none;border-radius:8px 8px 0 0;font-size:.85rem;color:#605E5C;background:transparent;">
+                <i class="fas fa-table me-2"></i>Report Viewer
             </button>
         </li>
     </ul>
 
+    <style>
+        #plTabs .nav-link.active { color:#107C10 !important; border-bottom:2px solid #107C10 !important; margin-bottom:-2px; background:transparent !important; }
+        #plTabs .nav-link:hover:not(.active) { color:#107C10 !important; background:#F0FBF0 !important; }
+    </style>
+
     <div class="tab-content" id="plTabsContent">
+
         <!-- EDITOR TAB -->
         <div class="tab-pane fade show active" id="editor" role="tabpanel">
-            <div class="card shadow-sm border-0">
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover table-bordered mb-0 align-middle" id="editorTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th width="80">Line ID</th>
-                                    <th>Description</th>
-                                    <th width="200">GL Account</th>
-                                    <th>Calculation Formula</th>
-                                    <th>Ratio Formula</th>
-                                    <th width="80">Format</th>
-                                    <th width="80">Line</th>
-                                    <th width="80">Size</th>
-                                    <th width="100" class="text-center">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="editorTbody">
-                                <!-- Rows injected via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0 align-middle" id="editorTable">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="width:80px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Line ID</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Description</th>
+                                <th style="width:200px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">GL Account</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Calculation Formula</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Ratio Formula</th>
+                                <th style="width:80px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Format</th>
+                                <th style="width:80px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Line</th>
+                                <th style="width:80px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Size</th>
+                                <th style="width:100px;font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="editorTbody">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
                 </div>
-                <div class="card-footer bg-white text-end py-3">
-                    <button type="button" class="btn btn-success me-2" onclick="addRow()"><i class="fas fa-plus"></i> Add Row</button>
-                    <button type="button" class="btn btn-danger me-2" onclick="clearFormat()"><i class="fas fa-trash"></i> Clear All</button>
-                    <button type="button" class="btn btn-primary" onclick="saveFormat()"><i class="fas fa-save"></i> Save Format</button>
+                <div class="px-4 py-3 d-flex align-items-center justify-content-end gap-2" style="border-top:1px solid #f0f0f0;background:#fafafa;">
+                    <button type="button" onclick="addRow()"
+                            style="background:#E8F5E9;border:1px solid #107C10;border-radius:8px;color:#107C10;font-weight:600;font-size:.82rem;padding:.45rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                        <i class="fas fa-plus"></i> Add Row
+                    </button>
+                    <button type="button" onclick="clearFormat()"
+                            style="background:#fff5f5;border:1px solid #fecaca;border-radius:8px;color:#DC3545;font-weight:600;font-size:.82rem;padding:.45rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                        <i class="fas fa-trash"></i> Clear All
+                    </button>
+                    <button type="button" onclick="saveFormat()"
+                            style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.82rem;padding:.45rem .9rem;cursor:pointer;display:inline-flex;align-items:center;gap:.35rem;">
+                        <i class="fas fa-save"></i> Save Format
+                    </button>
                 </div>
             </div>
 
-            <div class="alert alert-info mt-3 small border-0 shadow-sm">
-                <strong><i class="fas fa-info-circle me-1"></i> Instructions:</strong>
-                <ol class="mb-0 mt-1">
-                    <li>Use letters A-Z for Line IDs (e.g., A, B, AB).</li>
-                    <li>Map directly to a GL Account OR use a Calculation Formula (e.g., <code>A+B-C</code>).</li>
-                    <li>If calculating a percentage base, use Ratio Formula.</li>
-                    <li>Format applies Bold ('B'), Line draws borders ('1'), Size adjusts fonts.</li>
-                </ol>
+            <!-- Instructions -->
+            <div class="d-flex align-items-start gap-2 p-3 rounded-3" style="background:#F0FBF0;border:1px solid #B7DFB7;">
+                <i class="fas fa-info-circle mt-1" style="color:#107C10;flex-shrink:0;"></i>
+                <small style="color:#374151;line-height:1.6;">
+                    <strong>Instructions:</strong>
+                    <ol class="mb-0 mt-1 ps-3">
+                        <li>Use letters A-Z for Line IDs (e.g., A, B, AB).</li>
+                        <li>Map directly to a GL Account OR use a Calculation Formula (e.g., <code>A+B-C</code>).</li>
+                        <li>If calculating a percentage base, use Ratio Formula.</li>
+                        <li>Format applies Bold (<code>B</code>), Line draws borders (<code>1</code>), Size adjusts fonts.</li>
+                    </ol>
+                </small>
             </div>
         </div>
 
         <!-- VIEWER TAB -->
         <div class="tab-pane fade" id="viewer" role="tabpanel">
-            <div class="card shadow-sm border-0 mb-3">
-                <div class="card-body">
+
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+                <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
+                    <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Date Range Selection</span>
+                </div>
+                <div class="p-4">
                     <form id="generateReportForm" class="row g-3 align-items-end">
                         <div class="col-md-5">
-                            <label class="form-label fw-bold text-muted small mb-1">Previous Period</label>
+                            <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Previous Period</label>
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text">From</span>
-                                <input type="date" id="prevFrom" class="form-control" required>
-                                <span class="input-group-text">To</span>
-                                <input type="date" id="prevTo" class="form-control" required>
+                                <span class="input-group-text" style="font-size:.78rem;background:#f8f9fa;border-color:#e2e8f0;">From</span>
+                                <input type="date" id="prevFrom" class="form-control" required style="border-color:#e2e8f0;font-size:.85rem;">
+                                <span class="input-group-text" style="font-size:.78rem;background:#f8f9fa;border-color:#e2e8f0;">To</span>
+                                <input type="date" id="prevTo" class="form-control" required style="border-color:#e2e8f0;font-size:.85rem;">
                             </div>
                         </div>
                         <div class="col-md-5">
-                            <label class="form-label fw-bold text-muted small mb-1">Current Period</label>
+                            <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Current Period</label>
                             <div class="input-group input-group-sm">
-                                <span class="input-group-text">From</span>
-                                <input type="date" id="currFrom" class="form-control" required>
-                                <span class="input-group-text">To</span>
-                                <input type="date" id="currTo" class="form-control" required>
+                                <span class="input-group-text" style="font-size:.78rem;background:#f8f9fa;border-color:#e2e8f0;">From</span>
+                                <input type="date" id="currFrom" class="form-control" required style="border-color:#e2e8f0;font-size:.85rem;">
+                                <span class="input-group-text" style="font-size:.78rem;background:#f8f9fa;border-color:#e2e8f0;">To</span>
+                                <input type="date" id="currTo" class="form-control" required style="border-color:#e2e8f0;font-size:.85rem;">
                             </div>
                         </div>
-                        <div class="col-md-2 text-end">
-                            <button type="button" class="btn btn-primary btn-sm w-100" onclick="generateReport()">
-                                <i class="fas fa-sync-alt me-1"></i> Generate
+                        <div class="col-md-2">
+                            <button type="button" onclick="generateReport()"
+                                    style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.55rem 1rem;cursor:pointer;width:100%;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
+                                <i class="fas fa-sync-alt"></i> Generate
                             </button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <div class="card shadow-sm border-0 d-none" id="reportResultCard">
-                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0">STATEMENT OF COMPREHENSIVE INCOME</h6>
-                    <div class="small">
+            <!-- Report Output -->
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;" id="reportResultCard" class="d-none">
+                <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="background:linear-gradient(135deg,#107C10,#0a5c0a);">
+                    <span style="font-size:.88rem;font-weight:700;color:#fff;">STATEMENT OF COMPREHENSIVE INCOME</span>
+                    <div style="font-size:.78rem;color:rgba(255,255,255,.85);">
                         <span class="me-3">Prev: <span id="lblPrev"></span></span>
                         <span>Curr: <span id="lblCurr"></span></span>
                     </div>
                 </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table table-hover mb-0" id="reportTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Description</th>
-                                    <th class="text-end">Previous Month</th>
-                                    <th class="text-end">Current Month</th>
-                                    <th class="text-end">Difference (%)</th>
-                                    <th class="text-end">Ratio (%)</th>
-                                </tr>
-                            </thead>
-                            <tbody id="reportTbody">
-                                <!-- Results injected via JS -->
-                            </tbody>
-                        </table>
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0" id="reportTable">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Description</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Previous Month</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Current Month</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Difference (%)</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Ratio (%)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTbody">
+                            <!-- Results injected via JS -->
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -149,20 +184,24 @@
 <!-- New Format Modal -->
 <div class="modal fade" id="newFormatModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Create New Format</h5>
+        <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+            <div class="modal-header" style="border-bottom:1px solid #f0f0f0;padding:1.25rem 1.5rem;">
+                <h5 class="modal-title fw-bold" style="font-size:.95rem;">Create New Format</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="padding:1.5rem;">
                 <div class="mb-3">
-                    <label class="form-label">Format Name/Description</label>
-                    <input type="text" id="newFormatName" class="form-control">
+                    <label class="d-block mb-1" style="font-size:.78rem;font-weight:700;color:#374151;">Format Name / Description</label>
+                    <input type="text" id="newFormatName" class="form-control"
+                           style="border-radius:8px;border:1px solid #e2e8f0;font-size:.88rem;padding:.55rem .85rem;">
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="createFormat()">Create</button>
+            <div class="modal-footer" style="border-top:1px solid #f0f0f0;padding:1rem 1.5rem;">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" style="border-radius:8px;font-weight:600;font-size:.85rem;">Cancel</button>
+                <button type="button" onclick="createFormat()"
+                        style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.5rem 1.2rem;cursor:pointer;">
+                    Create
+                </button>
             </div>
         </div>
     </div>
@@ -183,16 +222,19 @@
         });
 
         tr.innerHTML = `
-            <td><input type="text" class="form-control form-control-sm" name="lineNo" value="${row.PL_LIne_Number || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="description" value="${row.PL_Text_Description || ''}"></td>
-            <td><select class="form-select form-select-sm" name="account">${accountOptions}</select></td>
-            <td><input type="text" class="form-control form-control-sm" name="calc" value="${row.PL_Calqulation_instraction || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm" name="ratio" value="${row.PL_Rasior_instraction || ''}"></td>
-            <td><input type="text" class="form-control form-control-sm text-center" name="format" value="${row.PL_Text_Format || ''}" placeholder="B"></td>
-            <td><input type="text" class="form-control form-control-sm text-center" name="line" value="${row.PL_Text_line || ''}" placeholder="1"></td>
-            <td><input type="number" class="form-control form-control-sm text-center" name="size" value="${row.PL_Text_Size || ''}" placeholder="14"></td>
-            <td class="text-center">
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('tr').remove()"><i class="fas fa-times"></i></button>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="lineNo" value="${row.PL_LIne_Number || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="description" value="${row.PL_Text_Description || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><select class="form-select form-select-sm" name="account" style="border-radius:6px;font-size:.82rem;">${accountOptions}</select></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="calc" value="${row.PL_Calqulation_instraction || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm" name="ratio" value="${row.PL_Rasior_instraction || ''}" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm text-center" name="format" value="${row.PL_Text_Format || ''}" placeholder="B" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="text" class="form-control form-control-sm text-center" name="line" value="${row.PL_Text_line || ''}" placeholder="1" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;"><input type="number" class="form-control form-control-sm text-center" name="size" value="${row.PL_Text_Size || ''}" placeholder="14" style="border-radius:6px;font-size:.82rem;"></td>
+            <td style="padding:.5rem .75rem;" class="text-center">
+                <button type="button" onclick="this.closest('tr').remove()"
+                        style="width:28px;height:28px;border-radius:6px;border:1px solid #fecaca;background:#fff5f5;color:#DC3545;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <i class="fas fa-times" style="font-size:.72rem;"></i>
+                </button>
             </td>
         `;
         document.getElementById('editorTbody').appendChild(tr);
@@ -321,10 +363,10 @@
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="${style}">${r.description}</td>
-                    <td class="text-end" style="${style}">${r.prev_val}</td>
-                    <td class="text-end" style="${style}">${r.curr_val}</td>
-                    <td class="text-end" style="${style}">${diffStr}</td>
-                    <td class="text-end" style="${style}">${ratioStr}</td>
+                    <td class="text-end" style="${style};font-family:monospace;">${r.prev_val}</td>
+                    <td class="text-end" style="${style};font-family:monospace;">${r.curr_val}</td>
+                    <td class="text-end" style="${style};font-family:monospace;">${diffStr}</td>
+                    <td class="text-end" style="${style};font-family:monospace;">${ratioStr}</td>
                 `;
                 tbody.appendChild(tr);
             });

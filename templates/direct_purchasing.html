@@ -3,47 +3,135 @@
 {% block title %}Direct Purchasing{% endblock %}
 
 {% block content %}
+<style>
+    .page-icon-tile {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        flex-shrink: 0;
+    }
+    .section-label {
+        font-size: .7rem; font-weight: 700; letter-spacing: .8px;
+        text-transform: uppercase; color: #605E5C;
+        margin-bottom: .6rem; display: block;
+    }
+    .form-label {
+        font-size: .8rem !important; font-weight: 600 !important; color: #323130 !important;
+    }
+    .panel-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff;
+    }
+    .totals-row td {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+    }
+    .amount-cell {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+    }
+</style>
+
 <div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-hand-holding-usd me-2 text-success"></i> Direct Purchasing</h2>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-icon-tile" style="background: linear-gradient(135deg,#CA5010,#A33D0E);">
+            <i class="fas fa-hand-holding-usd"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Direct Purchase</h5>
+            <small style="color:#605E5C; font-size:.78rem;">Purchasing</small>
+        </div>
     </div>
 
-    <div class="row">
-        <!-- Form Panel (Right Side on large screens, Top on mobile) -->
-        <div class="col-lg-5 order-lg-2 mb-4">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Add Item to Payment</h6>
+    <div class="row g-4">
+
+        <!-- LEFT: Item List Table -->
+        <div class="col-lg-7 order-lg-1">
+            <div class="panel-card h-100">
+                <div class="card-body p-0">
+                    <div class="px-4 pt-4 pb-2">
+                        <span class="section-label">Payment Items Summary</span>
+                    </div>
+                    <div class="table-responsive" style="border-radius:0; border:none; box-shadow:none; margin-bottom:0;">
+                        <table class="table table-hover mb-0">
+                            <thead style="background:#f8f9fa;">
+                                <tr>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">#</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Job No</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Qty</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Price</th>
+                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% if session_payment_items %}
+                                    {% for item in session_payment_items %}
+                                    <tr>
+                                        <td style="color:#605E5C;font-size:.85rem;">{{ loop.index }}</td>
+                                        <td style="font-size:.875rem;color:#201f1e;">{{ item.account }}</td>
+                                        <td style="font-size:.875rem;color:#201f1e;">{{ item.item_name or '-' }}</td>
+                                        <td style="font-size:.875rem;color:#605E5C;">{{ item.job_no or '-' }}</td>
+                                        <td class="text-end amount-cell" style="font-size:.875rem;">{{ item.qty }}</td>
+                                        <td class="text-end amount-cell" style="font-size:.875rem;">{{ item.price }}</td>
+                                        <td class="text-end amount-cell fw-bold" style="font-size:.875rem;color:#201f1e;">{{ item.total }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                {% else %}
+                                    <tr>
+                                        <td colspan="7" class="text-center py-5" style="color:#a0aec0;">
+                                            <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.4;"></i>
+                                            No items added to this payment voucher yet.
+                                        </td>
+                                    </tr>
+                                {% endif %}
+                            </tbody>
+                            <tfoot style="background:#f8f9fa;">
+                                <tr class="totals-row">
+                                    <td colspan="6" class="text-end fw-bold" style="font-size:.85rem;color:#323130;">Total Amount</td>
+                                    <td class="text-end fw-bold" style="font-size:1rem;color:#CA5010;">{{ total_value }}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
-                <div class="card-body">
+            </div>
+        </div>
+
+        <!-- RIGHT: Controls -->
+        <div class="col-lg-5 order-lg-2">
+
+            <!-- Add Item Form -->
+            <div class="panel-card mb-4">
+                <div class="card-body px-4 py-4">
+                    <span class="section-label">Add Line Item</span>
                     <form method="POST" action="/direct_purchasing/add_item">
 
-                        <!-- Account Details Section -->
                         <div class="mb-3">
-                            <label class="form-label fw-bold text-secondary">Cost Account</label>
+                            <label class="form-label">Cost Account</label>
                             <select name="cost_account" class="form-select select2" required>
-                                <option value="">Select Expense/Asset Account</option>
+                                <option value="">Select Expense / Asset Account</option>
                                 {% for acc in cost_accounts %}
                                 <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
 
-                        <!-- Item Details Section -->
                         <div class="mb-3">
-                            <label class="form-label fw-bold text-secondary">Inventory Item (Optional)</label>
+                            <label class="form-label">Inventory Item <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
                             <select name="inventory_item" class="form-select select2">
                                 <option value="">-- No Item --</option>
                                 {% for item in inventory_items %}
                                 <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
                                 {% endfor %}
                             </select>
-                            <small class="text-muted">Select only if this purchase adds stock.</small>
+                            <div class="mt-1" style="font-size:.75rem;color:#a0aec0;">Select only if this purchase adds stock.</div>
                         </div>
 
-                        <!-- Job Number Section -->
                         <div class="mb-3">
-                            <label class="form-label fw-bold text-secondary">Job Number (Optional)</label>
+                            <label class="form-label">Job Number <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
                             <select name="job_no" class="form-select select2">
                                 <option value="">-- No Job --</option>
                                 {% for job in jobs %}
@@ -52,42 +140,43 @@
                             </select>
                         </div>
 
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold text-secondary">Quantity</label>
+                        <div class="row g-3 mb-3">
+                            <div class="col-6">
+                                <label class="form-label">Quantity</label>
                                 <input type="number" name="qty" class="form-control" step="0.01" placeholder="0.00">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label fw-bold text-secondary">Unit Price / Amount</label>
+                            <div class="col-6">
+                                <label class="form-label">Unit Price / Amount</label>
                                 <input type="number" name="price" class="form-control" step="0.01" placeholder="0.00" required>
                             </div>
                         </div>
 
                         <div class="mb-4">
-                            <label class="form-label fw-bold text-secondary">Narration</label>
-                            <input type="text" name="narration" class="form-control" placeholder="Item description...">
+                            <label class="form-label">Narration</label>
+                            <input type="text" name="narration" class="form-control" placeholder="Item description…">
                         </div>
 
-                        <button type="submit" class="btn btn-secondary w-100 fw-bold">
-                            <i class="fas fa-plus me-1"></i> Add Line Item
+                        <button type="submit" class="btn w-100 fw-600 py-2"
+                                style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;color:#fff;">
+                            <i class="fas fa-plus me-2"></i>Add Line Item
                         </button>
                     </form>
                 </div>
             </div>
 
-            <!-- Submission Card -->
-            <div class="card shadow mb-4 border-left-success">
-                <div class="card-header py-3 text-primary">
-                    <h6 class="m-0 font-weight-bold text-success text-primary">Finalize Transaction</h6>
-                </div>
-                <div class="card-body">
+            <!-- Finalize Transaction Card -->
+            <div class="panel-card">
+                <div class="card-body px-4 py-4">
+                    <span class="section-label">Finalize Transaction</span>
                     <form method="POST" action="/direct_purchasing/submit">
+
                         <div class="mb-3">
-                            <label class="form-label fw-bold text-secondary">Transaction Date</label>
+                            <label class="form-label">Transaction Date</label>
                             <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label fw-bold text-secondary">Cash Account (Source)</label>
+
+                        <div class="mb-4">
+                            <label class="form-label">Cash Account <span style="color:#605E5C;font-weight:400;">(Source)</span></label>
                             <select name="cash_account" class="form-select select2" required>
                                 <option value="">Select Cash Account</option>
                                 {% for acc in cash_accounts %}
@@ -95,67 +184,22 @@
                                 {% endfor %}
                             </select>
                         </div>
+
                         <!--
                         <div class="form-check mb-4">
                             <input class="form-check-input" type="checkbox" name="vat_check" id="vatCheck">
                             <label class="form-check-label fw-bold text-dark" for="vatCheck">Include VAT</label>
                         </div>
                         -->
-                        <button type="submit" class="btn btn-success w-100 fw-bold py-2">
-                            <i class="fas fa-check-circle me-1"></i> Submit Payment
+
+                        <button type="submit" class="btn w-100 py-2"
+                                style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;color:#fff;">
+                            <i class="fas fa-check-circle me-2"></i>Submit Payment
                         </button>
                     </form>
                 </div>
             </div>
-        </div>
 
-        <!-- List Panel (Left Side on large screens) -->
-        <div class="col-lg-7 order-lg-1">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">Payment Items Summary</h6>
-                </div>
-                <div class="card-body p-0">
-                    <div class="table-responsive">
-                        <table class="table  table-striped table-hover mb-0">
-                            <thead class="table-light">
-                                <tr>
-                                    <th style="width: 5%">#</th>
-                                    <th style="width: 20%">Account</th>
-                                    <th style="width: 20%">Item</th>
-                                    <th style="width: 15%">Job No</th>
-                                    <th style="width: 10%">Qty</th>
-                                    <th style="width: 15%">Price</th>
-                                    <th style="width: 15%">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if session_payment_items %}
-                                    {% for item in session_payment_items %}
-                                    <tr>
-                                        <td>{{ loop.index }}</td>
-                                        <td>{{ item.account }}</td>
-                                        <td>{{ item.item_name or '-' }}</td>
-                                        <td>{{ item.job_no or '-' }}</td>
-                                        <td class="text-end">{{ item.qty }}</td>
-                                        <td class="text-end">{{ item.price }}</td>
-                                        <td class="text-end fw-bold">{{ item.total }}</td>
-                                    </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr><td colspan="7" class="text-center text-muted py-4">No items added to this payment voucher yet.</td></tr>
-                                {% endif %}
-                            </tbody>
-                            <tfoot class="table-light">
-                                <tr>
-                                    <td colspan="6" class="text-end fw-bold text-dark">Total Amount:</td>
-                                    <td class="text-end fw-bold text-success fs-5">{{ total_value }}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-            </div>
         </div>
     </div>
 </div>

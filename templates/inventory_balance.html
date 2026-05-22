@@ -1,138 +1,172 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header Section -->
-    <div class="d-flex align-items-center mb-4">
-        <h4 class="mb-0 fw-bold" style="color: #2c3e50;"><i class="text-primary fas fa-boxes me-2"></i> Inventory Card</h4>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#018574,#005E52);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-boxes"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Inventory Balance</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Stock Management</div>
+        </div>
     </div>
 
-    <!-- Filter Section -->
-    <div class="card shadow-sm mb-4 border-0" style="border-radius: 8px;">
-        <div class="card-body bg-light py-3 px-4">
-            <form method="GET" action="/inventory_balance" class="row align-items-center">
+    <!-- Filter Card -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">View Options</div>
+        </div>
+        <div class="px-4 py-3">
+            <form method="GET" action="/inventory_balance" class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                <div class="d-flex align-items-center gap-4 flex-wrap">
+                    <span style="font-size:.8rem;font-weight:600;color:#323130;">View:</span>
 
-                <div class="col-md-8 d-flex align-items-center">
-                    <span class="fw-bold me-4" style="color: #2c3e50;">View:</span>
-
-                    <div class="form-check form-check-inline me-4">
-                        <input class="form-check-input" type="radio" name="view" id="all" value="all" {% if view == 'all' %}checked{% endif %} onchange="this.form.submit()">
-                        <label class="form-check-label" for="all" style="color: #2c3e50;">All Items</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input class="form-check-input m-0" type="radio" name="view" id="all" value="all"
+                               {% if view == 'all' %}checked{% endif %} onchange="this.form.submit()"
+                               style="accent-color:#018574;">
+                        <label class="form-check-label" for="all" style="font-size:.85rem;color:#323130;cursor:pointer;">All Items</label>
                     </div>
-                    <div class="form-check form-check-inline me-4">
-                        <input class="form-check-input" type="radio" name="view" id="low" value="low" {% if view == 'low' %}checked{% endif %} onchange="this.form.submit()">
-                        <label class="form-check-label" for="low" style="color: #2c3e50;">Low Stock</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input class="form-check-input m-0" type="radio" name="view" id="low" value="low"
+                               {% if view == 'low' %}checked{% endif %} onchange="this.form.submit()"
+                               style="accent-color:#F7A92A;">
+                        <label class="form-check-label" for="low" style="font-size:.85rem;color:#323130;cursor:pointer;">Low Stock</label>
                     </div>
-                    <div class="form-check form-check-inline">
-                        <input class="form-check-input" type="radio" name="view" id="out" value="out" {% if view == 'out' %}checked{% endif %} onchange="this.form.submit()">
-                        <label class="form-check-label" for="out" style="color: #2c3e50;">Out of Stock</label>
+                    <div class="d-flex align-items-center gap-2">
+                        <input class="form-check-input m-0" type="radio" name="view" id="out" value="out"
+                               {% if view == 'out' %}checked{% endif %} onchange="this.form.submit()"
+                               style="accent-color:#D13438;">
+                        <label class="form-check-label" for="out" style="font-size:.85rem;color:#323130;cursor:pointer;">Out of Stock</label>
                     </div>
                 </div>
 
-                <div class="col-md-4 text-end">
-                    <button type="submit" name="download" value="csv" class="btn btn-success fw-bold px-4" style="background-color: #27ae60; border: none; border-radius: 4px;">
-                        <i class="fas fa-chart-bar me-2"></i> Export Report
-                    </button>
-                </div>
+                <button type="submit" name="download" value="csv"
+                        style="background:var(--accent-color,#018574);border:none;border-radius:8px;font-weight:600;font-size:.82rem;padding:.45rem 1.2rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                    <i class="fas fa-download" style="font-size:.78rem;"></i> Export Report
+                </button>
             </form>
         </div>
     </div>
 
-    <!-- Data Grid Section -->
-    <div class="card shadow-sm border-0" style="border-radius: 8px;">
-        <div class="card-body p-0 table-responsive">
+    <!-- Data Table Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="table-responsive">
+
             {% if view == 'all' %}
-                <table class="table table-hover align-middle mb-0" style="border: 1px solid #e1e8ed;">
-                    <thead class="table-dark" style="background-color: #f5f7f9; color: #2c3e50;">
-                        <tr>
-                            <th class="py-3 px-4">No</th>
-                            <th class="py-3 px-4">Item Name</th>
-                            <th class="py-3 px-4">Item Code</th>
-                            <th class="py-3 px-4">Unit Type</th>
-                            <th class="text-end py-3 px-4">Total Qty</th>
-                            <th class="text-end py-3 px-4">Total Price</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in report_data %}
-                        <tr>
-                            <td class="px-4 text-muted">{{ loop.index }}</td>
-                            <td class="px-4 fw-bold" style="color: #2c3e50;">{{ row.inventoy_name }}</td>
-                            <td class="px-4">{{ row.inventoy_code }}</td>
-                            <td class="px-4">{{ row.inventory_recod_mesrmet }}</td>
-                            <td class="text-end px-4">{{ "{:,.2f}".format(row['SUM(inventory_recod_moument_in - inventory_recod_movment_out)'] or 0) }}</td>
-                            <td class="text-end px-4">{{ "{:,.2f}".format(row['SUM(inventory_recod_total_value)'] or 0) }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="6" class="text-center py-5 text-muted fst-italic">No items found.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;white-space:nowrap;">No</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Code</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Unit Type</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Total Qty</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Total Value</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr style="border-bottom:1px solid #f1f3f5;">
+                        <td class="px-4" style="font-size:.82rem;color:#A0A0A0;">{{ loop.index }}</td>
+                        <td class="px-4" style="font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ row.inventoy_name }}</td>
+                        <td class="px-4">
+                            <span style="font-family:monospace;font-size:.82rem;color:#605E5C;background:#f8f9fa;padding:2px 6px;border-radius:4px;">{{ row.inventoy_code }}</span>
+                        </td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ row.inventory_recod_mesrmet }}</td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.88rem;font-weight:600;color:#1a1a2e;">
+                            {{ "{:,.2f}".format(row['SUM(inventory_recod_moument_in - inventory_recod_movment_out)'] or 0) }}
+                        </td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.88rem;font-weight:600;color:#018574;">
+                            {{ "{:,.2f}".format(row['SUM(inventory_recod_total_value)'] or 0) }}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="text-center py-5" style="color:#A0A0A0;font-size:.87rem;font-style:italic;">No items found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
 
             {% elif view == 'low' %}
-                <table class="table table-hover align-middle mb-0" style="border: 1px solid #e74c3c;">
-                    <thead class="table-danger text-dark">
-                        <tr>
-                            <th class="py-3 px-4">No</th>
-                            <th class="py-3 px-4">Item Name</th>
-                            <th class="py-3 px-4">Item Code</th>
-                            <th class="py-3 px-4">Unit Type</th>
-                            <th class="text-end py-3 px-4">Current Balance</th>
-                            <th class="text-end py-3 px-4">Min Qty</th>
-                            <th class="py-3 px-4">Status</th>
-                            <th class="py-3 px-4">Category-Main</th>
-                            <th class="py-3 px-4">Category-Sub</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in report_data %}
-                        <tr style="background-color: #fff5f5;">
-                            <td class="px-4 text-muted">{{ loop.index }}</td>
-                            <td class="px-4 fw-bold" style="color: #2c3e50;">{{ row.inventoy_name }}</td>
-                            <td class="px-4">{{ row.inventoy_code }}</td>
-                            <td class="px-4">{{ row.inventoy_items_messurment_unit }}</td>
-                            <td class="text-end px-4 fw-bold" style="color: #e74c3c;">{{ "{:,.2f}".format(row.current_balance or 0) }}</td>
-                            <td class="text-end px-4">{{ "{:,.2f}".format(row.min_qty or 0) }}</td>
-                            <td class="px-4">{{ row.status }}</td>
-                            <td class="px-4">{{ row.Main_Catogry }}</td>
-                            <td class="px-4">{{ row.Sub_Catogory }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="9" class="text-center py-5 text-muted fst-italic">No low stock items found.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">No</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Code</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Unit Type</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Current Balance</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Min Qty</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Status</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Category Main</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Category Sub</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr style="border-bottom:1px solid #f1f3f5;background:#fffbf5;">
+                        <td class="px-4" style="font-size:.82rem;color:#A0A0A0;">{{ loop.index }}</td>
+                        <td class="px-4" style="font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ row.inventoy_name }}</td>
+                        <td class="px-4">
+                            <span style="font-family:monospace;font-size:.82rem;color:#605E5C;background:#f8f9fa;padding:2px 6px;border-radius:4px;">{{ row.inventoy_code }}</span>
+                        </td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ row.inventoy_items_messurment_unit }}</td>
+                        <td class="text-end px-4">
+                            <span style="font-family:monospace;font-size:.88rem;font-weight:700;color:#D67E1A;">{{ "{:,.2f}".format(row.current_balance or 0) }}</span>
+                        </td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.88rem;color:#605E5C;">{{ "{:,.2f}".format(row.min_qty or 0) }}</td>
+                        <td class="px-4">
+                            <span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:.72rem;font-weight:700;background:#FFF4CE;color:#7A5800;border:1px solid #F7C948;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#F7C948;display:inline-block;"></span>
+                                {{ row.status }}
+                            </span>
+                        </td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ row.Main_Catogry }}</td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ row.Sub_Catogory }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="9" class="text-center py-5" style="color:#A0A0A0;font-size:.87rem;font-style:italic;">No low stock items found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
 
             {% elif view == 'out' %}
-                <table class="table table-hover align-middle mb-0" style="border: 1px solid #c0392b;">
-                    <thead class="text-white" style="background-color: #c0392b;">
-                        <tr>
-                            <th class="py-3 px-4">No</th>
-                            <th class="py-3 px-4">Item Name</th>
-                            <th class="py-3 px-4">Item Code</th>
-                            <th class="text-end py-3 px-4">Quantity</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in report_data %}
-                        <tr style="background-color: #fff0f0;">
-                            <td class="px-4 text-muted">{{ loop.index }}</td>
-                            <td class="px-4 fw-bold" style="color: #2c3e50;">{{ row.inventoy_name }}</td>
-                            <td class="px-4">{{ row.inventoy_code }}</td>
-                            <td class="text-end px-4 fw-bold" style="color: #c0392b;">{{ "{:,.2f}".format(row.Curent_Qty or 0) }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="4" class="text-center py-5 text-muted fst-italic">No out of stock items found.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">No</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Name</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item Code</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Quantity</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in report_data %}
+                    <tr style="border-bottom:1px solid #f1f3f5;background:#fff8f8;">
+                        <td class="px-4" style="font-size:.82rem;color:#A0A0A0;">{{ loop.index }}</td>
+                        <td class="px-4" style="font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ row.inventoy_name }}</td>
+                        <td class="px-4">
+                            <span style="font-family:monospace;font-size:.82rem;color:#605E5C;background:#f8f9fa;padding:2px 6px;border-radius:4px;">{{ row.inventoy_code }}</span>
+                        </td>
+                        <td class="text-end px-4">
+                            <span style="font-family:monospace;font-size:.88rem;font-weight:700;color:#D13438;">{{ "{:,.2f}".format(row.Curent_Qty or 0) }}</span>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-center py-5" style="color:#A0A0A0;font-size:.87rem;font-style:italic;">No out of stock items found.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
             {% endif %}
+
         </div>
     </div>
 
-    <!-- Footer Section -->
-    <div class="text-center mt-3">
-        <small style="color: #95a5a6;">© 2024 Suwin Accounting - Inventory Management System</small>
+    <div class="text-center mt-4">
+        <small style="color:#C0BDC0;font-size:.72rem;">© 2024 Suwin Accounting — Inventory Management System</small>
     </div>
 </div>
 {% endblock %}

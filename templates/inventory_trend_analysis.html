@@ -1,57 +1,89 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 bg-primary text-white p-3 rounded">
-            <h4 class="mb-0 text-center fw-bold">INVENTORY TREND ANALYSIS & FORECASTING</h4>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7B3F9E,#5E2D7A);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Trend Analysis</h5>
+            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory Reports</div>
         </div>
     </div>
 
-    <!-- Controls -->
-    <div class="card shadow-sm mb-4 bg-light">
-        <div class="card-body">
+    <!-- Controls Card -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Analysis Controls</div>
+        </div>
+        <div class="px-4 py-4">
             <form method="GET" action="{{ url_for('inventory_trend_analysis') }}" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label fw-bold text-primary">Select Inventory Item:</label>
-                    <select class="form-select" name="item_name">
-                        <option value="">Select...</option>
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Select Inventory Item</label>
+                    <select class="form-select" name="item_name" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
+                        <option value="">Select item...</option>
                         {% for item in items %}
                         <option value="{{ item.inventoy_name }}" {% if selected_item == item.inventoy_name %}selected{% endif %}>{{ item.inventoy_name }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-bold text-primary">Analysis Period:</label>
-                    <select class="form-select" name="months">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Analysis Period</label>
+                    <select class="form-select" name="months" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
                         <option value="6" {% if months == 6 %}selected{% endif %}>6 Months</option>
                         <option value="12" {% if months == 12 %}selected{% endif %}>12 Months</option>
                         <option value="24" {% if months == 24 %}selected{% endif %}>24 Months</option>
                     </select>
                 </div>
-                <div class="col-md-5">
-                    <button type="submit" class="btn btn-primary fw-bold px-4 me-2">Analyze Trends</button>
-                    <button type="button" class="btn btn-primary fw-bold px-4" onclick="alert('Forecast feature coming soon')">Generate Forecast</button>
+                <div class="col-md-5 d-flex gap-2 align-items-end">
+                    <button type="submit"
+                            style="background:var(--accent-color,#7B3F9E);border:none;border-radius:8px;font-weight:600;font-size:.85rem;padding:.52rem 1.4rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-chart-line" style="font-size:.8rem;"></i> Analyze Trends
+                    </button>
+                    <button type="button" onclick="alert('Forecast feature coming soon')"
+                            style="background:#f3eaf8;border:1px solid #d9b8ee;border-radius:8px;font-weight:600;font-size:.85rem;padding:.52rem 1.4rem;color:#5E2D7A;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-magic" style="font-size:.8rem;"></i> Generate Forecast
+                    </button>
                 </div>
             </form>
 
             {% if trend_data %}
-            <!-- Indicators -->
-            <div class="row mt-4 text-center">
+            <!-- Stat Indicators -->
+            <div class="row g-3 mt-2">
                 <div class="col-md-4">
-                    <div class="p-2 rounded border border-success bg-success-subtle text-success fw-bold">
-                        Trend: {{ trend_direction }}
+                    <div style="border-radius:10px;border:1px solid #BBF7D0;background:#DCFCE7;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                        <div style="width:32px;height:32px;border-radius:8px;background:#107C41;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas fa-arrow-trend-up" style="color:#fff;font-size:.75rem;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#166534;">Trend Direction</div>
+                            <div style="font-size:.95rem;font-weight:700;color:#166534;">{{ trend_direction }}</div>
+                        </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="p-2 rounded border border-primary bg-primary-subtle text-primary fw-bold">
-                        Slope: {{ slope }}
+                    <div style="border-radius:10px;border:1px solid #BFDBFE;background:#DBEAFE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                        <div style="width:32px;height:32px;border-radius:8px;background:#0078D4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas fa-chart-bar" style="color:#fff;font-size:.75rem;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#1E40AF;">Slope</div>
+                            <div style="font-size:.95rem;font-weight:700;color:#1E40AF;font-family:monospace;">{{ slope }}</div>
+                        </div>
                     </div>
                 </div>
                 <div class="col-md-4">
-                    <div class="p-2 rounded border border-warning bg-warning-subtle text-warning-emphasis fw-bold">
-                        Next Month Forecast: {{ next_month_forecast }}
+                    <div style="border-radius:10px;border:1px solid #DDD6FE;background:#EDE9FE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                        <div style="width:32px;height:32px;border-radius:8px;background:#7B3F9E;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <i class="fas fa-forward" style="color:#fff;font-size:.75rem;"></i>
+                        </div>
+                        <div>
+                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#5E2D7A;">Next Month Forecast</div>
+                            <div style="font-size:.95rem;font-weight:700;color:#5E2D7A;font-family:monospace;">{{ next_month_forecast }}</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -60,29 +92,35 @@
     </div>
 
     {% if trend_data %}
-    <!-- Data Grid -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-body p-0">
-            <table class="table table-bordered table-striped mb-0">
-                <thead class="bg-secondary text-white">
-                    <tr>
-                        <th>Period</th>
-                        <th>Year</th>
-                        <th>Month</th>
-                        <th>Sales Quantity</th>
-                        <th>Moving Avg (3M)</th>
-                        <th>Trend Value</th>
+
+    <!-- Data Grid Card -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Trend Data</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Period</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Year</th>
+                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Month</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Sales Qty</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Moving Avg (3M)</th>
+                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Trend Value</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in trend_data %}
-                    <tr>
-                        <td>{{ row.Period }}</td>
-                        <td>{{ row.Year }}</td>
-                        <td>{{ row.Month }}</td>
-                        <td>{{ row.SalesQuantity }}</td>
-                        <td>{{ row.MovingAverage }}</td>
-                        <td>{{ row.TrendValue }}</td>
+                    <tr style="border-bottom:1px solid #f1f3f5;">
+                        <td class="px-4">
+                            <span style="font-family:monospace;font-size:.83rem;font-weight:600;color:#5E2D7A;background:#f3eaf8;padding:2px 8px;border-radius:4px;">{{ row.Period }}</span>
+                        </td>
+                        <td class="px-4" style="font-family:monospace;font-size:.85rem;color:#605E5C;">{{ row.Year }}</td>
+                        <td class="px-4" style="font-size:.85rem;color:#605E5C;">{{ row.Month }}</td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ row.SalesQuantity }}</td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.87rem;color:#D67E1A;">{{ row.MovingAverage }}</td>
+                        <td class="text-end px-4" style="font-family:monospace;font-size:.87rem;color:#0078D4;">{{ row.TrendValue }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
@@ -90,10 +128,13 @@
         </div>
     </div>
 
-    <!-- Chart -->
-    <div class="card shadow-sm">
-        <div class="card-body">
-            <canvas id="trendChart" style="max-height: 400px;"></canvas>
+    <!-- Chart Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Trend Chart</div>
+        </div>
+        <div class="px-4 py-4">
+            <canvas id="trendChart" style="max-height:400px;"></canvas>
         </div>
     </div>
 
@@ -142,10 +183,16 @@
             }
         });
     </script>
+
     {% else %}
-    <div class="card shadow-sm p-5 text-center text-muted">
-        Chart will appear here after analysis...
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:3rem;text-align:center;">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#f3eaf8,#e9d8f5);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+            <i class="fas fa-chart-line" style="font-size:1.4rem;color:#7B3F9E;opacity:.6;"></i>
+        </div>
+        <div style="font-size:.95rem;font-weight:600;color:#605E5C;">Select an item and click Analyze Trends</div>
+        <div style="font-size:.82rem;color:#A0A0A0;margin-top:.35rem;">The chart and data table will appear here after analysis.</div>
     </div>
     {% endif %}
+
 </div>
 {% endblock %}

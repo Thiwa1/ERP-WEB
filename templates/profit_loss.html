@@ -1,93 +1,84 @@
 {% extends "base.html" %}
 
 {% block content %}
-
 <style>
-    .pl-header-bg {
-        background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
-        color: white;
+    .report-page-icon {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 1.1rem; color: #fff; flex-shrink: 0;
     }
-    .pl-table {
-        border-collapse: collapse;
-        width: 100%;
+    .report-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff; overflow: hidden;
     }
-    .pl-table th {
-        background-color: #f8f9fa;
-        color: #495057;
-        font-weight: 700;
-        border-bottom: 2px solid #dee2e6;
-        padding: 1rem;
+    .filter-card-header {
+        background: #f8f9fa; border-bottom: 1px solid #e2e8f0;
+        padding: .6rem 1.25rem; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
     }
-    .pl-table td {
-        padding: 0.75rem 1rem;
-        vertical-align: middle;
-        border-bottom: 1px solid #e9ecef;
+    .pl-table thead th {
+        background: #f8f9fa; font-size: .72rem; font-weight: 700;
+        letter-spacing: .5px; text-transform: uppercase; color: #605E5C;
+        border-bottom: 2px solid #e2e8f0;
     }
-    .pl-income-header td {
-        background-color: #e8f5e9; /* Light green */
-        color: #2e7d32; /* Dark green */
-        font-size: 1.1rem;
-        border-bottom: 2px solid #a5d6a7;
-    }
-    .pl-expense-header td {
-        background-color: #ffebee; /* Light red */
-        color: #c62828; /* Dark red */
-        font-size: 1.1rem;
-        border-bottom: 2px solid #ef9a9a;
-    }
-    .pl-category-row td {
-        background-color: #f1f3f5;
-        font-weight: 600;
-        color: #495057;
-    }
-    .pl-income-row td:not(:first-child) {
-        color: #2e7d32;
-        font-weight: 500;
-    }
-    .pl-expense-row td:not(:first-child) {
-        color: #c62828;
-        font-weight: 500;
-    }
-    .pl-total-row td {
-        background-color: #f8f9fa;
-        font-weight: bold;
-        border-top: 2px solid #dee2e6;
-    }
-    .pl-total-income-row td:not(:first-child) {
-        color: #2e7d32;
-    }
-    .pl-total-expense-row td:not(:first-child) {
-        color: #c62828;
-    }
-    .pl-net-profit td {
-        background-color: #e3f2fd; /* Light blue */
-        color: #1565c0; /* Dark blue */
-        font-size: 1.25rem;
-        border-top: 3px solid #90caf9;
-        border-bottom: 3px solid #90caf9;
-    }
-    .amount-cell {
-        font-family: 'Courier New', Courier, monospace;
-        letter-spacing: 0.5px;
+    .amount-cell { font-family: 'JetBrains Mono','Courier New',monospace; letter-spacing: .5px; }
+    .pl-section-income td { background: #f0fff4; color: #107C10; font-weight: 700;
+        font-size: .72rem; letter-spacing: .8px; text-transform: uppercase;
+        border-bottom: 2px solid #a5d6a7; padding: .55rem 1rem; }
+    .pl-section-expense td { background: #fff5f5; color: #C42B1C; font-weight: 700;
+        font-size: .72rem; letter-spacing: .8px; text-transform: uppercase;
+        border-bottom: 2px solid #f5c6c6; padding: .55rem 1rem; }
+    .pl-category-row td { background: #f8f9fa; font-weight: 600; color: #495057;
+        font-size: .8rem; padding: .4rem 1rem .4rem 2rem; border-bottom: 1px solid #e9ecef; }
+    .pl-income-row td { padding: .4rem 1rem .4rem 3rem; font-size: .875rem; }
+    .pl-income-row td:not(:first-child) { color: #107C10; }
+    .pl-expense-row td { padding: .4rem 1rem .4rem 3rem; font-size: .875rem; }
+    .pl-expense-row td:not(:first-child) { color: #C42B1C; }
+    .pl-cat-total td { background: #f8f9fa; font-weight: 600; font-size: .8rem;
+        color: #6c757d; padding: .4rem 1rem; border-top: 1px dashed #dee2e6; }
+    .pl-total-income td { background: #e8f5e9; font-weight: 700;
+        border-top: 2px solid #a5d6a7; padding: .6rem 1rem; }
+    .pl-total-income td:not(:first-child) { color: #107C10; }
+    .pl-total-expense td { background: #ffebee; font-weight: 700;
+        border-top: 2px solid #f5c6c6; padding: .6rem 1rem; }
+    .pl-total-expense td:not(:first-child) { color: #C42B1C; }
+    .pl-net-profit td { background: #EFF6FF; font-weight: 800; font-size: 1rem;
+        color: var(--accent-color); border-top: 3px solid #90caf9;
+        border-bottom: 3px solid #90caf9; padding: .75rem 1rem; }
+    .win11-btn { border-radius: 6px; font-size: .8rem; font-weight: 600;
+        padding: .3rem .75rem; display: inline-flex; align-items: center; gap: .35rem; }
+    .win11-btn-secondary { border: 1px solid #8a8886; color: #323130;
+        background: #fff; }
+    .win11-btn-secondary:hover { background: #f3f2f1; border-color: #605E5C; }
+    @media print {
+        .no-print { display: none !important; }
+        .report-card { box-shadow: none !important; }
     }
 </style>
 
+<div class="container-fluid py-3">
 
-
-
-
-
-
-
-<div class="container-fluid">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="text-primary fw-bold" style="color: #0d6efd !important;">PROFIT & LOSS STATEMENT</h2>
-        <button class="btn btn-outline-secondary" onclick="window.print()"><i class="bi bi-printer"></i> Print</button>
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="report-page-icon" style="background: linear-gradient(135deg,#107C10,#0a5c0a);">
+            <i class="fas fa-chart-line"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold">Profit &amp; Loss</h5>
+            <small class="text-muted">Financial Reports</small>
+        </div>
+        {% if report_data %}
+        <div class="ms-auto d-flex gap-2 no-print">
+            <button class="win11-btn win11-btn-secondary" onclick="window.print()">
+                <i class="fas fa-print"></i> Print
+            </button>
+        </div>
+        {% endif %}
     </div>
 
-    <!-- Controls -->
-    <div class="card shadow-sm mb-4">
-        <div class="card-header bg-transparent border-0 pb-0 pt-4">Report Configuration</div>
+    <!-- Filter Card -->
+    <div class="report-card mb-4 no-print">
+        <div class="filter-card-header"><i class="fas fa-filter me-2"></i>Filters &amp; Date Range</div>
         <div class="card-body">
             <form method="POST" action="/profit_loss" id="plForm">
                 <div id="periods-container">
@@ -101,7 +92,7 @@
                             <input type="date" name="start_date[]" class="form-control form-control-sm" value="{{ p.start }}" required>
                         </div>
                         <div class="col-auto">
-                            <span class="text-muted">to</span>
+                            <span class="text-muted small">to</span>
                         </div>
                         <div class="col-auto">
                             <label class="visually-hidden">To</label>
@@ -114,7 +105,6 @@
                         </div>
                     </div>
                     {% else %}
-                    <!-- Default initial row if no periods passed -->
                     <div class="row g-2 mb-2 align-items-center period-row">
                         <div class="col-auto">
                             <span class="badge bg-secondary period-badge">Period 1</span>
@@ -124,7 +114,7 @@
                             <input type="date" name="start_date[]" class="form-control form-control-sm" value="{{ default_start }}" required>
                         </div>
                         <div class="col-auto">
-                            <span class="text-muted">to</span>
+                            <span class="text-muted small">to</span>
                         </div>
                         <div class="col-auto">
                             <label class="visually-hidden">To</label>
@@ -134,9 +124,13 @@
                     {% endfor %}
                 </div>
 
-                <div class="mt-3">
-                    <button type="button" class="btn btn-sm btn-outline-success" id="addPeriodBtn"><i class="bi bi-plus-circle"></i> Add Period</button>
-                    <button type="submit" class="btn btn-sm btn-primary px-4 ms-2">Generate Report</button>
+                <div class="mt-3 d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-success" id="addPeriodBtn">
+                        <i class="bi bi-plus-circle"></i> Add Period
+                    </button>
+                    <button type="submit" class="btn btn-sm btn-primary px-4">
+                        <i class="fas fa-sync me-1"></i> Generate Report
+                    </button>
                 </div>
             </form>
         </div>
@@ -144,106 +138,97 @@
 
     <!-- Report -->
     {% if report_data %}
-    <div class="card shadow-lg border-0">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table pl-table mb-0">
-                    <thead class="pl-table-header text-center border-0">
+    <div class="report-card">
+        <div class="text-center py-3 border-bottom" style="background:linear-gradient(135deg,#107C10,#0a5c0a);">
+            <div class="text-white fw-bold" style="letter-spacing:.5px;">PROFIT &amp; LOSS STATEMENT</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table pl-table mb-0">
+                <thead>
+                    <tr>
+                        <th class="text-start p-3" style="width:40%;">Description</th>
+                        {% for p in periods %}
+                        <th class="p-3 text-end">
+                            Period {{ loop.index }}<br>
+                            <span class="fw-normal text-muted" style="font-size:.75rem;">{{ p.start }} to {{ p.end }}</span>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- INCOME SECTION -->
+                    <tr class="pl-section-income">
+                        <td colspan="{{ periods|length + 1 }}"><i class="fas fa-arrow-up me-2"></i>Income</td>
+                    </tr>
+                    {% for cat in report_data.income_categories %}
                         <tr>
-                            <th class="text-start p-3" style="width: 40%;">Description</th>
-                            {% for p in periods %}
-                            <th class="p-3">
-                                Period {{ loop.index }}<br>
-                                <small class="text-muted fw-normal" style="font-size: 0.8rem;">
-                                    {{ p.start }} to {{ p.end }}
-                                </small>
-                            </th>
-                            {% endfor %}
+                            <td colspan="{{ periods|length + 1 }}" class="pl-category-row">{{ cat.name }}</td>
                         </tr>
-                    </thead>
-                    <tbody>
-                        <!-- INCOME SECTION -->
-                        <tr class="pl-income-header">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3">Income</td>
-                        </tr>
-
-
-                        {% for cat in report_data.income_categories %}
-                            <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
-                            </tr>
-                            {% for acc in cat.accounts %}
-                            <tr class="pl-income-row">
-                                <td class="ps-5">{{ acc.name }}</td>
-                                {% for val in acc.amounts %}
-                                <td class="text-end amount-cell">{{ val|currency }}</td>
-                                {% endfor %}
-                            </tr>
-                            {% endfor %}
-                            <tr class="fw-bold bg-light">
-                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
-                                {% for val in cat.total %}
-                                <td class="text-end text-muted amount-cell">{{ val|currency }}</td>
-                                {% endfor %}
-                            </tr>
-                        {% endfor %}
-                        <!-- Total Income Row -->
-                        <tr class="fw-bold pl-total-row pl-total-income-row">
-                            <td class="text-end pe-3">TOTAL INCOME</td>
-                            {% for val in report_data.total_income %}
+                        {% for acc in cat.accounts %}
+                        <tr class="pl-income-row">
+                            <td>{{ acc.name }}</td>
+                            {% for val in acc.amounts %}
                             <td class="text-end amount-cell">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
-
-                        <!-- EXPENSE SECTION -->
-                        <tr class="pl-expense-header border-top border-2">
-                            <td colspan="{{ periods|length + 1 }}" class="fw-bold text-uppercase ps-3 mt-4">Expenses</td>
-                        </tr>
-
-
-                        {% for cat in report_data.expense_categories %}
-                            <tr>
-                                <td colspan="{{ periods|length + 1 }}" class="pl-category-row ps-4">{{ cat.name }}</td>
-                            </tr>
-                            {% for acc in cat.accounts %}
-                            <tr class="pl-expense-row">
-                                <td class="ps-5">{{ acc.name }}</td>
-                                {% for val in acc.amounts %}
-                                <td class="text-end amount-cell">{{ val|currency }}</td>
-                                {% endfor %}
-                            </tr>
-                            {% endfor %}
-                            <tr class="fw-bold bg-light">
-                                <td class="text-end pe-3 text-muted">{{ cat.name }} Total</td>
-                                {% for val in cat.total %}
-                                <td class="text-end text-muted amount-cell">{{ val|currency }}</td>
-                                {% endfor %}
-                            </tr>
                         {% endfor %}
-                        <!-- Total Expense Row -->
-                        <tr class="fw-bold pl-total-row pl-total-expense-row">
-                            <td class="text-end pe-3">TOTAL EXPENSES</td>
-                            {% for val in report_data.total_expense %}
+                        <tr class="pl-cat-total">
+                            <td class="text-end pe-3">{{ cat.name }} Total</td>
+                            {% for val in cat.total %}
                             <td class="text-end amount-cell">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
+                    {% endfor %}
+                    <tr class="pl-total-income">
+                        <td class="text-end pe-3">TOTAL INCOME</td>
+                        {% for val in report_data.total_income %}
+                        <td class="text-end amount-cell">{{ val|currency }}</td>
+                        {% endfor %}
+                    </tr>
 
-                        <!-- NET PROFIT -->
-                        <tr class="pl-net-profit border-top border-3">
-                            <td class="fw-bold fs-5 text-end pe-3">NET PROFIT / (LOSS)</td>
-                            {% for val in report_data.net_profit %}
-                            <td class="text-end fw-bold fs-5 amount-cell">
-                                {{ val|currency }}
-                            </td>
+                    <!-- EXPENSE SECTION -->
+                    <tr class="pl-section-expense">
+                        <td colspan="{{ periods|length + 1 }}"><i class="fas fa-arrow-down me-2"></i>Expenses</td>
+                    </tr>
+                    {% for cat in report_data.expense_categories %}
+                        <tr>
+                            <td colspan="{{ periods|length + 1 }}" class="pl-category-row">{{ cat.name }}</td>
+                        </tr>
+                        {% for acc in cat.accounts %}
+                        <tr class="pl-expense-row">
+                            <td>{{ acc.name }}</td>
+                            {% for val in acc.amounts %}
+                            <td class="text-end amount-cell">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
+                        {% endfor %}
+                        <tr class="pl-cat-total">
+                            <td class="text-end pe-3">{{ cat.name }} Total</td>
+                            {% for val in cat.total %}
+                            <td class="text-end amount-cell">{{ val|currency }}</td>
+                            {% endfor %}
+                        </tr>
+                    {% endfor %}
+                    <tr class="pl-total-expense">
+                        <td class="text-end pe-3">TOTAL EXPENSES</td>
+                        {% for val in report_data.total_expense %}
+                        <td class="text-end amount-cell">{{ val|currency }}</td>
+                        {% endfor %}
+                    </tr>
 
-                    </tbody>
-                </table>
-            </div>
+                    <!-- NET PROFIT -->
+                    <tr class="pl-net-profit">
+                        <td class="text-end pe-3">NET PROFIT / (LOSS)</td>
+                        {% for val in report_data.net_profit %}
+                        <td class="text-end amount-cell">{{ val|currency }}</td>
+                        {% endfor %}
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
     {% endif %}
+
 </div>
 
 <script>
@@ -264,7 +249,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <input type="date" name="start_date[]" class="form-control form-control-sm" required>
             </div>
             <div class="col-auto">
-                <span class="text-muted">to</span>
+                <span class="text-muted small">to</span>
             </div>
             <div class="col-auto">
                 <label class="visually-hidden">To</label>

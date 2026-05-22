@@ -1,31 +1,50 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="container py-4">
-    <div class="card shadow border-0">
-        <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i> Cashier Day Sales Summary</h5>
-        </div>
-        <div class="card-body">
-            <h6 class="text-muted">Date: {{ date }}</h6>
-            <div class="row mt-4">
-                <div class="col-md-6 mb-3">
-                    <div class="card bg-light border-0 text-center p-4">
-                        <h2 class="display-4 text-primary">{{ summary.total_invoices }}</h2>
-                        <span class="text-muted text-uppercase fw-bold">Total Invoices</span>
-                    </div>
-                </div>
-                <div class="col-md-6 mb-3">
-                    <div class="card bg-light border-0 text-center p-4">
-                        <h2 class="display-4 text-success">{{ summary.total_sales|currency }}</h2>
-                        <span class="text-muted text-uppercase fw-bold">Total Sales Value</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="card-footer bg-white border-top-0 d-flex justify-content-end">
-            <a href="/index" class="btn btn-secondary me-2">Back to Dashboard</a>
-            <button onclick="window.print()" class="btn btn-primary"><i class="fas fa-print me-2"></i>Print Summary</button>
-        </div>
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#107C10,#0a5c0a);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-chart-line text-white" style="font-size:.95rem;"></i>
     </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#201F1E;line-height:1.2;">Cashier Day Sales</h5>
+      <span style="font-size:.75rem;color:#605E5C;">POS Reports</span>
+    </div>
+    <div class="ms-auto">
+      <span style="font-size:.8rem;color:#605E5C;background:#f3f2f1;border-radius:6px;padding:.3rem .75rem;">
+        <i class="fas fa-calendar-day me-1" style="color:#107C10;"></i>{{ date }}
+      </span>
+    </div>
+  </div>
+
+  <!-- KPI Cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:2rem 1.75rem;text-align:center;">
+        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">Total Invoices</div>
+        <div class="fw-bold" style="font-size:3rem;color:#107C10;line-height:1;">{{ summary.total_invoices }}</div>
+        <div style="font-size:.75rem;color:#605E5C;margin-top:.5rem;">transactions processed</div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:2rem 1.75rem;text-align:center;">
+        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">Total Sales Value</div>
+        <div class="fw-bold font-monospace" style="font-size:2.6rem;color:#0078D4;line-height:1;">{{ summary.total_sales|currency }}</div>
+        <div style="font-size:.75rem;color:#605E5C;margin-top:.5rem;">revenue for the day</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Footer -->
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;display:flex;justify-content:flex-end;gap:.75rem;">
+    <a href="/index" class="btn fw-semibold" style="background:#f3f2f1;border:none;border-radius:8px;color:#201F1E;padding:.45rem 1.25rem;">
+      <i class="fas fa-arrow-left me-1"></i> Back to Dashboard
+    </a>
+    <button onclick="window.print()" class="btn fw-semibold" style="background:linear-gradient(135deg,#107C10,#0a5c0a);border:none;border-radius:8px;color:#fff;padding:.45rem 1.25rem;">
+      <i class="fas fa-print me-1"></i> Print Summary
+    </button>
+  </div>
+
 </div>
 {% endblock %}

@@ -3,205 +3,238 @@
 {% block title %}Fixed Assets Register{% endblock %}
 
 {% block content %}
-<div class="container-fluid">
-    <!-- Header -->
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h2 class="h4 mb-0 text-gray-800"><i class="fas fa-building me-2 text-primary"></i> Fixed Assets Register</h2>
-        <div class="d-flex gap-2">
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAssetModal">
-                <i class="fas fa-plus"></i> Add Asset
-            </button>
-            <form id="depreciationForm" class="d-flex gap-2">
-                <input type="month" name="month" class="form-control" required>
-                <button type="submit" class="btn btn-warning text-white">
-                    <i class="fas fa-calculator"></i> Run Depreciation
-                </button>
-            </form>
-        </div>
-    </div>
+<div class="container-fluid py-4">
 
-    <!-- Main Grid -->
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">Assets Overview</h6>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-bordered table-striped table-hover mb-0" id="assetsTable" style="font-size: 0.85rem; white-space: nowrap;">
-                    <thead class="table-dark">
-                        <tr id="tableHeader">
-                            <!-- JS will populate -->
-                        </tr>
-                    </thead>
-                    <tbody id="tableBody">
-                        <!-- JS will populate -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
+  <!-- Page Header -->
+  <div class="d-flex align-items-center justify-content-between mb-4 gap-3 flex-wrap">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C19C00,#9D5D00);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-building text-white" style="font-size:.95rem;"></i>
+      </div>
+      <div>
+        <h5 class="mb-0 fw-bold text-dark">Fixed Assets</h5>
+        <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Asset Management</div>
+      </div>
     </div>
+    <!-- Action Buttons -->
+    <div class="d-flex gap-2 flex-wrap">
+      <button class="btn text-white fw-bold" data-bs-toggle="modal" data-bs-target="#addAssetModal"
+        style="background:linear-gradient(135deg,#C19C00,#9D5D00);border:none;border-radius:8px;font-weight:600;padding:.5rem 1.25rem;font-size:.88rem;">
+        <i class="fas fa-plus me-1"></i> Add Asset
+      </button>
+      <form id="depreciationForm" class="d-flex gap-2">
+        <input type="month" name="month" class="form-control form-control-sm" style="border-radius:8px;min-width:160px;" required>
+        <button type="submit" class="btn fw-bold text-white"
+          style="background:linear-gradient(135deg,#d97706,#b45309);border:none;border-radius:8px;font-weight:600;padding:.5rem 1.1rem;font-size:.88rem;">
+          <i class="fas fa-calculator me-1"></i> Run Depreciation
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Assets Table Card -->
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 pt-4 pb-2">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+        <i class="fas fa-list me-1"></i> Assets Overview
+      </div>
+    </div>
+    <div class="table-responsive p-0">
+      <table class="table table-hover mb-0" id="assetsTable" style="font-size:.85rem;white-space:nowrap;">
+        <thead style="background:#f8f9fa;">
+          <tr id="tableHeader">
+            <!-- JS will populate -->
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <!-- JS will populate -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
 </div>
 
-<!-- Add Modal -->
+<!-- Add Asset Modal -->
 <div class="modal fade" id="addAssetModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <form action="/fixed_assets/add" method="POST">
-            <div class="modal-content">
-                <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title">Add New Fixed Asset</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Asset Class</label>
-                            <input type="text" name="asset_class" class="form-control" list="assetClassList" placeholder="Search or Create..." required>
-                            <datalist id="assetClassList">
-                                {% for c in classes %}
-                                <option value="{{ c.asset_class }}">
-                                {% endfor %}
-                            </datalist>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Description</label>
-                            <input type="text" name="description" class="form-control" required>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Brand</label>
-                            <input type="text" name="brand_name" class="form-control">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold">Serial No</label>
-                            <input type="text" name="serial_no" class="form-control">
-                        </div>
-                         <div class="col-md-4">
-                            <label class="form-label fw-bold">Quantity</label>
-                            <input type="number" name="quantity" class="form-control" value="1" min="1">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Location</label>
-                            <input type="text" name="location" class="form-control" list="locationList" placeholder="Search or Create...">
-                            <datalist id="locationList">
-                                {% for l in locations %}
-                                <option value="{{ l.location }}">
-                                {% endfor %}
-                            </datalist>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Purchasing Date</label>
-                            <input type="date" name="purchasing_date" class="form-control" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Cost Value</label>
-                            <input type="number" step="0.01" name="cost_value" class="form-control" required>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Depreciable Life (Months)</label>
-                            <input type="number" name="depreciable_life_months" class="form-control" required>
-                        </div>
-
-                        <div class="col-12"><hr><h6 class="text-primary fw-bold">GL Accounts Configuration</h6></div>
-
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold small text-uppercase text-muted">Asset Account</label>
-                            <select name="asset_account_id" class="form-select select2" required style="width: 100%;">
-                                <option value="">-- Select --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold small text-uppercase text-muted">Expense Account</label>
-                            <select name="expense_account_id" class="form-select select2" required style="width: 100%;">
-                                <option value="">-- Select --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label fw-bold small text-uppercase text-muted">Acc. Dep. Account</label>
-                            <select name="accumulated_dep_account_id" class="form-select select2" required style="width: 100%;">
-                                <option value="">-- Select --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="col-12"><hr><h6 class="text-primary fw-bold">General Ledger Posting</h6></div>
-
-                        <div class="col-md-12 mb-2">
-                            <label class="form-label fw-bold small text-uppercase text-muted">Supplier / Vendor</label>
-                            <select name="supplier_id" class="form-select select2" style="width: 100%;">
-                                <option value="">-- Optional: Link to Supplier --</option>
-                                {% for sup in suppliers %}
-                                <option value="{{ sup.sup_id }}">{{ sup.supplier_code }} - {{ sup.supplier_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="col-md-4">
-                            <div class="form-check form-switch mt-4">
-                                <input class="form-check-input" type="checkbox" id="postGLSwitch" name="post_gl" value="1">
-                                <label class="form-check-label fw-bold" for="postGLSwitch">Post Purchase to GL?</label>
-                            </div>
-                        </div>
-
-                        <div class="col-md-8" id="creditAccountContainer" style="display: none;">
-                            <label class="form-label fw-bold small text-uppercase text-muted">Payment/Credit Account</label>
-                            <select name="credit_account_id" id="creditAccountId" class="form-select select2" style="width: 100%;">
-                                <option value="">-- Select --</option>
-                                {% for acc in accounts %}
-                                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Save Asset</button>
-                </div>
+  <div class="modal-dialog modal-lg">
+    <form action="/fixed_assets/add" method="POST">
+      <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+        <div class="modal-header" style="background:linear-gradient(135deg,#C19C00,#9D5D00);border-radius:12px 12px 0 0;">
+          <h5 class="modal-title text-white fw-bold"><i class="fas fa-plus-circle me-2"></i> Add New Fixed Asset</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Asset Class</label>
+              <input type="text" name="asset_class" class="form-control" list="assetClassList" placeholder="Search or Create..." required style="border-radius:8px;">
+              <datalist id="assetClassList">
+                {% for c in classes %}
+                <option value="{{ c.asset_class }}">
+                {% endfor %}
+              </datalist>
             </div>
-        </form>
-    </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Description</label>
+              <input type="text" name="description" class="form-control" required style="border-radius:8px;">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small" style="color:#374151;">Brand</label>
+              <input type="text" name="brand_name" class="form-control" style="border-radius:8px;">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small" style="color:#374151;">Serial No</label>
+              <input type="text" name="serial_no" class="form-control" style="border-radius:8px;">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small" style="color:#374151;">Quantity</label>
+              <input type="number" name="quantity" class="form-control" value="1" min="1" style="border-radius:8px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Location</label>
+              <input type="text" name="location" class="form-control" list="locationList" placeholder="Search or Create..." style="border-radius:8px;">
+              <datalist id="locationList">
+                {% for l in locations %}
+                <option value="{{ l.location }}">
+                {% endfor %}
+              </datalist>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Purchasing Date</label>
+              <input type="date" name="purchasing_date" class="form-control" required style="border-radius:8px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Cost Value</label>
+              <input type="number" step="0.01" name="cost_value" class="form-control" required style="border-radius:8px;">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-bold small" style="color:#374151;">Depreciable Life (Months)</label>
+              <input type="number" name="depreciable_life_months" class="form-control" required style="border-radius:8px;">
+            </div>
+
+            <div class="col-12">
+              <hr style="border-color:#e2e8f0;">
+              <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                GL Accounts Configuration
+              </div>
+            </div>
+
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-uppercase text-muted">Asset Account</label>
+              <select name="asset_account_id" class="form-select select2" required style="width:100%;border-radius:8px;">
+                <option value="">-- Select --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-uppercase text-muted">Expense Account</label>
+              <select name="expense_account_id" class="form-select select2" required style="width:100%;border-radius:8px;">
+                <option value="">-- Select --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-bold small text-uppercase text-muted">Acc. Dep. Account</label>
+              <select name="accumulated_dep_account_id" class="form-select select2" required style="width:100%;border-radius:8px;">
+                <option value="">-- Select --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-12">
+              <hr style="border-color:#e2e8f0;">
+              <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                General Ledger Posting
+              </div>
+            </div>
+
+            <div class="col-md-12 mb-2">
+              <label class="form-label fw-bold small text-uppercase text-muted">Supplier / Vendor</label>
+              <select name="supplier_id" class="form-select select2" style="width:100%;border-radius:8px;">
+                <option value="">-- Optional: Link to Supplier --</option>
+                {% for sup in suppliers %}
+                <option value="{{ sup.sup_id }}">{{ sup.supplier_code }} - {{ sup.supplier_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="col-md-4">
+              <div class="form-check form-switch mt-4">
+                <input class="form-check-input" type="checkbox" id="postGLSwitch" name="post_gl" value="1">
+                <label class="form-check-label fw-bold" for="postGLSwitch">Post Purchase to GL?</label>
+              </div>
+            </div>
+
+            <div class="col-md-8" id="creditAccountContainer" style="display:none;">
+              <label class="form-label fw-bold small text-uppercase text-muted">Payment/Credit Account</label>
+              <select name="credit_account_id" id="creditAccountId" class="form-select select2" style="width:100%;border-radius:8px;">
+                <option value="">-- Select --</option>
+                {% for acc in accounts %}
+                <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid #e2e8f0;padding:1rem 1.5rem;">
+          <button type="button" class="btn" data-bs-dismiss="modal"
+            style="border-radius:8px;font-weight:600;border:1px solid #dee2e6;color:#374151;padding:.45rem 1.25rem;">Cancel</button>
+          <button type="submit" class="btn text-white"
+            style="background:linear-gradient(135deg,#C19C00,#9D5D00);border:none;border-radius:8px;font-weight:600;padding:.45rem 1.5rem;">
+            <i class="fas fa-save me-1"></i> Save Asset
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
 <!-- Write Off Modal -->
 <div class="modal fade" id="writeOffModal" tabindex="-1">
-    <div class="modal-dialog">
-        <form id="writeOffForm" method="POST" onsubmit="this.action='/fixed_assets/delete/' + document.getElementById('woAssetId').value;">
-            <div class="modal-content">
-                <div class="modal-header bg-warning">
-                    <h5 class="modal-title">Write-Off Asset</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <p class="text-danger">This asset cannot be deleted normally because it has already been depreciated or a payment has been recorded against it. You must write it off.</p>
-                    <input type="hidden" name="action" value="write_off">
-                    <input type="hidden" id="woAssetId" value="">
-
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">Select Loss/Expense Account</label>
-                        <select name="loss_account_id" class="form-select select2" style="width: 100%;" required>
-                            <option value="">-- Select Loss Account --</option>
-                            {% for acc in accounts %}
-                            <option value="{{ acc.id }}">{{ acc.account_name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                    <button type="submit" class="btn btn-warning">Confirm Write-Off</button>
-                </div>
-            </div>
-        </form>
-    </div>
+  <div class="modal-dialog">
+    <form id="writeOffForm" method="POST" onsubmit="this.action='/fixed_assets/delete/' + document.getElementById('woAssetId').value;">
+      <div class="modal-content" style="border-radius:12px;border:none;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+        <div class="modal-header" style="background:linear-gradient(135deg,#d97706,#b45309);border-radius:12px 12px 0 0;">
+          <h5 class="modal-title text-white fw-bold"><i class="fas fa-ban me-2"></i> Write-Off Asset</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="d-flex gap-2 align-items-start mb-3" style="border-radius:10px;background:#fff1f2;border:1px solid #fecaca;padding:.9rem 1rem;">
+            <i class="fas fa-exclamation-triangle mt-1" style="color:#dc2626;flex-shrink:0;"></i>
+            <p class="mb-0 small" style="color:#991b1b;">This asset cannot be deleted normally because it has already been depreciated or a payment has been recorded against it. You must write it off.</p>
+          </div>
+          <input type="hidden" name="action" value="write_off">
+          <input type="hidden" id="woAssetId" value="">
+          <div class="mb-3">
+            <label class="form-label fw-bold small" style="color:#374151;">Select Loss/Expense Account</label>
+            <select name="loss_account_id" class="form-select select2" style="width:100%;border-radius:8px;" required>
+              <option value="">-- Select Loss Account --</option>
+              {% for acc in accounts %}
+              <option value="{{ acc.id }}">{{ acc.account_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="modal-footer" style="border-top:1px solid #e2e8f0;padding:1rem 1.5rem;">
+          <button type="button" class="btn" data-bs-dismiss="modal"
+            style="border-radius:8px;font-weight:600;border:1px solid #dee2e6;color:#374151;padding:.45rem 1.25rem;">Cancel</button>
+          <button type="submit" class="btn text-white"
+            style="background:linear-gradient(135deg,#d97706,#b45309);border:none;border-radius:8px;font-weight:600;padding:.45rem 1.5rem;">
+            <i class="fas fa-ban me-1"></i> Confirm Write-Off
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -271,29 +304,40 @@
             data.columns.forEach(col => {
                 const th = document.createElement('th');
                 th.textContent = col;
-                // Add specific styling for month columns if needed
-                if(col.includes('-') && col.length < 9) th.classList.add('bg-secondary', 'text-white');
+                th.style.cssText = 'font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;background:#f8f9fa;';
+                if(col.includes('-') && col.length < 9) {
+                    th.style.background = '#4C5A5E';
+                    th.style.color = '#fff';
+                }
                 thead.appendChild(th);
             });
             const thStatus = document.createElement('th');
             thStatus.textContent = 'Status';
+            thStatus.style.cssText = 'font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;background:#f8f9fa;';
             thead.appendChild(thStatus);
 
             const thActions = document.createElement('th');
             thActions.textContent = 'Actions';
+            thActions.style.cssText = 'font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:2px solid #e2e8f0;padding:.75rem 1rem;background:#f8f9fa;';
             thead.appendChild(thActions);
 
             // Build Body
             tbody.innerHTML = '';
             data.data.forEach(row => {
                 const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #f1f3f5';
 
                 // Static Fields
                 const staticFields = ['class', 'desc', 'brand', 'qty', 'serial', 'location', 'cost', 'date', 'life'];
                 staticFields.forEach(field => {
                     const td = document.createElement('td');
+                    td.style.padding = '.65rem 1rem';
                     let val = row[field];
-                    if(field === 'cost') val = parseFloat(val).toLocaleString(undefined, {minimumFractionDigits: 2});
+                    if(field === 'cost') {
+                        val = parseFloat(val).toLocaleString(undefined, {minimumFractionDigits: 2});
+                        td.style.fontFamily = "'Courier New', monospace";
+                        td.style.textAlign = 'right';
+                    }
                     td.textContent = val;
                     tr.appendChild(td);
                 });
@@ -301,6 +345,7 @@
                 // Month Fields
                 data.month_headers.forEach(m => {
                     const td = document.createElement('td');
+                    td.style.cssText = 'padding:.65rem 1rem;text-align:right;font-family:"Courier New",monospace;font-size:.85rem;';
                     const val = row[m] || 0;
                     td.textContent = val > 0 ? val.toLocaleString(undefined, {minimumFractionDigits: 2}) : '-';
                     tr.appendChild(td);
@@ -309,26 +354,30 @@
                 // Totals
                 const tdTotal = document.createElement('td');
                 tdTotal.textContent = row.total_dep.toLocaleString(undefined, {minimumFractionDigits: 2});
-                tdTotal.classList.add('fw-bold');
+                tdTotal.style.cssText = 'padding:.65rem 1rem;text-align:right;font-family:"Courier New",monospace;font-weight:700;';
                 tr.appendChild(tdTotal);
 
                 const tdNBV = document.createElement('td');
                 tdNBV.textContent = row.nbv.toLocaleString(undefined, {minimumFractionDigits: 2});
-                tdNBV.classList.add('fw-bold', 'text-success');
+                tdNBV.style.cssText = 'padding:.65rem 1rem;text-align:right;font-family:"Courier New",monospace;font-weight:700;color:#059669;';
                 tr.appendChild(tdNBV);
 
                 const tdStatus = document.createElement('td');
-                tdStatus.innerHTML = row.status === 'Active' ? `<span class="badge bg-success">Active</span>` : `<span class="badge bg-danger">${row.status}</span>`;
+                tdStatus.style.padding = '.65rem 1rem';
+                tdStatus.innerHTML = row.status === 'Active'
+                    ? `<span class="badge" style="background:#d1fae5;color:#065f46;border-radius:6px;font-size:.72rem;font-weight:700;padding:.3rem .65rem;">Active</span>`
+                    : `<span class="badge" style="background:#fee2e2;color:#991b1b;border-radius:6px;font-size:.72rem;font-weight:700;padding:.3rem .65rem;">${row.status}</span>`;
                 tr.appendChild(tdStatus);
 
                 const tdActions = document.createElement('td');
+                tdActions.style.padding = '.65rem 1rem';
                 if(row.status === 'Active') {
                     if(row.payment_made === 1 || row.total_dep > 0) {
-                        tdActions.innerHTML = `<button type="button" class="btn btn-sm btn-warning" onclick="promptWriteOff(${row.id})"><i class="fas fa-ban"></i> Write-Off</button>`;
+                        tdActions.innerHTML = `<button type="button" class="btn btn-sm fw-bold text-white" onclick="promptWriteOff(${row.id})" style="background:linear-gradient(135deg,#d97706,#b45309);border:none;border-radius:6px;font-size:.78rem;padding:.3rem .8rem;"><i class="fas fa-ban me-1"></i> Write-Off</button>`;
                     } else {
                         tdActions.innerHTML = `<form action="/fixed_assets/delete/${row.id}" method="POST" style="display:inline;" onsubmit="return confirm('Are you sure you want to completely delete this asset and its Journal Vouchers?');">
                             <input type="hidden" name="action" value="delete">
-                            <button type="submit" class="btn btn-sm btn-danger"><i class="fas fa-trash"></i> Delete</button>
+                            <button type="submit" class="btn btn-sm fw-bold text-white" style="background:#dc2626;border:none;border-radius:6px;font-size:.78rem;padding:.3rem .8rem;"><i class="fas fa-trash me-1"></i> Delete</button>
                         </form>`;
                     }
                 }

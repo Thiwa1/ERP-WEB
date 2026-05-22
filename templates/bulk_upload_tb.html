@@ -1,31 +1,62 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12 text-white p-3 rounded shadow-sm" style="background-color: var(--secondary-color);">
-            <h4 class="mb-0 text-center fw-bold"><i class="fas fa-file-invoice-dollar me-2"></i> BULK UPLOAD TRIAL BALANCE</h4>
-        </div>
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#69797E,#4C5A5E);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-balance-scale-right text-white" style="font-size:.95rem;"></i>
     </div>
-
-    <!-- Upload Form -->
-    <div class="card shadow-sm mb-4 border-0">
-        <div class="card-body bg-light text-center py-5">
-            <form method="POST" enctype="multipart/form-data">
-                <i class="fas fa-balance-scale-right fa-3x text-muted mb-3"></i>
-                <h5 class="mb-3">Select TB CSV File</h5>
-                <p class="text-muted small mb-4">Required Headers: Account Name, Debit, Credit</p>
-
-                <div class="d-flex justify-content-center">
-                    <input type="file" name="file" class="form-control w-50" accept=".csv" required>
-                </div>
-
-                <button type="submit" class="btn btn-primary fw-bold mt-4 px-5">
-                    <i class="fas fa-check me-2"></i> Upload & Verify
-                </button>
-            </form>
-        </div>
+    <div>
+      <h5 class="mb-0 fw-bold text-dark">Bulk Upload &mdash; Trial Balance</h5>
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Financial Reports</div>
     </div>
+  </div>
+
+  <!-- Upload Card -->
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 pt-4 pb-2">
+      <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+        <i class="fas fa-file-csv me-1"></i> Trial Balance CSV Import
+      </div>
+    </div>
+    <div class="p-4">
+      <form method="POST" enctype="multipart/form-data">
+        <div class="text-center py-5" style="border:2px dashed #c7d0e0;border-radius:10px;background:#f8f9fc;transition:background .2s;"
+          onmouseover="this.style.background='#f0f2f5'" onmouseout="this.style.background='#f8f9fc'">
+          <i class="fas fa-balance-scale-right fa-3x mb-3" style="color:#69797E;"></i>
+          <h6 class="fw-bold mb-1">Select TB CSV File</h6>
+          <p class="text-muted small mb-4" style="max-width:380px;margin:0 auto;">
+            Required headers: <strong>Account Name</strong>, <strong>Debit</strong>, <strong>Credit</strong>
+          </p>
+          <div class="d-flex justify-content-center">
+            <input type="file" name="file" class="form-control" style="max-width:360px;border-radius:8px;" accept=".csv" required>
+          </div>
+        </div>
+        <div class="text-center mt-4">
+          <button type="submit" style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.55rem 2.25rem;" class="btn text-white">
+            <i class="fas fa-check me-2"></i> Upload &amp; Verify
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Info Note -->
+  <div class="mt-4" style="border-radius:10px;border:1px solid #e2e8f0;background:#f8f9fa;padding:1rem 1.25rem;">
+    <div class="d-flex gap-2 align-items-start">
+      <i class="fas fa-info-circle mt-1" style="color:#69797E;"></i>
+      <div>
+        <div class="fw-bold small mb-1" style="color:#4C5A5E;">About Trial Balance Upload</div>
+        <ul class="mb-0 small text-muted" style="padding-left:1rem;">
+          <li>The CSV must contain three columns: <strong>Account Name</strong>, <strong>Debit</strong>, and <strong>Credit</strong>.</li>
+          <li>Accounts must already exist in the GL. Missing accounts can be created in the review step.</li>
+          <li>Total debits and credits must balance before posting.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
 </div>
 {% endblock %}

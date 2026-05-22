@@ -4,82 +4,165 @@
 
 {% block content %}
 <div class="container-fluid py-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <h4 class="mb-0 fw-bold text-dark"><i class="fas fa-file-invoice-dollar text-primary me-2"></i> Bank Statement Analysis</h4>
-        <a href="/bulk_upload_gl" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back</a>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#005FA3);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,120,212,.35);">
+            <i class="fas fa-file-invoice-dollar text-white" style="font-size:.95rem;"></i>
+        </div>
+        <div>
+            <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Bank Statement Review</h5>
+            <span style="font-size:.75rem;color:#605E5C;">Banking &mdash; OCR Analysis</span>
+        </div>
+        <div class="ms-auto">
+            <a href="/bulk_upload_gl"
+               style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#374151;font-weight:600;font-size:.82rem;text-decoration:none;transition:all .15s;"
+               onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='#fff'">
+                <i class="fas fa-arrow-left" style="font-size:.75rem;"></i> Back
+            </a>
+        </div>
     </div>
 
-    <div class="alert alert-info border-0 shadow-sm">
-        <i class="fas fa-info-circle me-2"></i> <strong>Analysis Complete:</strong> Please review the extracted transactions below. You can assign each transaction to the relevant section (Receipt, Payment, JV) to automatically fill standard forms.
+    <!-- Info Banner -->
+    <div class="d-flex align-items-start gap-3 p-3 rounded-3 mb-4" style="background:#EFF6FF;border:1px solid #BFD9F2;">
+        <div style="width:32px;height:32px;border-radius:8px;background:#0078D4;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:.1rem;">
+            <i class="fas fa-info text-white" style="font-size:.78rem;"></i>
+        </div>
+        <div>
+            <div style="font-size:.82rem;font-weight:700;color:#0078D4;margin-bottom:.2rem;">Analysis Complete</div>
+            <div style="font-size:.82rem;color:#374151;line-height:1.5;">Please review the extracted transactions below. You can assign each transaction to the relevant section (Receipt, Payment, JV) to automatically fill standard forms.</div>
+        </div>
     </div>
 
-    <div class="card border-0 shadow-sm win-card">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Date</th>
-                            <th>Description</th>
-                            <th class="text-end">Amount</th>
-                            <th class="text-center">Detected Type</th>
-                            <th class="text-end">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in transactions %}
-                        <tr>
-                            <td>{{ row.date }}</td>
-                            <td><span class="fw-bold">{{ row.description }}</span></td>
-                            <td class="text-end fw-bold {{ 'text-success' if row.type == 'Receipt' else 'text-danger' }}">
-                                {{ row.amount|currency }}
-                            </td>
-                            <td class="text-center">
-                                {% if row.type == 'Receipt' %}
-                                    <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25"><i class="fas fa-arrow-down me-1"></i> Receipt</span>
-                                {% else %}
-                                    <span class="badge bg-danger bg-opacity-10 text-danger border border-danger border-opacity-25"><i class="fas fa-arrow-up me-1"></i> Payment</span>
-                                {% endif %}
-                            </td>
-                            <td class="text-end">
-                                {% if row.type == 'Receipt' %}
-                                    <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-outline-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                            Process As
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><a class="dropdown-item" href="/customer_receipt?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-receipt text-success me-2"></i> Customer Receipt</a></li>
-                                            <li><a class="dropdown-item" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=receipt" target="_blank"><i class="fas fa-book text-primary me-2"></i> Journal Entry (JV)</a></li>
-                                            <li><a class="dropdown-item" href="/invoice_creating?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"><i class="fas fa-file-invoice-dollar text-info me-2"></i> Sales Invoice</a></li>
-                                        </ul>
-                                    </div>
-                                {% else %}
-                                    <div class="btn-group">
-                                        <button type="button" class="btn btn-sm btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                                            Process As
-                                        </button>
-                                        <ul class="dropdown-menu dropdown-menu-end">
-                                            <li><a class="dropdown-item" href="/bank_payment?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-university text-danger me-2"></i> Supplier / Bank Payment</a></li>
-                                            <li><a class="dropdown-item" href="/direct_purchasing?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"><i class="fas fa-hand-holding-usd text-warning me-2"></i> Direct Purchase</a></li>
-                                            <li><a class="dropdown-item" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=payment" target="_blank"><i class="fas fa-book text-primary me-2"></i> Journal Entry (JV)</a></li>
-                                            <li><a class="dropdown-item" href="/service_entry?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"><i class="fas fa-file-invoice text-secondary me-2"></i> Service Entry (SRN)</a></li>
-                                        </ul>
-                                    </div>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr>
-                            <td colspan="5" class="text-center py-5 text-muted">
-                                <i class="fas fa-search fa-3x mb-3 text-light"></i>
-                                <h5>No transactions found</h5>
-                                <p>We couldn't extract any valid transactions from the uploaded image. Please try a clearer image.</p>
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
+    <!-- Transactions Table -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #f0f0f0;">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list me-2" style="color:#0078D4;"></i>Extracted Transactions
+            </span>
+            <span class="px-2 py-1 rounded-pill" style="font-size:.7rem;font-weight:700;background:#EFF6FF;color:#0078D4;">
+                OCR Results
+            </span>
+        </div>
+
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Date</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Description</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Amount</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Detected Type</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in transactions %}
+                    <tr style="border-bottom:1px solid #f5f5f5;">
+                        <td style="padding:.75rem 1rem;font-size:.85rem;color:#374151;font-weight:600;">{{ row.date }}</td>
+                        <td style="padding:.75rem 1rem;font-size:.88rem;font-weight:600;color:#1a1a2e;">{{ row.description }}</td>
+                        <td style="padding:.75rem 1rem;font-family:monospace;font-size:.9rem;font-weight:700;color:{{ 'color:#107C10' if row.type == 'Receipt' else '#DC3545' }};"
+                            class="text-end {{ 'text-success' if row.type == 'Receipt' else 'text-danger' }}">
+                            {{ row.amount|currency }}
+                        </td>
+                        <td style="padding:.75rem 1rem;" class="text-center">
+                            {% if row.type == 'Receipt' %}
+                                <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.3rem .75rem;border-radius:6px;font-size:.75rem;font-weight:700;background:#E8F5E9;color:#107C10;border:1px solid #B7DFB7;">
+                                    <i class="fas fa-arrow-down" style="font-size:.65rem;"></i> Receipt
+                                </span>
+                            {% else %}
+                                <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.3rem .75rem;border-radius:6px;font-size:.75rem;font-weight:700;background:#fff5f5;color:#DC3545;border:1px solid #fecaca;">
+                                    <i class="fas fa-arrow-up" style="font-size:.65rem;"></i> Payment
+                                </span>
+                            {% endif %}
+                        </td>
+                        <td style="padding:.75rem 1rem;" class="text-end">
+                            {% if row.type == 'Receipt' %}
+                                <div class="btn-group">
+                                    <button type="button"
+                                            style="background:#E8F5E9;border:1px solid #107C10;border-radius:8px 0 0 8px;color:#107C10;font-weight:600;font-size:.78rem;padding:.4rem .85rem;cursor:pointer;"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        Process As
+                                    </button>
+                                    <button type="button"
+                                            style="background:#E8F5E9;border:1px solid #107C10;border-left:none;border-radius:0 8px 8px 0;color:#107C10;padding:.4rem .5rem;cursor:pointer;"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-chevron-down" style="font-size:.7rem;"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" style="border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;padding:.5rem;">
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/customer_receipt?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-receipt" style="color:#107C10;width:16px;"></i> Customer Receipt
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=receipt" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-book" style="color:#0078D4;width:16px;"></i> Journal Entry (JV)
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/invoice_creating?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-file-invoice-dollar" style="color:#008B8B;width:16px;"></i> Sales Invoice
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            {% else %}
+                                <div class="btn-group">
+                                    <button type="button"
+                                            style="background:#fff5f5;border:1px solid #DC3545;border-radius:8px 0 0 8px;color:#DC3545;font-weight:600;font-size:.78rem;padding:.4rem .85rem;cursor:pointer;"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        Process As
+                                    </button>
+                                    <button type="button"
+                                            style="background:#fff5f5;border:1px solid #DC3545;border-left:none;border-radius:0 8px 8px 0;color:#DC3545;padding:.4rem .5rem;cursor:pointer;"
+                                            data-bs-toggle="dropdown" aria-expanded="false">
+                                        <i class="fas fa-chevron-down" style="font-size:.7rem;"></i>
+                                    </button>
+                                    <ul class="dropdown-menu dropdown-menu-end" style="border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:210px;padding:.5rem;">
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/bank_payment?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-university" style="color:#DC3545;width:16px;"></i> Supplier / Bank Payment
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/direct_purchasing?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-hand-holding-usd" style="color:#856404;width:16px;"></i> Direct Purchase
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=payment" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-book" style="color:#0078D4;width:16px;"></i> Journal Entry (JV)
+                                            </a>
+                                        </li>
+                                        <li>
+                                            <a class="dropdown-item rounded-2" href="/service_entry?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"
+                                               style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
+                                                <i class="fas fa-file-invoice" style="color:#605E5C;width:16px;"></i> Service Entry (SRN)
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </div>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="5" class="text-center py-5" style="color:#a0aec0;">
+                            <i class="fas fa-search fa-2x mb-3 d-block" style="opacity:.35;"></i>
+                            <div style="font-weight:600;font-size:.9rem;color:#374151;margin-bottom:.25rem;">No transactions found</div>
+                            <div style="font-size:.82rem;">We couldn't extract any valid transactions from the uploaded image. Please try a clearer image.</div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>

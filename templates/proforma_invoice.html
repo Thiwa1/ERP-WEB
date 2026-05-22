@@ -1,42 +1,102 @@
 {% extends "base.html" %}
 
+{% block title %}Proforma Invoice{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-file-invoice me-2"></i> Proforma Invoice</h4>
-</div>
+<style>
+    .page-icon-tile {
+        width: 42px; height: 42px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        color: #fff; font-size: 1.1rem;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        flex-shrink: 0;
+    }
+    .section-label {
+        font-size: .7rem; font-weight: 700; letter-spacing: .8px;
+        text-transform: uppercase; color: #605E5C;
+        margin-bottom: .6rem; display: block;
+    }
+    .form-label {
+        font-size: .8rem !important; font-weight: 600 !important; color: #323130 !important;
+    }
+    .panel-card {
+        border-radius: 12px; border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff;
+    }
+    .amount-cell {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+    }
+    .totals-block {
+        background: #f8f9fa; border-radius: 8px; padding: 14px 16px;
+    }
+    .totals-block .t-label { font-size: .82rem; color: #605E5C; font-weight: 600; }
+    .totals-block .t-value {
+        font-family: 'JetBrains Mono','Courier New',monospace;
+        font-size: .9rem; font-weight: 700; color: #201f1e;
+    }
+    .totals-block .grand .t-label { color: #201f1e; font-size: .9rem; }
+    .totals-block .grand .t-value { font-size: 1.1rem; color: #7B3F9E; }
+    .add-row-bar {
+        background: #faf9f8; border-top: 1px solid #e2e8f0;
+        padding: 12px 16px;
+    }
+    .item-badge {
+        background: #f3e8ff; color: #7B3F9E;
+        font-size: .72rem; font-weight: 700; padding: 3px 10px;
+        border-radius: 20px; letter-spacing: .3px;
+    }
+</style>
+
+<div class="container-fluid">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-icon-tile" style="background: linear-gradient(135deg,#7B3F9E,#5E2D7A);">
+            <i class="fas fa-file-contract"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Proforma Invoice</h5>
+            <small style="color:#605E5C; font-size:.78rem;">Sales</small>
+        </div>
+    </div>
 
     <form method="POST" action="{{ url_for('proforma_invoice') }}" id="piForm">
-        <div class="row">
-            <!-- Left: Items -->
-            <div class="col-lg-8 mb-4">
-                <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <span><i class="fas fa-list me-2"></i> Invoice Items</span>
-                        <span class="badge bg-light text-dark" id="itemCount">0 Items</span>
-                    </div>
+        <div class="row g-4">
+
+            <!-- LEFT: Items Table -->
+            <div class="col-lg-8">
+                <div class="panel-card h-100">
                     <div class="card-body p-0">
-                        <table class="table  table-hover mb-0" id="itemsTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Item</th>
-                                    <th>Description</th>
-                                    <th width="10%">Qty</th>
-                                    <th width="15%">Price</th>
-                                    <th width="15%">Total</th>
-                                    <th width="5%"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Rows via JS -->
-                            </tbody>
-                        </table>
-                        <div class="p-3 bg-light border-top">
-                            <div class="row g-2">
+                        <div class="px-4 pt-4 pb-2 d-flex align-items-center gap-3">
+                            <span class="section-label mb-0">Invoice Items</span>
+                            <span class="item-badge" id="itemCount">0 Items</span>
+                        </div>
+
+                        <div class="table-responsive" style="border-radius:0;border:none;box-shadow:none;margin-bottom:0;">
+                            <table class="table table-hover mb-0" id="itemsTable">
+                                <thead style="background:#f8f9fa;">
+                                    <tr>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Description</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Qty</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;text-align:right;">Price</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;text-align:right;">Total</th>
+                                        <th style="width:5%;"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Rows via JS -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- Add-item bar -->
+                        <div class="add-row-bar">
+                            <div class="row g-2 align-items-end">
                                 <div class="col-md-4">
+                                    <label class="form-label mb-1">Select Inventory Item</label>
                                     <select class="form-select select2" id="itemSelect" onchange="itemSelected()">
-                                        <option value="">Select Inventory Item</option>
+                                        <option value="">Select Item</option>
                                         {% for item in items %}
                                         <option value="{{ item.inventoy_name }}"
                                                 data-unit="{{ item.inventoy_items_messurment_unit }}"
@@ -47,16 +107,22 @@
                                     </select>
                                 </div>
                                 <div class="col-md-3">
-                                    <input type="text" class="form-control" id="customDesc" placeholder="Description (Optional)">
+                                    <label class="form-label mb-1">Description</label>
+                                    <input type="text" class="form-control" id="customDesc" placeholder="Optional">
                                 </div>
                                 <div class="col-md-2">
-                                    <input type="number" class="form-control" id="qtyInput" placeholder="Qty" step="0.01">
+                                    <label class="form-label mb-1">Qty</label>
+                                    <input type="number" class="form-control" id="qtyInput" placeholder="0.00" step="0.01">
                                 </div>
                                 <div class="col-md-2">
-                                    <input type="number" class="form-control" id="priceInput" placeholder="Price" step="0.01">
+                                    <label class="form-label mb-1">Price</label>
+                                    <input type="number" class="form-control" id="priceInput" placeholder="0.00" step="0.01">
                                 </div>
                                 <div class="col-md-1">
-                                    <button type="button" class="btn btn-success w-100" onclick="addItem()"><i class="fas fa-plus"></i></button>
+                                    <button type="button" class="btn w-100" onclick="addItem()"
+                                            style="background:linear-gradient(135deg,#7B3F9E,#5E2D7A);border:none;border-radius:8px;color:#fff;padding:8px 0;">
+                                        <i class="fas fa-plus"></i>
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -64,16 +130,16 @@
                 </div>
             </div>
 
-            <!-- Right: Details -->
-            <div class="col-lg-4 mb-4">
-                <div class="card shadow-sm h-100 border-0">
-                    <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                        <i class="fas fa-info-circle me-2"></i> PI Details
-                    </div>
-                    <div class="card-body bg-light">
+            <!-- RIGHT: PI Details -->
+            <div class="col-lg-4">
+                <div class="panel-card h-100">
+                    <div class="card-body px-4 py-4">
+                        <span class="section-label">PI Details</span>
+
                         <div class="mb-3">
-                            <label class="form-label fw-bold small">Customer</label>
-                            <input type="text" class="form-control" name="customer_name" list="custOptions" required placeholder="Select or Type Customer">
+                            <label class="form-label">Customer</label>
+                            <input type="text" class="form-control" name="customer_name"
+                                   list="custOptions" required placeholder="Select or type customer">
                             <datalist id="custOptions">
                                 {% for c in customers %}
                                 <option value="{{ c.customer_name }}">
@@ -81,41 +147,46 @@
                             </datalist>
                         </div>
 
-                        <div class="mb-3 row">
+                        <div class="row g-2 mb-3">
                             <div class="col-6">
-                                <label class="form-label fw-bold small">Date</label>
+                                <label class="form-label">Date</label>
                                 <input type="date" class="form-control" name="pi_date" value="{{ today_date }}" required>
                             </div>
                             <div class="col-6">
-                                <label class="form-label fw-bold small">Valid Until</label>
+                                <label class="form-label">Valid Until</label>
                                 <input type="date" class="form-control" name="expiry_date" required>
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label fw-bold small">Narration / Terms</label>
-                            <textarea class="form-control" name="narration" rows="3"></textarea>
+                        <div class="mb-4">
+                            <label class="form-label">Narration / Terms</label>
+                            <textarea class="form-control" name="narration" rows="3"
+                                      placeholder="Payment terms, notes…"></textarea>
                         </div>
 
-                        <hr>
-
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="fw-bold">Subtotal:</span>
-                            <span class="fw-bold" id="subTotal">0.00</span>
-                        </div>
-                        <div class="d-flex justify-content-between mb-3">
-                            <span class="fw-bold text-success fs-5">Grand Total:</span>
-                            <span class="fw-bold text-success fs-5" id="grandTotal">0.00</span>
+                        <!-- Totals -->
+                        <div class="totals-block mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="t-label">Subtotal</span>
+                                <span class="t-value" id="subTotal">0.00</span>
+                            </div>
+                            <hr class="my-2" style="border-color:#e2e8f0;">
+                            <div class="d-flex justify-content-between align-items-center grand">
+                                <span class="t-label">Grand Total</span>
+                                <span class="t-value" id="grandTotal">0.00</span>
+                            </div>
                         </div>
 
                         <input type="hidden" name="items_json" id="itemsJson">
 
-                        <button type="submit" class="btn btn-primary w-100 fw-bold py-2">
-                            <i class="fas fa-save me-2"></i> CREATE & PRINT
+                        <button type="submit" class="btn w-100 py-2"
+                                style="background:linear-gradient(135deg,#7B3F9E,#5E2D7A);border:none;border-radius:8px;font-weight:600;color:#fff;">
+                            <i class="fas fa-save me-2"></i>CREATE &amp; PRINT
                         </button>
                     </div>
                 </div>
             </div>
+
         </div>
     </form>
 </div>
@@ -158,6 +229,7 @@
 
         // Reset Inputs
         select.value = "";
+        if (typeof $ !== 'undefined') { $('#itemSelect').val('').trigger('change'); }
         document.getElementById('customDesc').value = "";
         document.getElementById('qtyInput').value = "";
         document.getElementById('priceInput').value = "";
@@ -177,17 +249,17 @@
             total += item.total;
             tbody.innerHTML += `
                 <tr>
-                    <td>${item.name || '-'}</td>
-                    <td>${item.desc || '-'}</td>
-                    <td>${item.qty}</td>
-                    <td>${item.price.toFixed(2)}</td>
-                    <td class="fw-bold">${item.total.toFixed(2)}</td>
+                    <td style="font-size:.875rem;">${item.name || '-'}</td>
+                    <td style="font-size:.875rem;color:#605E5C;">${item.desc || '-'}</td>
+                    <td style="font-size:.875rem;">${item.qty}</td>
+                    <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${item.price.toFixed(2)}</td>
+                    <td class="text-end fw-bold" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${item.total.toFixed(2)}</td>
                     <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeItem(${idx})"><i class="fas fa-times"></i></button></td>
                 </tr>
             `;
         });
 
-        document.getElementById('itemCount').textContent = items.length + " Items";
+        document.getElementById('itemCount').textContent = items.length + " Item" + (items.length !== 1 ? "s" : "");
         document.getElementById('subTotal').textContent = total.toFixed(2);
         document.getElementById('grandTotal').textContent = total.toFixed(2);
         document.getElementById('itemsJson').value = JSON.stringify(items);

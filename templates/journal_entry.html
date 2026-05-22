@@ -1,60 +1,74 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid py-3">
-    <!-- Header -->
-    <div class="d-flex align-items-center mb-4">
-    <h4 class="mb-0 fw-bold text-dark"><i class="text-success fas fa-book me-2"></i> Journal Entry Management</h4>
-</div>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#5c6bc0,#3949ab);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-book"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Journal Entry</h5>
+            <div style="font-size:.78rem;color:#605E5C;">General Ledger</div>
+        </div>
+    </div>
 
     <!-- Main Entry Form -->
     <form id="journalForm" method="POST" action="{{ url_for('save_journal_entry') }}">
 
-        <!-- Top Section: Journal Info -->
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                <i class="fas fa-info-circle me-2"></i> Journal Information
-            </div>
-            <div class="card-body bg-white">
-                <div class="row g-3">
+        <!-- Journal Information -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+            <div class="px-4 pt-4 pb-2">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                    <i class="fas fa-info-circle me-1"></i> Journal Information
+                </div>
+                <div class="row g-3 pb-3">
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">JV Number (Manual)</label>
-                        <input type="text" class="form-control" name="jv_user_code" placeholder="Enter JV Code" required>
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">JV Number (Manual)</label>
+                        <input type="text" class="form-control" name="jv_user_code" placeholder="Enter JV Code" required
+                               style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                     </div>
                     <div class="col-md-3">
-                        <label class="form-label fw-bold">Date</label>
-                        <input type="date" class="form-control" name="entry_date" value="{{ today_date }}" required>
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Date</label>
+                        <input type="date" class="form-control" name="entry_date" value="{{ today_date }}" required
+                               style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label fw-bold">Main Narration</label>
-                        <input type="text" class="form-control" name="main_narration" placeholder="Enter description for this journal entry" required>
+                        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Main Narration</label>
+                        <input type="text" class="form-control" name="main_narration"
+                               placeholder="Enter description for this journal entry" required
+                               style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- Middle Section: Entry Grid -->
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-                <span><i class="fas fa-list-ol me-2"></i> Journal Entries (Base Currency: {{ base_currency }})</span>
-                <button type="button" class="btn btn-sm btn-light fw-bold text-primary" onclick="addRow()">
+        <!-- Journal Entries Grid -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+            <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+                <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                    <i class="fas fa-list-ol me-1"></i> Journal Entries &mdash; Base Currency: {{ base_currency }}
+                </div>
+                <button type="button" class="btn btn-sm fw-600" onclick="addRow()"
+                        style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.8rem;padding:.3rem .85rem;">
                     <i class="fas fa-plus me-1"></i> Add Row
                 </button>
             </div>
-            <div class="card-body p-0 table-responsive">
-                <table class="table table-bordered table-striped mb-0" id="journalTable" style="min-width: 1200px;">
-                    <thead class="text-white" >
-                        <tr>
-                            <th style="width: 15%">Account</th>
-                            <th style="width: 15%">Sub Account</th>
-                            <th style="width: 10%">Job No</th>
-                            <th style="width: 5%">Currency</th>
-                            <th style="width: 10%">FC Amount</th>
-                            <th style="width: 5%">Rate</th>
-                            <th style="width: 10%">Debit ({{ base_currency }})</th>
-                            <th style="width: 10%">Credit ({{ base_currency }})</th>
-                            <th style="width: 15%">Narration</th>
-                            <th style="width: 5%">Action</th>
+            <div class="table-responsive" style="border-top:1px solid #f0f2f5;">
+                <table class="table table-hover mb-0" id="journalTable" style="min-width:1200px;">
+                    <thead>
+                        <tr style="background:#f8f9fa;">
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;padding:.75rem 1rem;">Account</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Sub Account</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Job No</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:6%;">Currency</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">FC Amount</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:6%;">Rate</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Debit ({{ base_currency }})</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Credit ({{ base_currency }})</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Narration</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:5%;">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -64,38 +78,45 @@
             </div>
         </div>
 
-        <!-- Bottom Section: Totals & Actions -->
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-body bg-white">
+        <!-- Totals & Actions -->
+        <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+            <div class="p-4">
                 <div class="row align-items-center">
                     <div class="col-md-6">
-                        <div class="alert alert-info mb-0 py-2 d-flex align-items-center" id="statusMessage" style="display:none;">
-                            <i class="fas fa-info-circle me-2"></i> <span id="statusText">Ready</span>
+                        <div class="alert mb-0 py-2 d-flex align-items-center" id="statusMessage"
+                             style="display:none!important;border-radius:8px;font-size:.85rem;">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span id="statusText">Ready</span>
                         </div>
                     </div>
                     <div class="col-md-6">
-                        <div class="row g-2 text-end">
-                            <div class="col-4">
-                                <label class="fw-bold d-block text-secondary">Total Debit</label>
-                                <span class="fs-5 fw-bold text-dark" id="totalDr">0.00</span>
+                        <div class="row g-2">
+                            <div class="col-4 text-end">
+                                <div style="font-size:.7rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;" class="mb-1">Total Debit</div>
+                                <span class="fw-bold font-monospace" id="totalDr"
+                                      style="font-size:1.15rem;color:#323130;">0.00</span>
                             </div>
-                            <div class="col-4">
-                                <label class="fw-bold d-block text-secondary">Total Credit</label>
-                                <span class="fs-5 fw-bold text-dark" id="totalCr">0.00</span>
+                            <div class="col-4 text-end">
+                                <div style="font-size:.7rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;" class="mb-1">Total Credit</div>
+                                <span class="fw-bold font-monospace" id="totalCr"
+                                      style="font-size:1.15rem;color:#323130;">0.00</span>
                             </div>
-                            <div class="col-4">
-                                <label class="fw-bold d-block text-secondary">Difference</label>
-                                <span class="fs-5 fw-bold" id="totalDiff" style="color: green;">0.00</span>
+                            <div class="col-4 text-end">
+                                <div style="font-size:.7rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;" class="mb-1">Difference</div>
+                                <span class="fw-bold font-monospace" id="totalDiff"
+                                      style="font-size:1.15rem;color:#107c10;">0.00</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                <hr>
+                <hr style="border-color:#f0f2f5;margin:1rem 0;">
                 <div class="d-flex justify-content-end gap-2">
-                    <button type="button" class="btn btn-info text-white fw-bold" onclick="toggleHistory()">
+                    <button type="button" class="btn fw-600" onclick="toggleHistory()"
+                            style="border-radius:8px;font-weight:600;font-size:.875rem;border:1px solid #e2e8f0;color:#605E5C;background:#f8f9fa;padding:.45rem 1.1rem;">
                         <i class="fas fa-history me-1"></i> History
                     </button>
-                    <button type="submit" class="btn btn-primary fw-bold px-4" style="background-color: var(--accent-color); border: none;">
+                    <button type="submit" class="btn fw-bold px-4"
+                            style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;font-size:.875rem;color:#fff;padding:.45rem 1.4rem;">
                         <i class="fas fa-save me-1"></i> Create Journal
                     </button>
                 </div>
@@ -106,43 +127,45 @@
     </form>
 
     <!-- History Section -->
-    <div id="historySection" class="card shadow-sm border-0" style="display: none;">
-        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4" >
-            <i class="fas fa-history me-2"></i> Journal Entry History
-        </div>
-        <div class="card-body bg-white">
+    <div id="historySection" style="display:none;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-2">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
+                <i class="fas fa-history me-1"></i> Journal Entry History
+            </div>
             <div class="row g-3 mb-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">From Date</label>
-                    <input type="date" class="form-control" id="histFromDate" value="{{ today_date }}">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">From Date</label>
+                    <input type="date" class="form-control" id="histFromDate" value="{{ today_date }}"
+                           style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                 </div>
                 <div class="col-md-3">
-                    <label class="form-label fw-bold">To Date</label>
-                    <input type="date" class="form-control" id="histToDate" value="{{ today_date }}">
+                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">To Date</label>
+                    <input type="date" class="form-control" id="histToDate" value="{{ today_date }}"
+                           style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                 </div>
                 <div class="col-md-2">
-                    <button type="button" class="btn btn-primary fw-bold w-100" onclick="loadHistory()">
+                    <button type="button" class="btn w-100 fw-bold" onclick="loadHistory()"
+                            style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.875rem;">
                         Load
                     </button>
                 </div>
             </div>
-
-            <div class="table-responsive">
-                <table class="table table-sm table-hover table-bordered" id="historyTable">
-                    <thead class="table-light">
-                        <tr>
-                            <th>JV No</th>
-                            <th>Date</th>
-                            <th>Account</th>
-                            <th>Narration</th>
-                            <th>Debit</th>
-                            <th>Credit</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </div>
+        </div>
+        <div class="table-responsive" style="border-top:1px solid #f0f2f5;">
+            <table class="table table-hover table-sm mb-0" id="historyTable">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">JV No</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Debit</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Credit</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Action</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -169,38 +192,38 @@
         const tbody = document.querySelector('#journalTable tbody');
         const row = document.createElement('tr');
         row.innerHTML = `
-            <td>
-                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="checkAccount(this)">
+            <td style="padding:.4rem .6rem;">
+                <input type="text" class="form-control form-control-sm" name="account_${rowCount}" list="accountList" placeholder="Select Account" onchange="checkAccount(this)" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
-                <select class="form-select form-select-sm" name="sub_account_${rowCount}" disabled>
+            <td style="padding:.4rem .6rem;">
+                <select class="form-select form-select-sm" name="sub_account_${rowCount}" disabled style="border-radius:6px;font-size:.82rem;">
                     <option value="">-</option>
                 </select>
             </td>
-            <td>
-                <input type="text" class="form-control form-control-sm" name="job_no_${rowCount}" list="jobList" placeholder="Job No">
+            <td style="padding:.4rem .6rem;">
+                <input type="text" class="form-control form-control-sm" name="job_no_${rowCount}" list="jobList" placeholder="Job No" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
+            <td style="padding:.4rem .6rem;">
                 <span class="badge bg-secondary row-currency">${baseCurrency}</span>
                 <input type="hidden" name="currency_${rowCount}" value="${baseCurrency}">
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm text-end fc-input" name="fc_${rowCount}" step="0.01" disabled oninput="calcBaseAmount(this)">
+            <td style="padding:.4rem .6rem;">
+                <input type="number" class="form-control form-control-sm text-end fc-input font-monospace" name="fc_${rowCount}" step="0.01" disabled oninput="calcBaseAmount(this)" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm text-end rate-input" name="rate_${rowCount}" step="0.0001" value="1.0000" disabled oninput="calcBaseAmount(this)">
+            <td style="padding:.4rem .6rem;">
+                <input type="number" class="form-control form-control-sm text-end rate-input font-monospace" name="rate_${rowCount}" step="0.0001" value="1.0000" disabled oninput="calcBaseAmount(this)" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm text-end dr-input" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()">
+            <td style="padding:.4rem .6rem;">
+                <input type="number" class="form-control form-control-sm text-end dr-input font-monospace" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
-                <input type="number" class="form-control form-control-sm text-end cr-input" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()">
+            <td style="padding:.4rem .6rem;">
+                <input type="number" class="form-control form-control-sm text-end cr-input font-monospace" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td>
-                <input type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration">
+            <td style="padding:.4rem .6rem;">
+                <input type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration" style="border-radius:6px;font-size:.82rem;">
             </td>
-            <td class="text-center">
-                <button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)">
+            <td class="text-center" style="padding:.4rem .6rem;">
+                <button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)" style="border-radius:6px;">
                     <i class="fas fa-trash"></i>
                 </button>
             </td>
@@ -226,7 +249,6 @@
                     subSelect.disabled = false;
                     data.forEach(item => {
                         const opt = document.createElement('option');
-                        // Use code and name combined for standard storing logic
                         opt.value = `${item.code} - ${item.name}`;
                         opt.text = item.name;
                         subSelect.add(opt);
@@ -249,21 +271,18 @@
             currencyInput.value = currency;
 
             if (currency !== baseCurrency) {
-                // Enable FC Fields
                 fcInput.disabled = false;
                 rateInput.disabled = false;
                 drInput.readOnly = true;
                 crInput.readOnly = true;
                 badge.className = 'badge bg-warning text-dark';
 
-                // Fetch Rate
                 fetch(`/api/get_exchange_rate?from=${currency}&to=${baseCurrency}`)
                     .then(r => r.json())
                     .then(data => {
                         if (data.rate) rateInput.value = data.rate;
                     });
             } else {
-                // Disable FC Fields
                 fcInput.disabled = true;
                 rateInput.disabled = true;
                 fcInput.value = '';
@@ -314,10 +333,10 @@
         diffEl.innerText = diff.toFixed(2);
 
         if (Math.abs(diff) > 0.01) {
-            diffEl.style.color = 'red';
+            diffEl.style.color = '#c42b1c';
             showStatus('Total Debit and Credit must be equal.', 'danger');
         } else {
-            diffEl.style.color = 'green';
+            diffEl.style.color = '#107c10';
             showStatus('Balanced.', 'success');
         }
     }
@@ -380,16 +399,16 @@
                 data.forEach(row => {
                     tbody.innerHTML += `
                         <tr>
-                            <td>${row.jv_no}</td>
-                            <td>${row.date}</td>
-                            <td>${row.account}</td>
-                            <td>${row.narration}</td>
-                            <td class="text-end">${row.dr.toFixed(2)}</td>
-                            <td class="text-end">${row.cr.toFixed(2)}</td>
-                            <td>
-                                <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
-                                <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
-                                <button class="btn btn-sm btn-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
+                            <td class="font-monospace" style="padding:.5rem 1rem;">${row.jv_no}</td>
+                            <td style="padding:.5rem .75rem;">${row.date}</td>
+                            <td style="padding:.5rem .75rem;">${row.account}</td>
+                            <td style="padding:.5rem .75rem;">${row.narration}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${row.dr.toFixed(2)}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${row.cr.toFixed(2)}</td>
+                            <td style="padding:.5rem .75rem;">
+                                <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
+                                <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
+                                <button class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
                             </td>
                         </tr>
                     `;

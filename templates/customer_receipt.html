@@ -1,36 +1,133 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .page-header-icon {
+        width: 42px;
+        height: 42px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #fff;
+        font-size: 1.1rem;
+        flex-shrink: 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,.15);
+    }
+
+    .fluent-card {
+        background: #fff;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    }
+
+    .section-label {
+        font-size: .7rem;
+        font-weight: 700;
+        letter-spacing: .8px;
+        text-transform: uppercase;
+        color: #605E5C;
+        margin-bottom: 8px;
+    }
+
+    .card-section-header .section-label {
+        color: var(--accent-color, #0078D4);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-bottom: 0;
+    }
+
+    .field-label {
+        font-size: .8rem;
+        font-weight: 600;
+        color: #323130;
+        margin-bottom: 4px;
+    }
+
+    .table thead th {
+        background: #f8f9fa;
+        font-size: .72rem;
+        font-weight: 700;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+        color: #605E5C;
+        border-color: #e9ecef;
+        white-space: nowrap;
+    }
+
+    .table td {
+        border-color: #e9ecef;
+        font-size: .82rem;
+    }
+
+    .mono {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    .submit-btn {
+        background: var(--accent-color, #0078D4);
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+    }
+
+    /* Quick stats amount display */
+    .stat-amount {
+        font-family: 'JetBrains Mono', 'Courier New', monospace;
+        font-weight: 700;
+        font-size: .95rem;
+    }
+
+    /* Action buttons in sidebar */
+    .action-btn {
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: .82rem;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+    }
+</style>
+
 <div class="container-fluid py-3">
-    <!-- Header Section -->
-    <div class="d-flex justify-content-between align-items-center mb-4 p-3 rounded" style="background-color: #2E86AB;">
-        <h4 class="mb-0 fw-bold text-white"><i class="fas fa-file-invoice-dollar me-2"></i> INVOICE RECEIPT</h4>
-        <span class="fw-bold" style="color: #A9D6E5; font-size: 14px;">Accounting System</span>
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div class="page-header-icon" style="background: linear-gradient(135deg, #107C10, #0a5c0a);">
+            <i class="fas fa-file-invoice-dollar"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold">Customer Receipt</h5>
+            <div class="text-muted" style="font-size:.78rem">Receivables</div>
+        </div>
     </div>
 
     <form method="POST" action="/customer_receipt/submit" id="receiptForm">
 
-        <!-- Top Row: Customer & Payment -->
-        <div class="row mb-3">
+        <div class="row g-3 mb-3">
 
-            <!-- Left Column: Customer & Invoices/History -->
+            <!-- LEFT COLUMN: Customer Selection + Tables + Narration -->
             <div class="col-md-8 d-flex flex-column gap-3">
 
                 <!-- Customer Selection -->
-                <div class="card shadow-sm border-0" style="border-radius: 8px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">CUSTOMER SELECTION</h6>
+                <div class="fluent-card">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-user"></i> Customer Selection</div>
                     </div>
-                    <div class="card-body">
-                        <div class="d-flex align-items-center gap-3">
-                            <label class="form-label fw-bold mb-0" style="color: #2C3E50; min-width: 120px;">Select Customer:</label>
-                            <select id="customerSelect" name="customer_id" class="form-select select2 w-50" onchange="loadOutstanding()" required>
+                    <div class="p-3 pt-2">
+                        <div class="d-flex align-items-center gap-3 flex-wrap">
+                            <label class="field-label mb-0" style="min-width:110px;">Select Customer</label>
+                            <select id="customerSelect" name="customer_id" class="form-select select2 flex-grow-1" style="min-width:200px; max-width:360px;" onchange="loadOutstanding()" required>
                                 <option value="">-- Select Customer --</option>
                                 {% for c in customers %}
                                 <option value="{{ c.id }}">{{ c.customer_name }}</option>
                                 {% endfor %}
                             </select>
-                            <button type="button" class="btn fw-bold px-4" style="background-color: #2E86AB; color: white;" onclick="loadOutstanding()">
+                            <button type="button" class="btn btn-sm fw-bold px-3 submit-btn text-white" onclick="loadOutstanding()">
                                 <i class="fas fa-sync-alt me-1"></i> Refresh
                             </button>
                         </div>
@@ -38,62 +135,61 @@
                 </div>
 
                 <!-- Outstanding Invoices -->
-                <div class="card shadow-sm border-0 flex-grow-1" style="border-radius: 8px; min-height: 250px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">OUTSTANDING INVOICES</h6>
+                <div class="fluent-card flex-grow-1">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-file-invoice"></i> Outstanding Invoices</div>
                     </div>
-                    <div class="card-body p-0 mt-2">
-                        <div class="table-responsive" style="max-height: 250px;">
-                            <table class="table table-hover align-middle mb-0" style="font-size: 13px;">
-                                <thead class="sticky-top" style="background-color: #2E86AB; color: white;">
+                    <div class="p-0 pt-2">
+                        <div class="table-responsive" style="max-height:250px;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="sticky-top">
                                     <tr>
-                                        <th class="border-0">No</th>
-                                        <th class="border-0">Invoice No</th>
-                                        <th class="border-0">JV No</th>
-                                        <th class="border-0">Invoice Date</th>
-                                        <th class="border-0">Due Date</th>
-                                        <th class="text-end border-0">Due Total</th>
-                                        <th class="text-end border-0">Received</th>
-                                        <th class="text-end border-0">Payable</th>
-                                        <th class="text-center border-0" style="width: 140px;">Arrange Amount</th>
-                                        <th class="text-center border-0" style="width: 50px;">Sel</th>
+                                        <th>No</th>
+                                        <th>Invoice No</th>
+                                        <th>JV No</th>
+                                        <th>Invoice Date</th>
+                                        <th>Due Date</th>
+                                        <th class="text-end">Due Total</th>
+                                        <th class="text-end">Received</th>
+                                        <th class="text-end">Payable</th>
+                                        <th class="text-center" style="width:130px;">Arrange Amount</th>
+                                        <th class="text-center" style="width:46px;">Sel</th>
                                     </tr>
                                 </thead>
-                                <tbody id="invoiceTableBody" style="background-color: #F8F9FA;">
+                                <tbody id="invoiceTableBody">
                                     <tr>
                                         <td colspan="10" class="text-center py-4 text-muted fst-italic">Select a customer to view outstanding invoices.</td>
                                     </tr>
                                 </tbody>
                             </table>
-                    </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Receipt History -->
-                <div class="card shadow-sm border-0 flex-grow-1" style="border-radius: 8px; min-height: 200px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">RECEIPT HISTORY</h6>
+                <div class="fluent-card flex-grow-1">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-history"></i> Receipt History</div>
                     </div>
-                    <div class="card-body p-0 mt-2">
-                        <div class="table-responsive" style="max-height: 200px;">
-                            <table class="table table-hover align-middle mb-0" style="font-size: 13px;">
-                                <thead class="sticky-top" style="background-color: #2E86AB; color: white;">
+                    <div class="p-0 pt-2">
+                        <div class="table-responsive" style="max-height:200px;">
+                            <table class="table table-hover align-middle mb-0">
+                                <thead class="sticky-top">
                                     <tr>
-                                        <th class="border-0">No</th>
-                                        <th class="border-0">Voucher No</th>
-                                        <th class="border-0">JV No</th>
-                                        <th class="border-0">Payment Account</th>
-                                        <th class="text-end border-0">Reverse Amt</th>
-                                        <th class="text-end border-0">Paid Amt</th>
-                                        <th class="border-0">Payment Date</th>
-                                        <th class="border-0">User Id</th>
-                                        <th class="border-0">Narration</th>
-                                        <th class="text-center border-0">Action</th>
-                                        <th class="d-none border-0">JSON</th>
+                                        <th>No</th>
+                                        <th>Voucher No</th>
+                                        <th>JV No</th>
+                                        <th>Payment Account</th>
+                                        <th class="text-end">Reverse Amt</th>
+                                        <th class="text-end">Paid Amt</th>
+                                        <th>Payment Date</th>
+                                        <th>User Id</th>
+                                        <th>Narration</th>
+                                        <th class="text-center">Action</th>
+                                        <th class="d-none">JSON</th>
                                     </tr>
                                 </thead>
-                                <tbody id="historyTableBody" style="background-color: #F8F9FA;">
+                                <tbody id="historyTableBody">
                                     <tr>
                                         <td colspan="11" class="text-center py-4 text-muted fst-italic">Select a customer to view receipt history.</td>
                                     </tr>
@@ -104,135 +200,114 @@
                 </div>
 
                 <!-- Narration & Status Bar -->
-                <div class="card shadow-sm border-0 mt-2" style="border-radius: 8px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">NARRATION</h6>
+                <div class="fluent-card">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-comment-alt"></i> Narration</div>
                     </div>
-                    <div class="card-body">
-                        <textarea name="narration" class="form-control mb-3" rows="2" style="background-color: #F8F9FA; resize: none;"></textarea>
-
-                        <div class="d-flex justify-content-between align-items-center p-2 rounded" style="background-color: #ECF0F1; border-top: 1px solid #BDC3C7;">
-                            <span class="text-muted fw-bold" style="font-size: 12px;">Ready</span>
-                            <span class="text-muted fw-bold" style="font-size: 12px;">Last Updated: <span id="lastUpdatedClock"></span></span>
+                    <div class="p-3 pt-2">
+                        <textarea name="narration" class="form-control mb-3" rows="2" style="resize:none; font-size:.85rem;"></textarea>
+                        <div class="d-flex justify-content-between align-items-center px-2 py-2 rounded" style="background:#f8f9fa; border:1px solid #e2e8f0;">
+                            <span class="text-muted fw-bold" style="font-size:.72rem; letter-spacing:.5px; text-transform:uppercase;">Ready</span>
+                            <span class="text-muted" style="font-size:.72rem;">Last Updated: <span id="lastUpdatedClock" class="fw-bold"></span></span>
                         </div>
                     </div>
                 </div>
 
             </div>
 
-            <!-- Right Column: Payment Info, Actions, Stats -->
+            <!-- RIGHT COLUMN: Payment Info, Actions, Quick Stats -->
             <div class="col-md-4 d-flex flex-column gap-3">
 
                 <!-- Payment Information -->
-                <div class="card shadow-sm border-0" style="border-radius: 8px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">PAYMENT INFORMATION</h6>
+                <div class="fluent-card">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-credit-card"></i> Payment Information</div>
                     </div>
-                    <div class="card-body" style="font-size: 13px;">
+                    <div class="p-3 pt-2">
 
-                        <div class="row align-items-center mb-3">
-                            <div class="col-5 fw-bold" style="color: #2C3E50;">Payment Date:</div>
-                            <div class="col-7">
-                                <input type="date" name="payment_date" class="form-control form-control-sm" value="{{ today_date }}" required>
-                            </div>
+                        <div class="mb-3">
+                            <label class="field-label">Payment Date</label>
+                            <input type="date" name="payment_date" class="form-control form-control-sm" value="{{ today_date }}" required>
                         </div>
 
-                        <div class="row align-items-center mb-3">
-                            <div class="col-5 fw-bold" style="color: #2C3E50;">Account Type:</div>
-                            <div class="col-7">
-                                <select id="accountType" name="account_type" class="form-select form-select-sm" onchange="toggleAccountType()" required>
-                                    <option value="" disabled selected>-- Select Type --</option>
-                                    <option value="cash">Cash Account</option>
-                                    <option value="bank">Bank Account</option>
-                                </select>
-                            </div>
+                        <div class="mb-3">
+                            <label class="field-label">Account Type</label>
+                            <select id="accountType" name="account_type" class="form-select form-select-sm" onchange="toggleAccountType()" required>
+                                <option value="" disabled selected>-- Select Type --</option>
+                                <option value="cash">Cash Account</option>
+                                <option value="bank">Bank Account</option>
+                            </select>
                         </div>
 
                         <!-- Cash Fields -->
                         <div id="cashAccountDiv" class="d-none">
-                            <div class="row align-items-center mb-3">
-                                <div class="col-5 fw-bold" style="color: #2C3E50;">Cash Account:</div>
-                                <div class="col-7">
-                                    <select name="cash_account" class="form-select form-select-sm" id="cashSelect">
-                                        <option value="" disabled selected>-- Select Cash Acc --</option>
-                                        {% for acc in cash_accounts %}
-                                        <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
+                            <div class="mb-3">
+                                <label class="field-label">Cash Account</label>
+                                <select name="cash_account" class="form-select form-select-sm" id="cashSelect">
+                                    <option value="" disabled selected>-- Select Cash Acc --</option>
+                                    {% for acc in cash_accounts %}
+                                    <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
-                            <div class="row align-items-center mb-3">
-                                <div class="col-5 fw-bold" style="color: #2C3E50;">Manual Receipt No:</div>
-                                <div class="col-7">
-                                    <input type="text" name="manual_receipt_no" class="form-control form-control-sm">
-                                </div>
+                            <div class="mb-3">
+                                <label class="field-label">Manual Receipt No</label>
+                                <input type="text" name="manual_receipt_no" class="form-control form-control-sm">
                             </div>
                         </div>
 
                         <!-- Bank Fields -->
                         <div id="bankAccountDiv" class="d-none">
-                            <div class="row align-items-center mb-3">
-                                <div class="col-5 fw-bold" style="color: #2C3E50;">Bank Account:</div>
-                                <div class="col-7">
-                                    <select name="bank_account" class="form-select form-select-sm" id="bankSelect">
-                                        <option value="" disabled selected>-- Select Bank Acc --</option>
-                                        {% for acc in bank_accounts %}
-                                        <option value="{{ acc.bank_bookcol_account_number }}">{{ acc.bank_bookcol_account_number }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </div>
+                            <div class="mb-3">
+                                <label class="field-label">Bank Account</label>
+                                <select name="bank_account" class="form-select form-select-sm" id="bankSelect">
+                                    <option value="" disabled selected>-- Select Bank Acc --</option>
+                                    {% for acc in bank_accounts %}
+                                    <option value="{{ acc.bank_bookcol_account_number }}">{{ acc.bank_bookcol_account_number }}</option>
+                                    {% endfor %}
+                                </select>
                             </div>
 
-                            <div class="row align-items-center mb-3">
-                                <div class="col-5 fw-bold" style="color: #2C3E50;">Payment Method:</div>
-                                <div class="col-7">
-                                    <select id="paymentMethodSelect" name="payment_method" class="form-select form-select-sm" onchange="togglePaymentMethod()">
-                                        <option value="" disabled selected>-- Select Method --</option>
-                                        <option value="online">Online Payment</option>
-                                        <option value="card">Credit Card Payment</option>
-                                        <option value="transfer">Bank Transfer</option>
-                                        <option value="cheque">Bank Cheque</option>
-                                    </select>
-                                </div>
+                            <div class="mb-3">
+                                <label class="field-label">Payment Method</label>
+                                <select id="paymentMethodSelect" name="payment_method" class="form-select form-select-sm" onchange="togglePaymentMethod()">
+                                    <option value="" disabled selected>-- Select Method --</option>
+                                    <option value="online">Online Payment</option>
+                                    <option value="card">Credit Card Payment</option>
+                                    <option value="transfer">Bank Transfer</option>
+                                    <option value="cheque">Bank Cheque</option>
+                                </select>
                             </div>
 
                             <!-- Additional Dynamic Fields based on Payment Method -->
-                            <div id="additionalFieldsPanel" class="d-none pt-2 border-top">
+                            <div id="additionalFieldsPanel" class="d-none pt-2" style="border-top:1px solid #e2e8f0;">
 
-                                <div id="onlinePaymentDiv" class="d-none mb-3">
+                                <div id="onlinePaymentDiv" class="d-none mb-3 pt-2">
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" name="online_payment_received" id="onlineCheck">
-                                        <label class="form-check-label fw-bold" for="onlineCheck" style="color: #2C3E50;">Online Payment Received</label>
+                                        <label class="form-check-label field-label fw-semibold" for="onlineCheck">Online Payment Received</label>
                                     </div>
-                                    <div class="row align-items-center">
-                                        <div class="col-5 fw-bold" style="color: #2C3E50;">Transaction Code:</div>
-                                        <div class="col-7"><input type="text" name="transaction_code" class="form-control form-control-sm"></div>
-                                    </div>
+                                    <label class="field-label">Transaction Code</label>
+                                    <input type="text" name="transaction_code" class="form-control form-control-sm">
                                 </div>
 
-                                <div id="creditCardDiv" class="d-none mb-3">
-                                    <div class="row align-items-center">
-                                        <div class="col-5 fw-bold" style="color: #2C3E50;">Card Last 4 Digits:</div>
-                                        <div class="col-7"><input type="text" name="card_last_digits" class="form-control form-control-sm" maxlength="4"></div>
-                                    </div>
+                                <div id="creditCardDiv" class="d-none mb-3 pt-2">
+                                    <label class="field-label">Card Last 4 Digits</label>
+                                    <input type="text" name="card_last_digits" class="form-control form-control-sm" maxlength="4">
                                 </div>
 
-                                <div id="bankTransferDiv" class="d-none mb-3">
+                                <div id="bankTransferDiv" class="d-none mb-3 pt-2">
                                     <div class="form-check mb-2">
                                         <input class="form-check-input" type="checkbox" name="bank_transfer_confirmed" id="transferCheck">
-                                        <label class="form-check-label fw-bold" for="transferCheck" style="color: #2C3E50;">Bank Transfer Confirmed</label>
+                                        <label class="form-check-label field-label fw-semibold" for="transferCheck">Bank Transfer Confirmed</label>
                                     </div>
-                                    <div class="row align-items-center">
-                                        <div class="col-5 fw-bold" style="color: #2C3E50;">Transfer ID:</div>
-                                        <div class="col-7"><input type="text" name="transfer_id" class="form-control form-control-sm"></div>
-                                    </div>
+                                    <label class="field-label">Transfer ID</label>
+                                    <input type="text" name="transfer_id" class="form-control form-control-sm">
                                 </div>
 
-                                <div id="bankChequeDiv" class="d-none mb-3">
-                                    <div class="row align-items-center">
-                                        <div class="col-5 fw-bold" style="color: #2C3E50;">Cheque No:</div>
-                                        <div class="col-7"><input type="text" name="cheque_no" class="form-control form-control-sm"></div>
-                                    </div>
+                                <div id="bankChequeDiv" class="d-none mb-3 pt-2">
+                                    <label class="field-label">Cheque No</label>
+                                    <input type="text" name="cheque_no" class="form-control form-control-sm">
                                 </div>
                             </div>
                         </div>
@@ -241,50 +316,48 @@
                 </div>
 
                 <!-- Actions -->
-                <div class="card shadow-sm border-0" style="border-radius: 8px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">ACTIONS</h6>
+                <div class="fluent-card">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-bolt"></i> Actions</div>
                     </div>
-                    <div class="card-body">
+                    <div class="p-3 pt-2">
                         <div class="d-grid gap-2">
-                            <button type="submit" class="btn fw-bold text-white shadow-sm" style="background-color: #27AE60; height: 38px;">
-                                Submit Receipt
+                            <button type="submit" class="btn text-white fw-bold action-btn" style="background:#107C10;">
+                                <i class="fas fa-check-circle me-1"></i> Submit Receipt
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #3498DB; height: 38px;">
-                                Re-Print
+                            <button type="button" class="btn text-white fw-bold action-btn" style="background:#0078D4;">
+                                <i class="fas fa-print me-1"></i> Re-Print
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #E74C3C; height: 38px;" onclick="triggerDeleteInvoiceModal()">
-                                Delete
+                            <button type="button" class="btn text-white fw-bold action-btn" style="background:#d13438;" onclick="triggerDeleteInvoiceModal()">
+                                <i class="fas fa-trash me-1"></i> Delete
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #F39C12; height: 38px;" onclick="triggerReverseModal()">
-                                Reverse
+                            <button type="button" class="btn text-white fw-bold action-btn" style="background:#ca5010;" onclick="triggerReverseModal()">
+                                <i class="fas fa-undo-alt me-1"></i> Reverse
                             </button>
-
-                            <hr class="my-1">
-
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #2E86AB; height: 38px;">
-                                Reports
+                            <hr class="my-1" style="border-color:#e2e8f0;">
+                            <button type="button" class="btn text-white fw-bold action-btn" style="background:#605E5C;">
+                                <i class="fas fa-chart-bar me-1"></i> Reports
                             </button>
-                            <button type="button" class="btn fw-bold text-white shadow-sm" style="background-color: #2E86AB; height: 38px;">
-                                Settings
+                            <button type="button" class="btn text-white fw-bold action-btn" style="background:#605E5C;">
+                                <i class="fas fa-cog me-1"></i> Settings
                             </button>
                         </div>
                     </div>
                 </div>
 
                 <!-- Quick Stats -->
-                <div class="card shadow-sm border-0 mt-auto" style="border-radius: 8px;">
-                    <div class="card-header bg-transparent border-0 pb-0 pt-3">
-                        <h6 class="fw-bold mb-0" style="color: #2C3E50;">QUICK STATS</h6>
+                <div class="fluent-card">
+                    <div class="card-section-header p-3 pb-0">
+                        <div class="section-label"><i class="fas fa-chart-line"></i> Quick Stats</div>
                     </div>
-                    <div class="card-body">
-                        <div class="d-flex justify-content-between mb-2">
-                            <span class="fw-bold" style="color: #2C3E50; font-size: 13px;">Total Outstanding:</span>
-                            <span class="fw-bold" style="color: #E74C3C; font-size: 14px;" id="totalOutstandingDisplay">{{ company_currency }} 0.00</span>
+                    <div class="p-3 pt-2">
+                        <div class="d-flex justify-content-between align-items-center p-2 rounded mb-2" style="background:#fff5f5; border:1px solid #fecaca;">
+                            <span class="field-label mb-0">Total Outstanding</span>
+                            <span class="stat-amount text-danger" id="totalOutstandingDisplay">{{ company_currency }} 0.00</span>
                         </div>
-                        <div class="d-flex justify-content-between">
-                            <span class="fw-bold" style="color: #2C3E50; font-size: 13px;">Total Received:</span>
-                            <span class="fw-bold" style="color: #27AE60; font-size: 15px;" id="totalReceiptDisplay">{{ company_currency }} 0.00</span>
+                        <div class="d-flex justify-content-between align-items-center p-2 rounded" style="background:#f0fdf4; border:1px solid #bbf7d0;">
+                            <span class="field-label mb-0">Total Received</span>
+                            <span class="stat-amount text-success" id="totalReceiptDisplay">{{ company_currency }} 0.00</span>
                         </div>
                     </div>
                 </div>
@@ -297,39 +370,37 @@
 <!-- Reversal Modal -->
 <div class="modal fade" id="reversalModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content shadow-lg border-0" style="border-radius: 8px;">
-            <div class="modal-header text-white" style="background-color: #2B5B80;">
-                <h5 class="modal-title fw-bold"><i class="fas fa-undo-alt me-2"></i> Receipt Reversal</h5>
+        <div class="modal-content" style="border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 8px 32px rgba(0,0,0,.14);">
+            <div class="modal-header border-0 pb-0" style="background:linear-gradient(135deg,#ca5010,#8c3a0e); border-radius:12px 12px 0 0;">
+                <h5 class="modal-title fw-bold text-white" style="font-size:.95rem;"><i class="fas fa-undo-alt me-2"></i> Receipt Reversal</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body p-4 bg-light">
-                <p class="text-muted fst-italic text-center mb-4">Reverse posted receipt payments and restore GL entries.</p>
+            <div class="modal-body p-4" style="background:#fafafa;">
+                <p class="text-muted fst-italic text-center mb-3" style="font-size:.82rem;">Reverse posted receipt payments and restore GL entries.</p>
 
-                <div class="card border-0 shadow-sm" style="border: 1px solid #82A6CE !important;">
-                    <div class="card-header bg-white fw-bold" style="color: #2B5B80;">
-                        Payment Details
-                    </div>
-                    <div class="card-body" style="font-family: monospace; font-size: 13px; background: linear-gradient(180deg, #E6EFF9 0%, #FFFFFF 100%);">
+                <div class="fluent-card p-3">
+                    <div class="section-label mb-2">Payment Details</div>
+                    <div style="font-family:'JetBrains Mono','Courier New',monospace; font-size:.82rem;">
                         <div class="mb-1"><span class="fw-bold">Voucher No:</span> <span id="revVoucherNo"></span></div>
                         <div class="mb-1"><span class="fw-bold">Date:</span> <span id="revDate"></span></div>
                         <div class="mb-1"><span class="fw-bold">Amount:</span> {{ company_currency }} <span id="revAmount"></span></div>
                         <div class="mb-1"><span class="fw-bold">Account:</span> <span id="revAccount"></span></div>
                         <div class="mb-1"><span class="fw-bold">Narration:</span> <span id="revNarration"></span></div>
-                        <div class="mt-2 fw-bold" style="color: #E74C3C;">Status: Ready for Reversal</div>
+                        <div class="mt-2 fw-bold text-danger" style="font-size:.78rem;">Status: Ready for Reversal</div>
                     </div>
                 </div>
 
-                <div id="revStatusPanel" class="mt-4 text-center d-none">
+                <div id="revStatusPanel" class="mt-3 text-center d-none">
                     <i id="revStatusIcon" class="fas fa-spinner fa-spin text-warning fs-3 mb-2"></i>
                     <div id="revStatusText" class="fw-bold text-warning">Processing reversal...</div>
                 </div>
 
                 <input type="hidden" id="revJvNo">
             </div>
-            <div class="modal-footer bg-white border-top-0 d-flex justify-content-between">
-                <button type="button" class="btn fw-bold" style="background-color: #6c757d; color: white;" data-bs-dismiss="modal">Close</button>
-                <button type="button" class="btn fw-bold text-white" id="revProcessBtn" style="background-color: #2B5B80;" onclick="processReversal()">
-                    Process Reversal
+            <div class="modal-footer border-0 bg-white" style="border-radius:0 0 12px 12px;">
+                <button type="button" class="btn btn-secondary" style="border-radius:8px;" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn fw-bold text-white" id="revProcessBtn" style="background:#ca5010; border:none; border-radius:8px;" onclick="processReversal()">
+                    <i class="fas fa-undo-alt me-1"></i> Process Reversal
                 </button>
             </div>
         </div>
@@ -431,17 +502,17 @@
                     data.invoices.forEach((inv, index) => {
                         totalOut += inv.balance;
                         const row = `
-                            <tr style="background-color: white;">
-                                <td class="text-muted">${inv.id}</td>
-                                <td class="fw-bold" style="color: #2C3E50;">${inv.inv_no}</td>
-                                <td>${inv.jv_no}</td>
+                            <tr>
+                                <td class="text-muted mono">${inv.id}</td>
+                                <td class="fw-bold mono">${inv.inv_no}</td>
+                                <td class="mono">${inv.jv_no}</td>
                                 <td>${inv.date}</td>
                                 <td>${inv.due_date}</td>
-                                <td class="text-end">${inv.total.toFixed(2)}</td>
-                                <td class="text-end">${inv.paid.toFixed(2)}</td>
-                                <td class="text-end fw-bold" style="color: #E74C3C;">${inv.balance.toFixed(2)}</td>
+                                <td class="text-end mono">${inv.total.toFixed(2)}</td>
+                                <td class="text-end mono">${inv.paid.toFixed(2)}</td>
+                                <td class="text-end mono fw-bold text-danger">${inv.balance.toFixed(2)}</td>
                                 <td class="text-center">
-                                    <input type="number" id="pay_input_${inv.inv_no}" name="pay_${inv.id}" class="form-control form-control-sm text-end pay-input border-primary"
+                                    <input type="number" id="pay_input_${inv.inv_no}" name="pay_${inv.id}" class="form-control form-control-sm text-end pay-input border-primary mono"
                                            style="background-color: #F0F5FF; font-weight: bold; color: #2E86AB;"
                                            step="0.01" min="0" max="${inv.balance}" placeholder="0.00"
                                            oninput="updateTotal()">
@@ -479,22 +550,22 @@
                 } else {
                     data.history.forEach((h, index) => {
                         const row = `
-                            <tr style="background-color: white;">
-                                <td class="text-muted">${h.id}</td>
-                                <td class="fw-bold" style="color: #2C3E50;">${h.voucher_no}</td>
-                                <td>${h.jv_no}</td>
+                            <tr>
+                                <td class="text-muted mono">${h.id}</td>
+                                <td class="fw-bold mono">${h.voucher_no}</td>
+                                <td class="mono">${h.jv_no}</td>
                                 <td>${h.account}</td>
-                                <td class="text-end">0.00</td>
-                                <td class="text-end fw-bold" style="color: #27AE60;">${h.amount.toFixed(2)}</td>
+                                <td class="text-end mono">0.00</td>
+                                <td class="text-end mono fw-bold text-success">${h.amount.toFixed(2)}</td>
                                 <td>${h.date}</td>
                                 <td>${h.user_id || 'System'}</td>
                                 <td class="text-truncate" style="max-width: 120px;" title="${h.narration}">${h.narration}</td>
                                 <td class="text-center">
                                     <div class="d-flex gap-1 justify-content-center">
-                                        <a href="/receipt/print/${h.jv_no}" target="_blank" class="btn btn-sm px-2" style="background-color: #2E86AB; color: white;" title="Print Receipt">
+                                        <a href="/receipt/print/${h.jv_no}" target="_blank" class="btn btn-sm px-2 text-white" style="background:#0078D4; border-radius:6px;" title="Print Receipt">
                                             <i class="fas fa-print"></i>
                                         </a>
-                                        <button type="button" class="btn btn-sm px-2 select-reversal-btn" style="background-color: #F39C12; color: white;" title="Select for Reversal" onclick="selectHistoryRow(this)">
+                                        <button type="button" class="btn btn-sm px-2 select-reversal-btn text-white" style="background:#ca5010; border-radius:6px;" title="Select for Reversal" onclick="selectHistoryRow(this)">
                                             <i class="fas fa-check"></i>
                                         </button>
                                     </div>
@@ -526,7 +597,7 @@
         document.querySelectorAll('.select-reversal-btn').forEach(b => {
             b.innerHTML = '<i class="fas fa-check"></i>';
             b.classList.remove('btn-danger');
-            b.style.backgroundColor = '#F39C12';
+            b.style.backgroundColor = '#ca5010';
         });
 
         // Highlight selected

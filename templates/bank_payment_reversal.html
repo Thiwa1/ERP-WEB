@@ -1,89 +1,118 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container">
-    <div class="card shadow-sm">
-        <div class="card-header text-primary fw-bold bg-transparent border-0 pb-0 pt-4">
-            <h5 class="mb-0 text-primary">Bank Payment Reversal</h5>
-            <small class="text-light opacity-75">Reverse posted bank payments and restore GL entries</small>
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-undo-alt"></i>
         </div>
-        <div class="card-body">
-            <!-- Payments DataGrid -->
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                    Recent Bank Payments
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Bank Payment Reversal</h5>
+            <div style="font-size:.78rem;color:#605E5C;">Reversals</div>
+        </div>
+    </div>
+
+    <!-- Main Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+        <!-- Recent Bank Payments Grid -->
+        <div class="px-4 pt-4 pb-2">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list me-1"></i> Recent Bank Payments
+            </div>
+        </div>
+        <div class="table-responsive mb-0" style="border-top:1px solid #f0f2f5;">
+            <table class="table table-hover mb-0" id="paymentsTable">
+                <thead>
+                    <tr style="background:#f8f9fa;">
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Voucher</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Supplier</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Amount</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:100px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if rows %}
+                        {% for row in rows %}
+                        <tr onclick="selectPayment('{{ row.JV }}', this)" style="cursor:pointer;">
+                            <td class="font-monospace" style="padding:.6rem 1rem;">{{ row.Voucher }}</td>
+                            <td style="padding:.6rem .75rem;">{{ row.Date }}</td>
+                            <td style="padding:.6rem .75rem;">{{ row.Account }}</td>
+                            <td style="padding:.6rem .75rem;">{{ row.Supplier }}</td>
+                            <td class="text-end fw-bold font-monospace" style="padding:.6rem .75rem;">{{ row.Amount|currency }}</td>
+                            <td style="padding:.5rem .75rem;">
+                                <button class="btn btn-sm btn-outline-danger fw-600"
+                                        onclick="event.stopPropagation(); selectPayment('{{ row.JV }}', this.closest('tr'))"
+                                        style="border-radius:6px;font-size:.78rem;font-weight:600;">
+                                    Select
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="6" class="text-center py-4" style="color:#a0a0a0;font-size:.875rem;">
+                                <i class="fas fa-inbox me-2"></i>No reversible bank payments found.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="p-4" style="border-top:1px solid #f0f2f5;">
+            <div class="row g-4">
+
+                <!-- Details Display -->
+                <div class="col-lg-6">
+                    <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-2">
+                        Payment Details
+                    </div>
+                    <textarea id="detailsBox" class="form-control font-monospace fw-bold" rows="8" readonly
+                              style="border-radius:8px;border-color:#e2e8f0;background:linear-gradient(to bottom,#fff5f5,#fff);font-size:.82rem;resize:none;"></textarea>
                 </div>
-                <div class="card-body p-0">
-                    <table class="table table-hover mb-0" id="paymentsTable">
-                        <thead class="table-dark">
-                            <tr>
-                                <th>Voucher</th>
-                                <th>Date</th>
-                                <th>Account</th>
-                                <th>Supplier</th>
-                                <th class="text-end">Amount</th>
-                                <th style="width: 100px;">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if rows %}
-                                {% for row in rows %}
-                                <tr onclick="selectPayment('{{ row.JV }}', this)" style="cursor: pointer;">
-                                    <td>{{ row.Voucher }}</td>
-                                    <td>{{ row.Date }}</td>
-                                    <td>{{ row.Account }}</td>
-                                    <td>{{ row.Supplier }}</td>
-                                    <td class="text-end fw-bold">{{ row.Amount|currency }}</td>
-                                    <td>
-                                        <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); selectPayment('{{ row.JV }}', this.closest('tr'))">Select</button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="6" class="text-center py-3 text-muted">No reversible bank payments found.</td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
+
+                <!-- GL Entry Preview -->
+                <div class="col-lg-6">
+                    <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-2">
+                        <i class="fas fa-exchange-alt me-1"></i> GL Entry Impact
+                    </div>
+                    <div style="border-radius:8px;border:1px solid #fde8e6;background:#fff8f7;padding:.75rem 1rem;min-height:180px;">
+                        <ul class="list-group list-group-flush" id="glPreview">
+                            <li class="list-group-item bg-transparent px-0" style="font-size:.85rem;color:#a0a0a0;border:none;">
+                                <i class="fas fa-hand-pointer me-2"></i>Select a transaction to view impact...
+                            </li>
+                        </ul>
+                    </div>
                 </div>
             </div>
 
-            <!-- Details Display -->
-            <div class="card mb-4 border-secondary">
-                <div class="card-header bg-transparent border-0 pb-0 pt-4">
-                    Payment Details
+            <!-- Action Bar -->
+            <div class="d-flex justify-content-between align-items-center mt-4 p-3"
+                 style="background:#f8f9fa;border-radius:8px;border:1px solid #e2e8f0;">
+                <div class="d-flex align-items-center gap-2">
+                    <div id="statusIndicator"
+                         style="width:12px;height:12px;border-radius:50%;background:#a0a0a0;flex-shrink:0;"></div>
+                    <span id="statusLabel" class="fw-bold" style="font-size:.875rem;color:#c42b1c;">
+                        Ready to process reversal
+                    </span>
                 </div>
-                <div class="card-body bg-light">
-                    <textarea id="detailsBox" class="form-control" rows="6" readonly
-                              style="font-family: monospace; font-weight: bold; background: linear-gradient(to bottom, #FFF0F0, white);"></textarea>
-                </div>
-            </div>
-
-            <!-- GL Entry Preview -->
-            <div class="card mb-4 border-secondary bg-light">
-                <div class="card-header fw-bold text-danger">
-                    GL Entry Impact
-                </div>
-                <div class="card-body">
-                    <ul class="list-group list-group-flush" id="glPreview">
-                        <li class="list-group-item bg-transparent">Select a transaction to view impact...</li>
-                    </ul>
-                </div>
-            </div>
-
-            <!-- Actions -->
-            <div class="d-flex justify-content-between align-items-center bg-light p-3 border rounded">
-                <div class="d-flex align-items-center">
-                    <div id="statusIndicator" class="rounded-circle bg-secondary me-2" style="width: 16px; height: 16px;"></div>
-                    <span id="statusLabel" class="fw-bold text-danger">Ready to process reversal</span>
-                </div>
-                <div>
-                    <form id="reversalForm" method="POST" action="/bank_payment_reversal/process" style="display: inline;">
+                <div class="d-flex gap-2">
+                    <button class="btn fw-bold px-4" onclick="window.history.back()"
+                            style="border-radius:8px;font-weight:600;font-size:.875rem;border:1px solid #e2e8f0;color:#605E5C;background:#fff;">
+                        <i class="fas fa-times me-1"></i> Close
+                    </button>
+                    <form id="reversalForm" method="POST" action="/bank_payment_reversal/process" style="display:inline;">
                         <input type="hidden" name="jv" id="selectedJV">
-                        <button type="submit" id="processBtn" class="btn btn-danger fw-bold px-4" disabled>Process Reversal</button>
+                        <button type="submit" id="processBtn" class="btn fw-bold px-4" disabled
+                                style="background:#c42b1c;border:none;border-radius:8px;font-weight:600;font-size:.875rem;color:#fff;">
+                            <i class="fas fa-undo-alt me-1"></i> Process Reversal
+                        </button>
                     </form>
-                    <button class="btn btn-secondary fw-bold px-4 ms-2" onclick="window.history.back()">Close</button>
                 </div>
             </div>
         </div>
@@ -100,6 +129,9 @@
         // Set hidden input
         document.getElementById('selectedJV').value = jv;
         document.getElementById('processBtn').disabled = false;
+
+        // Update status indicator
+        document.getElementById('statusIndicator').style.background = '#c42b1c';
 
         // Fetch Details
         fetch(`/bank_payment_reversal/get_details?jv=${jv}`)
@@ -132,11 +164,13 @@
     function updateGLPreview(jv) {
         const glList = document.getElementById('glPreview');
         glList.innerHTML = `
-            <li class="list-group-item bg-transparent font-monospace small">DR Bank Account</li>
-            <li class="list-group-item bg-transparent font-monospace small">CR Accounts Payable</li>
-            <li class="list-group-item bg-transparent fw-bold text-danger mt-2">--- REVERSAL WILL CREATE ---</li>
-            <li class="list-group-item bg-transparent font-monospace small">CR Bank Account</li>
-            <li class="list-group-item bg-transparent font-monospace small">DR Accounts Payable</li>
+            <li class="list-group-item bg-transparent px-0 font-monospace" style="font-size:.82rem;border-color:#fde8e6;color:#323130;">DR &nbsp; Bank Account</li>
+            <li class="list-group-item bg-transparent px-0 font-monospace" style="font-size:.82rem;border-color:#fde8e6;color:#323130;">CR &nbsp; Accounts Payable</li>
+            <li class="list-group-item bg-transparent px-0 border-0 mt-2" style="font-size:.78rem;font-weight:700;color:#c42b1c;letter-spacing:.5px;">
+                <i class="fas fa-arrow-down me-1"></i> REVERSAL WILL CREATE
+            </li>
+            <li class="list-group-item bg-transparent px-0 font-monospace" style="font-size:.82rem;border-color:#fde8e6;color:#323130;">CR &nbsp; Bank Account</li>
+            <li class="list-group-item bg-transparent px-0 font-monospace" style="font-size:.82rem;border-color:#fde8e6;color:#323130;">DR &nbsp; Accounts Payable</li>
         `;
     }
 </script>

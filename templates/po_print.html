@@ -1,137 +1,457 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Purchase Order - {{ po.OP_NO_Other }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-{% block title %}Purchase Order Print{% endblock %}
+        body {
+            background: #f5f7fa;
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            color: #1e293b;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
 
-{% block content %}
-<style>
-    @media print {
-        @page { size: A4; margin: 10mm; }
-        body * { visibility: hidden; }
-        #printArea, #printArea * { visibility: visible; }
-        #printArea { position: absolute; left: 0; top: 0; width: 100%; }
-        .no-print { display: none !important; }
-    }
-    .po-header { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; }
-    .company-logo { max-height: 80px; }
-    .table-bordered th, .table-bordered td { border: 1px solid #000 !important; }
-</style>
+        .no-print-bar {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: #1e293b;
+            padding: 10px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        }
+        .no-print-bar .bar-label {
+            color: #94a3b8;
+            font-size: 0.8rem;
+            font-weight: 500;
+            margin-right: 8px;
+        }
+        .btn-print {
+            background: #0078D4;
+            color: #fff;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-print:hover { background: #005a9e; }
+        .btn-close-win {
+            background: #334155;
+            color: #cbd5e1;
+            border: none;
+            border-radius: 7px;
+            padding: 7px 16px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.15s;
+        }
+        .btn-close-win:hover { background: #475569; color: #fff; }
 
-<div class="card mb-3 no-print">
-    <div class="card-body">
-        <button class="btn btn-primary" onclick="window.print()"><i class="fas fa-print me-2"></i> Print Purchase Order</button>
-        <a href="/purchase_orders" class="btn btn-secondary"><i class="fas fa-arrow-left me-2"></i> Back</a>
+        .print-box {
+            max-width: 800px;
+            margin: 32px auto 48px auto;
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+            overflow: hidden;
+            position: relative;
+        }
+        .print-box::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #0078D4 0%, #005a9e 60%, #003d6b 100%);
+        }
+
+        .doc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 32px 32px 24px 32px;
+            gap: 24px;
+        }
+        .company-block .company-logo { max-height: 60px; margin-bottom: 8px; display: block; }
+        .company-block .company-name {
+            font-size: 18px;
+            font-weight: 800;
+            color: #0f172a;
+            line-height: 1.2;
+            margin-bottom: 8px;
+        }
+        .company-block .company-line {
+            font-size: 12px;
+            color: #64748b;
+            line-height: 1.7;
+        }
+
+        .meta-block { text-align: right; flex-shrink: 0; }
+        .meta-block .doc-title-text {
+            font-size: 32px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: -0.02em;
+            line-height: 1;
+            text-transform: uppercase;
+        }
+        .meta-block .doc-number-badge {
+            display: inline-block;
+            margin-top: 8px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            color: #1d4ed8;
+            font-size: 12px;
+            font-weight: 700;
+            padding: 4px 12px;
+            border-radius: 20px;
+            letter-spacing: 0.03em;
+        }
+        .meta-table {
+            margin-top: 10px;
+            margin-left: auto;
+            border-collapse: collapse;
+        }
+        .meta-table td {
+            padding: 3px 0 3px 14px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+        .meta-table td:first-child {
+            color: #64748b;
+            font-weight: 600;
+            text-align: right;
+            white-space: nowrap;
+        }
+        .meta-table td:last-child {
+            color: #0f172a;
+            font-weight: 700;
+            text-align: right;
+        }
+
+        .address-section {
+            padding: 0 32px 20px 32px;
+            display: flex;
+            gap: 16px;
+        }
+        .address-card {
+            flex: 1;
+            border-left: 3px solid #0078D4;
+            background: #f8fafc;
+            border-radius: 0 8px 8px 0;
+            padding: 14px 18px;
+        }
+        .address-card .addr-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #0078D4;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .address-card .addr-name {
+            font-size: 13px;
+            font-weight: 700;
+            color: #0f172a;
+            margin-bottom: 4px;
+        }
+        .address-card .addr-line {
+            font-size: 12px;
+            color: #475569;
+            line-height: 1.7;
+        }
+
+        .items-section { padding: 0 32px 8px 32px; }
+
+        .table-doc {
+            width: 100%;
+            border-collapse: collapse;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .table-doc thead tr {
+            background: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc thead th {
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            padding: 11px 12px;
+            border: none;
+        }
+        .table-doc thead th:first-child { border-radius: 8px 0 0 0; }
+        .table-doc thead th:last-child  { border-radius: 0 8px 0 0; }
+        .table-doc thead th.text-right { text-align: right; }
+        .table-doc thead th.text-center { text-align: center; }
+        .table-doc tbody tr:nth-child(even) {
+            background: #f8f9fa;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .table-doc tbody tr:nth-child(odd) { background: #ffffff; }
+        .table-doc tbody td {
+            padding: 11px 12px;
+            font-size: 12.5px;
+            color: #334155;
+            border-bottom: 1px solid #f1f5f9;
+            vertical-align: middle;
+        }
+        .table-doc tbody tr:last-child td { border-bottom: none; }
+        .col-num { width: 40px; text-align: center; color: #94a3b8; font-size: 11px; }
+        .col-desc { text-align: left; }
+        .col-desc .item-name { font-weight: 600; color: #0f172a; }
+        .col-desc .item-sub { font-size: 11.5px; color: #64748b; }
+        .col-center { text-align: center; color: #64748b; }
+        .col-amount { width: 110px; text-align: right; font-family: 'Courier New', monospace; font-weight: 600; color: #0f172a; }
+        .col-total { width: 120px; text-align: right; font-family: 'Courier New', monospace; font-weight: 700; color: #0f172a; }
+
+        .bottom-section {
+            display: flex;
+            justify-content: flex-end;
+            padding: 20px 32px 24px 32px;
+            gap: 24px;
+        }
+        .totals-block { width: 45%; min-width: 240px; }
+        .totals-table { width: 100%; border-collapse: collapse; }
+        .totals-table td { padding: 6px 10px; font-size: 12.5px; }
+        .totals-table .t-label {
+            text-align: right;
+            color: #64748b;
+            font-weight: 600;
+        }
+        .totals-table .t-value {
+            text-align: right;
+            font-family: 'Courier New', monospace;
+            font-weight: 600;
+            color: #1e293b;
+            width: 110px;
+        }
+        .totals-table .grand-row td {
+            padding-top: 10px;
+            border-top: 2px solid #e2e8f0;
+            font-size: 14px;
+            font-weight: 800;
+            color: #0078D4;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .totals-table .grand-row .t-label { color: #0f172a; }
+
+        .instructions-section {
+            padding: 0 32px 20px 32px;
+        }
+        .instructions-card {
+            border-left: 3px solid #f59e0b;
+            background: #fffbeb;
+            border-radius: 0 8px 8px 0;
+            padding: 14px 18px;
+        }
+        .instructions-card .inst-label {
+            font-size: 10px;
+            font-weight: 800;
+            color: #92400e;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 6px;
+        }
+        .instructions-card .inst-text {
+            font-size: 12.5px;
+            color: #78350f;
+            line-height: 1.6;
+        }
+
+        .signatures-section {
+            padding: 0 32px 28px 32px;
+            display: flex;
+            justify-content: space-around;
+            gap: 24px;
+        }
+        .sig-block { flex: 1; text-align: center; }
+        .sig-line {
+            border-top: 1px solid #cbd5e1;
+            padding-top: 8px;
+            font-size: 11.5px;
+            color: #64748b;
+            font-weight: 600;
+            margin-top: 40px;
+        }
+
+        .doc-footer {
+            border-top: 1px dashed #cbd5e1;
+            margin: 0 32px;
+            padding: 16px 0 24px 0;
+            text-align: center;
+        }
+        .doc-footer .thank-you { font-size: 13px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+        .doc-footer .footer-sub { font-size: 11px; color: #94a3b8; }
+
+        @media print {
+            body { background: white; }
+            .no-print { display: none !important; }
+            .no-print-bar { display: none !important; }
+            .print-box { box-shadow: none; margin: 0; max-width: 100%; border-radius: 0; }
+        }
+    </style>
+</head>
+<body onload="window.print()">
+
+    <div class="no-print-bar no-print">
+        <span class="bar-label">Purchase Order Preview</span>
+        <button class="btn-print" onclick="window.print()">&#128438; Print Purchase Order</button>
+        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
     </div>
-</div>
 
-<div class="card" id="printArea">
-    <div class="card-body p-5">
+    <div class="print-box">
+
         <!-- Header -->
-        <div class="row mb-4">
-            <div class="col-6">
+        <div class="doc-header">
+            <div class="company-block">
                 {% if company.company_log %}
-                <img src="data:image/png;base64,{{ company.company_log }}" class="company-logo mb-2">
+                <img src="data:image/png;base64,{{ company.company_log }}" class="company-logo">
                 {% endif %}
-                <h4 class="fw-bold">{{ company.company_name or 'My Company' }}</h4>
-                <p class="mb-0 small">
-                    {{ company.company_addras_1 }}<br>
-                    {{ company.company_addras_2 }}<br>
-                    {{ company.company_addras_3 }}<br>
-                    {{ company.company_land_line }}
-                </p>
+                <div class="company-name">{{ company.company_name or 'SUWIN ERP' }}</div>
+                <div class="company-line">
+                    {{ company.company_addras_1 or '' }}<br>
+                    {% if company.company_addras_2 %}{{ company.company_addras_2 }}<br>{% endif %}
+                    {% if company.company_addras_3 %}{{ company.company_addras_3 }}<br>{% endif %}
+                    {{ company.company_land_line or '' }}
+                </div>
             </div>
-            <div class="col-6 text-end">
-                <h2 class="fw-bold text-uppercase" style="color: #2c3e50;">Purchase Order</h2>
-                <h5 class="mb-1">PO #: {{ po.OP_NO_Other }}</h5>
-                <p>Date: {{ po.Create_Date }}</p>
-                <p>Delivery Date: {{ po.Expecting_Date }}</p>
+            <div class="meta-block">
+                <div class="doc-title-text">Purchase Order</div>
+                <div class="doc-number-badge"># {{ po.OP_NO_Other }}</div>
+                <table class="meta-table">
+                    <tr>
+                        <td>Date:</td>
+                        <td>{{ po.Create_Date }}</td>
+                    </tr>
+                    <tr>
+                        <td>Delivery Date:</td>
+                        <td>{{ po.Expecting_Date }}</td>
+                    </tr>
+                </table>
             </div>
         </div>
 
-        <!-- Supplier Info -->
-        <div class="row mb-4">
-            <div class="col-6">
-                <div class="border p-3 rounded">
-                    <h6 class="fw-bold text-uppercase mb-2">Vendor</h6>
-                    <p class="mb-0">
-                        <strong>{{ supplier.supplier_name }}</strong><br>
-                        {{ supplier.supplier_address_1 }}<br>
-                        {{ supplier.supplier_address_2 }}<br>
-                        {{ supplier.suppliers_teli_1 }}
-                    </p>
+        <!-- Vendor / Ship To -->
+        <div class="address-section">
+            <div class="address-card">
+                <div class="addr-label">Vendor</div>
+                <div class="addr-name">{{ supplier.supplier_name }}</div>
+                <div class="addr-line">
+                    {% if supplier.supplier_address_1 %}{{ supplier.supplier_address_1 }}<br>{% endif %}
+                    {% if supplier.supplier_address_2 %}{{ supplier.supplier_address_2 }}<br>{% endif %}
+                    {% if supplier.suppliers_teli_1 %}Tel: {{ supplier.suppliers_teli_1 }}{% endif %}
                 </div>
             </div>
-            <div class="col-6">
-                <div class="border p-3 rounded">
-                    <h6 class="fw-bold text-uppercase mb-2">Ship To</h6>
-                    <p class="mb-0">
-                        <strong>{{ company.company_name }}</strong><br>
-                        {{ po.Deliver_Location or 'Main Warehouse' }}
-                    </p>
-                </div>
+            <div class="address-card">
+                <div class="addr-label">Ship To</div>
+                <div class="addr-name">{{ company.company_name }}</div>
+                <div class="addr-line">{{ po.Deliver_Location or 'Main Warehouse' }}</div>
             </div>
         </div>
 
         <!-- Items Table -->
-        <table class="table table-bordered table-striped">
-            <thead class="table-dark">
-                <tr>
-                    <th>#</th>
-                    <th>Item & Description</th>
-                    <th class="text-center">Unit</th>
-                    <th class="text-center">Qty</th>
-                    <th class="text-end">Unit Price</th>
-                    <th class="text-end">Total</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in items %}
-                {% set line_total = (item.QTY|float) * (item.Unit_price|float) %}
-                <tr>
-                    <td>{{ loop.index }}</td>
-                    <td>
-                        <strong>{{ item.Item }}</strong><br>
-                        <small class="text-muted">{{ item.Discription }}</small>
-                    </td>
-                    <td class="text-center">{{ item.Mesurment }}</td>
-                    <td class="text-center">{{ item.QTY }}</td>
-                    <td class="text-end">{{ "%.2f"|format(item.Unit_price|float) }}</td>
-                    <td class="text-end">{{ "%.2f"|format(line_total) }}</td>
-                </tr>
-                {% endfor %}
-            </tbody>
-            <tfoot>
-                <tr>
-                    <td colspan="5" class="text-end fw-bold">Subtotal</td>
-                    <td class="text-end fw-bold">{{ "%.2f"|format(subtotal) }}</td>
-                </tr>
-                <tr>
-                    <td colspan="5" class="text-end">VAT Amount ({{ po.VAT_Rate }}%)</td>
-                    <td class="text-end">{{ "%.2f"|format(vat_amount) }}</td>
-                </tr>
-                <tr class="table-light">
-                    <td colspan="5" class="text-end fw-bold fs-5">Grand Total</td>
-                    <td class="text-end fw-bold fs-5">{{ "%.2f"|format(grand_total) }}</td>
-                </tr>
-            </tfoot>
-        </table>
+        <div class="items-section">
+            <table class="table-doc">
+                <thead>
+                    <tr>
+                        <th class="col-num text-center">#</th>
+                        <th>Item &amp; Description</th>
+                        <th class="text-center">Unit</th>
+                        <th class="text-center">Qty</th>
+                        <th class="text-right">Unit Price</th>
+                        <th class="text-right">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in items %}
+                    {% set line_total = (item.QTY|float) * (item.Unit_price|float) %}
+                    <tr>
+                        <td class="col-num">{{ loop.index }}</td>
+                        <td class="col-desc">
+                            <div class="item-name">{{ item.Item }}</div>
+                            {% if item.Discription %}<div class="item-sub">{{ item.Discription }}</div>{% endif %}
+                        </td>
+                        <td class="col-center">{{ item.Mesurment }}</td>
+                        <td class="col-center">{{ item.QTY }}</td>
+                        <td class="col-amount">{{ "%.2f"|format(item.Unit_price|float) }}</td>
+                        <td class="col-total">{{ "%.2f"|format(line_total) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
 
-        <!-- Comments -->
+        <!-- Totals -->
+        <div class="bottom-section">
+            <div class="totals-block">
+                <table class="totals-table">
+                    <tr>
+                        <td class="t-label">Subtotal</td>
+                        <td class="t-value">{{ "%.2f"|format(subtotal) }}</td>
+                    </tr>
+                    <tr>
+                        <td class="t-label">VAT ({{ po.VAT_Rate }}%)</td>
+                        <td class="t-value">{{ "%.2f"|format(vat_amount) }}</td>
+                    </tr>
+                    <tr class="grand-row">
+                        <td class="t-label">Grand Total</td>
+                        <td class="t-value">{{ "%.2f"|format(grand_total) }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Special Instructions -->
         {% if po.Special_Instractions %}
-        <div class="mt-4">
-            <h6 class="fw-bold">Special Instructions:</h6>
-            <p class="text-muted border p-2 rounded">{{ po.Special_Instractions }}</p>
+        <div class="instructions-section">
+            <div class="instructions-card">
+                <div class="inst-label">Special Instructions</div>
+                <div class="inst-text">{{ po.Special_Instractions }}</div>
+            </div>
         </div>
         {% endif %}
 
-        <!-- Footer -->
-        <div class="mt-5 pt-5 row">
-            <div class="col-4 text-center">
-                <div class="border-top border-dark pt-2">Authorized By</div>
+        <!-- Signatures -->
+        <div class="signatures-section">
+            <div class="sig-block">
+                <div class="sig-line">Authorized By</div>
             </div>
-            <div class="col-4 offset-4 text-center">
-                <div class="border-top border-dark pt-2">Date</div>
+            <div class="sig-block">
+                <div class="sig-line">Date</div>
             </div>
         </div>
+
+        <!-- Footer -->
+        <div class="doc-footer">
+            <div class="thank-you">Purchase Order</div>
+            <div class="footer-sub">{{ company.company_name or 'SUWIN ERP' }} &mdash; This is a computer-generated purchase order.</div>
+        </div>
+
     </div>
-</div>
-{% endblock %}
+
+</body>
+</html>
