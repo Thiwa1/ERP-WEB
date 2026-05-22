@@ -91,6 +91,8 @@
         </div>
     </div>
 
+    {% if vat_enabled %}
+
     <!-- Tabs -->
     <ul class="nav vat-tabs mb-0" id="vatTabs" role="tablist">
         <li class="nav-item" role="presentation">
@@ -984,6 +986,16 @@
         </div>
 
     </div><!-- end tab-content -->
+    {% else %}
+    <div class="report-card mt-3">
+        <div class="p-5 text-center">
+            <div class="report-page-icon mx-auto mb-3" style="background:linear-gradient(135deg,#C19C00,#9D5D00); width:56px; height:56px; font-size:1.4rem;">
+                <i class="fas fa-percent"></i>
+            </div>
+            <h5 class="fw-bold mb-2">VAT Not Enabled</h5>
+            <p class="text-muted mb-0">VAT reporting is not enabled for this company. Enable VAT in <a href="{{ url_for('tax_settings') }}" class="text-primary fw-semibold">Tax Settings</a> to use this report.</p>
+        </div>
+    </div>
     {% endif %} <!-- End if vat_enabled -->
 </div>
 
