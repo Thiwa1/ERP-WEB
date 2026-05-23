@@ -585,7 +585,7 @@
             background: #94a3b8;
         }
 
-        /* Loading Spinner */
+        /* Loading Spinner (on submit buttons) */
         .btn-loading {
             position: relative;
             pointer-events: none;
@@ -594,103 +594,33 @@
         .btn-loading::after {
             content: "";
             position: absolute;
-            width: 1.2rem;
-            height: 1.2rem;
+            width: 1.1rem;
+            height: 1.1rem;
             top: 50%;
             left: 50%;
-            margin-top: -0.6rem;
-            margin-left: -0.6rem;
-            border: 3px solid rgba(255,255,255,0.3);
+            margin-top: -0.55rem;
+            margin-left: -0.55rem;
+            border: 2px solid rgba(255,255,255,0.35);
             border-radius: 50%;
             border-top-color: white;
-            animation: spin 0.8s linear infinite;
+            animation: spin 0.75s linear infinite;
         }
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
 
-        /* Global Page Loader */
-        .global-page-loader {
+        /* Slim top-of-page navigation progress bar */
+        #pageLoadBar {
             position: fixed;
             top: 0;
             left: 0;
-            width: 100vw;
-            height: 100vh;
-            background-color: rgba(255, 255, 255, 0.7);
-            z-index: 9999;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(2px);
-            transition: opacity 0.3s ease, visibility 0.3s ease;
-        }
-        .global-page-loader.hidden {
+            height: 3px;
+            width: 0%;
+            background: linear-gradient(90deg, var(--accent-color, #0078D4), #00d4aa);
+            z-index: 10001;
             opacity: 0;
-            visibility: hidden;
-        }
-        .suwin-loader-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 15px;
-        }
-        .suwin-loader {
-            display: flex;
-            gap: 8px;
-            font-size: 2.5rem;
-            font-weight: 800;
-            color: var(--primary-color);
-            letter-spacing: 4px;
-            text-transform: uppercase;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        .suwin-loader span {
-            display: inline-block;
-            animation: pro-bounce 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
-        }
-        .suwin-loader span:nth-child(1) { animation-delay: 0.0s; }
-        .suwin-loader span:nth-child(2) { animation-delay: 0.1s; }
-        .suwin-loader span:nth-child(3) { animation-delay: 0.2s; }
-        .suwin-loader span:nth-child(4) { animation-delay: 0.3s; }
-        .suwin-loader span:nth-child(5) { animation-delay: 0.4s; }
-
-        @keyframes pro-bounce {
-            0%, 100% {
-                transform: translateY(0) scale(1);
-                opacity: 0.6;
-                color: var(--primary-color);
-            }
-            50% {
-                transform: translateY(-12px) scale(1.1);
-                opacity: 1;
-                color: var(--accent-color);
-                text-shadow: 0 10px 20px rgba(44, 160, 28, 0.3);
-            }
-        }
-
-        .suwin-loader-progress {
-            width: 150px;
-            height: 4px;
-            background: rgba(0,0,0,0.05);
-            border-radius: 4px;
-            overflow: auto; overflow-x: auto; /* Allow scrolling inside tables! */
-            position: relative;
-        }
-
-        .suwin-loader-progress::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -50%;
-            width: 50%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, var(--accent-color), transparent);
-            animation: progress-slide 1.5s infinite linear;
-        }
-
-        @keyframes progress-slide {
-            0% { left: -50%; }
-            100% { left: 100%; }
+            pointer-events: none;
+            border-radius: 0 2px 2px 0;
         }
 
         /* Quick Actions Pro Modal */
@@ -814,15 +744,8 @@
     </style>
 </head>
 <body>
-    <!-- Global Page Loader -->
-    <div id="globalPageLoader" class="global-page-loader">
-        <div class="suwin-loader-container">
-            <div class="suwin-loader">
-                <span>S</span><span>U</span><span>W</span><span>I</span><span>N</span>
-            </div>
-            <div class="suwin-loader-progress"></div>
-        </div>
-    </div>
+    <!-- Slim top progress bar (navigation indicator) -->
+    <div id="pageLoadBar"></div>
 
     {% if sidebar_enabled %}
     <!-- Sidebar Overlay for Mobile -->
@@ -1288,17 +1211,17 @@
                 });
             });
 
-            // Global Form Loading Handler
+            // Global Form Loading Handler — shows spinner on submit, auto-resets after 15s
             $('form').on('submit', function() {
                 const btn = $(this).find('button[type="submit"]');
-                if(btn.length > 0 && !btn.hasClass('no-load')) {
+                if (btn.length > 0 && !btn.hasClass('no-load')) {
                     showLoading(btn);
+                    setTimeout(function() { hideLoading(btn); }, 15000);
                 }
             });
         });
 
         function showLoading(btn) {
-            // If passed a selector or element
             if (!(btn instanceof jQuery)) btn = $(btn);
             btn.addClass('btn-loading');
         }
@@ -1308,69 +1231,63 @@
             btn.removeClass('btn-loading');
         }
 
-        // Global Page Loader Handling
-        function hideGlobalLoader() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.classList.add('hidden');
-                loader.style.pointerEvents = 'none';
-                setTimeout(() => { loader.style.display = 'none'; }, 300);
-            }
+        // ── Slim top progress bar logic ──────────────────────────────────────
+        function startPageLoadBar() {
+            const bar = document.getElementById('pageLoadBar');
+            if (!bar) return;
+            // Reset first
+            bar.style.transition = 'none';
+            bar.style.width = '0%';
+            bar.style.opacity = '1';
+            // Kick off the "in-progress" crawl
+            requestAnimationFrame(function() {
+                bar.style.transition = 'width 2.5s cubic-bezier(0.1, 0.05, 0.5, 1)';
+                bar.style.width = '80%';
+            });
         }
 
-        // Try multiple events to ensure it gets hidden
-        document.addEventListener('DOMContentLoaded', hideGlobalLoader);
-        window.addEventListener('load', hideGlobalLoader);
-        // Fallback safety timeout if events don't fire properly or take too long
-        setTimeout(hideGlobalLoader, 1500);
+        function finishPageLoadBar() {
+            const bar = document.getElementById('pageLoadBar');
+            if (!bar) return;
+            bar.style.transition = 'width 0.15s ease';
+            bar.style.width = '100%';
+            setTimeout(function() {
+                bar.style.transition = 'opacity 0.35s ease';
+                bar.style.opacity = '0';
+                setTimeout(function() {
+                    bar.style.transition = 'none';
+                    bar.style.width = '0%';
+                }, 400);
+            }, 150);
+        }
 
-        window.addEventListener('pageshow', function(event) {
-            if (event.persisted) {
-                const loader = document.getElementById('globalPageLoader');
-                if (loader) {
-                    loader.classList.add('hidden');
-                    loader.style.pointerEvents = 'none';
-                    setTimeout(() => { loader.style.display = 'none'; }, 300);
-                }
-            }
+        // Complete the bar when page content is ready
+        document.addEventListener('DOMContentLoaded', finishPageLoadBar);
+        window.addEventListener('load', finishPageLoadBar);
+
+        // Handle bfcache restore (browser back/forward)
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) { finishPageLoadBar(); }
         });
 
+        // Show bar when navigating away (beforeunload covers all: links, forms, logout)
         window.addEventListener('beforeunload', function() {
-            const loader = document.getElementById('globalPageLoader');
-            if (loader) {
-                loader.style.display = 'flex';
-                // Small delay to allow display: flex to apply before opacity transition
-                setTimeout(() => { loader.classList.remove('hidden'); }, 10);
-            }
+            startPageLoadBar();
         });
 
 
-        // Quick Actions Scroll To Top Logic
+        // Quick Actions — close modal + scroll to top on navigation
         document.addEventListener('DOMContentLoaded', function() {
             const quickActionLinks = document.querySelectorAll('#quickActionsModal .win11-app-icon, #quickActionsModal .win11-recent-item');
-            const loader = document.getElementById('globalPageLoader');
-
-            quickActionLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
-                    // Only apply logic if it's a valid link and not just closing modal
-                    if(this.getAttribute('href') && this.getAttribute('href') !== '#') {
-                        // Let the default navigation happen, but first:
-
-                        // Close the modal
+            quickActionLinks.forEach(function(link) {
+                link.addEventListener('click', function() {
+                    const href = this.getAttribute('href');
+                    if (href && href !== '#') {
                         const modalEl = document.getElementById('quickActionsModal');
-                        if (modalEl) {
+                        if (modalEl && typeof bootstrap !== 'undefined') {
                             const bsModal = bootstrap.Modal.getInstance(modalEl);
-                            if (bsModal) {
-                                bsModal.hide();
-                            }
+                            if (bsModal) bsModal.hide();
                         }
-
-                        // Show global loader to give "load without loading" SPA feel
-                        if (loader) {
-                            loader.classList.remove('hidden');
-                        }
-
-                        // Scroll top immediately so next page feels like it loaded top-down
                         window.scrollTo({top: 0, behavior: 'instant'});
                     }
                 });
@@ -1477,31 +1394,18 @@
                 });
             }
 
-            // Quick Action & Sidebar Click Intercept (Show loader, hide modal, scroll to top)
+            // Sidebar & Quick Action navigation — scroll to top, close modal if needed
             const allNavLinks = document.querySelectorAll('.win11-app-icon, .nav-link, .dropdown-item');
-            allNavLinks.forEach(link => {
-                link.addEventListener('click', function(e) {
+            allNavLinks.forEach(function(link) {
+                link.addEventListener('click', function() {
                     const href = this.getAttribute('href');
-                    // Check if it's an actual link that navigates away
-                    if(href && href !== '#' && !href.startsWith('javascript:')) {
-                        // Scroll up immediately
+                    if (href && href !== '#' && !href.startsWith('javascript:')) {
                         window.scrollTo(0, 0);
-
-                        // Show Loader immediately
-                        const globalLoader = document.getElementById('globalPageLoader');
-                        if (globalLoader) {
-                            globalLoader.classList.remove('hidden');
-                        }
-
-                        // If it's a Quick Action modal link, try to hide modal fast
-                        if(this.classList.contains('win11-app-icon')) {
+                        if (this.classList.contains('win11-app-icon')) {
                             const modalEl = document.getElementById('quickActionsModal');
-                            if (modalEl) {
-                                // Close it using bootstrap's vanilla js api if loaded
-                                if(typeof bootstrap !== 'undefined') {
-                                    const modal = bootstrap.Modal.getInstance(modalEl);
-                                    if (modal) modal.hide();
-                                }
+                            if (modalEl && typeof bootstrap !== 'undefined') {
+                                const modal = bootstrap.Modal.getInstance(modalEl);
+                                if (modal) modal.hide();
                             }
                         }
                     }
