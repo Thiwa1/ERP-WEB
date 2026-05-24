@@ -287,7 +287,123 @@
         <span class="bar-label">GRN Preview</span>
         <button class="btn-print" onclick="window.print()">&#128438; Print GRN</button>
         <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
+        <button class="btn-close-win" style="background:#1e3a5f;border:1px solid #2d5986;" onclick="document.getElementById('grnAttachPanel').style.display=document.getElementById('grnAttachPanel').style.display?'':'block'">
+            &#128206; Attachments
+        </button>
     </div>
+
+    <!-- No-print attachment panel -->
+    <div id="grnAttachPanel" style="display:none;max-width:800px;margin:0 auto 24px auto;padding:0 16px;" class="no-print">
+        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,.1);padding:20px;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;margin-bottom:12px;">
+                <i class="fas fa-paperclip"></i> GRN # {{ grn_no }} — Attachments
+            </div>
+            <div id="grnDocWidget"></div>
+        </div>
+    </div>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        #grnAttachPanel .dw-card{background:#fff;border-radius:10px;border:1px solid #e2e8f0;overflow:hidden;}
+        #grnAttachPanel .dw-drop{border:2px dashed #c7d9f0;border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:#64748b;font-size:.82rem;transition:background .15s;}
+        #grnAttachPanel .dw-drop.dragover{background:#e8f1fb;border-color:#0078D4;}
+        #grnAttachPanel .dw-files{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+        #grnAttachPanel .dw-file{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1px solid #e2e8f0;font-size:.8rem;background:#f8fafb;}
+        #grnAttachPanel .dw-file-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.85rem;color:#fff;flex-shrink:0;}
+        #grnAttachPanel .dw-file-name{flex:1;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        #grnAttachPanel .dw-file-size{font-size:.72rem;color:#94a3b8;}
+        #grnAttachPanel .dw-bar{height:3px;background:#e2e8f0;border-radius:2px;overflow:hidden;margin-top:4px;}
+        #grnAttachPanel .dw-bar-fill{height:100%;background:#0078D4;width:0;transition:width .3s;}
+    </style>
+    <script>
+    (function(){
+        const GRN_NO = "{{ grn_no }}";
+        const widget = document.getElementById('grnDocWidget');
+
+        function iconColor(ext){
+            const m={'pdf':'#e74c3c','doc':'#2980b9','docx':'#2980b9','xls':'#27ae60','xlsx':'#27ae60','csv':'#27ae60','zip':'#8e44ad','txt':'#7f8c8d','png':'#e67e22','jpg':'#e67e22','jpeg':'#e67e22','gif':'#e67e22'};
+            return m[ext]||'#64748b';
+        }
+        function iconFA(ext){
+            if(['pdf'].includes(ext)) return 'fa-file-pdf';
+            if(['doc','docx'].includes(ext)) return 'fa-file-word';
+            if(['xls','xlsx','csv'].includes(ext)) return 'fa-file-excel';
+            if(['zip','rar'].includes(ext)) return 'fa-file-archive';
+            if(['png','jpg','jpeg','gif','webp'].includes(ext)) return 'fa-file-image';
+            return 'fa-file-alt';
+        }
+        function fmtBytes(b){
+            if(b<1024) return b+'B';
+            if(b<1048576) return (b/1024).toFixed(1)+'KB';
+            return (b/1048576).toFixed(1)+'MB';
+        }
+        function buildGrnWidget(){
+            widget.innerHTML = '';
+            // Drop zone
+            const drop = document.createElement('div');
+            drop.className = 'dw-drop';
+            drop.innerHTML = '<i class="fas fa-cloud-upload-alt" style="font-size:1.5rem;color:#0078D4;margin-bottom:6px;display:block;"></i>Drag & drop files here or <strong>click to browse</strong><br><span style="font-size:.72rem;color:#94a3b8;">PDF, Word, Excel, Images, ZIP — max 20 MB</span>';
+            const fileInput = document.createElement('input');
+            fileInput.type = 'file';
+            fileInput.style.display = 'none';
+            fileInput.multiple = true;
+            drop.addEventListener('click', () => fileInput.click());
+            drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('dragover'); });
+            drop.addEventListener('dragleave', () => drop.classList.remove('dragover'));
+            drop.addEventListener('drop', e => { e.preventDefault(); drop.classList.remove('dragover'); Array.from(e.dataTransfer.files).forEach(uploadFile); });
+            fileInput.addEventListener('change', () => { Array.from(fileInput.files).forEach(uploadFile); fileInput.value = ''; });
+            const filesList = document.createElement('div');
+            filesList.className = 'dw-files';
+            widget.appendChild(drop);
+            widget.appendChild(fileInput);
+            widget.appendChild(filesList);
+            loadFiles(filesList);
+        }
+        function loadFiles(container){
+            fetch('/api/documents/list/grn/' + encodeURIComponent(GRN_NO))
+                .then(r=>r.json())
+                .then(data=>{
+                    container.innerHTML='';
+                    (data.documents||[]).forEach(doc=>{
+                        container.appendChild(makeFileItem(doc));
+                    });
+                }).catch(()=>{});
+        }
+        function makeFileItem(doc){
+            const ext = (doc.file_name.split('.').pop()||'').toLowerCase();
+            const div = document.createElement('div');
+            div.className = 'dw-file';
+            div.id = 'grn-doc-' + doc.id;
+            div.innerHTML = `
+                <div class="dw-file-icon" style="background:${iconColor(ext)}"><i class="fas ${iconFA(ext)}"></i></div>
+                <div style="flex:1;min-width:0;">
+                    <div class="dw-file-name">${doc.file_name}</div>
+                    <div class="dw-file-size">${fmtBytes(doc.file_size||0)}</div>
+                </div>
+                <a href="/api/documents/view/${doc.id}" target="_blank" style="color:#0078D4;font-size:.8rem;" title="View"><i class="fas fa-eye"></i></a>
+                <button onclick="grnDeleteDoc(${doc.id},this)" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:.8rem;" title="Delete"><i class="fas fa-trash"></i></button>`;
+            return div;
+        }
+        window.grnDeleteDoc = function(id, btn){
+            if(!confirm('Delete this attachment?')) return;
+            fetch('/api/documents/delete/'+id, {method:'POST'})
+                .then(r=>r.json())
+                .then(()=>{ const el=document.getElementById('grn-doc-'+id); if(el) el.remove(); });
+        };
+        function uploadFile(file){
+            const fd = new FormData();
+            fd.append('file', file);
+            fd.append('related_type', 'grn');
+            fd.append('related_id', GRN_NO);
+            fetch('/api/documents/upload', {method:'POST', body:fd})
+                .then(r=>r.json())
+                .then(data=>{
+                    if(data.success){ buildGrnWidget(); }
+                    else { alert(data.error||'Upload failed'); }
+                }).catch(()=> alert('Upload error'));
+        }
+        buildGrnWidget();
+    })();
+    </script>
 
     <div class="print-box">
 

@@ -4914,15 +4914,19 @@ def bank_payment_submit():
         conn.commit()
         flash(f'Payment processed successfully. Voucher No: {new_voucher}, Master Voucher: {master_voucher_no}', 'success')
         log_recent_activity('red', f'<strong>Bank Payment #{new_voucher}</strong> for <strong>{supplier_name}</strong> — LKR {total_payment:,.2f}')
+        _last_jv = jv_no  # capture before finally block
 
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
         logging.error(f"Cash Payment Error: {e}")
+        _last_jv = None
     finally:
         cursor.close()
         conn.close()
 
+    if _last_jv:
+        return redirect(url_for('bank_payment', last_jv=_last_jv))
     return redirect(url_for('bank_payment'))
 
 # --- Customer Loyalty ---
@@ -5131,15 +5135,19 @@ def direct_purchasing_submit():
         session.pop('payment_items', None)
         session.pop('payment_total', None)
         flash(f'Payment submitted successfully. JV No: {jv_no}, Voucher: {new_voucher}', 'success')
+        _dp_jv = jv_no
 
     except Exception as e:
         conn.rollback()
         flash(f'Error submitting payment: {str(e)}', 'danger')
         logging.error(f"Direct Payment Error: {e}")
+        _dp_jv = None
     finally:
         cursor.close()
         conn.close()
 
+    if _dp_jv:
+        return redirect(url_for('direct_purchasing', last_jv=_dp_jv))
     return redirect(url_for('direct_purchasing'))
 
 # --- Inventory Price Editing ---
@@ -10351,6 +10359,30 @@ def run_schema_migrations(target_db_conn=None):
                 logging.error(f"Migration hr_payroll_crm_email_v1 error: {e}")
         # ── END HR / PAYROLL / CRM / EMAIL ────────────────────────────────────
 
+        # ── DOCUMENT UPLOAD SYSTEM ────────────────────────────────────────────
+        if not is_migration_applied('document_upload_v1'):
+            try:
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS documents (
+                        id            INT AUTO_INCREMENT PRIMARY KEY,
+                        related_type  VARCHAR(50)  NOT NULL,
+                        related_id    VARCHAR(200) NOT NULL,
+                        file_name     VARCHAR(255) NOT NULL,
+                        stored_name   VARCHAR(255) NOT NULL,
+                        file_size     INT          DEFAULT 0,
+                        file_type     VARCHAR(50)  DEFAULT '',
+                        notes         TEXT         DEFAULT NULL,
+                        uploaded_by   VARCHAR(100) DEFAULT '',
+                        uploaded_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_doc_related (related_type, related_id)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+                record_migration('document_upload_v1')
+                logging.info("Migrated: document_upload_v1 — documents table created")
+            except Exception as e:
+                logging.error(f"Migration document_upload_v1 error: {e}")
+        # ── END DOCUMENT UPLOAD ───────────────────────────────────────────────
+
         conn.commit()
         cursor.close()
         conn.close()
@@ -13683,6 +13715,161 @@ def email_settings():
     return render_template('email_settings.html',
                            settings=cfg[0] if cfg else {},
                            email_logs=logs)
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# DOCUMENT UPLOAD SYSTEM
+# ════════════════════════════════════════════════════════════════════════════
+import uuid as _uuid
+from werkzeug.utils import secure_filename as _secure_filename
+
+UPLOAD_FOLDER   = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'uploads', 'documents')
+ALLOWED_EXTENSIONS = {'pdf', 'png', 'jpg', 'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt', 'zip'}
+MAX_UPLOAD_MB   = 20  # MB
+
+def _allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def _get_upload_dir():
+    """Returns upload dir for the current tenant, creates if missing."""
+    db_name = session.get('db_name', 'default')
+    safe_name = re.sub(r'[^a-z0-9_]', '_', db_name.lower())
+    path = os.path.join(UPLOAD_FOLDER, safe_name)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+@app.route('/api/documents/upload', methods=['POST'])
+@login_required
+def document_upload():
+    related_type = request.form.get('related_type', '').strip()
+    related_id   = request.form.get('related_id', '').strip()
+    notes        = request.form.get('notes', '').strip()
+
+    if not related_type or not related_id:
+        return jsonify({'success': False, 'error': 'related_type and related_id are required'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
+
+    file = request.files['file']
+    if not file or file.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+
+    if not _allowed_file(file.filename):
+        return jsonify({'success': False, 'error': f'File type not allowed. Allowed: {", ".join(sorted(ALLOWED_EXTENSIONS))}'}), 400
+
+    # Size check
+    file.seek(0, 2)
+    size_bytes = file.tell()
+    file.seek(0)
+    if size_bytes > MAX_UPLOAD_MB * 1024 * 1024:
+        return jsonify({'success': False, 'error': f'File too large. Max {MAX_UPLOAD_MB} MB'}), 400
+
+    original_name = _secure_filename(file.filename)
+    ext          = original_name.rsplit('.', 1)[1].lower() if '.' in original_name else ''
+    stored_name  = f"{_uuid.uuid4().hex}.{ext}"
+    upload_dir   = _get_upload_dir()
+    file_path    = os.path.join(upload_dir, stored_name)
+
+    try:
+        file.save(file_path)
+    except Exception as e:
+        logging.error(f"File save error: {e}")
+        return jsonify({'success': False, 'error': 'Could not save file on server'}), 500
+
+    doc_id = db.execute_query(
+        """INSERT INTO documents (related_type, related_id, file_name, stored_name,
+               file_size, file_type, notes, uploaded_by)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+        (related_type, related_id, original_name, stored_name,
+         size_bytes, ext, notes, session.get('user_name', '')),
+        commit=True
+    )
+    if not doc_id:
+        return jsonify({'success': False, 'error': 'DB insert failed'}), 500
+
+    return jsonify({
+        'success': True,
+        'doc': {
+            'id': doc_id,
+            'file_name': original_name,
+            'file_size': size_bytes,
+            'file_type': ext,
+            'notes': notes,
+            'uploaded_by': session.get('user_name', ''),
+            'uploaded_at': 'just now'
+        }
+    })
+
+
+@app.route('/api/documents/list/<string:related_type>/<path:related_id>')
+@login_required
+def document_list(related_type, related_id):
+    docs = db.execute_query(
+        """SELECT id, file_name, file_size, file_type, notes, uploaded_by,
+                  DATE_FORMAT(uploaded_at, '%%d %%b %%Y %%H:%%i') as uploaded_at
+           FROM documents
+           WHERE related_type = %s AND related_id = %s
+           ORDER BY uploaded_at DESC""",
+        (related_type, related_id)
+    ) or []
+    return jsonify({'success': True, 'docs': docs})
+
+
+@app.route('/api/documents/view/<int:doc_id>')
+@login_required
+def document_view(doc_id):
+    row = db.execute_query(
+        "SELECT file_name, stored_name, file_type FROM documents WHERE id = %s", (doc_id,)
+    )
+    if not row:
+        return "File not found", 404
+    row = row[0]
+    upload_dir = _get_upload_dir()
+    file_path  = os.path.join(upload_dir, row['stored_name'])
+    if not os.path.exists(file_path):
+        return "File missing on server", 404
+
+    from flask import send_file as _send_file
+    mime_map = {
+        'pdf': 'application/pdf', 'png': 'image/png', 'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg', 'gif': 'image/gif',
+        'doc': 'application/msword',
+        'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'xls': 'application/vnd.ms-excel',
+        'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        'csv': 'text/csv', 'txt': 'text/plain', 'zip': 'application/zip'
+    }
+    mime = mime_map.get(row['file_type'], 'application/octet-stream')
+    # PDFs and images display inline; others download
+    disposition = 'inline' if row['file_type'] in ('pdf', 'png', 'jpg', 'jpeg', 'gif') else 'attachment'
+    return _send_file(file_path, mimetype=mime,
+                      as_attachment=(disposition == 'attachment'),
+                      download_name=row['file_name'])
+
+
+@app.route('/api/documents/delete/<int:doc_id>', methods=['POST'])
+@login_required
+def document_delete(doc_id):
+    row = db.execute_query(
+        "SELECT stored_name, uploaded_by FROM documents WHERE id = %s", (doc_id,)
+    )
+    if not row:
+        return jsonify({'success': False, 'error': 'Document not found'}), 404
+    row = row[0]
+
+    # Delete physical file
+    upload_dir = _get_upload_dir()
+    file_path  = os.path.join(upload_dir, row['stored_name'])
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except Exception as e:
+        logging.warning(f"Could not delete file {file_path}: {e}")
+
+    db.execute_query("DELETE FROM documents WHERE id = %s", (doc_id,), commit=True)
+    return jsonify({'success': True})
 
 
 @app.route('/api/email/send_invoice', methods=['POST'])

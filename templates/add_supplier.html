@@ -233,6 +233,17 @@
         </div>
     </form>
 
+    <!-- Supplier Document Attachments (visible when editing) -->
+    <div class="fluent-card mb-4" id="supplierDocCard" style="display:none;">
+        <div class="p-4 pb-2 d-flex align-items-center gap-2">
+            <i class="fas fa-paperclip" style="color:var(--accent-color,#0078D4);"></i>
+            <span class="section-label mb-0" style="color:var(--accent-color,#0078D4);">Supplier Documents — <span id="supplierDocName"></span></span>
+        </div>
+        <div class="p-4 pt-2">
+            <div id="supplierDocWidget"></div>
+        </div>
+    </div>
+
     <!-- Existing Suppliers List -->
     <div class="fluent-card">
         <div class="p-4 pb-0">
@@ -362,6 +373,20 @@
         document.getElementById('submitBtn').classList.replace('btn-primary', 'btn-warning');
         document.getElementById('resetBtn').style.display = 'inline-block';
 
+        // Show document attachment widget for this supplier
+        const docCard = document.getElementById('supplierDocCard');
+        document.getElementById('supplierDocName').textContent = supplier.supplier_name;
+        docCard.style.display = '';
+        const widgetEl = document.getElementById('supplierDocWidget');
+        widgetEl.innerHTML = '';
+        const inner = document.createElement('div');
+        inner.className = 'doc-widget';
+        inner.setAttribute('data-type', 'supplier');
+        inner.setAttribute('data-id', supplier.id);
+        inner.setAttribute('data-label', 'Supplier: ' + supplier.supplier_name);
+        widgetEl.appendChild(inner);
+        if (window.initDocWidget) window.initDocWidget(inner);
+
         // Scroll to top smoothly
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
@@ -374,6 +399,10 @@
         document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> CREATE NEW SUPPLIER';
         document.getElementById('submitBtn').classList.replace('btn-warning', 'btn-primary');
         document.getElementById('resetBtn').style.display = 'none';
+
+        // Hide document widget
+        document.getElementById('supplierDocCard').style.display = 'none';
+        document.getElementById('supplierDocWidget').innerHTML = '';
     }
 </script>
 

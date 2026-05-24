@@ -415,7 +415,77 @@
         <button class="btn-close-win" onclick="window.close()">
             &#10005; Close
         </button>
+        <button class="btn-close-win" style="background:#1e3a5f;border:1px solid #2d5986;"
+                onclick="(function(p){p.style.display=p.style.display?'':'block'})(document.getElementById('invAttachPanel'))">
+            &#128206; Attachments
+        </button>
     </div>
+
+    <!-- No-print attachment panel -->
+    <div id="invAttachPanel" style="display:none;max-width:800px;margin:0 auto 24px auto;padding:0 16px;" class="no-print">
+        <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 12px rgba(0,0,0,.1);padding:20px;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;margin-bottom:12px;">
+                <i class="fas fa-paperclip"></i> Invoice # {{ header.invoice_number }} — Attachments
+            </div>
+            <div id="invDocWidget"></div>
+        </div>
+    </div>
+    <style>
+        #invAttachPanel .dw-drop{border:2px dashed #c7d9f0;border-radius:8px;padding:24px 16px;text-align:center;cursor:pointer;color:#64748b;font-size:.82rem;transition:background .15s;}
+        #invAttachPanel .dw-drop.dragover{background:#e8f1fb;border-color:#0078D4;}
+        #invAttachPanel .dw-files{display:flex;flex-direction:column;gap:6px;margin-top:10px;}
+        #invAttachPanel .dw-file{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;border:1px solid #e2e8f0;font-size:.8rem;background:#f8fafb;}
+        #invAttachPanel .dw-file-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.85rem;color:#fff;flex-shrink:0;}
+        #invAttachPanel .dw-file-name{flex:1;font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+        #invAttachPanel .dw-file-size{font-size:.72rem;color:#94a3b8;}
+    </style>
+    <script>
+    (function(){
+        const INV_NO = {{ header.invoice_number | tojson }};
+        const widget = document.getElementById('invDocWidget');
+        function iconColor(ext){const m={'pdf':'#e74c3c','doc':'#2980b9','docx':'#2980b9','xls':'#27ae60','xlsx':'#27ae60','csv':'#27ae60','zip':'#8e44ad','txt':'#7f8c8d','png':'#e67e22','jpg':'#e67e22','jpeg':'#e67e22','gif':'#e67e22'};return m[ext]||'#64748b';}
+        function iconFA(ext){if(['pdf'].includes(ext))return'fa-file-pdf';if(['doc','docx'].includes(ext))return'fa-file-word';if(['xls','xlsx','csv'].includes(ext))return'fa-file-excel';if(['zip','rar'].includes(ext))return'fa-file-archive';if(['png','jpg','jpeg','gif'].includes(ext))return'fa-file-image';return'fa-file-alt';}
+        function fmtBytes(b){if(b<1024)return b+'B';if(b<1048576)return(b/1024).toFixed(1)+'KB';return(b/1048576).toFixed(1)+'MB';}
+        function build(){
+            widget.innerHTML='';
+            const drop=document.createElement('div');drop.className='dw-drop';
+            drop.innerHTML='<span style="font-size:1.4rem;display:block;margin-bottom:6px;">&#128206;</span>Drag &amp; drop files here or <strong>click to browse</strong>';
+            const inp=document.createElement('input');inp.type='file';inp.multiple=true;inp.style.display='none';
+            drop.addEventListener('click',()=>inp.click());
+            drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('dragover');});
+            drop.addEventListener('dragleave',()=>drop.classList.remove('dragover'));
+            drop.addEventListener('drop',e=>{e.preventDefault();drop.classList.remove('dragover');Array.from(e.dataTransfer.files).forEach(upload);});
+            inp.addEventListener('change',()=>{Array.from(inp.files).forEach(upload);inp.value='';});
+            const list=document.createElement('div');list.className='dw-files';list.id='invDocList';
+            widget.appendChild(drop);widget.appendChild(inp);widget.appendChild(list);
+            loadFiles();
+        }
+        function loadFiles(){
+            fetch('/api/documents/list/invoice/'+encodeURIComponent(INV_NO)).then(r=>r.json()).then(data=>{
+                const list=document.getElementById('invDocList');if(!list)return;list.innerHTML='';
+                (data.documents||[]).forEach(doc=>{list.appendChild(makeItem(doc));});
+            }).catch(()=>{});
+        }
+        function makeItem(doc){
+            const ext=(doc.file_name.split('.').pop()||'').toLowerCase();
+            const d=document.createElement('div');d.className='dw-file';d.id='inv-doc-'+doc.id;
+            d.innerHTML=`<div class="dw-file-icon" style="background:${iconColor(ext)}"><i class="fas ${iconFA(ext)}"></i></div>
+                <div style="flex:1;min-width:0;"><div class="dw-file-name">${doc.file_name}</div><div class="dw-file-size">${fmtBytes(doc.file_size||0)}</div></div>
+                <a href="/api/documents/view/${doc.id}" target="_blank" style="color:#0078D4;font-size:.8rem;" title="View"><i class="fas fa-eye"></i></a>
+                <button onclick="invDel(${doc.id})" style="border:none;background:none;color:#dc2626;cursor:pointer;font-size:.8rem;" title="Delete"><i class="fas fa-trash"></i></button>`;
+            return d;
+        }
+        window.invDel=function(id){if(!confirm('Delete?'))return;fetch('/api/documents/delete/'+id,{method:'POST'}).then(()=>{const el=document.getElementById('inv-doc-'+id);if(el)el.remove();});};
+        function upload(file){
+            const fd=new FormData();fd.append('file',file);fd.append('related_type','invoice');fd.append('related_id',INV_NO);
+            fetch('/api/documents/upload',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.success)build();else alert(d.error||'Upload failed');}).catch(()=>alert('Upload error'));
+        }
+        document.getElementById('invAttachPanel').addEventListener('click',function initOnce(){
+            if(!widget.hasChildNodes())build();
+            this.removeEventListener('click',initOnce);
+        },true);
+    })();
+    </script>
 
     <div class="invoice-box">
 

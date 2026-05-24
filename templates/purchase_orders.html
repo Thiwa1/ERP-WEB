@@ -216,6 +216,7 @@
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Status</th>
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Actions</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;width:60px;">Docs</th>
                             </tr>
                         </thead>
                         <tbody id="poListTable">
@@ -333,6 +334,17 @@ function loadPos() {
                             ${approveBtn}
                             <a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i></a>
                         </td>
+                        <td class="text-center">
+                            <button class="btn btn-sm" style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;"
+                                onclick="togglePoDoc(${po.id}, this)" title="Attachments">
+                                <i class="fas fa-paperclip"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    <tr id="po-doc-row-${po.id}" style="display:none;">
+                        <td colspan="7" style="padding:12px 20px;background:#f8fafb;">
+                            <div class="doc-widget" data-type="po" data-id="${po.id}" data-label="PO ${po.po_number} Documents"></div>
+                        </td>
                     </tr>
                 `;
             });
@@ -357,6 +369,21 @@ function approvePo(id) {
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: `id=${id}`
         }).then(() => loadPos());
+    }
+}
+
+function togglePoDoc(poId, btn) {
+    const row = document.getElementById('po-doc-row-' + poId);
+    if (!row) return;
+    const isVisible = row.style.display !== 'none';
+    row.style.display = isVisible ? 'none' : '';
+    btn.style.background = isVisible ? '' : '#e0f0ff';
+    btn.style.color = isVisible ? '' : '#0078D4';
+    if (!isVisible) {
+        // Init any un-initialized widget in that row
+        row.querySelectorAll('.doc-widget[data-type][data-id]:not([data-init])').forEach(function(el) {
+            if (window.initDocWidget) window.initDocWidget(el);
+        });
     }
 }
 
