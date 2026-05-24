@@ -214,10 +214,9 @@
           <form method="POST" action="/superadmin/menu/{{ tenant.id }}" id="menuForm">
             <input type="hidden" name="action" value="save_menu">
 
-            {% set categories = menu_registry | map(attribute='category') | unique | list %}
-            {% for cat in categories %}
+            {% for cat, items in menu_registry | groupby('category') %}
             <div class="cat-header"><i class="fas fa-layer-group" style="font-size:.65rem;"></i> {{ cat }}</div>
-            {% for item in menu_registry if item.category == cat %}
+            {% for item in items %}
             <label class="menu-item-row" for="toggle_{{ item.key }}">
               <div class="menu-item-info">
                 <div class="item-icon-box"><i class="{{ item.icon }}"></i></div>

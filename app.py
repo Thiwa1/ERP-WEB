@@ -4041,7 +4041,41 @@ def payment_due():
 def superadmin_menu_control(tenant_id):
     import json as _json
 
-    tenant = master_db.execute_query("SELECT id, company_name, menu_config FROM tenants WHERE id = %s", (tenant_id,))
+    # ── Ensure schema is present (safe to call multiple times) ──────
+    try:
+        master_db.execute_query("ALTER TABLE tenants ADD COLUMN menu_config TEXT DEFAULT NULL")
+    except Exception:
+        pass  # column already exists or other harmless error
+
+    try:
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS tenant_custom_menu (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id     INT          NOT NULL,
+                item_label    VARCHAR(200) NOT NULL,
+                item_url      VARCHAR(500) NOT NULL,
+                item_icon     VARCHAR(100) DEFAULT 'fas fa-circle',
+                item_category VARCHAR(100) DEFAULT 'General',
+                sort_order    INT          DEFAULT 99,
+                is_enabled    TINYINT(1)   DEFAULT 1,
+                created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_tcm_tenant (tenant_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
+    except Exception:
+        pass
+
+    # ── Load tenant (use safe column list) ──────────────────────────
+    try:
+        tenant = master_db.execute_query(
+            "SELECT id, company_name, menu_config FROM tenants WHERE id = %s", (tenant_id,)
+        )
+    except Exception:
+        # menu_config column may still not exist — fall back without it
+        tenant = master_db.execute_query(
+            "SELECT id, company_name FROM tenants WHERE id = %s", (tenant_id,)
+        )
+
     if not tenant:
         flash('Tenant not found.', 'danger')
         return redirect(url_for('superadmin_dashboard'))
@@ -4051,39 +4085,47 @@ def superadmin_menu_control(tenant_id):
         action = request.form.get('action')
 
         if action == 'save_menu':
-            # Build config dict from form checkboxes
             cfg = {}
             for item in MENU_ITEMS_REGISTRY:
                 cfg[item['key']] = request.form.get(f"item_{item['key']}") == '1'
-            master_db.execute_query(
-                "UPDATE tenants SET menu_config = %s WHERE id = %s",
-                (_json.dumps(cfg), tenant_id), commit=True
-            )
-            flash('Menu configuration saved.', 'success')
+            try:
+                master_db.execute_query(
+                    "UPDATE tenants SET menu_config = %s WHERE id = %s",
+                    (_json.dumps(cfg), tenant_id), commit=True
+                )
+                flash('Menu configuration saved.', 'success')
+            except Exception as e:
+                flash(f'Save failed: {e}', 'danger')
 
         elif action == 'add_custom':
             label    = request.form.get('custom_label', '').strip()
-            url      = request.form.get('custom_url', '').strip()
+            url_val  = request.form.get('custom_url', '').strip()
             icon     = request.form.get('custom_icon', 'fas fa-circle').strip()
             category = request.form.get('custom_category', 'General').strip()
-            if label and url:
-                master_db.execute_query(
-                    "INSERT INTO tenant_custom_menu (tenant_id, item_label, item_url, item_icon, item_category) "
-                    "VALUES (%s, %s, %s, %s, %s)",
-                    (tenant_id, label, url, icon, category), commit=True
-                )
-                flash(f'Custom item "{label}" added.', 'success')
+            if label and url_val:
+                try:
+                    master_db.execute_query(
+                        "INSERT INTO tenant_custom_menu (tenant_id, item_label, item_url, item_icon, item_category) "
+                        "VALUES (%s, %s, %s, %s, %s)",
+                        (tenant_id, label, url_val, icon, category), commit=True
+                    )
+                    flash(f'Custom item "{label}" added.', 'success')
+                except Exception as e:
+                    flash(f'Add failed: {e}', 'danger')
             else:
                 flash('Label and URL are required.', 'danger')
 
         elif action == 'delete_custom':
             custom_id = request.form.get('custom_id')
             if custom_id:
-                master_db.execute_query(
-                    "DELETE FROM tenant_custom_menu WHERE id = %s AND tenant_id = %s",
-                    (custom_id, tenant_id), commit=True
-                )
-                flash('Custom item removed.', 'success')
+                try:
+                    master_db.execute_query(
+                        "DELETE FROM tenant_custom_menu WHERE id = %s AND tenant_id = %s",
+                        (custom_id, tenant_id), commit=True
+                    )
+                    flash('Custom item removed.', 'success')
+                except Exception as e:
+                    flash(f'Delete failed: {e}', 'danger')
 
         return redirect(url_for('superadmin_menu_control', tenant_id=tenant_id))
 
@@ -4093,11 +4135,14 @@ def superadmin_menu_control(tenant_id):
     except Exception:
         cfg = {}
 
-    custom_items = master_db.execute_query(
-        "SELECT id, item_label, item_url, item_icon, item_category FROM tenant_custom_menu "
-        "WHERE tenant_id = %s ORDER BY item_category, sort_order, id",
-        (tenant_id,)
-    ) or []
+    try:
+        custom_items = master_db.execute_query(
+            "SELECT id, item_label, item_url, item_icon, item_category FROM tenant_custom_menu "
+            "WHERE tenant_id = %s ORDER BY item_category, sort_order, id",
+            (tenant_id,)
+        ) or []
+    except Exception:
+        custom_items = []
 
     return render_template(
         'superadmin_menu_control.html',
