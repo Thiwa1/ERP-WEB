@@ -775,79 +775,91 @@
                 <!-- Core Accounting -->
                 {% if check_permission("Access_Accounting") %}
                 <div class="menu-category">Core Accounting</div>
-                <a href="/approvals" class="nav-link text-warning fw-bold"><i class="fas fa-check-double"></i> <span class="nav-text">Pending Approvals</span></a>
-                <a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> <span class="nav-text">Sales Invoice</span></a>
-                <a href="/customer_receipt" class="nav-link"><i class="fas fa-receipt"></i> <span class="nav-text">Customer Receipt</span></a>
-                <a href="/cash_payment" class="nav-link"><i class="fas fa-money-bill"></i> <span class="nav-text">Cash Payments</span></a>
-                <a href="/direct_purchasing" class="nav-link"><i class="fas fa-hand-holding-usd"></i> <span class="nav-text">Direct Purchase</span></a>
-                <a href="/bank_payment" class="nav-link"><i class="fas fa-university"></i> <span class="nav-text">Bank Payments</span></a>
-                <a href="/cheque_print_setup" class="nav-link"><i class="fas fa-print"></i> <span class="nav-text">Cheque Print Setup</span></a>
-                <a href="/journal_entry" class="nav-link"><i class="fas fa-book"></i> <span class="nav-text">Journal Entry</span></a>
-                <a href="/service_entry" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">Service Entry (SRN)</span></a>
-                <a href="/fixed_assets" class="nav-link"><i class="fas fa-building"></i> <span class="nav-text">Fixed Assets</span></a>
-                <a href="/vat_report" class="nav-link"><i class="fas fa-file-alt"></i> <span class="nav-text">VAT Schedule</span></a>
+                {% if 'pending_approvals' not in menu_disabled %}<a href="/approvals" class="nav-link text-warning fw-bold"><i class="fas fa-check-double"></i> <span class="nav-text">Pending Approvals</span></a>{% endif %}
+                {% if 'sales_invoice' not in menu_disabled %}<a href="/invoice_creating" class="nav-link"><i class="fas fa-file-invoice-dollar"></i> <span class="nav-text">Sales Invoice</span></a>{% endif %}
+                {% if 'customer_receipt' not in menu_disabled %}<a href="/customer_receipt" class="nav-link"><i class="fas fa-receipt"></i> <span class="nav-text">Customer Receipt</span></a>{% endif %}
+                {% if 'cash_payments' not in menu_disabled %}<a href="/cash_payment" class="nav-link"><i class="fas fa-money-bill"></i> <span class="nav-text">Cash Payments</span></a>{% endif %}
+                {% if 'direct_purchase' not in menu_disabled %}<a href="/direct_purchasing" class="nav-link"><i class="fas fa-hand-holding-usd"></i> <span class="nav-text">Direct Purchase</span></a>{% endif %}
+                {% if 'bank_payments' not in menu_disabled %}<a href="/bank_payment" class="nav-link"><i class="fas fa-university"></i> <span class="nav-text">Bank Payments</span></a>{% endif %}
+                {% if 'cheque_print_setup' not in menu_disabled %}<a href="/cheque_print_setup" class="nav-link"><i class="fas fa-print"></i> <span class="nav-text">Cheque Print Setup</span></a>{% endif %}
+                {% if 'journal_entry' not in menu_disabled %}<a href="/journal_entry" class="nav-link"><i class="fas fa-book"></i> <span class="nav-text">Journal Entry</span></a>{% endif %}
+                {% if 'service_entry' not in menu_disabled %}<a href="/service_entry" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">Service Entry (SRN)</span></a>{% endif %}
+                {% if 'fixed_assets' not in menu_disabled %}<a href="/fixed_assets" class="nav-link"><i class="fas fa-building"></i> <span class="nav-text">Fixed Assets</span></a>{% endif %}
+                {% if 'vat_schedule' not in menu_disabled %}<a href="/vat_report" class="nav-link"><i class="fas fa-file-alt"></i> <span class="nav-text">VAT Schedule</span></a>{% endif %}
                 {% endif %}
 
                 <!-- Reversals & Adjustments -->
                 {% if check_permission("Access_Reversals") %}
-                <div class="menu-category">Reversals & Adjustments</div>
-                <a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> <span class="nav-text">POS Reversal</span></a>
-                <a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> <span class="nav-text">Cash Pay Reversal</span></a>
-                <a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Bank Pay Reversal</span></a>
-                <a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> <span class="nav-text">Direct Pay Reversal</span></a>
-                <a href="/service_entry_reversal" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">SRN Reversal</span></a>
-                <a href="/reversal_category" class="nav-link"><i class="fas fa-tags"></i> <span class="nav-text">Reversal Category</span></a>
+                <div class="menu-category">Reversals &amp; Adjustments</div>
+                {% if 'pos_reversal' not in menu_disabled %}<a href="/pos_reversal" class="nav-link"><i class="fas fa-undo"></i> <span class="nav-text">POS Reversal</span></a>{% endif %}
+                {% if 'cash_pay_reversal' not in menu_disabled %}<a href="/cash_payment_reversal" class="nav-link"><i class="fas fa-undo-alt"></i> <span class="nav-text">Cash Pay Reversal</span></a>{% endif %}
+                {% if 'bank_pay_reversal' not in menu_disabled %}<a href="/bank_payment_reversal" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Bank Pay Reversal</span></a>{% endif %}
+                {% if 'direct_pay_reversal' not in menu_disabled %}<a href="/direct_payment_reversal" class="nav-link"><i class="fas fa-sync"></i> <span class="nav-text">Direct Pay Reversal</span></a>{% endif %}
+                {% if 'srn_reversal' not in menu_disabled %}<a href="/service_entry_reversal" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">SRN Reversal</span></a>{% endif %}
+                {% if 'reversal_category' not in menu_disabled %}<a href="/reversal_category" class="nav-link"><i class="fas fa-tags"></i> <span class="nav-text">Reversal Category</span></a>{% endif %}
                 {% endif %}
 
                 <!-- Inventory -->
                 {% if check_permission("Access_Inventory") %}
                 <div class="menu-category">Inventory</div>
-                <a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">Inventory Balance</span></a>
-                <a href="/add_inventory_item" class="nav-link"><i class="fas fa-plus-square"></i> <span class="nav-text">New Inventory Item</span></a>
-                <a href="/grn" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">GRN</span></a>
-                <a href="/purchase_orders" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">PO Generator</span></a>
-                <a href="/quotation_evaluation" class="nav-link"><i class="fas fa-balance-scale-right"></i> <span class="nav-text">Quotation Eval</span></a>
-                <a href="/proforma_invoice" class="nav-link"><i class="fas fa-file-contract"></i> <span class="nav-text">Proforma Invoice</span></a>
-                <a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> <span class="nav-text">Inventory Transfer</span></a>
-                <a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> <span class="nav-text">Manufacturing</span></a>
-                <a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> <span class="nav-text">Trend Analysis</span></a>
+                {% if 'inventory_balance' not in menu_disabled %}<a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">Inventory Balance</span></a>{% endif %}
+                {% if 'new_inventory_item' not in menu_disabled %}<a href="/add_inventory_item" class="nav-link"><i class="fas fa-plus-square"></i> <span class="nav-text">New Inventory Item</span></a>{% endif %}
+                {% if 'grn' not in menu_disabled %}<a href="/grn" class="nav-link"><i class="fas fa-truck-loading"></i> <span class="nav-text">GRN</span></a>{% endif %}
+                {% if 'po_generator' not in menu_disabled %}<a href="/purchase_orders" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">PO Generator</span></a>{% endif %}
+                {% if 'quotation_eval' not in menu_disabled %}<a href="/quotation_evaluation" class="nav-link"><i class="fas fa-balance-scale-right"></i> <span class="nav-text">Quotation Eval</span></a>{% endif %}
+                {% if 'proforma_invoice' not in menu_disabled %}<a href="/proforma_invoice" class="nav-link"><i class="fas fa-file-contract"></i> <span class="nav-text">Proforma Invoice</span></a>{% endif %}
+                {% if 'inventory_transfer' not in menu_disabled %}<a href="/inventory_transfer" class="nav-link"><i class="fas fa-exchange-alt"></i> <span class="nav-text">Inventory Transfer</span></a>{% endif %}
+                {% if 'manufacturing' not in menu_disabled %}<a href="/inventory_production" class="nav-link"><i class="fas fa-industry"></i> <span class="nav-text">Manufacturing</span></a>{% endif %}
+                {% if 'trend_analysis' not in menu_disabled %}<a href="/inventory_trend_analysis" class="nav-link"><i class="fas fa-chart-line"></i> <span class="nav-text">Trend Analysis</span></a>{% endif %}
                 {% endif %}
 
                 {% if check_permission("Access_POS") %}
-                <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>
+                {% if 'pos_system' not in menu_disabled %}<a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>{% endif %}
                 {% endif %}
 
                 <!-- HR & Payroll -->
                 <div class="menu-category">HR &amp; Payroll</div>
-                <a href="/employees" class="nav-link"><i class="fas fa-users"></i> <span class="nav-text">Employees</span></a>
-                <a href="/leave_application" class="nav-link"><i class="fas fa-calendar-check"></i> <span class="nav-text">Leave Applications</span></a>
-                <a href="/leave_approvals" class="nav-link"><i class="fas fa-check-circle"></i> <span class="nav-text">Leave Approvals</span></a>
-                <a href="/leave_types" class="nav-link"><i class="fas fa-calendar-alt"></i> <span class="nav-text">Leave Types</span></a>
-                <a href="/payroll_run" class="nav-link"><i class="fas fa-money-check-alt"></i> <span class="nav-text">Payroll Run</span></a>
-                <a href="/payroll_components" class="nav-link"><i class="fas fa-sliders-h"></i> <span class="nav-text">Salary Components</span></a>
+                {% if 'employees' not in menu_disabled %}<a href="/employees" class="nav-link"><i class="fas fa-users"></i> <span class="nav-text">Employees</span></a>{% endif %}
+                {% if 'leave_applications' not in menu_disabled %}<a href="/leave_application" class="nav-link"><i class="fas fa-calendar-check"></i> <span class="nav-text">Leave Applications</span></a>{% endif %}
+                {% if 'leave_approvals' not in menu_disabled %}<a href="/leave_approvals" class="nav-link"><i class="fas fa-check-circle"></i> <span class="nav-text">Leave Approvals</span></a>{% endif %}
+                {% if 'leave_types' not in menu_disabled %}<a href="/leave_types" class="nav-link"><i class="fas fa-calendar-alt"></i> <span class="nav-text">Leave Types</span></a>{% endif %}
+                {% if 'payroll_run' not in menu_disabled %}<a href="/payroll_run" class="nav-link"><i class="fas fa-money-check-alt"></i> <span class="nav-text">Payroll Run</span></a>{% endif %}
+                {% if 'salary_components' not in menu_disabled %}<a href="/payroll_components" class="nav-link"><i class="fas fa-sliders-h"></i> <span class="nav-text">Salary Components</span></a>{% endif %}
 
-                <!-- CRM -->
+                <!-- CRM & Sales -->
                 <div class="menu-category">CRM &amp; Sales</div>
-                <a href="/crm" class="nav-link"><i class="fas fa-funnel-dollar"></i> <span class="nav-text">Sales Pipeline</span></a>
-                <a href="/crm/lead/add" class="nav-link"><i class="fas fa-user-plus"></i> <span class="nav-text">Add Lead</span></a>
+                {% if 'sales_pipeline' not in menu_disabled %}<a href="/crm" class="nav-link"><i class="fas fa-funnel-dollar"></i> <span class="nav-text">Sales Pipeline</span></a>{% endif %}
+                {% if 'add_lead' not in menu_disabled %}<a href="/crm/lead/add" class="nav-link"><i class="fas fa-user-plus"></i> <span class="nav-text">Add Lead</span></a>{% endif %}
 
                 <!-- Reports -->
                 {% if check_permission("Access_Reports") %}
                 <div class="menu-category">Reports</div>
-                <a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>
-                <a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>
-                <a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Supplier Aging</span></a>
-                <a href="/customer_aging" class="nav-link"><i class="fas fa-user-clock"></i> <span class="nav-text">Customer Aging</span></a>
-                <a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Balance Sheet</span></a>
-                <a href="/balance_sheet_custom" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Custom Balance Sheet</span></a>
-                <a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Profit & Loss</span></a>
-                <a href="/profit_loss_custom" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Custom Profit & Loss</span></a>
-                <a href="/job_profit_analysis" class="nav-link"><i class="fas fa-briefcase"></i> <span class="nav-text">Job Profit Analysis</span></a>
+                {% if 'ledger_view' not in menu_disabled %}<a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>{% endif %}
+                {% if 'trial_balance' not in menu_disabled %}<a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>{% endif %}
+                {% if 'supplier_aging' not in menu_disabled %}<a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Supplier Aging</span></a>{% endif %}
+                {% if 'customer_aging' not in menu_disabled %}<a href="/customer_aging" class="nav-link"><i class="fas fa-user-clock"></i> <span class="nav-text">Customer Aging</span></a>{% endif %}
+                {% if 'balance_sheet' not in menu_disabled %}<a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Balance Sheet</span></a>{% endif %}
+                {% if 'custom_balance_sheet' not in menu_disabled %}<a href="/balance_sheet_custom" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Custom Balance Sheet</span></a>{% endif %}
+                {% if 'profit_loss' not in menu_disabled %}<a href="/profit_loss" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Profit &amp; Loss</span></a>{% endif %}
+                {% if 'custom_profit_loss' not in menu_disabled %}<a href="/profit_loss_custom" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Custom Profit &amp; Loss</span></a>{% endif %}
+                {% if 'job_profit_analysis' not in menu_disabled %}<a href="/job_profit_analysis" class="nav-link"><i class="fas fa-briefcase"></i> <span class="nav-text">Job Profit Analysis</span></a>{% endif %}
                 {% endif %}
 
                 <!-- Settings -->
                 <div class="menu-category">Settings</div>
-                <a href="/email_settings" class="nav-link"><i class="fas fa-envelope-open-text"></i> <span class="nav-text">Email Settings</span></a>
+                {% if 'email_settings' not in menu_disabled %}<a href="/email_settings" class="nav-link"><i class="fas fa-envelope-open-text"></i> <span class="nav-text">Email Settings</span></a>{% endif %}
+
+                <!-- Custom items added by superadmin -->
+                {% if custom_menu_items %}
+                {% set ns = namespace(last_cat='') %}
+                {% for ci in custom_menu_items %}
+                  {% if ci.item_category != ns.last_cat %}
+                  <div class="menu-category">{{ ci.item_category }}</div>
+                  {% set ns.last_cat = ci.item_category %}
+                  {% endif %}
+                  <a href="{{ ci.item_url }}" class="nav-link"><i class="{{ ci.item_icon }}"></i> <span class="nav-text">{{ ci.item_label }}</span></a>
+                {% endfor %}
+                {% endif %}
             </div>
 
             <div class="px-3">

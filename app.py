@@ -154,6 +154,64 @@ THEMES = {
     }
 }
 
+# ── Sidebar Menu Registry ─────────────────────────────────────────────────────
+# Single source of truth for all sidebar items. Used by superadmin menu control.
+MENU_ITEMS_REGISTRY = [
+    # Core Accounting
+    {'key': 'pending_approvals',  'label': 'Pending Approvals',   'url': '/approvals',              'icon': 'fas fa-check-double',        'category': 'Core Accounting'},
+    {'key': 'sales_invoice',      'label': 'Sales Invoice',        'url': '/invoice_creating',       'icon': 'fas fa-file-invoice-dollar', 'category': 'Core Accounting'},
+    {'key': 'customer_receipt',   'label': 'Customer Receipt',     'url': '/customer_receipt',       'icon': 'fas fa-receipt',             'category': 'Core Accounting'},
+    {'key': 'cash_payments',      'label': 'Cash Payments',        'url': '/cash_payment',           'icon': 'fas fa-money-bill',          'category': 'Core Accounting'},
+    {'key': 'direct_purchase',    'label': 'Direct Purchase',      'url': '/direct_purchasing',      'icon': 'fas fa-hand-holding-usd',    'category': 'Core Accounting'},
+    {'key': 'bank_payments',      'label': 'Bank Payments',        'url': '/bank_payment',           'icon': 'fas fa-university',          'category': 'Core Accounting'},
+    {'key': 'cheque_print_setup', 'label': 'Cheque Print Setup',   'url': '/cheque_print_setup',     'icon': 'fas fa-print',               'category': 'Core Accounting'},
+    {'key': 'journal_entry',      'label': 'Journal Entry',        'url': '/journal_entry',          'icon': 'fas fa-book',                'category': 'Core Accounting'},
+    {'key': 'service_entry',      'label': 'Service Entry (SRN)',  'url': '/service_entry',          'icon': 'fas fa-file-invoice',        'category': 'Core Accounting'},
+    {'key': 'fixed_assets',       'label': 'Fixed Assets',         'url': '/fixed_assets',           'icon': 'fas fa-building',            'category': 'Core Accounting'},
+    {'key': 'vat_schedule',       'label': 'VAT Schedule',         'url': '/vat_report',             'icon': 'fas fa-file-alt',            'category': 'Core Accounting'},
+    # Reversals & Adjustments
+    {'key': 'pos_reversal',       'label': 'POS Reversal',         'url': '/pos_reversal',           'icon': 'fas fa-undo',                'category': 'Reversals & Adjustments'},
+    {'key': 'cash_pay_reversal',  'label': 'Cash Pay Reversal',    'url': '/cash_payment_reversal',  'icon': 'fas fa-undo-alt',            'category': 'Reversals & Adjustments'},
+    {'key': 'bank_pay_reversal',  'label': 'Bank Pay Reversal',    'url': '/bank_payment_reversal',  'icon': 'fas fa-history',             'category': 'Reversals & Adjustments'},
+    {'key': 'direct_pay_reversal','label': 'Direct Pay Reversal',  'url': '/direct_payment_reversal','icon': 'fas fa-sync',                'category': 'Reversals & Adjustments'},
+    {'key': 'srn_reversal',       'label': 'SRN Reversal',         'url': '/service_entry_reversal', 'icon': 'fas fa-file-invoice',        'category': 'Reversals & Adjustments'},
+    {'key': 'reversal_category',  'label': 'Reversal Category',    'url': '/reversal_category',      'icon': 'fas fa-tags',                'category': 'Reversals & Adjustments'},
+    # Inventory
+    {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
+    {'key': 'new_inventory_item', 'label': 'New Inventory Item',   'url': '/add_inventory_item',     'icon': 'fas fa-plus-square',         'category': 'Inventory'},
+    {'key': 'grn',                'label': 'GRN',                  'url': '/grn',                    'icon': 'fas fa-truck-loading',       'category': 'Inventory'},
+    {'key': 'po_generator',       'label': 'PO Generator',         'url': '/purchase_orders',        'icon': 'fas fa-file-invoice',        'category': 'Inventory'},
+    {'key': 'quotation_eval',     'label': 'Quotation Eval',       'url': '/quotation_evaluation',   'icon': 'fas fa-balance-scale-right', 'category': 'Inventory'},
+    {'key': 'proforma_invoice',   'label': 'Proforma Invoice',     'url': '/proforma_invoice',       'icon': 'fas fa-file-contract',       'category': 'Inventory'},
+    {'key': 'inventory_transfer', 'label': 'Inventory Transfer',   'url': '/inventory_transfer',     'icon': 'fas fa-exchange-alt',        'category': 'Inventory'},
+    {'key': 'manufacturing',      'label': 'Manufacturing',        'url': '/inventory_production',   'icon': 'fas fa-industry',            'category': 'Inventory'},
+    {'key': 'trend_analysis',     'label': 'Trend Analysis',       'url': '/inventory_trend_analysis','icon': 'fas fa-chart-line',         'category': 'Inventory'},
+    # POS
+    {'key': 'pos_system',         'label': 'POS System',           'url': '/pos',                    'icon': 'fas fa-cash-register',       'category': 'POS'},
+    # HR & Payroll
+    {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
+    {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
+    {'key': 'leave_approvals',    'label': 'Leave Approvals',      'url': '/leave_approvals',        'icon': 'fas fa-check-circle',        'category': 'HR & Payroll'},
+    {'key': 'leave_types',        'label': 'Leave Types',          'url': '/leave_types',            'icon': 'fas fa-calendar-alt',        'category': 'HR & Payroll'},
+    {'key': 'payroll_run',        'label': 'Payroll Run',          'url': '/payroll_run',            'icon': 'fas fa-money-check-alt',     'category': 'HR & Payroll'},
+    {'key': 'salary_components',  'label': 'Salary Components',    'url': '/payroll_components',     'icon': 'fas fa-sliders-h',           'category': 'HR & Payroll'},
+    # CRM & Sales
+    {'key': 'sales_pipeline',     'label': 'Sales Pipeline',       'url': '/crm',                    'icon': 'fas fa-funnel-dollar',       'category': 'CRM & Sales'},
+    {'key': 'add_lead',           'label': 'Add Lead',             'url': '/crm/lead/add',           'icon': 'fas fa-user-plus',           'category': 'CRM & Sales'},
+    # Reports
+    {'key': 'ledger_view',        'label': 'Ledger View',          'url': '/ledger_view',            'icon': 'fas fa-book-open',           'category': 'Reports'},
+    {'key': 'trial_balance',      'label': 'Trial Balance',        'url': '/trial_balance',          'icon': 'fas fa-balance-scale-left',  'category': 'Reports'},
+    {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
+    {'key': 'customer_aging',     'label': 'Customer Aging',       'url': '/customer_aging',         'icon': 'fas fa-user-clock',          'category': 'Reports'},
+    {'key': 'balance_sheet',      'label': 'Balance Sheet',        'url': '/balance_sheet',          'icon': 'fas fa-balance-scale',       'category': 'Reports'},
+    {'key': 'custom_balance_sheet','label': 'Custom Balance Sheet','url': '/balance_sheet_custom',   'icon': 'fas fa-balance-scale',       'category': 'Reports'},
+    {'key': 'profit_loss',        'label': 'Profit & Loss',        'url': '/profit_loss',            'icon': 'fas fa-chart-pie',           'category': 'Reports'},
+    {'key': 'custom_profit_loss', 'label': 'Custom Profit & Loss', 'url': '/profit_loss_custom',     'icon': 'fas fa-chart-pie',           'category': 'Reports'},
+    {'key': 'job_profit_analysis','label': 'Job Profit Analysis',  'url': '/job_profit_analysis',    'icon': 'fas fa-briefcase',           'category': 'Reports'},
+    # Settings
+    {'key': 'email_settings',     'label': 'Email Settings',       'url': '/email_settings',         'icon': 'fas fa-envelope-open-text',  'category': 'Settings'},
+]
+
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
 db_suport_name = "suwixvkn"
@@ -255,6 +313,26 @@ def setup_master_db():
             master_db.execute_query("ALTER TABLE tenants ADD COLUMN db_initialized TINYINT DEFAULT 1")
         except Exception:
             pass
+        try:
+            master_db.execute_query("ALTER TABLE tenants ADD COLUMN menu_config TEXT DEFAULT NULL")
+        except Exception:
+            pass
+
+        # Custom menu items added by superadmin per tenant
+        master_db.execute_query("""
+            CREATE TABLE IF NOT EXISTS tenant_custom_menu (
+                id          INT AUTO_INCREMENT PRIMARY KEY,
+                tenant_id   INT          NOT NULL,
+                item_label  VARCHAR(200) NOT NULL,
+                item_url    VARCHAR(500) NOT NULL,
+                item_icon   VARCHAR(100) DEFAULT 'fas fa-circle',
+                item_category VARCHAR(100) DEFAULT 'General',
+                sort_order  INT          DEFAULT 99,
+                is_enabled  TINYINT(1)   DEFAULT 1,
+                created_at  DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """)
 
         master_db.execute_query("""
             CREATE TABLE IF NOT EXISTS users (
@@ -485,18 +563,48 @@ def inject_globals():
         globals_dict['current_theme'] = THEMES['default']
         globals_dict['theme_key'] = 'default'
 
-    # Sidebar / Function visibility (Tenant specific from Master DB)
+    # Sidebar / Function visibility + per-item menu control (Tenant specific from Master DB)
     try:
         if 'tenant_id' in session:
-            tenant_res = master_db.execute_query("SELECT sidebar_enabled FROM tenants WHERE id = %s", (session['tenant_id'],))
+            tenant_res = master_db.execute_query(
+                "SELECT sidebar_enabled, menu_config FROM tenants WHERE id = %s",
+                (session['tenant_id'],)
+            )
             if tenant_res:
-                globals_dict['sidebar_enabled'] = tenant_res[0].get('sidebar_enabled', 1) == 1
+                t = tenant_res[0]
+                globals_dict['sidebar_enabled'] = t.get('sidebar_enabled', 1) == 1
+                # Parse disabled menu keys from JSON config
+                import json as _json
+                raw_cfg = t.get('menu_config') or '{}'
+                try:
+                    cfg = _json.loads(raw_cfg)
+                except Exception:
+                    cfg = {}
+                # cfg = {key: True/False} — False means disabled
+                globals_dict['menu_disabled'] = {k for k, v in cfg.items() if not v}
             else:
                 globals_dict['sidebar_enabled'] = True
+                globals_dict['menu_disabled'] = set()
         else:
             globals_dict['sidebar_enabled'] = True
+            globals_dict['menu_disabled'] = set()
     except Exception:
         globals_dict['sidebar_enabled'] = True
+        globals_dict['menu_disabled'] = set()
+
+    # Custom menu items added by superadmin for this tenant
+    try:
+        if 'tenant_id' in session:
+            custom = master_db.execute_query(
+                "SELECT item_label, item_url, item_icon, item_category FROM tenant_custom_menu "
+                "WHERE tenant_id = %s AND is_enabled = 1 ORDER BY item_category, sort_order, id",
+                (session['tenant_id'],)
+            )
+            globals_dict['custom_menu_items'] = custom or []
+        else:
+            globals_dict['custom_menu_items'] = []
+    except Exception:
+        globals_dict['custom_menu_items'] = []
 
     globals_dict['check_permission'] = check_permission
     return globals_dict
@@ -3926,6 +4034,79 @@ def superadmin_set_max_users(tenant_id):
 @app.route('/payment_due')
 def payment_due():
     return render_template('payment_due.html')
+
+# ── Superadmin: Per-Tenant Menu Control ──────────────────────────────────────
+@app.route('/superadmin/menu/<int:tenant_id>', methods=['GET', 'POST'])
+@superadmin_required
+def superadmin_menu_control(tenant_id):
+    import json as _json
+
+    tenant = master_db.execute_query("SELECT id, company_name, menu_config FROM tenants WHERE id = %s", (tenant_id,))
+    if not tenant:
+        flash('Tenant not found.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+    tenant = tenant[0]
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+
+        if action == 'save_menu':
+            # Build config dict from form checkboxes
+            cfg = {}
+            for item in MENU_ITEMS_REGISTRY:
+                cfg[item['key']] = request.form.get(f"item_{item['key']}") == '1'
+            master_db.execute_query(
+                "UPDATE tenants SET menu_config = %s WHERE id = %s",
+                (_json.dumps(cfg), tenant_id), commit=True
+            )
+            flash('Menu configuration saved.', 'success')
+
+        elif action == 'add_custom':
+            label    = request.form.get('custom_label', '').strip()
+            url      = request.form.get('custom_url', '').strip()
+            icon     = request.form.get('custom_icon', 'fas fa-circle').strip()
+            category = request.form.get('custom_category', 'General').strip()
+            if label and url:
+                master_db.execute_query(
+                    "INSERT INTO tenant_custom_menu (tenant_id, item_label, item_url, item_icon, item_category) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (tenant_id, label, url, icon, category), commit=True
+                )
+                flash(f'Custom item "{label}" added.', 'success')
+            else:
+                flash('Label and URL are required.', 'danger')
+
+        elif action == 'delete_custom':
+            custom_id = request.form.get('custom_id')
+            if custom_id:
+                master_db.execute_query(
+                    "DELETE FROM tenant_custom_menu WHERE id = %s AND tenant_id = %s",
+                    (custom_id, tenant_id), commit=True
+                )
+                flash('Custom item removed.', 'success')
+
+        return redirect(url_for('superadmin_menu_control', tenant_id=tenant_id))
+
+    # GET: load current config
+    try:
+        cfg = _json.loads(tenant.get('menu_config') or '{}')
+    except Exception:
+        cfg = {}
+
+    custom_items = master_db.execute_query(
+        "SELECT id, item_label, item_url, item_icon, item_category FROM tenant_custom_menu "
+        "WHERE tenant_id = %s ORDER BY item_category, sort_order, id",
+        (tenant_id,)
+    ) or []
+
+    return render_template(
+        'superadmin_menu_control.html',
+        tenant=tenant,
+        menu_registry=MENU_ITEMS_REGISTRY,
+        menu_cfg=cfg,
+        custom_items=custom_items
+    )
+
 
 @app.route('/superadmin_dashboard')
 @superadmin_required

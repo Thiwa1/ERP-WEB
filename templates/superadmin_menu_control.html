@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Menu Control — {{ tenant.company_name }}</title>
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #0a0e1a; --bg-surface: #111827; --bg-card: #141d2e;
+    --bg-elevated: #1a2540; --border: rgba(99,162,255,.10);
+    --border-bright: rgba(99,162,255,.22); --accent: #3b82f6;
+    --accent-glow: rgba(59,130,246,.18); --accent-light: #60a5fa;
+    --teal: #2dd4bf; --teal-glow: rgba(45,212,191,.15);
+    --danger: #f87171; --danger-glow: rgba(248,113,113,.15);
+    --warning: #fbbf24; --text-primary: #e8f0fe;
+    --text-secondary: #8fa3c4; --text-muted: #4d6380;
+    --font-main: 'Sora', sans-serif; --font-mono: 'DM Mono', monospace;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg-base); font-family: var(--font-main); color: var(--text-primary); min-height: 100vh;
+    background-image: radial-gradient(ellipse 80% 50% at 20% 0%, rgba(59,130,246,.07) 0%, transparent 60%); }
+
+  /* Header */
+  .app-header {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0 36px; height: 64px;
+    background: rgba(10,14,26,.85); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 100;
+  }
+  .brand-icon { width:32px;height:32px;background:var(--accent);border-radius:8px;
+    display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;letter-spacing:-.5px; }
+  .brand-text { font-size:15px;font-weight:600;color:var(--text-primary);letter-spacing:-.3px; }
+  .brand-text span { color:var(--accent-light); }
+  .btn-back { display:inline-flex;align-items:center;gap:7px;padding:8px 16px;
+    border:1px solid var(--border-bright);border-radius:8px;background:transparent;
+    color:var(--text-secondary);font-size:13px;font-weight:500;text-decoration:none;
+    transition:all .2s; }
+  .btn-back:hover { background:var(--bg-elevated);color:var(--text-primary);text-decoration:none; }
+
+  .main-wrapper { max-width:1200px;margin:0 auto;padding:36px 36px 60px; }
+
+  /* Page header */
+  .page-header { margin-bottom:28px; }
+  .page-title { font-size:20px;font-weight:700;color:var(--text-primary);letter-spacing:-.4px; }
+  .page-subtitle { font-size:13px;color:var(--text-secondary);margin-top:5px; }
+
+  /* Alert */
+  .alert { padding:12px 18px;border-radius:10px;font-size:13px;margin-bottom:16px;border-left:3px solid; }
+  .alert-success { background:rgba(45,212,191,.08);border-color:var(--teal);color:var(--teal); }
+  .alert-danger  { background:var(--danger-glow);border-color:var(--danger);color:var(--danger); }
+
+  /* Cards */
+  .card-dark {
+    background:var(--bg-card);border:1px solid var(--border);
+    border-radius:14px;overflow:hidden;margin-bottom:24px;
+  }
+  .card-dark-header {
+    padding:18px 24px;border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+  }
+  .card-dark-title { font-size:14px;font-weight:600;color:var(--text-primary);letter-spacing:-.2px; }
+  .card-dark-body { padding:20px 24px; }
+
+  /* Category header */
+  .cat-header {
+    font-size:10.5px;font-weight:600;text-transform:uppercase;letter-spacing:1px;
+    color:var(--accent-light);padding:8px 0 6px;margin-top:8px;
+    border-bottom:1px solid var(--border);margin-bottom:10px;
+    display:flex;align-items:center;gap:8px;
+  }
+  .cat-header:first-child { margin-top:0; }
+
+  /* Toggle item */
+  .menu-item-row {
+    display:flex;align-items:center;justify-content:space-between;
+    padding:9px 12px;border-radius:8px;
+    transition:background .15s;
+    cursor:pointer;
+  }
+  .menu-item-row:hover { background:rgba(59,130,246,.06); }
+  .menu-item-info { display:flex;align-items:center;gap:10px; }
+  .item-icon-box {
+    width:28px;height:28px;border-radius:7px;
+    background:var(--bg-elevated);border:1px solid var(--border);
+    display:flex;align-items:center;justify-content:center;
+    font-size:.75rem;color:var(--accent-light);flex-shrink:0;
+  }
+  .item-label { font-size:.82rem;font-weight:500;color:var(--text-primary); }
+  .item-url   { font-size:.7rem;color:var(--text-muted);font-family:var(--font-mono); }
+
+  /* Toggle switch */
+  .toggle-switch { position:relative;display:inline-block;width:42px;height:22px;flex-shrink:0; }
+  .toggle-switch input { opacity:0;width:0;height:0; }
+  .toggle-slider {
+    position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;
+    background:var(--bg-elevated);border:1px solid var(--border-bright);
+    border-radius:22px;transition:.25s;
+  }
+  .toggle-slider::before {
+    content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;
+    background:var(--text-muted);border-radius:50%;transition:.25s;
+  }
+  .toggle-switch input:checked + .toggle-slider { background:rgba(45,212,191,.25);border-color:var(--teal); }
+  .toggle-switch input:checked + .toggle-slider::before { transform:translateX(20px);background:var(--teal); }
+
+  /* Select-all bar */
+  .select-bar {
+    display:flex;gap:10px;padding:10px 0;margin-bottom:4px;
+    border-bottom:1px solid var(--border);
+  }
+  .btn-sel { background:var(--bg-elevated);border:1px solid var(--border);color:var(--text-secondary);
+    border-radius:6px;padding:5px 14px;font-size:.75rem;font-weight:500;cursor:pointer;
+    font-family:var(--font-main);transition:all .15s; }
+  .btn-sel:hover { border-color:var(--border-bright);color:var(--text-primary); }
+
+  /* Save button */
+  .btn-save {
+    background:var(--accent);border:none;color:#fff;border-radius:9px;
+    padding:11px 28px;font-size:.875rem;font-weight:600;cursor:pointer;
+    font-family:var(--font-main);transition:all .2s;
+  }
+  .btn-save:hover { background:var(--accent-light); }
+
+  /* Custom items table */
+  .custom-table { width:100%;border-collapse:collapse; }
+  .custom-table th {
+    padding:10px 14px;font-size:.7rem;font-weight:600;text-transform:uppercase;
+    letter-spacing:.7px;color:var(--text-muted);background:var(--bg-surface);
+    border-bottom:1px solid var(--border);
+  }
+  .custom-table td { padding:12px 14px;font-size:.82rem;border-bottom:1px solid var(--border);color:var(--text-primary); }
+  .custom-table tr:last-child td { border-bottom:none; }
+  .custom-table tr:hover td { background:rgba(59,130,246,.04); }
+  .btn-del { background:var(--danger-glow);border:1px solid rgba(248,113,113,.3);
+    color:var(--danger);border-radius:6px;padding:4px 12px;font-size:.72rem;
+    cursor:pointer;font-family:var(--font-main);font-weight:600;transition:all .15s; }
+  .btn-del:hover { background:rgba(248,113,113,.25); }
+
+  /* Add custom form */
+  .field-label { font-size:.75rem;font-weight:600;color:var(--text-secondary);margin-bottom:6px;display:block; }
+  .field-input {
+    background:var(--bg-card);border:1px solid var(--border-bright);border-radius:8px;
+    color:var(--text-primary);padding:9px 13px;font-size:.82rem;
+    font-family:var(--font-mono);width:100%;outline:none;transition:border-color .2s;
+  }
+  .field-input:focus { border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow); }
+  .field-select { background:var(--bg-card);border:1px solid var(--border-bright);border-radius:8px;
+    color:var(--text-primary);padding:9px 13px;font-size:.82rem;width:100%;outline:none;
+    transition:border-color .2s;appearance:none; }
+  .field-select:focus { border-color:var(--accent); }
+
+  .btn-add { background:var(--teal-glow);border:1px solid rgba(45,212,191,.3);
+    color:var(--teal);border-radius:8px;padding:9px 20px;font-size:.82rem;
+    font-weight:600;cursor:pointer;font-family:var(--font-main);transition:all .2s; }
+  .btn-add:hover { background:rgba(45,212,191,.25);border-color:rgba(45,212,191,.5); }
+
+  /* Grid */
+  .grid2 { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+  .grid3 { display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px; }
+  @media(max-width:700px) { .grid2,.grid3 { grid-template-columns:1fr; } }
+
+  @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  .card-dark { animation: fadeUp .4s ease both; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div class="brand-icon">SA</div>
+    <span class="brand-text"><span>Super</span> Admin</span>
+    <span style="color:var(--text-muted);margin:0 6px;">›</span>
+    <span style="font-size:13px;color:var(--accent-light);">Menu Control</span>
+  </div>
+  <a href="/superadmin_dashboard" class="btn-back">
+    <i class="fas fa-arrow-left"></i> Back to Dashboard
+  </a>
+</header>
+
+<div class="main-wrapper">
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for cat, msg in messages %}
+      <div class="alert alert-{{ cat }}"><i class="fas fa-{% if cat=='success' %}check-circle{% else %}exclamation-circle{% endif %} me-2"></i>{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <!-- Page header -->
+  <div class="page-header">
+    <h1 class="page-title"><i class="fas fa-list-check" style="color:var(--accent-light);margin-right:10px;"></i>Menu Control</h1>
+    <p class="page-subtitle">Configure which sidebar items are visible for <strong style="color:var(--text-primary);">{{ tenant.company_name }}</strong></p>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- LEFT: toggle items by category -->
+    <div class="col-lg-7">
+      <div class="card-dark">
+        <div class="card-dark-header">
+          <span class="card-dark-title"><i class="fas fa-toggle-on" style="color:var(--teal);margin-right:8px;"></i>Sidebar Items</span>
+          <div class="select-bar" style="margin-bottom:0;border:none;padding:0;">
+            <button type="button" class="btn-sel" onclick="setAll(true)"><i class="fas fa-check-double me-1"></i>Enable All</button>
+            <button type="button" class="btn-sel" onclick="setAll(false)"><i class="fas fa-times me-1"></i>Disable All</button>
+          </div>
+        </div>
+        <div class="card-dark-body">
+          <form method="POST" action="/superadmin/menu/{{ tenant.id }}" id="menuForm">
+            <input type="hidden" name="action" value="save_menu">
+
+            {% set categories = menu_registry | map(attribute='category') | unique | list %}
+            {% for cat in categories %}
+            <div class="cat-header"><i class="fas fa-layer-group" style="font-size:.65rem;"></i> {{ cat }}</div>
+            {% for item in menu_registry if item.category == cat %}
+            <label class="menu-item-row" for="toggle_{{ item.key }}">
+              <div class="menu-item-info">
+                <div class="item-icon-box"><i class="{{ item.icon }}"></i></div>
+                <div>
+                  <div class="item-label">{{ item.label }}</div>
+                  <div class="item-url">{{ item.url }}</div>
+                </div>
+              </div>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle_{{ item.key }}" name="item_{{ item.key }}" value="1"
+                  {% if menu_cfg.get(item.key, True) %}checked{% endif %}>
+                <span class="toggle-slider"></span>
+              </label>
+            </label>
+            {% endfor %}
+            {% endfor %}
+
+            <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+              <button type="submit" class="btn-save">
+                <i class="fas fa-save me-2"></i>Save Menu Configuration
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: custom items -->
+    <div class="col-lg-5">
+
+      <!-- Add new custom item -->
+      <div class="card-dark" style="animation-delay:.1s;">
+        <div class="card-dark-header">
+          <span class="card-dark-title"><i class="fas fa-plus-circle" style="color:var(--teal);margin-right:8px;"></i>Add Custom Menu Item</span>
+        </div>
+        <div class="card-dark-body">
+          <form method="POST" action="/superadmin/menu/{{ tenant.id }}">
+            <input type="hidden" name="action" value="add_custom">
+            <div class="mb-3">
+              <label class="field-label">Label <span style="color:var(--danger);">*</span></label>
+              <input type="text" class="field-input" name="custom_label" placeholder="e.g. Custom Reports" required>
+            </div>
+            <div class="mb-3">
+              <label class="field-label">URL / Path <span style="color:var(--danger);">*</span></label>
+              <input type="text" class="field-input" name="custom_url" placeholder="/custom_page" required>
+            </div>
+            <div class="grid2 mb-3">
+              <div>
+                <label class="field-label">Icon (Font Awesome class)</label>
+                <input type="text" class="field-input" name="custom_icon" placeholder="fas fa-star" value="fas fa-circle">
+              </div>
+              <div>
+                <label class="field-label">Category</label>
+                <select class="field-select" name="custom_category">
+                  <option value="General">General</option>
+                  <option value="Core Accounting">Core Accounting</option>
+                  <option value="Inventory">Inventory</option>
+                  <option value="HR &amp; Payroll">HR &amp; Payroll</option>
+                  <option value="CRM &amp; Sales">CRM &amp; Sales</option>
+                  <option value="Reports">Reports</option>
+                  <option value="Settings">Settings</option>
+                </select>
+              </div>
+            </div>
+            <button type="submit" class="btn-add w-100">
+              <i class="fas fa-plus me-2"></i>Add to Sidebar
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Existing custom items -->
+      <div class="card-dark" style="animation-delay:.2s;">
+        <div class="card-dark-header">
+          <span class="card-dark-title"><i class="fas fa-list" style="color:var(--accent-light);margin-right:8px;"></i>Custom Items</span>
+          <span style="font-family:var(--font-mono);font-size:.7rem;color:var(--text-muted);background:var(--bg-elevated);padding:3px 10px;border-radius:20px;border:1px solid var(--border);">
+            {{ custom_items | length }} items
+          </span>
+        </div>
+        <div class="card-dark-body" style="padding:0;">
+          {% if custom_items %}
+          <table class="custom-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Category</th>
+                <th style="text-align:right;">Remove</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for ci in custom_items %}
+              <tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:8px;">
+                    <i class="{{ ci.item_icon }}" style="color:var(--accent-light);width:16px;text-align:center;"></i>
+                    <div>
+                      <div style="font-weight:500;">{{ ci.item_label }}</div>
+                      <div style="font-size:.68rem;color:var(--text-muted);font-family:var(--font-mono);">{{ ci.item_url }}</div>
+                    </div>
+                  </div>
+                </td>
+                <td style="font-size:.72rem;color:var(--text-muted);">{{ ci.item_category }}</td>
+                <td style="text-align:right;">
+                  <form method="POST" action="/superadmin/menu/{{ tenant.id }}"
+                        onsubmit="return confirm('Remove this custom item?');">
+                    <input type="hidden" name="action" value="delete_custom">
+                    <input type="hidden" name="custom_id" value="{{ ci.id }}">
+                    <button type="submit" class="btn-del"><i class="fas fa-trash"></i></button>
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div style="padding:28px;text-align:center;color:var(--text-muted);font-size:.82rem;">
+            <i class="fas fa-plus-circle" style="font-size:1.4rem;margin-bottom:8px;display:block;opacity:.4;"></i>
+            No custom items yet. Add one above.
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Icon reference -->
+      <div class="card-dark" style="animation-delay:.3s;">
+        <div class="card-dark-header">
+          <span class="card-dark-title"><i class="fas fa-icons" style="color:var(--warning);margin-right:8px;"></i>Common Icons</span>
+        </div>
+        <div class="card-dark-body">
+          <div style="display:flex;flex-wrap:wrap;gap:8px;">
+            {% set icons = [
+              ('fas fa-chart-bar','chart-bar'),('fas fa-file-invoice','file-invoice'),
+              ('fas fa-cog','cog'),('fas fa-users','users'),('fas fa-star','star'),
+              ('fas fa-home','home'),('fas fa-link','link'),('fas fa-database','database'),
+              ('fas fa-key','key'),('fas fa-shield-alt','shield'),('fas fa-bell','bell'),
+              ('fas fa-envelope','envelope'),('fas fa-calendar','calendar'),
+              ('fas fa-clock','clock'),('fas fa-map-marker-alt','location'),
+              ('fas fa-tag','tag'),('fas fa-tools','tools'),('fas fa-bolt','bolt')
+            ] %}
+            {% for cls, name in icons %}
+            <button type="button" onclick="document.querySelector('[name=custom_icon]').value='{{ cls }}'"
+              style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;
+                     padding:5px 10px;color:var(--text-secondary);font-size:.72rem;cursor:pointer;
+                     display:flex;align-items:center;gap:5px;transition:all .15s;"
+              onmouseover="this.style.borderColor='var(--accent-light)';this.style.color='var(--accent-light)'"
+              onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text-secondary)'">
+              <i class="{{ cls }}"></i> {{ name }}
+            </button>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+function setAll(enabled) {
+  document.querySelectorAll('#menuForm input[type="checkbox"]').forEach(cb => {
+    cb.checked = enabled;
+  });
+}
+</script>
+</body>
+</html>
