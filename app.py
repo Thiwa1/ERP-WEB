@@ -8349,6 +8349,169 @@ def dashboard_kpis():
         conn.close()
 
 
+# --- Dashboard Module Stats ---
+@app.route('/api/dashboard/module_stats')
+@login_required
+def dashboard_module_stats():
+    """Returns real-time counts for the Module Stats widget and Pending Approvals list."""
+    from datetime import datetime as _dt
+    today = _dt.now().date()
+
+    conn = db.get_connection()
+    if not conn:
+        return jsonify({'success': False, 'error': 'DB connection failed'}), 500
+
+    try:
+        cursor = conn.cursor(dictionary=True)
+
+        # 1. Open (unpaid) customer invoices
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) as cnt
+                FROM Invoice_Oustanding
+                WHERE oustanding_delete = 0
+                  AND (invoice_total_oustanding - COALESCE(invoice_oustanding_Patment, 0)) > 0
+            """)
+            open_invoices = int((cursor.fetchone() or {}).get('cnt', 0))
+        except Exception:
+            open_invoices = 0
+
+        # 2. Receipts today (cash DR + bank DR rows created today)
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM cash_book_recode
+                WHERE DATE(Payment_Date) = %s AND cash_book_recode_dr > 0
+            """, (today,))
+            cash_rcpt = int((cursor.fetchone() or {}).get('cnt', 0))
+
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM bank_book_recod
+                WHERE DATE(Bank_Payment_Date) = %s AND bank_book_book_recode_dr > 0
+            """, (today,))
+            bank_rcpt = int((cursor.fetchone() or {}).get('cnt', 0))
+            receipts_today = cash_rcpt + bank_rcpt
+        except Exception:
+            receipts_today = 0
+
+        # 3. Low stock items (current balance < min_qty, where min_qty > 0)
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM (
+                    SELECT ir.inventoy_name,
+                           SUM(COALESCE(ir.inventory_recod_movment_in,0))
+                           - SUM(COALESCE(ir.inventory_recod_movment_out,0)) AS balance,
+                           MAX(ii.min_qty) AS min_qty
+                    FROM inventory_recod ir
+                    JOIN inventoy_items ii ON ir.inventoy_name = ii.inventoy_name
+                    WHERE ii.min_qty > 0 AND ii.active = 1
+                    GROUP BY ir.inventoy_name
+                    HAVING balance < MAX(ii.min_qty)
+                ) t
+            """)
+            low_stock = int((cursor.fetchone() or {}).get('cnt', 0))
+        except Exception:
+            low_stock = 0
+
+        # 4. GRN / Purchase Orders pending approval
+        try:
+            cursor.execute("""
+                SELECT COUNT(*) as cnt FROM OP_NO_Table
+                WHERE status = 0 AND Delete_PO = 0
+            """)
+            grn_pending = int((cursor.fetchone() or {}).get('cnt', 0))
+        except Exception:
+            grn_pending = 0
+
+        # 5. POS sales today (transaction count)
+        try:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT Invoice_No) as cnt
+                FROM POS_Sales_Invoice_01
+                WHERE DATE(AcctionDate) = %s AND Revers = 0
+            """, (today,))
+            pos_today = int((cursor.fetchone() or {}).get('cnt', 0))
+        except Exception:
+            pos_today = 0
+
+        # 6. Pending approvals — top 5 real items
+        pending_items = []
+        try:
+            cursor.execute("""
+                SELECT id, OP_NO_Other as ref_no, Create_Date as date,
+                       Sup_Name as party, 'Purchase Order' as type,
+                       (SELECT COALESCE(SUM(QTY*Unit_price),0)
+                        FROM PO_Recode_Details
+                        WHERE Link_OP_NO_Table = OP_NO_Table.id) as amount,
+                       'po' as source
+                FROM OP_NO_Table
+                WHERE status = 0 AND Delete_PO = 0
+                ORDER BY Create_Date DESC LIMIT 5
+            """)
+            for r in (cursor.fetchall() or []):
+                pending_items.append({
+                    'ref_no': r.get('ref_no') or f"PO-{r['id']}",
+                    'party': r.get('party') or 'Purchase Order',
+                    'type': 'Purchase Order',
+                    'amount': float(r.get('amount') or 0),
+                    'date': str(r.get('date') or ''),
+                    'icon': 'fa-shopping-cart',
+                    'color': '#7B3F9E'
+                })
+        except Exception:
+            pass
+
+        try:
+            cursor.execute("""
+                SELECT j.jv_id as id, j.jv_user_code as ref_no,
+                       MIN(e.entry_effective_date) as date,
+                       j.jv_naration as party,
+                       SUM(COALESCE(e.enty_values_DR,0)) as amount
+                FROM jv_numbers j
+                LEFT JOIN entry_details e ON j.jv_id = e.entry_jv
+                WHERE j.status = 0
+                GROUP BY j.jv_id, j.jv_user_code, j.jv_naration
+                ORDER BY j.jv_id DESC LIMIT 5
+            """)
+            for r in (cursor.fetchall() or []):
+                pending_items.append({
+                    'ref_no': f"JV-{r['id']}",
+                    'party': r.get('party') or 'Journal Entry',
+                    'type': 'Journal / Payment',
+                    'amount': float(r.get('amount') or 0),
+                    'date': str(r.get('date') or ''),
+                    'icon': 'fa-book',
+                    'color': '#0078D4'
+                })
+        except Exception:
+            pass
+
+        # Sort by amount desc, keep top 5
+        pending_items.sort(key=lambda x: x['amount'], reverse=True)
+        pending_items = pending_items[:5]
+
+        return jsonify({
+            'success': True,
+            'stats': {
+                'open_invoices': open_invoices,
+                'receipts_today': receipts_today,
+                'low_stock': low_stock,
+                'grn_pending': grn_pending,
+                'pos_today': pos_today
+            },
+            'pending_approvals': pending_items
+        })
+
+    except Exception as e:
+        logging.error(f"Module stats error: {e}", exc_info=True)
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        try:
+            cursor.close()
+            conn.close()
+        except Exception:
+            pass
+
+
 # --- Dashboard VAT Export ---
 @app.route('/dashboard_export_vat', methods=['GET'])
 @login_required
