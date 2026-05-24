@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#005a9e);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-calendar-check text-white" style="font-size:.95rem;"></i>
+    </div>
+    <div><h5 class="mb-0 fw-bold">Leave Applications</h5><span class="text-muted" style="font-size:.78rem;">Human Resources</span></div>
+  </div>
+
+  <!-- Apply Form -->
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);margin-bottom:1.5rem;overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#0078D4;"><i class="fas fa-plus-circle me-1"></i>Submit Leave Application</span></div>
+    <div style="padding:1.25rem;">
+      <form method="POST" action="{{ url_for('leave_application') }}">
+        <div class="row g-3">
+          <div class="col-md-4">
+            <label class="form-label fw-semibold small">Employee <span class="text-danger">*</span></label>
+            <select name="employee_id" class="form-select select2" required>
+              <option value="">Select Employee...</option>
+              {% for e in employees %}<option value="{{ e.id }}">{{ e.emp_no }} — {{ e.first_name }} {{ e.last_name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label fw-semibold small">Leave Type <span class="text-danger">*</span></label>
+            <select name="leave_type_id" class="form-select" required>
+              <option value="">Select Type...</option>
+              {% for lt in leave_types %}<option value="{{ lt.id }}">{{ lt.leave_name }} ({{ lt.days_per_year }}d/yr)</option>{% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold small">Start Date <span class="text-danger">*</span></label>
+            <input type="date" name="start_date" class="form-control" id="startDate" required onchange="calcDays()">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label fw-semibold small">End Date <span class="text-danger">*</span></label>
+            <input type="date" name="end_date" class="form-control" id="endDate" required onchange="calcDays()">
+          </div>
+          <div class="col-md-1">
+            <label class="form-label fw-semibold small">Days</label>
+            <input type="text" id="daysCount" class="form-control fw-bold text-center" readonly value="0" style="background:#f8f9fa;">
+          </div>
+          <div class="col-md-9">
+            <label class="form-label fw-semibold small">Reason</label>
+            <input type="text" name="reason" class="form-control" placeholder="Brief reason for leave...">
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button type="submit" class="btn btn-primary w-100 fw-semibold"><i class="fas fa-paper-plane me-2"></i>Submit Application</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Applications Table -->
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;"><i class="fas fa-history me-1"></i>Recent Applications</span></div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Submitted</th><th>Employee</th><th>Leave Type</th><th>From</th><th>To</th><th class="text-center">Days</th><th>Reason</th><th class="text-center">Status</th></tr></thead>
+        <tbody>
+        {% for a in applications %}
+        <tr>
+          <td style="font-size:.8rem;color:#605E5C;">{{ a.created_at.strftime('%d %b %Y') if a.created_at else '' }}</td>
+          <td><div class="fw-semibold">{{ a.first_name }} {{ a.last_name }}</div><small class="text-muted">{{ a.emp_no }}</small></td>
+          <td>{{ a.leave_name }}</td>
+          <td>{{ a.start_date }}</td>
+          <td>{{ a.end_date }}</td>
+          <td class="text-center fw-bold">{{ a.days_requested }}</td>
+          <td><small>{{ (a.reason or '')[:60] }}</small></td>
+          <td class="text-center">
+            {% if a.status == 'Approved' %}<span class="badge" style="background:#d4edda;color:#107C10;border-radius:6px;">Approved</span>
+            {% elif a.status == 'Rejected' %}<span class="badge" style="background:#fde8e8;color:#C42B1C;border-radius:6px;">Rejected</span>
+            {% else %}<span class="badge" style="background:#fff3cd;color:#856404;border-radius:6px;">Pending</span>{% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="8" class="text-center py-5 text-muted"><i class="fas fa-inbox fa-2x d-block mb-2 opacity-25"></i>No applications yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<script>
+function calcDays(){
+  const s=document.getElementById('startDate').value, e=document.getElementById('endDate').value;
+  if(s&&e){const d=Math.max(0,Math.round((new Date(e)-new Date(s))/(86400000))+1);document.getElementById('daysCount').value=d;}
+}
+</script>
+{% endblock %}

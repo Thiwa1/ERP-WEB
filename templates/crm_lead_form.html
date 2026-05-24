@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .page-header-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1.1rem; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  .fluent-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 0;
+  }
+  .field-label {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+    margin-bottom: 4px;
+  }
+  .action-btn {
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: .82rem;
+    border: none;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="page-header-icon" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);">
+      <i class="fas fa-user-plus"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Add New Lead</h5>
+      <div class="section-label mb-0">CRM &amp; Sales Pipeline</div>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('crm_pipeline') }}" class="btn btn-sm fw-bold px-3"
+         style="background:#f1f5f9;border:1px solid #e2e8f0;color:#374151;border-radius:8px;">
+        <i class="fas fa-arrow-left me-1"></i> Back to Pipeline
+      </a>
+    </div>
+  </div>
+
+  <form method="POST" action="{{ url_for('add_crm_lead') }}">
+    <div class="row g-4">
+
+      <!-- Left column -->
+      <div class="col-md-8">
+
+        <!-- Contact Information -->
+        <div class="fluent-card mb-4">
+          <div class="p-4 pb-0">
+            <div class="section-label"><i class="fas fa-address-card"></i> Contact Information</div>
+          </div>
+          <div class="p-4 pt-3">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="field-label">Lead Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="lead_name" required
+                       value="{{ form.lead_name if form else '' }}" placeholder="Full name of contact">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Company Name</label>
+                <input type="text" class="form-control" name="company_name"
+                       value="{{ form.company_name if form else '' }}" placeholder="Organisation / Company">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Email Address</label>
+                <input type="email" class="form-control" name="email"
+                       value="{{ form.email if form else '' }}" placeholder="contact@example.com">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Mobile / Phone</label>
+                <input type="text" class="form-control" name="mobile"
+                       value="{{ form.mobile if form else '' }}" placeholder="+94 77 000 0000">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pipeline Details -->
+        <div class="fluent-card mb-4">
+          <div class="p-4 pb-0">
+            <div class="section-label"><i class="fas fa-funnel-dollar"></i> Pipeline Details</div>
+          </div>
+          <div class="p-4 pt-3">
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="field-label">Lead Source</label>
+                <select class="form-select" name="source">
+                  {% set sources = ['Website','Referral','Cold Call','Walk-in','Social Media','Other'] %}
+                  {% for s in sources %}
+                  <option value="{{ s }}" {% if (form and form.source == s) or (not form and s == 'Other') %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">Status</label>
+                <select class="form-select" name="status">
+                  {% set statuses = ['New','Contacted','Qualified','Proposal','Won','Lost'] %}
+                  {% for st in statuses %}
+                  <option value="{{ st }}" {% if (form and form.status == st) or (not form and st == 'New') %}selected{% endif %}>{{ st }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">Assigned To</label>
+                <input type="text" class="form-control" name="assigned_to"
+                       value="{{ form.assigned_to if form else '' }}" placeholder="Sales rep name">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Expected Value ({{ currency }})</label>
+                <div class="input-group">
+                  <span class="input-group-text" style="font-family:'Courier New',monospace;">{{ currency }}</span>
+                  <input type="number" step="0.01" class="form-control" name="expected_value"
+                         value="{{ form.expected_value if form else '0.00' }}" placeholder="0.00">
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Expected Close Date</label>
+                <input type="date" class="form-control" name="expected_close_date"
+                       value="{{ form.expected_close_date if form else '' }}">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Notes -->
+        <div class="fluent-card mb-4">
+          <div class="p-4 pb-0">
+            <div class="section-label"><i class="fas fa-sticky-note"></i> Notes</div>
+          </div>
+          <div class="p-4 pt-3">
+            <textarea class="form-control" name="notes" rows="4"
+                      placeholder="Additional notes, requirements, or context about this lead...">{{ form.notes if form else '' }}</textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right column: Actions -->
+      <div class="col-md-4">
+        <div class="fluent-card">
+          <div class="p-4 pb-0">
+            <div class="section-label"><i class="fas fa-bolt"></i> Actions</div>
+          </div>
+          <div class="p-4 pt-3">
+            <div class="d-grid gap-2">
+              <button type="submit" class="btn btn-primary fw-bold py-2 action-btn"
+                      style="background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;">
+                <i class="fas fa-save me-2"></i> Create Lead
+              </button>
+              <a href="{{ url_for('add_crm_lead') }}" class="btn btn-secondary fw-bold py-2 action-btn">
+                <i class="fas fa-eraser me-2"></i> Clear Form
+              </a>
+              <a href="{{ url_for('crm_pipeline') }}" class="btn fw-bold py-2 action-btn"
+                 style="background:#f1f5f9;border:1px solid #e2e8f0;color:#374151;">
+                <i class="fas fa-list me-2"></i> View Pipeline
+              </a>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Guide Card -->
+        <div class="fluent-card mt-4">
+          <div class="p-4 pb-0">
+            <div class="section-label"><i class="fas fa-info-circle"></i> Pipeline Stages</div>
+          </div>
+          <div class="p-4 pt-3">
+            {% set stage_info = [
+              ('New',       '#64748b', 'Fresh lead, not yet contacted'),
+              ('Contacted',  '#0891b2', 'Initial contact made'),
+              ('Qualified',  '#0d9488', 'Lead meets criteria'),
+              ('Proposal',   '#7c3aed', 'Proposal sent / demo done'),
+              ('Won',        '#16a34a', 'Deal closed successfully'),
+              ('Lost',       '#dc2626', 'Deal lost or dropped')
+            ] %}
+            {% for stage, color, desc in stage_info %}
+            <div class="d-flex align-items-start gap-2 mb-2">
+              <span style="width:10px;height:10px;border-radius:50%;background:{{ color }};flex-shrink:0;margin-top:4px;"></span>
+              <div>
+                <div style="font-weight:600;font-size:.78rem;color:#1a1a2e;">{{ stage }}</div>
+                <div style="font-size:.72rem;color:#94a3b8;">{{ desc }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

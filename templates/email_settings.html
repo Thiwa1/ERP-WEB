@@ -1,0 +1,305 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .page-header-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1.1rem; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  .fluent-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 0;
+  }
+  .field-label {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+    margin-bottom: 4px;
+  }
+  .status-sent   { background:#dcfce7; color:#15803d; }
+  .status-failed { background:#fee2e2; color:#b91c1c; }
+  .status-badge-sm {
+    display: inline-flex; align-items: center;
+    border-radius: 5px;
+    font-size: .68rem; font-weight: 700;
+    padding: 2px 8px;
+  }
+  .active-toggle {
+    display: flex; align-items: center; gap: 10px;
+    padding: 12px 16px;
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 8px;
+    font-weight: 600;
+    color: #15803d;
+    font-size: .85rem;
+  }
+  .active-toggle.inactive {
+    background: #fef2f2;
+    border-color: #fecaca;
+    color: #b91c1c;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="page-header-icon" style="background: linear-gradient(135deg, #0891b2, #0e7490);">
+      <i class="fas fa-envelope-open-text"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Email Integration</h5>
+      <div class="section-label mb-0">SMTP Configuration &amp; Email Log</div>
+    </div>
+    <div class="ms-auto">
+      {% if settings and settings.is_active %}
+      <div class="active-toggle">
+        <i class="fas fa-check-circle"></i> Email Active
+      </div>
+      {% else %}
+      <div class="active-toggle inactive">
+        <i class="fas fa-times-circle"></i> Email Inactive
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Left: SMTP Config -->
+    <div class="col-md-7">
+      <div class="fluent-card mb-4">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-server"></i> SMTP Configuration</div>
+        </div>
+        <div class="p-4 pt-3">
+          <form method="POST" action="{{ url_for('email_settings') }}">
+            <input type="hidden" name="action" value="save_smtp">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="field-label">SMTP Host</label>
+                <input type="text" class="form-control" name="smtp_host"
+                       value="{{ settings.smtp_host if settings else '' }}"
+                       placeholder="smtp.gmail.com / smtp.office365.com">
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">SMTP Port</label>
+                <input type="number" class="form-control" name="smtp_port"
+                       value="{{ settings.smtp_port if settings else 587 }}"
+                       placeholder="587">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">SMTP Username</label>
+                <input type="text" class="form-control" name="smtp_username"
+                       value="{{ settings.smtp_username if settings else '' }}"
+                       placeholder="your@email.com">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">SMTP Password / App Password</label>
+                <input type="password" class="form-control" name="smtp_password"
+                       value="{{ settings.smtp_password if settings else '' }}"
+                       placeholder="••••••••••••">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Sender Display Name</label>
+                <input type="text" class="form-control" name="sender_name"
+                       value="{{ settings.sender_name if settings else '' }}"
+                       placeholder="Suwin ERP">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Sender Email Address</label>
+                <input type="email" class="form-control" name="sender_email"
+                       value="{{ settings.sender_email if settings else '' }}"
+                       placeholder="noreply@yourcompany.com">
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center gap-3 mt-1">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" name="use_tls" id="use_tls"
+                           {% if not settings or settings.use_tls %}checked{% endif %}>
+                    <label class="form-check-label field-label mb-0" for="use_tls">Use TLS / STARTTLS</label>
+                  </div>
+                </div>
+              </div>
+              <div class="col-md-6">
+                <div class="d-flex align-items-center gap-3 mt-1">
+                  <div class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active"
+                           {% if settings and settings.is_active %}checked{% endif %}>
+                    <label class="form-check-label field-label mb-0" for="is_active">Enable Email Sending</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="mt-4 d-flex gap-2">
+              <button type="submit" class="btn btn-sm fw-bold px-4 py-2"
+                      style="background:linear-gradient(135deg,#0891b2,#0e7490);border:none;border-radius:8px;color:#fff;">
+                <i class="fas fa-save me-1"></i> Save Settings
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Test Email -->
+      <div class="fluent-card">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-paper-plane"></i> Send Test Email</div>
+        </div>
+        <div class="p-4 pt-3">
+          <form method="POST" action="{{ url_for('email_settings') }}">
+            <input type="hidden" name="action" value="send_test">
+            <div class="row g-3 align-items-end">
+              <div class="col-md-7">
+                <label class="field-label">Recipient Email</label>
+                <input type="email" class="form-control" name="test_email"
+                       placeholder="test@example.com" required>
+              </div>
+              <div class="col-md-5">
+                <button type="submit" class="btn btn-sm fw-bold w-100 py-2"
+                        style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;color:#0369a1;font-weight:700;"
+                        {% if not settings or not settings.is_active %}disabled title="Enable email first"{% endif %}>
+                  <i class="fas fa-vial me-1"></i> Send Test
+                </button>
+              </div>
+            </div>
+          </form>
+          {% if test_result %}
+          <div class="alert mt-3 mb-0 py-2 px-3 {% if test_result.success %}alert-success{% else %}alert-danger{% endif %}"
+               style="border-radius:8px;font-size:.82rem;">
+            {% if test_result.success %}
+            <i class="fas fa-check-circle me-1"></i> Test email sent successfully to <strong>{{ test_result.to }}</strong>
+            {% else %}
+            <i class="fas fa-exclamation-circle me-1"></i> Failed: {{ test_result.error }}
+            {% endif %}
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Quick Guide -->
+    <div class="col-md-5">
+
+      <!-- Provider Quick Guide -->
+      <div class="fluent-card mb-4">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-book"></i> Provider Quick Guide</div>
+        </div>
+        <div class="p-4 pt-3">
+          {% set providers = [
+            ('Gmail',       'smtp.gmail.com',        587, 'Use App Password (2FA required)'),
+            ('Outlook/365', 'smtp.office365.com',    587, 'Use your Microsoft account password'),
+            ('Yahoo Mail',  'smtp.mail.yahoo.com',   587, 'Use App Password from account settings'),
+            ('Custom SMTP', 'mail.yourdomain.com',   465, 'Contact your hosting provider')
+          ] %}
+          {% for name, host, port, note in providers %}
+          <div class="p-3 mb-2 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+              <span style="font-weight:700;font-size:.82rem;color:#1a1a2e;">{{ name }}</span>
+              <span style="font-family:'Courier New',monospace;font-size:.72rem;color:#7c3aed;">:{{ port }}</span>
+            </div>
+            <div style="font-size:.73rem;font-family:'Courier New',monospace;color:#0891b2;">{{ host }}</div>
+            <div style="font-size:.72rem;color:#94a3b8;margin-top:3px;">{{ note }}</div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- What emails are sent -->
+      <div class="fluent-card">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-at"></i> Automated Emails</div>
+        </div>
+        <div class="p-4 pt-3">
+          {% set auto_emails = [
+            ('fas fa-file-invoice', '#0891b2', 'Invoice Email', 'Send invoice PDF link to customer'),
+            ('fas fa-money-check-alt', '#0d9488', 'Payslip Email', 'Email payslip to employee'),
+            ('fas fa-calendar-check', '#7c3aed', 'Leave Approved', 'Notify employee of leave approval'),
+            ('fas fa-user-plus', '#e65100', 'New Lead', 'Notify assigned rep of new CRM lead')
+          ] %}
+          {% for icon, color, title, desc in auto_emails %}
+          <div class="d-flex align-items-start gap-3 mb-3">
+            <div style="width:32px;height:32px;border-radius:8px;background:{{ color }};display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <i class="{{ icon }}" style="color:#fff;font-size:.75rem;"></i>
+            </div>
+            <div>
+              <div style="font-weight:600;font-size:.82rem;color:#1a1a2e;">{{ title }}</div>
+              <div style="font-size:.73rem;color:#94a3b8;">{{ desc }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Email Log Table -->
+  <div class="fluent-card mt-4">
+    <div class="p-4 pb-0 d-flex align-items-center justify-content-between">
+      <div class="section-label"><i class="fas fa-list-alt"></i> Recent Email Log</div>
+      <span class="badge" style="background:#e0f2fe;color:#0369a1;font-size:.72rem;">Last 50 records</span>
+    </div>
+    <div class="table-responsive mt-2">
+      <table class="table table-hover align-middle mb-0">
+        <thead>
+          <tr style="background:#f8fafc;">
+            <th style="padding:.7rem 1.2rem;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#605E5C;">Date/Time</th>
+            <th style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#605E5C;">Recipient</th>
+            <th style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#605E5C;">Subject</th>
+            <th style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#605E5C;">Type</th>
+            <th style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:#605E5C;text-align:center;">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for log in email_log %}
+          <tr>
+            <td style="padding:.65rem 1.2rem;font-size:.8rem;color:#374151;">
+              {{ log.sent_at.strftime('%d %b %Y %H:%M') if log.sent_at else '—' }}
+            </td>
+            <td style="font-size:.82rem;color:#1a1a2e;font-weight:500;">{{ log.recipient_email }}</td>
+            <td style="font-size:.8rem;color:#374151;max-width:260px;">
+              <span style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ log.subject }}</span>
+            </td>
+            <td>
+              <span style="font-size:.72rem;color:#94a3b8;font-weight:600;">{{ log.related_type or '—' }}</span>
+            </td>
+            <td class="text-center">
+              {% if log.status == 'Sent' %}
+              <span class="status-badge-sm status-sent">Sent</span>
+              {% else %}
+              <span class="status-badge-sm status-failed" title="{{ log.error_message }}">Failed</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="5" class="text-center py-5" style="color:#94a3b8;">
+              <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.3;"></i>
+              <div style="font-size:.85rem;">No emails sent yet.</div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

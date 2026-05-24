@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .hr-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  .badge-permanent  { background: #e3f2fd; color: #1565c0; }
+  .badge-contract   { background: #fff3e0; color: #e65100; }
+  .badge-probation  { background: #fffde7; color: #f57f17; }
+  .badge-parttime   { background: #f0f4f8; color: #546e7a; }
+  .emp-badge {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 6px;
+    font-size: .72rem;
+    font-weight: 700;
+    padding: 3px 10px;
+    letter-spacing: .3px;
+  }
+  .search-box {
+    border-radius: 8px;
+    border: 1px solid #e2e8f0;
+    padding: 8px 14px 8px 38px;
+    font-size: .9rem;
+    background: #fff;
+    width: 280px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search-box:focus {
+    outline: none;
+    border-color: #0d9488;
+    box-shadow: 0 0 0 3px rgba(13,148,136,.15);
+  }
+  .search-wrap { position: relative; }
+  .search-wrap .search-icon {
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: .85rem;
+  }
+  .btn-deactivate {
+    background: #fce8e6;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    color: #c42b1c;
+    font-size: .75rem;
+    padding: 4px 12px;
+    transition: background .15s;
+    cursor: pointer;
+  }
+  .btn-deactivate:hover { background: #f5c6c2; color: #a4262c; }
+  .btn-edit-emp {
+    background: #e8f4fd;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    color: #0078d4;
+    font-size: .75rem;
+    padding: 4px 12px;
+    text-decoration: none;
+    transition: background .15s;
+  }
+  .btn-edit-emp:hover { background: #cce5f6; color: #005fa3; }
+  .stat-mini {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+    padding: 1.1rem 1.4rem;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile" style="background: linear-gradient(135deg, #0d9488, #0f766e);">
+      <i class="fas fa-users"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Employee Directory</h5>
+      <div class="section-label mb-0">Human Resources</div>
+    </div>
+    <div class="ms-auto">
+      <a href="{{ url_for('add_employee') }}" class="btn btn-sm fw-bold px-3"
+         style="background: linear-gradient(135deg,#0d9488,#0f766e);border:none;border-radius:8px;color:#fff;">
+        <i class="fas fa-plus me-1"></i> Add Employee
+      </a>
+    </div>
+  </div>
+
+  <!-- Stats Row -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-4">
+      <div class="stat-mini">
+        <div class="section-label mb-1"><i class="fas fa-users me-1"></i>Total Employees</div>
+        <div class="d-flex align-items-baseline gap-2">
+          <span class="fs-2 fw-bold" style="color:#1a1a2e;">{{ stats.total }}</span>
+          <span class="text-muted" style="font-size:.8rem;">registered</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stat-mini">
+        <div class="section-label mb-1" style="color:#1565c0;"><i class="fas fa-user-check me-1"></i>Permanent</div>
+        <div class="d-flex align-items-baseline gap-2">
+          <span class="fs-2 fw-bold" style="color:#1565c0;">{{ stats.permanent }}</span>
+          <span class="text-muted" style="font-size:.8rem;">full-time</span>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="stat-mini">
+        <div class="section-label mb-1" style="color:#e65100;"><i class="fas fa-user-clock me-1"></i>Contract</div>
+        <div class="d-flex align-items-baseline gap-2">
+          <span class="fs-2 fw-bold" style="color:#e65100;">{{ stats.contract }}</span>
+          <span class="text-muted" style="font-size:.8rem;">on contract</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search + Table Card -->
+  <div class="hr-card overflow-hidden">
+    <div class="px-4 pt-4 pb-3 d-flex align-items-center gap-3 flex-wrap" style="border-bottom:1px solid #f1f3f5;">
+      <div class="section-label mb-0"><i class="fas fa-id-card me-1"></i>All Employees</div>
+      <div class="ms-auto search-wrap">
+        <i class="fas fa-search search-icon"></i>
+        <input type="text" id="empSearch" class="search-box" placeholder="Search by name, emp no, department...">
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" id="empTable">
+        <thead>
+          <tr>
+            <th style="padding:.75rem 1.25rem;">Emp No</th>
+            <th>Full Name</th>
+            <th>Department</th>
+            <th>Designation</th>
+            <th>Type</th>
+            <th>Basic Salary</th>
+            <th class="text-center">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for emp in employees %}
+          <tr data-search="{{ emp.emp_no|lower }} {{ emp.first_name|lower }} {{ emp.last_name|lower }} {{ emp.department|lower }}">
+            <td style="padding:.75rem 1.25rem;">
+              <span style="font-family:'Courier New',monospace;font-weight:700;color:#0d9488;font-size:.85rem;">
+                {{ emp.emp_no }}
+              </span>
+            </td>
+            <td>
+              <div class="fw-semibold" style="color:#1a1a2e;">{{ emp.first_name }} {{ emp.last_name }}</div>
+              <div style="font-size:.75rem;color:#94a3b8;">{{ emp.email }}</div>
+            </td>
+            <td>
+              <span style="font-size:.85rem;color:#374151;">{{ emp.department }}</span>
+            </td>
+            <td>
+              <span style="font-size:.85rem;color:#374151;">{{ emp.designation }}</span>
+            </td>
+            <td>
+              {% if emp.employment_type == 'Permanent' %}
+                <span class="emp-badge badge-permanent">Permanent</span>
+              {% elif emp.employment_type == 'Contract' %}
+                <span class="emp-badge badge-contract">Contract</span>
+              {% elif emp.employment_type == 'Probation' %}
+                <span class="emp-badge badge-probation">Probation</span>
+              {% else %}
+                <span class="emp-badge badge-parttime">Part-Time</span>
+              {% endif %}
+            </td>
+            <td>
+              <span style="font-family:'Courier New',monospace;font-weight:700;color:#1a1a2e;">
+                {{ '{:,.2f}'.format(emp.basic_salary) }}
+              </span>
+            </td>
+            <td class="text-center">
+              <div class="d-flex gap-2 justify-content-center">
+                <a href="{{ url_for('edit_employee', emp_id=emp.id) }}" class="btn-edit-emp">
+                  <i class="fas fa-pencil-alt me-1"></i>Edit
+                </a>
+                {% if emp.is_active %}
+                <form method="POST" action="{{ url_for('deactivate_employee', emp_id=emp.id) }}" style="display:inline;"
+                      onsubmit="return confirm('Deactivate {{ emp.first_name }} {{ emp.last_name }}? They will no longer appear in active rosters.');">
+                  <button type="submit" class="btn-deactivate">
+                    <i class="fas fa-user-slash me-1"></i>Deactivate
+                  </button>
+                </form>
+                {% else %}
+                <span style="font-size:.75rem;color:#94a3b8;padding:4px 8px;">Inactive</span>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td colspan="7" class="text-center py-5">
+              <div style="color:#94a3b8;">
+                <i class="fas fa-users fa-2x mb-2 d-block" style="opacity:.35;"></i>
+                <div class="fw-semibold">No employees found</div>
+                <div style="font-size:.82rem;">Add your first employee to get started.</div>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  document.getElementById('empSearch').addEventListener('input', function () {
+    const q = this.value.toLowerCase().trim();
+    document.querySelectorAll('#empTable tbody tr[data-search]').forEach(function (row) {
+      row.style.display = row.dataset.search.includes(q) ? '' : 'none';
+    });
+  });
+</script>
+{% endblock %}

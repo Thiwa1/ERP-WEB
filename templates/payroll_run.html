@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Payroll Processing{% endblock %}
+
+{% block content %}
+<style>
+  .pr-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+  }
+  .form-label-sm {
+    font-size: .82rem;
+    font-weight: 600;
+    color: #323130;
+    margin-bottom: 5px;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile" style="background: linear-gradient(135deg, #059669, #047857);">
+      <i class="fas fa-money-check-alt"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Payroll Processing</h5>
+      <div class="section-label mb-0">Monthly Payroll Runs</div>
+    </div>
+  </div>
+
+  <!-- New Payroll Run Card -->
+  <div class="pr-card mb-4">
+    <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+      <div class="section-label mb-0">
+        <i class="fas fa-plus-circle me-2" style="color:#059669;"></i>Create New Payroll Run
+      </div>
+    </div>
+    <div class="p-4">
+      <form method="POST" action="{{ url_for('payroll_run_list') }}">
+        <div class="row g-3 align-items-end">
+          <div class="col-sm-4 col-md-3">
+            <label class="form-label-sm" for="pay_period_month">Pay Period Month</label>
+            <select id="pay_period_month" name="pay_period_month" class="form-select" required>
+              <option value="" disabled selected>Select month...</option>
+              <option value="1">January</option>
+              <option value="2">February</option>
+              <option value="3">March</option>
+              <option value="4">April</option>
+              <option value="5">May</option>
+              <option value="6">June</option>
+              <option value="7">July</option>
+              <option value="8">August</option>
+              <option value="9">September</option>
+              <option value="10">October</option>
+              <option value="11">November</option>
+              <option value="12">December</option>
+            </select>
+          </div>
+          <div class="col-sm-4 col-md-3">
+            <label class="form-label-sm" for="pay_period_year">Year</label>
+            <input type="number" id="pay_period_year" name="pay_period_year" class="form-control"
+              value="{{ current_year if current_year else 2026 }}" min="2000" max="2100" required>
+          </div>
+          <div class="col-sm-4 col-md-3">
+            <button type="submit" class="btn fw-bold text-white w-100"
+              style="background: linear-gradient(135deg, #059669, #047857); border: none; border-radius: 8px; padding: .6rem 1.25rem;">
+              <i class="fas fa-plus me-2"></i>Create Payroll Run
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Payroll Runs Table -->
+  <div class="pr-card">
+    <div class="p-4 pb-3 border-bottom d-flex align-items-center justify-content-between" style="border-color:#e2e8f0 !important;">
+      <div class="section-label mb-0">
+        <i class="fas fa-history me-2" style="color:#059669;"></i>Payroll Run History
+      </div>
+      <span class="badge rounded-pill"
+        style="background:#d1fae5; color:#065f46; font-size:.7rem; font-weight:700; letter-spacing:.5px;">
+        {{ runs | length }} run{% if runs | length != 1 %}s{% endif %}
+      </span>
+    </div>
+
+    <div class="table-responsive" style="border-radius: 0 0 12px 12px; border: none; box-shadow: none;">
+      <table class="table table-hover mb-0 align-middle" style="font-size:.85rem; white-space:nowrap;">
+        <thead style="background:#f0fdf4;">
+          <tr>
+            <th class="section-label fw-normal border-0 ps-4" style="padding-top:12px;padding-bottom:12px;">Period</th>
+            <th class="section-label fw-normal border-0" style="padding-top:12px;padding-bottom:12px;">Run Date</th>
+            <th class="section-label fw-normal border-0" style="padding-top:12px;padding-bottom:12px;">Status</th>
+            <th class="section-label fw-normal border-0 text-end" style="padding-top:12px;padding-bottom:12px;">Gross</th>
+            <th class="section-label fw-normal border-0 text-end" style="padding-top:12px;padding-bottom:12px;">Deductions</th>
+            <th class="section-label fw-normal border-0 text-end" style="padding-top:12px;padding-bottom:12px;">Net Pay</th>
+            <th class="section-label fw-normal border-0 text-center pe-4" style="padding-top:12px;padding-bottom:12px;">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if runs %}
+            {% for run in runs %}
+            <tr>
+              <td class="ps-4 fw-semibold text-dark">
+                <span id="period-{{ run.id }}">{{ run.pay_period_month }}/{{ run.pay_period_year }}</span>
+                <script>
+                  (function() {
+                    var monthNames = {1:'January',2:'February',3:'March',4:'April',5:'May',6:'June',
+                                      7:'July',8:'August',9:'September',10:'October',11:'November',12:'December'};
+                    var el = document.getElementById('period-{{ run.id }}');
+                    if (el) {
+                      el.textContent = (monthNames[{{ run.pay_period_month }}] || '{{ run.pay_period_month }}') + ' {{ run.pay_period_year }}';
+                    }
+                  })();
+                </script>
+              </td>
+              <td class="text-muted">
+                {% if run.run_date %}
+                  {{ run.run_date }}
+                {% else %}
+                  <span class="text-muted" style="font-style:italic;">Not processed</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if run.status == 'Draft' %}
+                  <span class="badge"
+                    style="background:#f1f5f9; color:#475569; font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                    <i class="fas fa-circle me-1" style="font-size:.5rem; vertical-align:middle;"></i>Draft
+                  </span>
+                {% elif run.status == 'Processed' %}
+                  <span class="badge"
+                    style="background:#dbeafe; color:#1e40af; font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                    <i class="fas fa-check-circle me-1" style="font-size:.7rem;"></i>Processed
+                  </span>
+                {% elif run.status == 'Paid' %}
+                  <span class="badge"
+                    style="background:#d1fae5; color:#065f46; font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                    <i class="fas fa-check-double me-1" style="font-size:.7rem;"></i>Paid
+                  </span>
+                {% else %}
+                  <span class="badge bg-secondary" style="font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                    {{ run.status }}
+                  </span>
+                {% endif %}
+              </td>
+              <td class="text-end fw-semibold">
+                {% if run.total_gross %}
+                  {{ "{:,.2f}".format(run.total_gross) }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end" style="color:#991b1b;">
+                {% if run.total_deductions %}
+                  {{ "{:,.2f}".format(run.total_deductions) }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end fw-bold" style="color:#065f46;">
+                {% if run.total_net %}
+                  {{ "{:,.2f}".format(run.total_net) }}
+                {% else %}
+                  <span class="text-muted">—</span>
+                {% endif %}
+              </td>
+              <td class="text-center pe-4">
+                <a href="/payroll_run/{{ run.id }}" class="btn btn-sm fw-semibold"
+                  style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; border-radius:6px; font-size:.78rem; padding:4px 14px;">
+                  <i class="fas fa-eye me-1"></i>View / Process
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center py-5 text-muted">
+                <div style="font-size:2rem; margin-bottom:8px; opacity:.3;">
+                  <i class="fas fa-money-check-alt"></i>
+                </div>
+                <div style="font-size:.85rem; font-weight:500;">No payroll runs created yet.</div>
+                <div style="font-size:.78rem;">Use the form above to create your first payroll run.</div>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Month name lookup for any future dynamic use
+  var MONTH_NAMES = {
+    1: 'January', 2: 'February', 3: 'March', 4: 'April',
+    5: 'May', 6: 'June', 7: 'July', 8: 'August',
+    9: 'September', 10: 'October', 11: 'November', 12: 'December'
+  };
+</script>
+{% endblock %}

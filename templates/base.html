@@ -817,6 +817,20 @@
                 <a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>
                 {% endif %}
 
+                <!-- HR & Payroll -->
+                <div class="menu-category">HR &amp; Payroll</div>
+                <a href="/employees" class="nav-link"><i class="fas fa-users"></i> <span class="nav-text">Employees</span></a>
+                <a href="/leave_application" class="nav-link"><i class="fas fa-calendar-check"></i> <span class="nav-text">Leave Applications</span></a>
+                <a href="/leave_approvals" class="nav-link"><i class="fas fa-check-circle"></i> <span class="nav-text">Leave Approvals</span></a>
+                <a href="/leave_types" class="nav-link"><i class="fas fa-calendar-alt"></i> <span class="nav-text">Leave Types</span></a>
+                <a href="/payroll_run" class="nav-link"><i class="fas fa-money-check-alt"></i> <span class="nav-text">Payroll Run</span></a>
+                <a href="/payroll_components" class="nav-link"><i class="fas fa-sliders-h"></i> <span class="nav-text">Salary Components</span></a>
+
+                <!-- CRM -->
+                <div class="menu-category">CRM &amp; Sales</div>
+                <a href="/crm" class="nav-link"><i class="fas fa-funnel-dollar"></i> <span class="nav-text">Sales Pipeline</span></a>
+                <a href="/crm/lead/add" class="nav-link"><i class="fas fa-user-plus"></i> <span class="nav-text">Add Lead</span></a>
+
                 <!-- Reports -->
                 {% if check_permission("Access_Reports") %}
                 <div class="menu-category">Reports</div>
@@ -830,6 +844,10 @@
                 <a href="/profit_loss_custom" class="nav-link"><i class="fas fa-chart-pie"></i> <span class="nav-text">Custom Profit & Loss</span></a>
                 <a href="/job_profit_analysis" class="nav-link"><i class="fas fa-briefcase"></i> <span class="nav-text">Job Profit Analysis</span></a>
                 {% endif %}
+
+                <!-- Settings -->
+                <div class="menu-category">Settings</div>
+                <a href="/email_settings" class="nav-link"><i class="fas fa-envelope-open-text"></i> <span class="nav-text">Email Settings</span></a>
             </div>
 
             <div class="px-3">
@@ -1136,6 +1154,18 @@
                     </a>
                     <a href="/tax_settings" class="win11-app-icon win10-tile" data-name="tax settings">
                         <div class="icon-wrapper icon-teal"><i class="fas fa-percent"></i></div><span>Tax</span>
+                    </a>
+                    <a href="/employees" class="win11-app-icon win10-tile" data-name="employees hr">
+                        <div class="icon-wrapper icon-green"><i class="fas fa-users"></i></div><span>Employees</span>
+                    </a>
+                    <a href="/payroll_run" class="win11-app-icon win10-tile" data-name="payroll">
+                        <div class="icon-wrapper icon-blue"><i class="fas fa-money-check-alt"></i></div><span>Payroll</span>
+                    </a>
+                    <a href="/crm" class="win11-app-icon win10-tile" data-name="crm sales pipeline">
+                        <div class="icon-wrapper icon-orange"><i class="fas fa-funnel-dollar"></i></div><span>CRM</span>
+                    </a>
+                    <a href="/email_settings" class="win11-app-icon win10-tile" data-name="email settings smtp">
+                        <div class="icon-wrapper icon-teal"><i class="fas fa-envelope"></i></div><span>Email</span>
                     </a>
                     <a href="/system_backup" class="win11-app-icon win10-tile" data-name="system backup">
                         <div class="icon-wrapper icon-red"><i class="fas fa-download"></i></div><span>Backup</span>

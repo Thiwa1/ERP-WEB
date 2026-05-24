@@ -1,0 +1,332 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .hr-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+    margin-bottom: 1.25rem;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+  }
+  .section-label-accent {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #0d9488;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  .card-section-header {
+    padding: 1rem 1.5rem .75rem;
+    border-bottom: 1px solid #f1f3f5;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card-section-icon {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: .8rem;
+    flex-shrink: 0;
+  }
+  .currency-prefix {
+    background: #f8f9fa;
+    border: 1px solid rgba(0,0,0,.1);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    padding: 8px 12px;
+    font-weight: 600;
+    color: #605E5C;
+    font-size: .9rem;
+  }
+  .currency-input {
+    border-radius: 0 6px 6px 0 !important;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile" style="background: linear-gradient(135deg, #0d9488, #0f766e);">
+      {% if mode == 'edit' %}
+        <i class="fas fa-user-edit"></i>
+      {% else %}
+        <i class="fas fa-user-plus"></i>
+      {% endif %}
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">
+        {% if mode == 'edit' %}Edit Employee{% else %}Add New Employee{% endif %}
+      </h5>
+      <div class="section-label mb-0">Human Resources</div>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('employees') }}" class="btn btn-sm btn-secondary">
+        <i class="fas fa-arrow-left me-1"></i>Back
+      </a>
+    </div>
+  </div>
+
+  {% if mode == 'edit' %}
+    <form method="POST" action="{{ url_for('edit_employee', emp_id=employee.id) }}">
+  {% else %}
+    <form method="POST" action="{{ url_for('add_employee') }}">
+  {% endif %}
+
+  <div class="row g-4">
+
+    <!-- Main Form Column -->
+    <div class="col-lg-8">
+
+      <!-- 1. Personal Information -->
+      <div class="hr-card">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#e0f2f1;">
+            <i class="fas fa-id-card" style="color:#0d9488;"></i>
+          </div>
+          <span class="section-label-accent">Personal Information</span>
+        </div>
+        <div class="p-4">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Employee No <span style="color:#c42b1c;">*</span></label>
+              <input type="text" name="emp_no" class="form-control"
+                     value="{{ employee.emp_no if employee else '' }}"
+                     {% if mode == 'edit' %}readonly{% endif %}
+                     placeholder="e.g. EMP-001" required>
+              {% if mode == 'edit' %}
+              <div style="font-size:.72rem;color:#94a3b8;margin-top:4px;">Employee number cannot be changed.</div>
+              {% endif %}
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">First Name <span style="color:#c42b1c;">*</span></label>
+              <input type="text" name="first_name" class="form-control"
+                     value="{{ employee.first_name if employee else '' }}"
+                     placeholder="First name" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Last Name <span style="color:#c42b1c;">*</span></label>
+              <input type="text" name="last_name" class="form-control"
+                     value="{{ employee.last_name if employee else '' }}"
+                     placeholder="Last name" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">NIC Number</label>
+              <input type="text" name="nic" class="form-control"
+                     value="{{ employee.nic if employee else '' }}"
+                     placeholder="e.g. 991234567V">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Date of Birth</label>
+              <input type="date" name="date_of_birth" class="form-control"
+                     value="{{ employee.date_of_birth if employee else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Gender</label>
+              <select name="gender" class="form-select">
+                <option value="">-- Select --</option>
+                <option value="Male"   {% if employee and employee.gender == 'Male' %}selected{% endif %}>Male</option>
+                <option value="Female" {% if employee and employee.gender == 'Female' %}selected{% endif %}>Female</option>
+                <option value="Other"  {% if employee and employee.gender == 'Other' %}selected{% endif %}>Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Contact Details -->
+      <div class="hr-card">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#e3f2fd;">
+            <i class="fas fa-address-book" style="color:#1565c0;"></i>
+          </div>
+          <span class="section-label" style="color:#1565c0;">Contact Details</span>
+        </div>
+        <div class="p-4">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Email Address</label>
+              <input type="email" name="email" class="form-control"
+                     value="{{ employee.email if employee else '' }}"
+                     placeholder="employee@company.com">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Mobile Number</label>
+              <input type="text" name="mobile" class="form-control"
+                     value="{{ employee.mobile if employee else '' }}"
+                     placeholder="07X XXX XXXX">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Employment Details -->
+      <div class="hr-card">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#f3e5f5;">
+            <i class="fas fa-briefcase" style="color:#7b1fa2;"></i>
+          </div>
+          <span class="section-label" style="color:#7b1fa2;">Employment Details</span>
+        </div>
+        <div class="p-4">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label">Department <span style="color:#c42b1c;">*</span></label>
+              <input type="text" name="department" class="form-control"
+                     value="{{ employee.department if employee else '' }}"
+                     placeholder="e.g. Finance, Operations" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Designation <span style="color:#c42b1c;">*</span></label>
+              <input type="text" name="designation" class="form-control"
+                     value="{{ employee.designation if employee else '' }}"
+                     placeholder="e.g. Senior Accountant" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Employment Type <span style="color:#c42b1c;">*</span></label>
+              <select name="employment_type" class="form-select" required>
+                <option value="">-- Select Type --</option>
+                <option value="Permanent"  {% if employee and employee.employment_type == 'Permanent' %}selected{% endif %}>Permanent</option>
+                <option value="Contract"   {% if employee and employee.employment_type == 'Contract' %}selected{% endif %}>Contract</option>
+                <option value="Probation"  {% if employee and employee.employment_type == 'Probation' %}selected{% endif %}>Probation</option>
+                <option value="Part-Time"  {% if employee and employee.employment_type == 'Part-Time' %}selected{% endif %}>Part-Time</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Date of Joining <span style="color:#c42b1c;">*</span></label>
+              <input type="date" name="date_of_joining" class="form-control"
+                     value="{{ employee.date_of_joining if employee else '' }}" required>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Payroll Information -->
+      <div class="hr-card">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#e8f5e9;">
+            <i class="fas fa-money-bill-wave" style="color:#2e7d32;"></i>
+          </div>
+          <span class="section-label" style="color:#2e7d32;">Payroll Information</span>
+        </div>
+        <div class="p-4">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Basic Salary (LKR) <span style="color:#c42b1c;">*</span></label>
+              <div class="d-flex">
+                <span class="currency-prefix">LKR</span>
+                <input type="number" name="basic_salary" class="form-control currency-input"
+                       value="{{ employee.basic_salary if employee else '' }}"
+                       placeholder="0.00" step="0.01" min="0" required>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">EPF Number</label>
+              <input type="text" name="epf_no" class="form-control"
+                     value="{{ employee.epf_no if employee else '' }}"
+                     placeholder="EPF registration no.">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">ETF Number</label>
+              <input type="text" name="etf_no" class="form-control"
+                     value="{{ employee.etf_no if employee else '' }}"
+                     placeholder="ETF registration no.">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. Banking Details -->
+      <div class="hr-card">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#fff3e0;">
+            <i class="fas fa-university" style="color:#e65100;"></i>
+          </div>
+          <span class="section-label" style="color:#e65100;">Banking Details</span>
+        </div>
+        <div class="p-4">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Bank Name</label>
+              <input type="text" name="bank_name" class="form-control"
+                     value="{{ employee.bank_name if employee else '' }}"
+                     placeholder="e.g. Bank of Ceylon">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Account Number</label>
+              <input type="text" name="bank_account_no" class="form-control"
+                     value="{{ employee.bank_account_no if employee else '' }}"
+                     placeholder="Account number">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Branch</label>
+              <input type="text" name="bank_branch" class="form-control"
+                     value="{{ employee.bank_branch if employee else '' }}"
+                     placeholder="Branch name">
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /main col -->
+
+    <!-- Sidebar Actions -->
+    <div class="col-lg-4">
+      <div class="hr-card" style="position:sticky;top:80px;">
+        <div class="card-section-header">
+          <div class="card-section-icon" style="background:#e0f2f1;">
+            <i class="fas fa-save" style="color:#0d9488;"></i>
+          </div>
+          <span class="section-label-accent">Actions</span>
+        </div>
+        <div class="p-4">
+          <p style="font-size:.82rem;color:#605E5C;margin-bottom:1.25rem;">
+            {% if mode == 'edit' %}
+              Review and update employee information. Changes take effect immediately.
+            {% else %}
+              Fill in all required fields (<span style="color:#c42b1c;">*</span>) to register a new employee.
+            {% endif %}
+          </p>
+          <div class="d-grid gap-2">
+            <button type="submit" class="btn btn-primary fw-bold">
+              <i class="fas fa-save me-2"></i>Save Employee
+            </button>
+            <a href="{{ url_for('employees') }}" class="btn btn-secondary">
+              <i class="fas fa-times me-2"></i>Cancel
+            </a>
+          </div>
+          {% if mode == 'edit' %}
+          <hr style="border-color:#f1f3f5;margin:1.25rem 0 1rem;">
+          <div class="section-label mb-2">Employee Info</div>
+          <div style="font-size:.82rem;color:#374151;">
+            <div class="mb-1"><span style="color:#94a3b8;">Emp No:</span> <strong>{{ employee.emp_no }}</strong></div>
+            <div class="mb-1"><span style="color:#94a3b8;">Joined:</span> {{ employee.date_of_joining }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+  </form>
+
+</div>
+{% endblock %}

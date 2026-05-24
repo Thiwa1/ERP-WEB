@@ -12505,6 +12505,659 @@ def service_entry_reversal_process():
     return redirect(url_for('service_entry_reversal'))
 
 
+# ================================================================
+# ── HR MODULE ───────────────────────────────────────────────────
+# ================================================================
+
+@app.route('/employees')
+@login_required
+def employees():
+    emps = db.execute_query("SELECT * FROM employees WHERE is_active=1 ORDER BY emp_no")
+    stats = {
+        'total':    len(emps),
+        'permanent': sum(1 for e in emps if e.get('employment_type') == 'Permanent'),
+        'contract':  sum(1 for e in emps if e.get('employment_type') == 'Contract'),
+    }
+    return render_template('employees.html', employees=emps, stats=stats)
+
+
+@app.route('/employee/add', methods=['GET', 'POST'])
+@login_required
+def add_employee():
+    if request.method == 'POST':
+        fields = ['emp_no','first_name','last_name','nic','email','mobile',
+                  'department','designation','date_of_joining','date_of_birth',
+                  'gender','employment_type','epf_no','etf_no',
+                  'bank_name','bank_account_no','bank_branch']
+        data   = {f: (request.form.get(f) or '').strip() for f in fields}
+        data['date_of_joining'] = data['date_of_joining'] or None
+        data['date_of_birth']   = data['date_of_birth']   or None
+        data['basic_salary']    = float(request.form.get('basic_salary') or 0)
+        data['created_by']      = session.get('username', '')
+        if not data['emp_no'] or not data['first_name']:
+            flash('Employee number and first name are required.', 'danger')
+        else:
+            try:
+                conn   = db.get_connection()
+                cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO employees (emp_no,first_name,last_name,nic,email,mobile,
+                        department,designation,date_of_joining,date_of_birth,gender,
+                        employment_type,epf_no,etf_no,bank_name,bank_account_no,bank_branch,
+                        basic_salary,created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (data['emp_no'],data['first_name'],data['last_name'],data['nic'],
+                      data['email'],data['mobile'],data['department'],data['designation'],
+                      data['date_of_joining'],data['date_of_birth'],data['gender'],
+                      data['employment_type'],data['epf_no'],data['etf_no'],
+                      data['bank_name'],data['bank_account_no'],data['bank_branch'],
+                      data['basic_salary'],data['created_by']))
+                conn.commit()
+                cursor.close(); conn.close()
+                flash(f"Employee {data['emp_no']} — {data['first_name']} {data['last_name']} added.", 'success')
+                return redirect(url_for('employees'))
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+    return render_template('employee_form.html', employee=None, mode='add')
+
+
+@app.route('/employee/edit/<int:emp_id>', methods=['GET', 'POST'])
+@login_required
+def edit_employee(emp_id):
+    if request.method == 'POST':
+        try:
+            conn   = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE employees SET first_name=%s,last_name=%s,nic=%s,email=%s,mobile=%s,
+                    department=%s,designation=%s,date_of_joining=%s,date_of_birth=%s,
+                    gender=%s,employment_type=%s,basic_salary=%s,epf_no=%s,etf_no=%s,
+                    bank_name=%s,bank_account_no=%s,bank_branch=%s
+                WHERE id=%s
+            """, (
+                request.form.get('first_name','').strip(),
+                request.form.get('last_name','').strip(),
+                request.form.get('nic','').strip(),
+                request.form.get('email','').strip(),
+                request.form.get('mobile','').strip(),
+                request.form.get('department','').strip(),
+                request.form.get('designation','').strip(),
+                request.form.get('date_of_joining') or None,
+                request.form.get('date_of_birth')   or None,
+                request.form.get('gender',''),
+                request.form.get('employment_type','Permanent'),
+                float(request.form.get('basic_salary') or 0),
+                request.form.get('epf_no','').strip(),
+                request.form.get('etf_no','').strip(),
+                request.form.get('bank_name','').strip(),
+                request.form.get('bank_account_no','').strip(),
+                request.form.get('bank_branch','').strip(),
+                emp_id,
+            ))
+            conn.commit()
+            cursor.close(); conn.close()
+            flash('Employee record updated.', 'success')
+            return redirect(url_for('employees'))
+        except Exception as e:
+            flash(f'Error: {str(e)}', 'danger')
+    emp = db.execute_query("SELECT * FROM employees WHERE id=%s", (emp_id,))
+    if not emp:
+        flash('Employee not found.', 'danger')
+        return redirect(url_for('employees'))
+    return render_template('employee_form.html', employee=emp[0], mode='edit')
+
+
+@app.route('/employee/deactivate/<int:emp_id>', methods=['POST'])
+@login_required
+def deactivate_employee(emp_id):
+    try:
+        conn = db.get_connection(); cursor = conn.cursor()
+        cursor.execute("UPDATE employees SET is_active=0 WHERE id=%s", (emp_id,))
+        conn.commit(); cursor.close(); conn.close()
+        flash('Employee deactivated.', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    return redirect(url_for('employees'))
+
+
+# ── Leave Types ─────────────────────────────────────────────
+
+@app.route('/leave_types', methods=['GET', 'POST'])
+@login_required
+def leave_types():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            name    = request.form.get('leave_name','').strip()
+            days    = int(request.form.get('days_per_year') or 0)
+            is_paid = 1 if request.form.get('is_paid') else 0
+            if name:
+                try:
+                    conn = db.get_connection(); cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO leave_types (leave_name,days_per_year,is_paid) VALUES (%s,%s,%s)",
+                        (name, days, is_paid))
+                    conn.commit(); cursor.close(); conn.close()
+                    flash('Leave type added.', 'success')
+                except Exception as e:
+                    flash(f'Error: {str(e)}', 'danger')
+        elif action == 'delete':
+            lt_id = request.form.get('lt_id')
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("UPDATE leave_types SET is_active=0 WHERE id=%s", (lt_id,))
+                conn.commit(); cursor.close(); conn.close()
+                flash('Leave type removed.', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('leave_types'))
+    types = db.execute_query("SELECT * FROM leave_types WHERE is_active=1 ORDER BY leave_name")
+    return render_template('leave_types.html', leave_types=types)
+
+
+# ── Leave Applications ──────────────────────────────────────
+
+@app.route('/leave_application', methods=['GET', 'POST'])
+@login_required
+def leave_application():
+    if request.method == 'POST':
+        emp_id  = int(request.form.get('employee_id') or 0)
+        lt_id   = int(request.form.get('leave_type_id') or 0)
+        start   = request.form.get('start_date')
+        end     = request.form.get('end_date')
+        reason  = request.form.get('reason','').strip()
+        if emp_id and lt_id and start and end:
+            s    = datetime.strptime(start,'%Y-%m-%d').date()
+            e    = datetime.strptime(end,'%Y-%m-%d').date()
+            days = (e - s).days + 1
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO leave_applications
+                        (employee_id,leave_type_id,start_date,end_date,days_requested,reason)
+                    VALUES (%s,%s,%s,%s,%s,%s)
+                """, (emp_id, lt_id, start, end, days, reason))
+                conn.commit(); cursor.close(); conn.close()
+                flash(f'Leave application submitted for {days} day(s).', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        else:
+            flash('All fields are required.', 'danger')
+        return redirect(url_for('leave_application'))
+
+    employees_list = db.execute_query(
+        "SELECT id,emp_no,first_name,last_name FROM employees WHERE is_active=1 ORDER BY first_name")
+    types_list = db.execute_query("SELECT * FROM leave_types WHERE is_active=1 ORDER BY leave_name")
+    applications = db.execute_query("""
+        SELECT la.*,e.first_name,e.last_name,e.emp_no,lt.leave_name
+        FROM leave_applications la
+        JOIN employees e  ON la.employee_id  = e.id
+        JOIN leave_types lt ON la.leave_type_id = lt.id
+        ORDER BY la.created_at DESC LIMIT 100
+    """)
+    return render_template('leave_application.html',
+                           employees=employees_list,
+                           leave_types=types_list,
+                           applications=applications)
+
+
+# ── Leave Approvals ─────────────────────────────────────────
+
+@app.route('/leave_approvals', methods=['GET', 'POST'])
+@login_required
+def leave_approvals():
+    if request.method == 'POST':
+        app_id  = request.form.get('application_id')
+        action  = request.form.get('action')
+        status  = 'Approved' if action == 'approve' else 'Rejected'
+        try:
+            conn = db.get_connection(); cursor = conn.cursor()
+            cursor.execute("""
+                UPDATE leave_applications SET status=%s, approved_by=%s, approved_at=NOW()
+                WHERE id=%s
+            """, (status, session.get('username',''), app_id))
+            conn.commit(); cursor.close(); conn.close()
+            flash(f'Leave {status.lower()}.', 'success')
+        except Exception as e:
+            flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('leave_approvals'))
+
+    pending = db.execute_query("""
+        SELECT la.*,e.first_name,e.last_name,e.emp_no,lt.leave_name,lt.is_paid
+        FROM leave_applications la
+        JOIN employees e  ON la.employee_id  = e.id
+        JOIN leave_types lt ON la.leave_type_id = lt.id
+        WHERE la.status='Pending' ORDER BY la.created_at ASC
+    """)
+    history = db.execute_query("""
+        SELECT la.*,e.first_name,e.last_name,e.emp_no,lt.leave_name
+        FROM leave_applications la
+        JOIN employees e  ON la.employee_id  = e.id
+        JOIN leave_types lt ON la.leave_type_id = lt.id
+        WHERE la.status!='Pending' ORDER BY la.approved_at DESC LIMIT 50
+    """)
+    return render_template('leave_approvals.html', pending=pending, history=history)
+
+
+# ================================================================
+# ── PAYROLL MODULE ──────────────────────────────────────────────
+# ================================================================
+
+@app.route('/payroll_components', methods=['GET', 'POST'])
+@login_required
+def payroll_components():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'add':
+            name    = request.form.get('component_name','').strip()
+            ctype   = request.form.get('component_type','Allowance')
+            taxable = 1 if request.form.get('is_taxable') else 0
+            if name:
+                try:
+                    conn = db.get_connection(); cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO payroll_components (component_name,component_type,is_taxable) VALUES (%s,%s,%s)",
+                        (name, ctype, taxable))
+                    conn.commit(); cursor.close(); conn.close()
+                    flash('Component added.', 'success')
+                except Exception as e:
+                    flash(f'Error: {str(e)}', 'danger')
+        elif action == 'delete':
+            pc_id = request.form.get('pc_id')
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("UPDATE payroll_components SET is_active=0 WHERE id=%s", (pc_id,))
+                conn.commit(); cursor.close(); conn.close()
+                flash('Component removed.', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('payroll_components'))
+    components = db.execute_query(
+        "SELECT * FROM payroll_components WHERE is_active=1 ORDER BY component_type,component_name")
+    return render_template('payroll_components.html', components=components)
+
+
+@app.route('/payroll_run', methods=['GET', 'POST'])
+@login_required
+def payroll_run_list():
+    if request.method == 'POST':
+        month = int(request.form.get('pay_month') or 0)
+        year  = int(request.form.get('pay_year')  or 0)
+        if month and year:
+            existing = db.execute_query(
+                "SELECT id FROM payroll_runs WHERE pay_period_month=%s AND pay_period_year=%s",
+                (month, year))
+            if existing:
+                flash(f'Payroll for {month}/{year} already exists.', 'warning')
+                return redirect(url_for('payroll_run_detail', run_id=existing[0]['id']))
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT INTO payroll_runs (pay_period_month,pay_period_year,run_date,created_by) VALUES (%s,%s,%s,%s)",
+                    (month, year, date.today(), session.get('username','')))
+                run_id = cursor.lastrowid
+                conn.commit(); cursor.close(); conn.close()
+                flash('Payroll run created. Click Process to calculate.', 'success')
+                return redirect(url_for('payroll_run_detail', run_id=run_id))
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+    runs = db.execute_query(
+        "SELECT * FROM payroll_runs ORDER BY pay_period_year DESC,pay_period_month DESC")
+    return render_template('payroll_run.html', runs=runs)
+
+
+@app.route('/payroll_run/<int:run_id>', methods=['GET', 'POST'])
+@login_required
+def payroll_run_detail(run_id):
+    run = db.execute_query("SELECT * FROM payroll_runs WHERE id=%s", (run_id,))
+    if not run:
+        flash('Payroll run not found.', 'danger')
+        return redirect(url_for('payroll_run_list'))
+    run = run[0]
+
+    if request.method == 'POST' and run['status'] == 'Draft':
+        try:
+            emp_list = db.execute_query("SELECT * FROM employees WHERE is_active=1")
+            conn = db.get_connection(); cursor = conn.cursor()
+            cursor.execute("DELETE FROM payroll_run_lines WHERE payroll_run_id=%s", (run_id,))
+            total_gross = total_ded_sum = total_net = 0.0
+
+            for emp in emp_list:
+                basic = float(emp.get('basic_salary') or 0)
+                struct = db.execute_query("""
+                    SELECT ess.amount, pc.component_type
+                    FROM employee_salary_structure ess
+                    JOIN payroll_components pc ON ess.component_id=pc.id
+                    WHERE ess.employee_id=%s AND pc.is_active=1
+                """, (emp['id'],))
+                extra_allow = sum(float(s['amount'] or 0) for s in struct if s['component_type']=='Allowance')
+                deductions  = sum(float(s['amount'] or 0) for s in struct if s['component_type']=='Deduction')
+
+                gross    = basic + extra_allow
+                epf_emp  = round(basic * 0.08, 2)
+                epf_er   = round(basic * 0.12, 2)
+                etf_er   = round(basic * 0.03, 2)
+                total_d  = deductions + epf_emp
+                net      = gross - total_d
+
+                cursor.execute("""
+                    INSERT INTO payroll_run_lines
+                        (payroll_run_id,employee_id,basic_salary,total_allowances,total_deductions,
+                         epf_employee,epf_employer,etf_employer,gross_salary,net_salary)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (run_id, emp['id'], basic, extra_allow, deductions,
+                      epf_emp, epf_er, etf_er, gross, net))
+
+                total_gross += gross
+                total_ded_sum += total_d
+                total_net += net
+
+            cursor.execute("""
+                UPDATE payroll_runs SET status='Processed',total_gross=%s,total_deductions=%s,total_net=%s
+                WHERE id=%s
+            """, (total_gross, total_ded_sum, total_net, run_id))
+            conn.commit(); cursor.close(); conn.close()
+            flash(f'Payroll processed for {len(emp_list)} employee(s). Net payable: {total_net:,.2f}', 'success')
+            return redirect(url_for('payroll_run_detail', run_id=run_id))
+        except Exception as e:
+            flash(f'Error processing payroll: {str(e)}', 'danger')
+
+    lines = db.execute_query("""
+        SELECT prl.*,e.emp_no,e.first_name,e.last_name,e.designation,e.bank_account_no,e.bank_name
+        FROM payroll_run_lines prl
+        JOIN employees e ON prl.employee_id=e.id
+        WHERE prl.payroll_run_id=%s ORDER BY e.emp_no
+    """, (run_id,))
+    return render_template('payroll_run_detail.html', run=run, lines=lines)
+
+
+@app.route('/payslip/print/<int:run_id>/<int:emp_id>')
+@login_required
+def payslip_print(run_id, emp_id):
+    run  = db.execute_query("SELECT * FROM payroll_runs WHERE id=%s", (run_id,))
+    line = db.execute_query("""
+        SELECT prl.*,e.*
+        FROM payroll_run_lines prl JOIN employees e ON prl.employee_id=e.id
+        WHERE prl.payroll_run_id=%s AND prl.employee_id=%s
+    """, (run_id, emp_id))
+    if not run or not line:
+        flash('Payslip not found.', 'danger')
+        return redirect(url_for('payroll_run_list'))
+    company_info = db.execute_query("SELECT * FROM company_profile LIMIT 1")
+    components   = db.execute_query("""
+        SELECT ess.amount,pc.component_name,pc.component_type
+        FROM employee_salary_structure ess
+        JOIN payroll_components pc ON ess.component_id=pc.id
+        WHERE ess.employee_id=%s AND pc.is_active=1
+        ORDER BY pc.component_type,pc.component_name
+    """, (emp_id,))
+    return render_template('payslip_print.html',
+                           run=run[0], line=line[0],
+                           company=company_info[0] if company_info else {},
+                           components=components)
+
+
+# ================================================================
+# ── CRM MODULE ──────────────────────────────────────────────────
+# ================================================================
+
+@app.route('/crm')
+@login_required
+def crm_pipeline():
+    statuses = ['New','Contacted','Qualified','Proposal','Won','Lost']
+    leads_by_status = {
+        st: db.execute_query("SELECT * FROM crm_leads WHERE status=%s ORDER BY updated_at DESC", (st,))
+        for st in statuses
+    }
+    summary = db.execute_query("""
+        SELECT status, COUNT(*) AS cnt, COALESCE(SUM(expected_value),0) AS total_value
+        FROM crm_leads GROUP BY status
+    """)
+    total_pipeline = sum(
+        float(r.get('total_value') or 0) for r in summary if r['status'] not in ('Won','Lost'))
+    return render_template('crm_pipeline.html',
+                           leads_by_status=leads_by_status,
+                           statuses=statuses,
+                           summary=summary,
+                           total_pipeline=total_pipeline)
+
+
+@app.route('/crm/lead/add', methods=['GET', 'POST'])
+@login_required
+def add_crm_lead():
+    if request.method == 'POST':
+        lead_name = request.form.get('lead_name','').strip()
+        if not lead_name:
+            flash('Lead name is required.', 'danger')
+        else:
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO crm_leads (lead_name,company_name,email,mobile,source,status,
+                        expected_value,expected_close_date,notes,assigned_to,created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    lead_name,
+                    request.form.get('company_name','').strip(),
+                    request.form.get('email','').strip(),
+                    request.form.get('mobile','').strip(),
+                    request.form.get('source','Other'),
+                    request.form.get('status','New'),
+                    float(request.form.get('expected_value') or 0),
+                    request.form.get('expected_close_date') or None,
+                    request.form.get('notes','').strip(),
+                    request.form.get('assigned_to','').strip() or session.get('username',''),
+                    session.get('username',''),
+                ))
+                lead_id = cursor.lastrowid
+                conn.commit(); cursor.close(); conn.close()
+                flash(f'Lead "{lead_name}" added.', 'success')
+                return redirect(url_for('crm_lead_detail', lead_id=lead_id))
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+    return render_template('crm_lead_form.html', lead=None, mode='add')
+
+
+@app.route('/crm/lead/<int:lead_id>', methods=['GET', 'POST'])
+@login_required
+def crm_lead_detail(lead_id):
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'update':
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE crm_leads SET lead_name=%s,company_name=%s,email=%s,mobile=%s,
+                        source=%s,status=%s,expected_value=%s,expected_close_date=%s,
+                        notes=%s,assigned_to=%s
+                    WHERE id=%s
+                """, (
+                    request.form.get('lead_name','').strip(),
+                    request.form.get('company_name','').strip(),
+                    request.form.get('email','').strip(),
+                    request.form.get('mobile','').strip(),
+                    request.form.get('source','Other'),
+                    request.form.get('status','New'),
+                    float(request.form.get('expected_value') or 0),
+                    request.form.get('expected_close_date') or None,
+                    request.form.get('notes','').strip(),
+                    request.form.get('assigned_to','').strip(),
+                    lead_id,
+                ))
+                conn.commit(); cursor.close(); conn.close()
+                flash('Lead updated.', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        elif action == 'activity':
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("""
+                    INSERT INTO crm_activities
+                        (lead_id,activity_type,subject,notes,activity_date,next_follow_up,created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    lead_id,
+                    request.form.get('activity_type','Note'),
+                    request.form.get('subject','').strip(),
+                    request.form.get('act_notes','').strip(),
+                    request.form.get('activity_date') or datetime.now().strftime('%Y-%m-%d %H:%M'),
+                    request.form.get('next_follow_up') or None,
+                    session.get('username',''),
+                ))
+                conn.commit(); cursor.close(); conn.close()
+                flash('Activity logged.', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        return redirect(url_for('crm_lead_detail', lead_id=lead_id))
+
+    lead = db.execute_query("SELECT * FROM crm_leads WHERE id=%s", (lead_id,))
+    if not lead:
+        flash('Lead not found.', 'danger')
+        return redirect(url_for('crm_pipeline'))
+    activities = db.execute_query(
+        "SELECT * FROM crm_activities WHERE lead_id=%s ORDER BY activity_date DESC", (lead_id,))
+    return render_template('crm_lead_detail.html', lead=lead[0], activities=activities)
+
+
+@app.route('/crm/lead/<int:lead_id>/delete', methods=['POST'])
+@login_required
+def delete_crm_lead(lead_id):
+    try:
+        conn = db.get_connection(); cursor = conn.cursor()
+        cursor.execute("DELETE FROM crm_activities WHERE lead_id=%s", (lead_id,))
+        cursor.execute("DELETE FROM crm_leads WHERE id=%s", (lead_id,))
+        conn.commit(); cursor.close(); conn.close()
+        flash('Lead deleted.', 'success')
+    except Exception as e:
+        flash(f'Error: {str(e)}', 'danger')
+    return redirect(url_for('crm_pipeline'))
+
+
+# ================================================================
+# ── EMAIL INTEGRATION ───────────────────────────────────────────
+# ================================================================
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText as _MIMEText
+
+
+def send_email_via_smtp(to_email, subject, html_body):
+    """Returns (True, None) on success or (False, error_string) on failure."""
+    cfg = db.execute_query("SELECT * FROM email_settings WHERE is_active=1 LIMIT 1")
+    if not cfg:
+        return False, 'Email not configured. Go to Settings → Email Settings.'
+    cfg = cfg[0]
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = subject
+        msg['From']    = f"{cfg.get('sender_name','')} <{cfg.get('sender_email','')}>"
+        msg['To']      = to_email
+        msg.attach(_MIMEText(html_body, 'html'))
+        port = int(cfg.get('smtp_port') or 587)
+        if cfg.get('use_tls'):
+            srv = smtplib.SMTP(cfg['smtp_host'], port, timeout=15)
+            srv.starttls()
+        else:
+            srv = smtplib.SMTP_SSL(cfg['smtp_host'], port, timeout=15)
+        srv.login(cfg['smtp_username'], cfg['smtp_password'])
+        srv.sendmail(cfg['sender_email'], to_email, msg.as_string())
+        srv.quit()
+        _log_email_record(to_email, subject, html_body, 'Sent', None)
+        return True, None
+    except Exception as e:
+        _log_email_record(to_email, subject, html_body, 'Failed', str(e))
+        return False, str(e)
+
+
+def _log_email_record(recipient, subject, body, status, error):
+    try:
+        conn = db.get_connection(); cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO email_log (recipient_email,subject,body,status,error_message) VALUES (%s,%s,%s,%s,%s)",
+            (recipient, subject, (body or '')[:5000], status, error))
+        conn.commit(); cursor.close(); conn.close()
+    except Exception:
+        pass
+
+
+@app.route('/email_settings', methods=['GET', 'POST'])
+@login_required
+def email_settings():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'save':
+            try:
+                conn = db.get_connection(); cursor = conn.cursor()
+                cursor.execute("DELETE FROM email_settings")
+                cursor.execute("""
+                    INSERT INTO email_settings
+                        (smtp_host,smtp_port,smtp_username,smtp_password,sender_name,sender_email,use_tls,is_active)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    request.form.get('smtp_host','').strip(),
+                    int(request.form.get('smtp_port') or 587),
+                    request.form.get('smtp_username','').strip(),
+                    request.form.get('smtp_password','').strip() or None,
+                    request.form.get('sender_name','').strip(),
+                    request.form.get('sender_email','').strip(),
+                    1 if request.form.get('use_tls') else 0,
+                    1 if request.form.get('is_active') else 0,
+                ))
+                conn.commit(); cursor.close(); conn.close()
+                flash('Email settings saved.', 'success')
+            except Exception as e:
+                flash(f'Error: {str(e)}', 'danger')
+        elif action == 'test':
+            test_to = request.form.get('test_email','').strip()
+            if test_to:
+                ok, err = send_email_via_smtp(test_to,
+                    'Suwin ERP — Test Email',
+                    '<p style="font-family:Inter,sans-serif;">This is a test email from <b>Suwin Accounting ERP</b>. ✅</p>')
+                flash('Test email sent successfully!' if ok else f'Test failed: {err}',
+                      'success' if ok else 'danger')
+        return redirect(url_for('email_settings'))
+
+    cfg  = db.execute_query("SELECT * FROM email_settings LIMIT 1")
+    logs = db.execute_query("SELECT * FROM email_log ORDER BY sent_at DESC LIMIT 30")
+    return render_template('email_settings.html',
+                           settings=cfg[0] if cfg else {},
+                           email_logs=logs)
+
+
+@app.route('/api/email/send_invoice', methods=['POST'])
+@login_required
+def api_send_invoice_email():
+    data     = request.get_json() or {}
+    to_email = (data.get('to_email') or '').strip()
+    inv_no   = (data.get('invoice_no') or '').strip()
+    if not to_email or not inv_no:
+        return jsonify({'success': False, 'error': 'Email and invoice number required.'})
+    company_info = db.execute_query("SELECT * FROM company_profile LIMIT 1")
+    co = company_info[0] if company_info else {}
+    subject = f"Invoice {inv_no} — {co.get('company_name','Suwin ERP')}"
+    body = f"""
+    <div style="font-family:Inter,sans-serif;max-width:620px;margin:auto;padding:32px;border:1px solid #e2e8f0;border-radius:12px;">
+      <div style="border-top:4px solid #0078D4;padding-bottom:20px;margin-bottom:24px;">
+        <h2 style="color:#0078D4;margin:16px 0 4px;">{co.get('company_name','')}</h2>
+        <p style="color:#605E5C;margin:0;">{co.get('company_address','')}</p>
+      </div>
+      <p>Dear Customer,</p>
+      <p>Please find your invoice <strong>{inv_no}</strong> ready for viewing.</p>
+      <a href="{request.host_url}invoice_print/{inv_no}"
+         style="display:inline-block;background:#0078D4;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0;">
+        View Invoice →
+      </a>
+      <p style="color:#605E5C;font-size:13px;margin-top:28px;border-top:1px solid #f3f2f1;padding-top:16px;">
+        {co.get('company_phone','')} &nbsp;|&nbsp; {co.get('company_email','')}
+      </p>
+    </div>"""
+    ok, err = send_email_via_smtp(to_email, subject, body)
+    if ok:
+        return jsonify({'success': True, 'message': f'Invoice emailed to {to_email}'})
+    return jsonify({'success': False, 'error': err})
+
+
 if __name__ == '__main__':
     app.run(port=5000)
 application = app

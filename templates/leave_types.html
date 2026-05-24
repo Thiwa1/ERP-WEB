@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#5C2D91,#3b0764);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-calendar-alt text-white" style="font-size:.95rem;"></i>
+    </div>
+    <div><h5 class="mb-0 fw-bold">Leave Types</h5><span class="text-muted" style="font-size:.78rem;">HR Configuration</span></div>
+  </div>
+  <div class="row g-4">
+    <div class="col-md-4">
+      <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#5C2D91;"><i class="fas fa-plus-circle me-1"></i>Add Leave Type</span></div>
+        <div style="padding:1.25rem;">
+          <form method="POST" action="{{ url_for('leave_types') }}">
+            <input type="hidden" name="action" value="add">
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Leave Name <span class="text-danger">*</span></label>
+              <input type="text" name="leave_name" class="form-control" required placeholder="e.g. Annual Leave">
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold small">Days Allowed Per Year</label>
+              <input type="number" name="days_per_year" class="form-control" value="0" min="0">
+            </div>
+            <div class="mb-4 d-flex align-items-center gap-3">
+              <div class="form-check form-switch mb-0">
+                <input class="form-check-input" type="checkbox" name="is_paid" id="isPaid" checked style="width:2.2em;height:1.2em;">
+                <label class="form-check-label fw-semibold small" for="isPaid">Paid Leave</label>
+              </div>
+            </div>
+            <button type="submit" class="btn btn-primary w-100 fw-semibold"><i class="fas fa-plus me-2"></i>Add Leave Type</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-8">
+      <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;">
+        <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;"><i class="fas fa-list me-1"></i>Configured Leave Types</span></div>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr><th>Leave Name</th><th class="text-center">Days / Year</th><th class="text-center">Type</th><th class="text-center">Action</th></tr></thead>
+            <tbody>
+            {% for lt in leave_types %}
+            <tr>
+              <td class="fw-semibold">{{ lt.leave_name }}</td>
+              <td class="text-center">{{ lt.days_per_year }}</td>
+              <td class="text-center">
+                {% if lt.is_paid %}<span class="badge" style="background:#d4edda;color:#107C10;border-radius:6px;">Paid</span>
+                {% else %}<span class="badge" style="background:#fde8e8;color:#C42B1C;border-radius:6px;">Unpaid</span>{% endif %}
+              </td>
+              <td class="text-center">
+                <form method="POST" action="{{ url_for('leave_types') }}" class="d-inline"
+                      onsubmit="return confirm('Remove {{ lt.leave_name }}?')">
+                  <input type="hidden" name="action" value="delete">
+                  <input type="hidden" name="lt_id" value="{{ lt.id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></button>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center py-4 text-muted">No leave types defined yet.</td></tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

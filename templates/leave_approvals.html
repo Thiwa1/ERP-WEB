@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#ca5010,#a03e0c);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+      <i class="fas fa-check-circle text-white" style="font-size:.95rem;"></i>
+    </div>
+    <div><h5 class="mb-0 fw-bold">Leave Approvals</h5><span class="text-muted" style="font-size:.78rem;">{{ pending|length }} Pending</span></div>
+  </div>
+
+  <!-- Pending -->
+  <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#ca5010;margin-bottom:.75rem;"><i class="fas fa-clock me-1"></i>Pending Approval</div>
+  {% if pending %}
+  <div class="row g-3 mb-4">
+    {% for a in pending %}
+    <div class="col-md-6 col-lg-4">
+      <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);padding:1.25rem;">
+        <div class="d-flex align-items-center justify-content-between mb-2">
+          <div>
+            <div class="fw-bold" style="font-size:.95rem;">{{ a.first_name }} {{ a.last_name }}</div>
+            <small class="text-muted">{{ a.emp_no }}</small>
+          </div>
+          {% if a.is_paid %}<span class="badge" style="background:#d4edda;color:#107C10;border-radius:6px;font-size:.7rem;">Paid</span>
+          {% else %}<span class="badge" style="background:#fde8e8;color:#C42B1C;border-radius:6px;font-size:.7rem;">Unpaid</span>{% endif %}
+        </div>
+        <div class="mb-2" style="background:#f8f9fa;border-radius:8px;padding:.6rem .8rem;">
+          <div class="fw-semibold small">{{ a.leave_name }}</div>
+          <div class="text-muted" style="font-size:.8rem;">{{ a.start_date }} → {{ a.end_date }} &nbsp;·&nbsp; <strong>{{ a.days_requested }} day(s)</strong></div>
+        </div>
+        {% if a.reason %}<div class="text-muted mb-3" style="font-size:.8rem;font-style:italic;">"{{ a.reason }}"</div>{% endif %}
+        <div class="d-flex gap-2">
+          <form method="POST" action="{{ url_for('leave_approvals') }}" class="flex-fill">
+            <input type="hidden" name="application_id" value="{{ a.id }}">
+            <input type="hidden" name="action" value="approve">
+            <button type="submit" class="btn btn-sm w-100 fw-semibold" style="background:#d4edda;color:#107C10;border:1px solid #c3e6cb;border-radius:8px;">
+              <i class="fas fa-check me-1"></i> Approve
+            </button>
+          </form>
+          <form method="POST" action="{{ url_for('leave_approvals') }}" class="flex-fill">
+            <input type="hidden" name="application_id" value="{{ a.id }}">
+            <input type="hidden" name="action" value="reject">
+            <button type="submit" class="btn btn-sm w-100 fw-semibold" style="background:#fde8e8;color:#C42B1C;border:1px solid #f5c6cb;border-radius:8px;">
+              <i class="fas fa-times me-1"></i> Reject
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:2.5rem;text-align:center;color:#605E5C;margin-bottom:1.5rem;">
+    <i class="fas fa-check-double fa-2x mb-2 d-block" style="color:#107C10;opacity:.6;"></i>All caught up — no pending approvals.
+  </div>
+  {% endif %}
+
+  <!-- History -->
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;"><i class="fas fa-history me-1"></i>Recent Decisions</span></div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead><tr><th>Employee</th><th>Leave</th><th>Period</th><th class="text-center">Days</th><th class="text-center">Status</th><th>Approved By</th></tr></thead>
+        <tbody>
+        {% for a in history %}
+        <tr>
+          <td><div class="fw-semibold">{{ a.first_name }} {{ a.last_name }}</div><small class="text-muted">{{ a.emp_no }}</small></td>
+          <td>{{ a.leave_name }}</td>
+          <td style="font-size:.82rem;">{{ a.start_date }} – {{ a.end_date }}</td>
+          <td class="text-center">{{ a.days_requested }}</td>
+          <td class="text-center">
+            {% if a.status == 'Approved' %}<span class="badge" style="background:#d4edda;color:#107C10;border-radius:6px;">Approved</span>
+            {% else %}<span class="badge" style="background:#fde8e8;color:#C42B1C;border-radius:6px;">Rejected</span>{% endif %}
+          </td>
+          <td style="font-size:.82rem;">{{ a.approved_by or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center py-4 text-muted">No history yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

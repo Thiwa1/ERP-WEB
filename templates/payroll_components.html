@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Payroll Components{% endblock %}
+
+{% block content %}
+<style>
+  .pc-card {
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    background: #fff;
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    margin-bottom: 8px;
+  }
+  .icon-tile {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff;
+    font-size: 1.05rem;
+    flex-shrink: 0;
+  }
+  .form-label-sm {
+    font-size: .82rem;
+    font-weight: 600;
+    color: #323130;
+    margin-bottom: 5px;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="icon-tile" style="background: linear-gradient(135deg, #4f46e5, #6d28d9);">
+      <i class="fas fa-sliders-h"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Payroll Components</h5>
+      <div class="section-label mb-0">Salary Configuration</div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Left: Add Component Form -->
+    <div class="col-md-4">
+      <div class="pc-card h-100">
+        <div class="p-4 pb-3 border-bottom" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0">
+            <i class="fas fa-plus-circle me-2" style="color:#4f46e5;"></i>Add New Component
+          </div>
+        </div>
+        <div class="p-4">
+          <form method="POST" action="{{ url_for('payroll_components') }}">
+            <input type="hidden" name="action" value="add">
+
+            <div class="mb-3">
+              <label class="form-label-sm" for="component_name">Component Name</label>
+              <input type="text" id="component_name" name="component_name" class="form-control"
+                placeholder="e.g. Transport Allowance" required>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label-sm" for="component_type">Component Type</label>
+              <select id="component_type" name="component_type" class="form-select" required>
+                <option value="" disabled selected>Select type...</option>
+                <option value="Allowance">Allowance</option>
+                <option value="Deduction">Deduction</option>
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <div class="form-check win11-switch">
+                <input class="form-check-input" type="checkbox" id="is_taxable" name="is_taxable" value="1">
+                <label class="form-check-label" for="is_taxable">Taxable Component</label>
+              </div>
+              <small class="text-muted" style="font-size:.78rem;">Check if this component is subject to income tax.</small>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-100 fw-bold"
+              style="background: linear-gradient(135deg, #4f46e5, #6d28d9); border: none; border-radius: 8px; padding: .6rem 1.25rem;">
+              <i class="fas fa-plus me-2"></i>Add Component
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Components Table -->
+    <div class="col-md-8">
+      <div class="pc-card">
+        <div class="p-4 pb-3 border-bottom d-flex align-items-center justify-content-between" style="border-color:#e2e8f0 !important;">
+          <div class="section-label mb-0">
+            <i class="fas fa-list me-2" style="color:#4f46e5;"></i>Configured Components
+          </div>
+          <span class="badge rounded-pill"
+            style="background:#eef2ff; color:#4f46e5; font-size:.7rem; font-weight:700; letter-spacing:.5px;">
+            {{ components | length }} component{% if components | length != 1 %}s{% endif %}
+          </span>
+        </div>
+
+        <div class="table-responsive" style="border-radius: 0 0 12px 12px; border: none; box-shadow: none;">
+          <table class="table table-hover mb-0 align-middle" style="font-size:.85rem;">
+            <thead style="background:#f8f7ff;">
+              <tr>
+                <th class="section-label fw-normal border-0 ps-4" style="padding-top:12px;padding-bottom:12px;">Component Name</th>
+                <th class="section-label fw-normal border-0" style="padding-top:12px;padding-bottom:12px;">Type</th>
+                <th class="section-label fw-normal border-0" style="padding-top:12px;padding-bottom:12px;">Taxable</th>
+                <th class="section-label fw-normal border-0 text-end pe-4" style="padding-top:12px;padding-bottom:12px;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if components %}
+                {% for pc in components %}
+                <tr>
+                  <td class="ps-4 fw-semibold text-dark">{{ pc.component_name }}</td>
+                  <td>
+                    {% if pc.component_type == 'Allowance' %}
+                      <span class="badge"
+                        style="background:#d1fae5; color:#065f46; font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                        <i class="fas fa-arrow-up me-1" style="font-size:.65rem;"></i>Allowance
+                      </span>
+                    {% else %}
+                      <span class="badge"
+                        style="background:#fee2e2; color:#991b1b; font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                        <i class="fas fa-arrow-down me-1" style="font-size:.65rem;"></i>Deduction
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if pc.is_taxable %}
+                      <span class="badge bg-warning text-dark" style="font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                        <i class="fas fa-check me-1" style="font-size:.65rem;"></i>Taxable
+                      </span>
+                    {% else %}
+                      <span class="badge bg-secondary" style="font-size:.75rem; border-radius:12px; padding:5px 10px;">
+                        <i class="fas fa-minus me-1" style="font-size:.65rem;"></i>Non-Taxable
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="text-end pe-4">
+                    <form method="POST" action="{{ url_for('payroll_components') }}"
+                      onsubmit="return confirm('Delete {{ pc.component_name }}? This cannot be undone.');">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="pc_id" value="{{ pc.id }}">
+                      <button type="submit" class="btn btn-sm"
+                        style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; border-radius:6px; font-size:.78rem; font-weight:600; padding:4px 12px;">
+                        <i class="fas fa-trash-alt me-1"></i>Delete
+                      </button>
+                    </form>
+                  </td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr>
+                  <td colspan="4" class="text-center py-5 text-muted">
+                    <div style="font-size:2rem; margin-bottom:8px; opacity:.3;">
+                      <i class="fas fa-sliders-h"></i>
+                    </div>
+                    <div style="font-size:.85rem; font-weight:500;">No payroll components configured yet.</div>
+                    <div style="font-size:.78rem;">Use the form on the left to add your first component.</div>
+                  </td>
+                </tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block content %}
+{% set months = ['','January','February','March','April','May','June','July','August','September','October','November','December'] %}
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="d-flex align-items-center gap-3">
+      <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#107C10,#0a5a0a);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+        <i class="fas fa-file-invoice-dollar text-white" style="font-size:.95rem;"></i>
+      </div>
+      <div>
+        <h5 class="mb-0 fw-bold">{{ months[run.pay_period_month] }} {{ run.pay_period_year }} Payroll</h5>
+        <span class="text-muted" style="font-size:.78rem;">Payroll Detail &nbsp;·&nbsp;
+          {% if run.status == 'Draft' %}<span style="color:#856404;background:#fff3cd;padding:2px 8px;border-radius:10px;font-size:.72rem;">Draft</span>
+          {% elif run.status == 'Processed' %}<span style="color:#004085;background:#cce5ff;padding:2px 8px;border-radius:10px;font-size:.72rem;">Processed</span>
+          {% else %}<span style="color:#107C10;background:#d4edda;padding:2px 8px;border-radius:10px;font-size:.72rem;">Paid</span>{% endif %}
+        </span>
+      </div>
+    </div>
+    <a href="{{ url_for('payroll_run_list') }}" class="btn btn-secondary fw-semibold"><i class="fas fa-arrow-left me-2"></i>Back</a>
+  </div>
+
+  <!-- Stats -->
+  <div class="row g-3 mb-4">
+    {% set nl = lines|length %}
+    <div class="col-md-3"><div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+      <div style="font-size:1.5rem;font-weight:700;color:#201F1E;">{{ nl }}</div><div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Employees</div>
+    </div></div>
+    <div class="col-md-3"><div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+      <div style="font-size:1.5rem;font-weight:700;color:#0078D4;font-family:monospace;">{{ "{:,.2f}".format(run.total_gross or 0) }}</div><div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Total Gross</div>
+    </div></div>
+    <div class="col-md-3"><div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+      <div style="font-size:1.5rem;font-weight:700;color:#C42B1C;font-family:monospace;">{{ "{:,.2f}".format(run.total_deductions or 0) }}</div><div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Total Deductions</div>
+    </div></div>
+    <div class="col-md-3"><div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:1.25rem;box-shadow:0 2px 8px rgba(0,0,0,.06);">
+      <div style="font-size:1.5rem;font-weight:700;color:#107C10;font-family:monospace;">{{ "{:,.2f}".format(run.total_net or 0) }}</div><div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Net Payable</div>
+    </div></div>
+  </div>
+
+  {% if run.status == 'Draft' %}
+  <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;">
+    <div class="fw-bold mb-2"><i class="fas fa-exclamation-triangle me-2 text-warning"></i>Ready to Process Payroll</div>
+    <p class="text-muted mb-3" style="font-size:.875rem;">This will calculate salaries for ALL active employees using their basic salary + salary structure components. EPF (8%) and ETF will be auto-calculated.</p>
+    <form method="POST" action="{{ url_for('payroll_run_detail', run_id=run.id) }}"
+          onsubmit="return confirm('Process payroll for {{ months[run.pay_period_month] }} {{ run.pay_period_year }}? This cannot be undone.')">
+      <button type="submit" class="btn btn-success fw-bold px-4"><i class="fas fa-play me-2"></i>Process Payroll Now</button>
+    </form>
+  </div>
+  {% else %}
+  <div style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden;">
+    <div style="padding:1rem 1.25rem;border-bottom:1px solid #e2e8f0;"><span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;"><i class="fas fa-list me-1"></i>Payroll Lines</span></div>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0" style="font-size:.83rem;">
+        <thead><tr>
+          <th>Emp No</th><th>Name</th><th>Designation</th>
+          <th class="text-end">Basic</th><th class="text-end">Allowances</th>
+          <th class="text-end">EPF 8%</th><th class="text-end">Other Ded.</th>
+          <th class="text-end fw-bold">Gross</th><th class="text-end fw-bold" style="color:#107C10;">Net</th>
+          <th>Bank Account</th><th class="text-center">Payslip</th>
+        </tr></thead>
+        <tbody>
+        {% for l in lines %}
+        <tr>
+          <td><span style="font-family:monospace;color:#0078D4;font-weight:600;">{{ l.emp_no }}</span></td>
+          <td><div class="fw-semibold">{{ l.first_name }} {{ l.last_name }}</div></td>
+          <td style="color:#605E5C;">{{ l.designation or '—' }}</td>
+          <td class="text-end" style="font-family:monospace;">{{ "{:,.2f}".format(l.basic_salary or 0) }}</td>
+          <td class="text-end" style="font-family:monospace;">{{ "{:,.2f}".format(l.total_allowances or 0) }}</td>
+          <td class="text-end" style="font-family:monospace;color:#C42B1C;">{{ "{:,.2f}".format(l.epf_employee or 0) }}</td>
+          <td class="text-end" style="font-family:monospace;color:#C42B1C;">{{ "{:,.2f}".format(l.total_deductions or 0) }}</td>
+          <td class="text-end fw-bold" style="font-family:monospace;">{{ "{:,.2f}".format(l.gross_salary or 0) }}</td>
+          <td class="text-end fw-bold" style="font-family:monospace;color:#107C10;">{{ "{:,.2f}".format(l.net_salary or 0) }}</td>
+          <td style="font-size:.78rem;color:#605E5C;">{{ l.bank_name or '' }} {{ l.bank_account_no or '' }}</td>
+          <td class="text-center">
+            <a href="{{ url_for('payslip_print', run_id=run.id, emp_id=l.employee_id) }}" target="_blank"
+               class="btn btn-sm btn-outline-secondary" title="Print Payslip"><i class="fas fa-print"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+        {% if lines %}
+        <tfoot style="background:#f8f9fa;font-weight:700;font-family:monospace;">
+          <tr>
+            <td colspan="7" class="text-end fw-bold">TOTALS</td>
+            <td class="text-end">{{ "{:,.2f}".format(run.total_gross or 0) }}</td>
+            <td class="text-end" style="color:#107C10;">{{ "{:,.2f}".format(run.total_net or 0) }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

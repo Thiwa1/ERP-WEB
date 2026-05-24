@@ -1,0 +1,334 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .page-header-icon {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-size: 1.1rem; flex-shrink: 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  }
+  .fluent-card {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+  }
+  .section-label {
+    font-size: .7rem;
+    font-weight: 700;
+    letter-spacing: .8px;
+    text-transform: uppercase;
+    color: #605E5C;
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 0;
+  }
+  .field-label {
+    font-size: .8rem;
+    font-weight: 600;
+    color: #323130;
+    margin-bottom: 4px;
+  }
+  /* Status badge */
+  .status-badge {
+    display: inline-flex; align-items: center;
+    border-radius: 6px;
+    font-size: .72rem; font-weight: 700;
+    padding: 3px 10px; letter-spacing: .3px;
+  }
+  .st-new       { background:#f1f5f9; color:#475569; }
+  .st-contacted  { background:#e0f2fe; color:#0369a1; }
+  .st-qualified  { background:#ccfbf1; color:#0f766e; }
+  .st-proposal   { background:#ede9fe; color:#7c3aed; }
+  .st-won        { background:#dcfce7; color:#15803d; }
+  .st-lost       { background:#fee2e2; color:#b91c1c; }
+  /* Activity timeline */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before {
+    content: '';
+    position: absolute;
+    left: 7px; top: 0; bottom: 0;
+    width: 2px;
+    background: #e2e8f0;
+  }
+  .tl-item {
+    position: relative;
+    margin-bottom: 18px;
+  }
+  .tl-dot {
+    position: absolute;
+    left: -21px; top: 3px;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 2px solid #fff;
+    box-shadow: 0 0 0 2px #7c3aed;
+    background: #7c3aed;
+  }
+  .tl-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .tl-type {
+    font-size: .65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: #7c3aed;
+  }
+  .tl-subject {
+    font-weight: 600;
+    color: #1a1a2e;
+    font-size: .85rem;
+    margin: 2px 0;
+  }
+  .tl-date {
+    font-size: .72rem;
+    color: #94a3b8;
+  }
+  .tl-notes {
+    font-size: .8rem;
+    color: #374151;
+    margin-top: 4px;
+  }
+</style>
+
+<div class="container-fluid py-4">
+
+  <!-- Page Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="page-header-icon" style="background: linear-gradient(135deg, #7c3aed, #6d28d9);">
+      <i class="fas fa-user-tie"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">{{ lead.lead_name }}</h5>
+      <div class="d-flex align-items-center gap-2 mt-1">
+        <div class="section-label mb-0">CRM Lead</div>
+        {% set sc = {'New':'st-new','Contacted':'st-contacted','Qualified':'st-qualified','Proposal':'st-proposal','Won':'st-won','Lost':'st-lost'} %}
+        <span class="status-badge {{ sc.get(lead.status, 'st-new') }}">{{ lead.status }}</span>
+      </div>
+    </div>
+    <div class="ms-auto d-flex gap-2">
+      <a href="{{ url_for('crm_pipeline') }}" class="btn btn-sm fw-bold px-3"
+         style="background:#f1f5f9;border:1px solid #e2e8f0;color:#374151;border-radius:8px;">
+        <i class="fas fa-arrow-left me-1"></i> Pipeline
+      </a>
+      <form method="POST" action="{{ url_for('delete_crm_lead', lead_id=lead.id) }}" style="display:inline;"
+            onsubmit="return confirm('Delete this lead permanently? This cannot be undone.');">
+        <button type="submit" class="btn btn-sm fw-bold px-3"
+                style="background:#fce8e6;border:none;border-radius:8px;color:#c42b1c;">
+          <i class="fas fa-trash me-1"></i> Delete
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Left: Edit Form -->
+    <div class="col-md-7">
+
+      <!-- Lead Info Edit -->
+      <div class="fluent-card mb-4">
+        <div class="p-4 pb-0 d-flex align-items-center justify-content-between">
+          <div class="section-label"><i class="fas fa-edit"></i> Lead Information</div>
+        </div>
+        <div class="p-4 pt-3">
+          <form method="POST" action="{{ url_for('crm_lead_detail', lead_id=lead.id) }}">
+            <input type="hidden" name="action" value="update_lead">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="field-label">Lead Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" name="lead_name" required value="{{ lead.lead_name }}">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Company Name</label>
+                <input type="text" class="form-control" name="company_name" value="{{ lead.company_name or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Email</label>
+                <input type="email" class="form-control" name="email" value="{{ lead.email or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Mobile</label>
+                <input type="text" class="form-control" name="mobile" value="{{ lead.mobile or '' }}">
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">Source</label>
+                <select class="form-select" name="source">
+                  {% for s in ['Website','Referral','Cold Call','Walk-in','Social Media','Other'] %}
+                  <option value="{{ s }}" {% if lead.source == s %}selected{% endif %}>{{ s }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">Status</label>
+                <select class="form-select" name="status">
+                  {% for st in ['New','Contacted','Qualified','Proposal','Won','Lost'] %}
+                  <option value="{{ st }}" {% if lead.status == st %}selected{% endif %}>{{ st }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="field-label">Assigned To</label>
+                <input type="text" class="form-control" name="assigned_to" value="{{ lead.assigned_to or '' }}">
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Expected Value ({{ currency }})</label>
+                <div class="input-group">
+                  <span class="input-group-text" style="font-family:'Courier New',monospace;">{{ currency }}</span>
+                  <input type="number" step="0.01" class="form-control" name="expected_value"
+                         value="{{ lead.expected_value or 0 }}">
+                </div>
+              </div>
+              <div class="col-md-6">
+                <label class="field-label">Expected Close Date</label>
+                <input type="date" class="form-control" name="expected_close_date"
+                       value="{{ lead.expected_close_date.strftime('%Y-%m-%d') if lead.expected_close_date else '' }}">
+              </div>
+              <div class="col-12">
+                <label class="field-label">Notes</label>
+                <textarea class="form-control" name="notes" rows="3">{{ lead.notes or '' }}</textarea>
+              </div>
+            </div>
+            <div class="mt-3 d-flex gap-2">
+              <button type="submit" class="btn btn-sm fw-bold px-4"
+                      style="background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:8px;color:#fff;">
+                <i class="fas fa-save me-1"></i> Save Changes
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Activity Timeline -->
+      <div class="fluent-card">
+        <div class="p-4 pb-2 d-flex align-items-center justify-content-between">
+          <div class="section-label"><i class="fas fa-history"></i> Activity Timeline</div>
+          <span class="badge" style="background:#ede9fe;color:#7c3aed;font-size:.72rem;">{{ activities|length }} activities</span>
+        </div>
+        <div class="p-4 pt-2">
+          {% if activities %}
+          <div class="timeline">
+            {% for act in activities %}
+            <div class="tl-item">
+              <div class="tl-dot"></div>
+              <div class="tl-card">
+                <div class="d-flex align-items-center justify-content-between">
+                  <span class="tl-type">{{ act.activity_type }}</span>
+                  <span class="tl-date">{{ act.activity_date.strftime('%d %b %Y %H:%M') if act.activity_date else '—' }}</span>
+                </div>
+                {% if act.subject %}
+                <div class="tl-subject">{{ act.subject }}</div>
+                {% endif %}
+                {% if act.notes %}
+                <div class="tl-notes">{{ act.notes }}</div>
+                {% endif %}
+                {% if act.next_follow_up %}
+                <div style="font-size:.72rem;color:#7c3aed;margin-top:4px;">
+                  <i class="fas fa-calendar me-1"></i> Follow-up: {{ act.next_follow_up.strftime('%d %b %Y') }}
+                </div>
+                {% endif %}
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="text-center py-4" style="color:#94a3b8;">
+            <i class="fas fa-history fa-2x mb-2 d-block" style="opacity:.3;"></i>
+            <div style="font-size:.85rem;">No activities logged yet.</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right: Log Activity + Summary -->
+    <div class="col-md-5">
+
+      <!-- Lead Summary -->
+      <div class="fluent-card mb-4">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-chart-line"></i> Lead Summary</div>
+        </div>
+        <div class="p-4 pt-3">
+          <div class="row g-3">
+            <div class="col-6">
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;">Expected Value</div>
+              <div style="font-family:'Courier New',monospace;font-weight:700;font-size:1.1rem;color:#1a1a2e;">
+                {{ currency }} {{ '{:,.2f}'.format(lead.expected_value or 0) }}
+              </div>
+            </div>
+            <div class="col-6">
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;">Close Date</div>
+              <div style="font-weight:600;color:#1a1a2e;font-size:.85rem;">
+                {{ lead.expected_close_date.strftime('%d %b %Y') if lead.expected_close_date else '—' }}
+              </div>
+            </div>
+            <div class="col-6">
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;">Source</div>
+              <div style="font-weight:600;color:#1a1a2e;font-size:.85rem;">{{ lead.source or '—' }}</div>
+            </div>
+            <div class="col-6">
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;">Assigned To</div>
+              <div style="font-weight:600;color:#1a1a2e;font-size:.85rem;">{{ lead.assigned_to or '—' }}</div>
+            </div>
+            <div class="col-12">
+              <div style="font-size:.65rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#94a3b8;margin-bottom:4px;">Created</div>
+              <div style="font-size:.82rem;color:#374151;">
+                {{ lead.created_at.strftime('%d %b %Y %H:%M') if lead.created_at else '—' }}
+                {% if lead.created_by %} &mdash; {{ lead.created_by }}{% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log Activity -->
+      <div class="fluent-card">
+        <div class="p-4 pb-0">
+          <div class="section-label"><i class="fas fa-plus-circle"></i> Log Activity</div>
+        </div>
+        <div class="p-4 pt-3">
+          <form method="POST" action="{{ url_for('crm_lead_detail', lead_id=lead.id) }}">
+            <input type="hidden" name="action" value="log_activity">
+            <div class="mb-3">
+              <label class="field-label">Activity Type</label>
+              <select class="form-select" name="activity_type">
+                {% for t in ['Call','Email','Meeting','Demo','Follow-up','Note'] %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="field-label">Subject</label>
+              <input type="text" class="form-control" name="subject" placeholder="Brief summary">
+            </div>
+            <div class="mb-3">
+              <label class="field-label">Activity Date &amp; Time</label>
+              <input type="datetime-local" class="form-control" name="activity_date"
+                     value="{{ now.strftime('%Y-%m-%dT%H:%M') if now else '' }}">
+            </div>
+            <div class="mb-3">
+              <label class="field-label">Next Follow-up Date</label>
+              <input type="date" class="form-control" name="next_follow_up">
+            </div>
+            <div class="mb-3">
+              <label class="field-label">Notes</label>
+              <textarea class="form-control" name="notes" rows="3" placeholder="Details about this activity..."></textarea>
+            </div>
+            <button type="submit" class="btn btn-sm fw-bold w-100 py-2"
+                    style="background:linear-gradient(135deg,#7c3aed,#6d28d9);border:none;border-radius:8px;color:#fff;">
+              <i class="fas fa-plus me-1"></i> Log Activity
+            </button>
+          </form>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}
