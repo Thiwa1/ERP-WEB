@@ -7461,13 +7461,16 @@ def get_reversal_details():
 @login_required
 @has_permission('Access_Accounting')
 def customer_receipt():
-    # Fetch customers with outstanding balances
-    # We look at `Invoice_Oustanding` table
+    # Customers are stored in the `suppliers` table (Is_Customer=1).
+    # Invoice_Oustanding.invoice_buinding_Customer holds suppliers.sup_id.
     query = """
-        SELECT DISTINCT c.id, c.customer_name
-        FROM customer c
-        JOIN Invoice_Oustanding io ON c.id = io.invoice_buinding_Customer
-        WHERE io.Invoice_Oustanding > 0
+        SELECT DISTINCT s.sup_id AS id, s.supplier_name AS customer_name
+        FROM suppliers s
+        JOIN Invoice_Oustanding io ON s.sup_id = io.invoice_buinding_Customer
+        WHERE s.Is_Customer = 1
+          AND io.oustanding_delete = 0
+          AND (io.invoice_total_oustanding - COALESCE(io.invoice_oustanding_Patment, 0)) > 0
+        ORDER BY s.supplier_name
     """
     customers = db.execute_query(query)
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
@@ -7488,10 +7491,13 @@ def get_customer_outstanding():
     query = """
         SELECT
             Id, invoice_number, invoice_date, invoice_final_date,
-            invoice_total_oustanding, invoice_oustanding_Patment, Invoice_Oustanding,
+            invoice_total_oustanding, invoice_oustanding_Patment,
+            (invoice_total_oustanding - COALESCE(invoice_oustanding_Patment, 0)) AS Invoice_Oustanding,
             invoice_JV
         FROM Invoice_Oustanding
-        WHERE invoice_buinding_Customer = %s AND Invoice_Oustanding > 0
+        WHERE invoice_buinding_Customer = %s
+          AND oustanding_delete = 0
+          AND (invoice_total_oustanding - COALESCE(invoice_oustanding_Patment, 0)) > 0
         ORDER BY invoice_date
     """
     rows = db.execute_query(query, (customer_id,))
@@ -7518,10 +7524,10 @@ def get_customer_receipt_history():
     customer_id = request.args.get('customer_id')
     if not customer_id: return {'error': 'No customer ID'}, 400
 
-    # Get Customer Name
-    res = db.execute_query("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
+    # Get Customer Name (customers live in suppliers table with Is_Customer=1)
+    res = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (customer_id,))
     if not res: return {'error': 'Customer not found'}, 404
-    cust_name = res[0]['customer_name']
+    cust_name = res[0]['supplier_name']
 
     # Fetch History from Cash Book
     # Grouping by JV to show single line per receipt transaction if multiple invoices paid
@@ -7791,9 +7797,10 @@ def submit_customer_receipt():
         # Using `cash_book_recode` for cash receipts or `bank_book_recod` ??
         # The schema has `cash_book_recode` with `cash_book_recode_dr` (receipt)
 
-        # Get customer name
-        cursor.execute("SELECT customer_name FROM customer WHERE id = %s", (customer_id,))
-        cust_name = cursor.fetchone()[0]
+        # Get customer name (customers stored in suppliers table with Is_Customer=1)
+        cursor.execute("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (customer_id,))
+        row = cursor.fetchone()
+        cust_name = row[0] if row else str(customer_id)
 
         if account_type == 'cash':
             # Create a record per invoice payment or summary?
