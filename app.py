@@ -7222,7 +7222,8 @@ def pos_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('pos_reversal'))
 
-    current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
+    today = date.today()
 
     conn = None
     cursor = None
@@ -7231,27 +7232,103 @@ def pos_reversal_process():
         cursor = conn.cursor()
         conn.start_transaction()
 
-        # 1. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # ── Guard: check transaction exists and is not already reversed ──
+        cursor.execute(
+            "SELECT COUNT(*) FROM POS_Sales_Invoice_01 WHERE jv = %s", (jv,)
+        )
+        total_rows = cursor.fetchone()[0]
+        if not total_rows:
+            flash(f'Transaction JV-{jv} not found.', 'warning')
+            conn.rollback()
+            return redirect(url_for('pos_reversal'))
 
-        # 2. Mark POS Customer as Reversed/Deleted
-        cursor.execute("CALL POS_Customer_Delete(%s)", (jv,))
+        cursor.execute(
+            "SELECT COUNT(*) FROM POS_Sales_Invoice_01 WHERE jv = %s AND Revers = 1", (jv,)
+        )
+        already_reversed = cursor.fetchone()[0]
+        if already_reversed:
+            flash(f'Transaction JV-{jv} has already been reversed.', 'warning')
+            conn.rollback()
+            return redirect(url_for('pos_reversal'))
 
-        # 3. Reverse Inventory Out (Bring items back)
-        cursor.execute("CALL Inventory_Items_Revers_OUT(%s)", (jv,))
+        # ── Step 1: Create a new reversal JV number ──
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-{jv}', f'POS Reversal of JV-{jv}')
+        )
+        rev_jv = cursor.lastrowid
+
+        # ── Step 2: Mark all POS sale lines for this JV as reversed ──
+        # (replaces CALL POS_Customer_Delete — that SP used lowercase table name)
+        cursor.execute(
+            "UPDATE POS_Sales_Invoice_01 SET Revers = 1 WHERE jv = %s", (jv,)
+        )
+
+        # ── Step 3: Reverse GL entries — swap DR ↔ CR into the new reversal JV ──
+        # (replaces CALL JV_Entry_Revers)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT
+                account_name,
+                COALESCE(enty_values_CR, 0),
+                COALESCE(enty_values_DR, 0),
+                %s, %s,
+                %s, %s, %s
+            FROM entry_details
+            WHERE entry_jv = %s
+        """, (today, today, f'POS Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
+
+        # ── Step 4: Restore inventory — convert OUT movements back to IN ──
+        # (replaces CALL Inventory_Items_Revers_OUT — SP used wrong column casing)
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code,
+                inventory_recod_action_date,
+                inventory_recod_moument_in,
+                inventory_recod_movment_out,
+                inventory_recod_mesrmet,
+                inventory_recod_unit_price,
+                inventory_recod_account,
+                inventory_recod_user_id,
+                JV_No,
+                inventory_recod_location
+            )
+            SELECT
+                inventoy_name, inventoy_code,
+                %s,
+                inventory_recod_movment_out,   -- was OUT, now becomes IN
+                0,
+                inventory_recod_mesrmet,
+                inventory_recod_unit_price,
+                'POS Reversal',
+                %s,
+                %s,
+                inventory_recod_location
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_movment_out > 0
+        """, (today, current_user_pk, rev_jv, jv))
 
         conn.commit()
-        flash(f'Transaction {jv} reversed successfully.', 'success')
+        flash(f'Transaction JV-{jv} reversed successfully. Reversal JV: {rev_jv}', 'success')
 
     except Exception as e:
         if conn:
-            conn.rollback()
+            try:
+                conn.rollback()
+            except Exception:
+                pass
         flash(f'Error reversing transaction: {str(e)}', 'danger')
     finally:
         if cursor:
-            cursor.close()
+            try: cursor.close()
+            except Exception: pass
         if conn:
-            conn.close()
+            try: conn.close()
+            except Exception: pass
 
     return redirect(url_for('pos_reversal'))
 
