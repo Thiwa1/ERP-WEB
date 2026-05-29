@@ -6987,70 +6987,76 @@ def pos_receipt(jv_no):
     # Fetch invoice items for this JV
     query = """
         SELECT
-            Invoice_No, ItemName, ItemMesurmet,
-            SllingPrice, ItemPriceComen, ItemLoyalityPrice,
-            Sales_with_market_price_Active, Sales_with_Special_price_Active, Loyalty_Price_Active,
-            Loyalty_No, PaymentMethord, QuntirySale, Total_Value,
-            RecodeUserId, AcctionDate, CashAccountName
-        FROM POS_Sales_Invoice_01
-        WHERE jv = %s
+            p.Invoice_No, p.ItemName, p.ItemMesurmet,
+            p.SllingPrice, p.ItemPriceComen, p.ItemLoyalityPrice,
+            p.Sales_with_market_price_Active, p.Sales_with_Special_price_Active, p.Loyalty_Price_Active,
+            p.Loyalty_No, p.PaymentMethord, p.QuntirySale, p.Total_Value,
+            p.RecodeUserId, p.AcctionDate, p.CashAccountName,
+            ps.User_Name AS CashierName, ps.Footer_Message, ps.Top_Message
+        FROM POS_Sales_Invoice_01 p
+        LEFT JOIN Pose_Setting_Table ps ON p.RecodeUserId = ps.Id
+        WHERE p.jv = %s
     """
     rows = db.execute_query(query, (jv_no,))
 
     if not rows:
         return "Receipt not found", 404
 
+    # Company details
+    comp = db.execute_query(
+        "SELECT company_name, company_addras_1, company_addras_2, company_addras_3, "
+        "company_land_line, vat_registered, company_vate_code FROM company LIMIT 1"
+    )
+    company = comp[0] if comp else {}
+
     items = []
     total_sales = 0
     total_savings = 0
     original_total = 0
 
-    invoice_no = rows[0]['Invoice_No']
-    date_val = rows[0]['AcctionDate']
-    cashier = rows[0]['RecodeUserId']
-    loyalty_no = rows[0]['Loyalty_No']
+    invoice_no   = rows[0]['Invoice_No']
+    date_val     = rows[0]['AcctionDate']
+    cashier      = rows[0].get('CashierName') or str(rows[0]['RecodeUserId'])
+    loyalty_no   = rows[0]['Loyalty_No']
     payment_method = rows[0]['PaymentMethord']
-    is_loyalty = False
-
-    # Determine Customer Type logic from C#
-    # if(Loyality_No > 0) -> Loyality_costomer_Find = 1
-    # Check if loyalty number is valid (not 0, not -1, not empty)
-    if loyalty_no and str(loyalty_no) != "0" and str(loyalty_no) != "-1":
-        is_loyalty = True
+    footer_msg   = rows[0].get('Footer_Message') or 'Thank you for your business!'
+    top_msg      = rows[0].get('Top_Message') or ''
+    is_loyalty   = bool(loyalty_no and str(loyalty_no) not in ('0', '-1', ''))
 
     for r in rows:
-        qty = float(r['QuntirySale'])
-        selling_price = float(r['SllingPrice'] or 0) # Market price per unit
+        qty           = float(r['QuntirySale'] or 0)
+        market_price  = float(r['SllingPrice'] or 0)
+        special_price = float(r['ItemPriceComen'] or 0)
+        loyalty_price = float(r['ItemLoyalityPrice'] or 0)
+        line_total    = float(r['Total_Value'] or 0)
 
-        # We rely strictly on the database's Total_Value which the frontend/legacy app already computed correctly!
-        line_total = float(r['Total_Value'] or 0)
+        # Determine actual charged price from the active price type
+        if r['Loyalty_Price_Active'] == 1 and is_loyalty and loyalty_price > 0:
+            unit_price = loyalty_price
+        elif r['Sales_with_Special_price_Active'] == 1 and special_price > 0:
+            unit_price = special_price
+        else:
+            unit_price = market_price
 
-        # Reverse engineer the actual charged unit price for the receipt display
-        unit_charged_price = line_total / qty if qty > 0 else line_total
+        unit_charged_price = line_total / qty if qty > 0 else unit_price
+        line_original      = market_price * qty
+        line_saving        = max(0, line_original - line_total)
 
-        line_original = selling_price * qty
-
-        # Saving is simply Original (Market) - Final Charged
-        line_saving = 0
-        if line_original > line_total:
-            line_saving = line_original - line_total
-
-        total_sales += line_total
-        total_savings += line_saving
+        total_sales    += line_total
+        total_savings  += line_saving
         original_total += line_original
 
         items.append({
-            'name': r['ItemName'],
-            'qty': qty,
-            'unit': r['ItemMesurmet'],
-            'price': unit_charged_price,
-            'total': line_total,
-            'saving': line_saving
+            'name':         r['ItemName'],
+            'qty':          qty,
+            'unit':         r['ItemMesurmet'] or '',
+            'price':        unit_charged_price,
+            'market_price': market_price,
+            'total':        line_total,
+            'saving':       line_saving
         })
 
-    # Payment Method Text
-    pm_text = "CASH"
-    if payment_method == 2: pm_text = "CARD"
+    pm_text = {1: 'CASH', 2: 'CARD'}.get(payment_method, 'OTHER')
 
     return render_template('pos_receipt.html',
                            items=items,
@@ -7059,11 +7065,14 @@ def pos_receipt(jv_no):
                            cashier=cashier,
                            is_loyalty=is_loyalty,
                            loyalty_no=loyalty_no,
+                           company=company,
+                           top_msg=top_msg,
+                           footer_msg=footer_msg,
                            totals={
-                               'subtotal': total_sales,
-                               'savings': total_savings,
-                               'original': original_total,
-                               'final': total_sales
+                               'subtotal':  total_sales,
+                               'savings':   total_savings,
+                               'original':  original_total,
+                               'final':     total_sales
                            },
                            payment_method=pm_text)
 
@@ -10410,6 +10419,55 @@ def run_schema_migrations(target_db_conn=None):
             except Exception as e:
                 logging.error(f"Migration hr_payroll_crm_email_v1 error: {e}")
         # ── END HR / PAYROLL / CRM / EMAIL ────────────────────────────────────
+
+        # ── POS TABLES ────────────────────────────────────────────────────────
+        if not is_migration_applied('pos_tables_v1'):
+            try:
+                # Invoice number sequence table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS pos_invoice_no (
+                        Id     INT AUTO_INCREMENT PRIMARY KEY,
+                        IV_No  VARCHAR(50) DEFAULT ''
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+
+                # POS Sales table
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS POS_Sales_Invoice_01 (
+                        Id                              INT AUTO_INCREMENT PRIMARY KEY,
+                        ItemCoude                       VARCHAR(100),
+                        ItemName                        VARCHAR(255),
+                        ItemMesurmet                    VARCHAR(50),
+                        SllingPrice                     DECIMAL(15,4) DEFAULT 0,
+                        ItemPriceComen                  DECIMAL(15,4) DEFAULT 0,
+                        ItemLoyalityPrice               DECIMAL(15,4) DEFAULT 0,
+                        Sales_with_market_price_Active  TINYINT(1)    DEFAULT 0,
+                        Sales_with_Special_price_Active TINYINT(1)    DEFAULT 0,
+                        Loyalty_Price_Active            TINYINT(1)    DEFAULT 0,
+                        RecodeUserId                    INT           DEFAULT 0,
+                        Location                        VARCHAR(200),
+                        AcctionDate                     DATE,
+                        QuntirySale                     DECIMAL(15,4) DEFAULT 0,
+                        InventoryCost                   DECIMAL(15,4) DEFAULT 0,
+                        PaymentMethord                  INT           DEFAULT 1,
+                        CashAccountName                 VARCHAR(255),
+                        BankAccountName                 VARCHAR(255),
+                        Invoice_No                      VARCHAR(50),
+                        Loyalty_No                      VARCHAR(100)  DEFAULT '0',
+                        Total_Value                     DECIMAL(15,4) DEFAULT 0,
+                        jv                              INT           DEFAULT 0,
+                        Revers                          TINYINT(1)    DEFAULT 0,
+                        INDEX idx_pos_jv   (jv),
+                        INDEX idx_pos_inv  (Invoice_No),
+                        INDEX idx_pos_date (AcctionDate)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                """)
+
+                record_migration('pos_tables_v1')
+                logging.info("Migrated: pos_tables_v1 — pos_invoice_no + POS_Sales_Invoice_01 created")
+            except Exception as e:
+                logging.error(f"Migration pos_tables_v1 error: {e}")
+        # ── END POS TABLES ────────────────────────────────────────────────────
 
         # ── DOCUMENT UPLOAD SYSTEM ────────────────────────────────────────────
         if not is_migration_applied('document_upload_v1'):

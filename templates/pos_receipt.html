@@ -5,116 +5,178 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Receipt - {{ invoice_no }}</title>
     <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
             font-family: 'Courier New', Courier, monospace;
             font-size: 12px;
             width: 80mm;
             margin: 0 auto;
-            background-color: #fff;
-            padding: 10px;
+            background: #fff;
+            padding: 8px 10px 20px;
+            color: #111;
         }
-        .text-center { text-align: center; }
-        .text-right { text-align: right; }
-        .fw-bold { font-weight: bold; }
-        .header { margin-bottom: 10px; border-bottom: 1px dashed #000; padding-bottom: 5px; }
-        .info-grid { display: grid; grid-template-columns: 1fr 1fr; margin-bottom: 5px; }
-        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-        .items-table th { border-bottom: 1px dashed #000; text-align: left; font-size: 11px; }
-        .items-table td { padding: 2px 0; }
-        .totals-section { border-top: 1px dashed #000; padding-top: 5px; margin-bottom: 10px; }
-        .footer { text-align: center; margin-top: 15px; font-size: 10px; color: #555; }
         .print-btn {
-            display: block; width: 100%; padding: 10px; background: #000; color: #fff;
-            border: none; margin-bottom: 20px; cursor: pointer; text-align: center; text-decoration: none;
+            display: block; width: 100%; padding: 10px;
+            background: #1a1a2e; color: #fff; border: none;
+            margin-bottom: 16px; cursor: pointer; text-align: center;
+            font-size: 13px; letter-spacing: 1px;
         }
-        @media print {
-            .print-btn { display: none; }
-            body { width: 100%; margin: 0; padding: 0; }
+        @media print { .print-btn { display: none; } body { width: 100%; padding: 0; } }
+
+        /* ── Header ── */
+        .receipt-header { text-align: center; border-bottom: 1px dashed #555; padding-bottom: 8px; margin-bottom: 8px; }
+        .receipt-header .company-name { font-size: 15px; font-weight: bold; letter-spacing: 1px; }
+        .receipt-header .company-sub  { font-size: 10px; color: #444; line-height: 1.5; margin-top: 2px; }
+        .receipt-header .top-msg      { font-size: 10px; font-style: italic; margin-top: 4px; }
+
+        /* ── Meta row ── */
+        .meta-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 6px; }
+
+        /* ── Customer row ── */
+        .cust-row { font-size: 10px; margin-bottom: 6px; border-bottom: 1px dashed #aaa; padding-bottom: 5px; }
+        .cust-row .loyalty-badge {
+            display: inline-block; background: #fef3c7; color: #92400e;
+            padding: 1px 6px; border-radius: 3px; font-weight: bold;
         }
+
+        /* ── Items table ── */
+        .items-table { width: 100%; border-collapse: collapse; margin-bottom: 8px; }
+        .items-table th {
+            border-bottom: 1px dashed #555; border-top: 1px dashed #555;
+            text-align: left; font-size: 10px; padding: 3px 0;
+        }
+        .items-table th.right { text-align: right; }
+        .items-table td { padding: 2px 0; vertical-align: top; }
+        .item-name-row td { padding-top: 4px; font-weight: bold; font-size: 11px; }
+        .item-detail-row td { font-size: 10px; color: #333; }
+        .item-discount-row td { font-size: 10px; color: #16a34a; font-style: italic; }
+        td.right { text-align: right; }
+        .strike { text-decoration: line-through; color: #888; font-size: 9px; }
+
+        /* ── Totals ── */
+        .totals-section { border-top: 1px dashed #555; padding-top: 6px; margin-bottom: 8px; }
+        .totals-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 2px; }
+        .totals-row.grand { font-size: 14px; font-weight: bold; margin-top: 4px; border-top: 1px dashed #555; padding-top: 4px; }
+        .totals-row.savings { color: #16a34a; font-weight: bold; }
+
+        /* ── Payment ── */
+        .payment-row { text-align: center; font-size: 11px; font-weight: bold;
+            border: 1px solid #ccc; padding: 4px; margin-bottom: 8px; letter-spacing: 1px; }
+
+        /* ── Footer ── */
+        .receipt-footer { text-align: center; font-size: 10px; color: #555; margin-top: 10px; line-height: 1.6; }
+        .barcode-line { font-size: 9px; letter-spacing: 3px; margin: 6px 0; }
     </style>
 </head>
 <body>
-    <a href="#" onclick="window.print(); return false;" class="print-btn">PRINT RECEIPT</a>
+    <button onclick="window.print(); return false;" class="print-btn">&#128438; PRINT RECEIPT</button>
 
-    <div class="header text-center">
-        <div class="fw-bold" style="font-size: 14px;">SUWIN ACCOUNTING</div>
-        <div>123 Business Street, City</div>
-        <div>Tel: 011-1234567 | VAT: 123456789</div>
+    <!-- ── Header ── -->
+    <div class="receipt-header">
+        {% if company.get('Image') %}
+        <img src="data:image/png;base64,{{ company.Image }}" style="max-width:60px;margin-bottom:4px;">
+        {% endif %}
+        <div class="company-name">{{ company.get('company_name') or 'SUWIN ERP' }}</div>
+        <div class="company-sub">
+            {% if company.get('company_addras_1') %}{{ company.company_addras_1 }}<br>{% endif %}
+            {% if company.get('company_addras_2') %}{{ company.company_addras_2 }}<br>{% endif %}
+            {% if company.get('company_land_line') %}Tel: {{ company.company_land_line }}<br>{% endif %}
+            {% if company.get('vat_registered') == 'Yes' and company.get('company_vate_code') %}
+            VAT Reg: {{ company.company_vate_code }}
+            {% endif %}
+        </div>
+        {% if top_msg %}<div class="top-msg">{{ top_msg }}</div>{% endif %}
     </div>
 
-    <div class="info-grid">
+    <!-- ── Invoice Meta ── -->
+    <div class="meta-row">
         <div>
-            <div class="fw-bold">INVOICE: {{ invoice_no }}</div>
-            <div>DATE: {{ date }}</div>
+            <div><strong>INV:</strong> {{ invoice_no }}</div>
+            <div><strong>DATE:</strong> {{ date }}</div>
         </div>
-        <div class="text-right">
-            <div>STAFF: {{ cashier }}</div>
-            <div>COUNTER: POS01</div>
+        <div style="text-align:right;">
+            <div><strong>STAFF:</strong> {{ cashier }}</div>
+            <div><strong>POS01</strong></div>
         </div>
     </div>
 
-    <div style="margin-bottom: 10px;">
-        <div class="fw-bold" style="font-size: 11px;">
-            {% if is_loyalty %}LOYALTY CUSTOMER{% else %}WALK-IN CUSTOMER{% endif %}
-        </div>
+    <!-- ── Customer ── -->
+    <div class="cust-row">
         {% if is_loyalty %}
-        <div style="font-size: 10px;">LOYALTY NO: {{ loyalty_no }}</div>
+        <span class="loyalty-badge">&#9733; LOYALTY CUSTOMER</span>
+        <span style="margin-left:6px;">{{ loyalty_no }}</span>
+        {% else %}
+        WALK-IN CUSTOMER
         {% endif %}
         {% if totals.savings > 0 %}
-        <div class="fw-bold" style="color: green;">YOU SAVED: {{ totals.savings|currency(symbol=False) }}</div>
+        &nbsp;&nbsp;<strong style="color:#16a34a;">SAVED: {{ "%.2f"|format(totals.savings) }}</strong>
         {% endif %}
     </div>
 
+    <!-- ── Items ── -->
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width: 40%">ITEM</th>
-                <th style="width: 15%">QTY</th>
-                <th style="width: 20%">PRICE</th>
-                <th style="width: 25%" class="text-right">AMOUNT</th>
+                <th style="width:42%">ITEM</th>
+                <th style="width:13%" class="right">QTY</th>
+                <th style="width:20%" class="right">PRICE</th>
+                <th style="width:25%" class="right">AMOUNT</th>
             </tr>
         </thead>
         <tbody>
             {% for item in items %}
-            <tr>
+            <tr class="item-name-row">
                 <td colspan="4">{{ item.name }}</td>
             </tr>
-            <tr>
+            <tr class="item-detail-row">
                 <td></td>
-                <td>{{ "{:,.2f}".format(item.qty) }}{{ item.unit }}</td>
-                <td>{{ item.price|currency(symbol=False) }}</td>
-                <td class="text-right">{{ item.total|currency(symbol=False) }}</td>
+                <td class="right">{{ "%.2f"|format(item.qty) }}{{ item.unit }}</td>
+                <td class="right">
+                    {% if item.saving > 0 %}
+                    <span class="strike">{{ "%.2f"|format(item.market_price) }}</span><br>
+                    {% endif %}
+                    {{ "%.2f"|format(item.price) }}
+                </td>
+                <td class="right">{{ "%.2f"|format(item.total) }}</td>
             </tr>
+            {% if item.saving > 0 %}
+            <tr class="item-discount-row">
+                <td colspan="3" style="padding-left:8px;">&#10003; Saved {{ "%.2f"|format(item.saving) }}</td>
+                <td></td>
+            </tr>
+            {% endif %}
             {% endfor %}
         </tbody>
     </table>
 
+    <!-- ── Totals ── -->
     <div class="totals-section">
         {% if totals.savings > 0 %}
-        <div class="info-grid">
-            <div>ORIGINAL TOTAL:</div>
-            <div class="text-right">{{ totals.original|currency(symbol=False) }}</div>
+        <div class="totals-row">
+            <span>ORIGINAL TOTAL</span>
+            <span>{{ "%.2f"|format(totals.original) }}</span>
         </div>
-        <div class="info-grid">
-            <div>DISCOUNT:</div>
-            <div class="text-right">-{{ totals.savings|currency(symbol=False) }}</div>
+        <div class="totals-row savings">
+            <span>&#10003; TOTAL SAVINGS</span>
+            <span>-{{ "%.2f"|format(totals.savings) }}</span>
         </div>
         {% endif %}
-
-        <div class="info-grid fw-bold" style="font-size: 14px; margin-top: 5px;">
-            <div>TOTAL:</div>
-            <div class="text-right">{{ totals.final|currency(symbol=False) }}</div>
+        <div class="totals-row grand">
+            <span>TOTAL</span>
+            <span>{{ "%.2f"|format(totals.final) }}</span>
         </div>
     </div>
 
-    <div class="text-center fw-bold" style="margin-bottom: 10px;">
-        PAYMENT METHOD: {{ payment_method }}
-    </div>
+    <!-- ── Payment ── -->
+    <div class="payment-row">PAYMENT: {{ payment_method }}</div>
 
-    <div class="footer">
-        <div>Thank you for your business!</div>
-        <div>Goods sold are not returnable</div>
-        <div>For support: support@suwin.com</div>
+    <!-- ── Barcode / Invoice ref ── -->
+    <div class="barcode-line text-center">{{ invoice_no }}</div>
+
+    <!-- ── Footer ── -->
+    <div class="receipt-footer">
+        <div>{{ footer_msg }}</div>
+        <div style="margin-top:4px;">Goods sold are not returnable</div>
         <div>{{ date }}</div>
     </div>
 </body>

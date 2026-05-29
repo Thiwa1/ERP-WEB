@@ -138,12 +138,13 @@
                         <table class="table table-striped table-hover mb-0" id="cartTable">
                             <thead class="table-dark sticky-top">
                                 <tr>
-                                    <th>Code</th>
-                                    <th>Item Name</th>
-                                    <th>Qty</th>
-                                    <th>Price</th>
-                                    <th>Total</th>
-                                    <th>Action</th>
+                                    <th style="font-size:.75rem;">Code</th>
+                                    <th style="font-size:.75rem;">Item Name</th>
+                                    <th class="text-center" style="font-size:.75rem;">Qty</th>
+                                    <th class="text-end" style="font-size:.75rem;">Market</th>
+                                    <th class="text-end" style="font-size:.75rem;">Price</th>
+                                    <th class="text-end" style="font-size:.75rem;">Total</th>
+                                    <th class="text-center" style="font-size:.75rem;">Del</th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
@@ -581,14 +582,28 @@
             const saving = (item.price_market - item.price) * item.qty;
             if(saving > 0) savings += saving;
 
+            // Market price cell: show strikethrough if discounted
+            const marketCell = (saving > 0)
+                ? `<span style="text-decoration:line-through;color:#aaa;font-size:.75rem;">${item.price_market.toFixed(2)}</span>`
+                : `<span style="color:#888;font-size:.8rem;">${item.price_market.toFixed(2)}</span>`;
+
+            // Price cell: highlight in green when discounted
+            const priceColor = saving > 0 ? 'color:#16a34a;font-weight:700;' : '';
+            const discountBadge = saving > 0
+                ? `<br><span style="font-size:.65rem;background:#dcfce7;color:#166534;padding:1px 4px;border-radius:3px;">
+                     -${((saving / (item.price_market * item.qty)) * 100).toFixed(0)}%
+                   </span>`
+                : '';
+
             tbody.innerHTML += `
                 <tr>
-                    <td>${item.code}</td>
-                    <td>${item.name}</td>
-                    <td class="text-center">${item.qty}</td>
-                    <td class="text-end">${item.price.toFixed(2)}</td>
-                    <td class="text-end fw-bold">${item.total.toFixed(2)}</td>
-                    <td class="text-center"><button class="btn btn-sm btn-danger py-0" onclick="removeFromCart(${idx})">X</button></td>
+                    <td style="font-size:.8rem;">${item.code}</td>
+                    <td style="font-size:.8rem;">${item.name}</td>
+                    <td class="text-center" style="font-size:.8rem;">${item.qty}</td>
+                    <td class="text-end">${marketCell}</td>
+                    <td class="text-end" style="${priceColor}font-size:.8rem;">${item.price.toFixed(2)}${discountBadge}</td>
+                    <td class="text-end fw-bold" style="font-size:.85rem;">${item.total.toFixed(2)}</td>
+                    <td class="text-center"><button class="btn btn-sm btn-danger py-0" style="font-size:.75rem;" onclick="removeFromCart(${idx})">✕</button></td>
                 </tr>
             `;
         });
