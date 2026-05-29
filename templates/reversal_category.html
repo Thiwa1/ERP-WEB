@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-tags"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Reversal Category (Journal Entries)</h5>
+            <div style="font-size:.78rem;color:#605E5C;">Reversals &rsaquo; GL Journal Reversal</div>
+        </div>
+    </div>
+
+    <!-- Notice Banner -->
+    <div class="d-flex align-items-center gap-2 mb-4 px-3 py-2"
+         style="background:#fff4f3;border:1px solid #f5c6c2;border-radius:8px;font-size:.83rem;color:#a4262c;">
+        <i class="fas fa-exclamation-circle"></i>
+        <span>Reversing a journal entry creates an equal and opposite set of GL entries. The original entry is NOT deleted. This action cannot be undone.</span>
+    </div>
+
+    <!-- Main Card -->
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+        <!-- Card Header -->
+        <div class="d-flex align-items-center justify-content-between px-4 py-3" style="border-bottom:1px solid #e2e8f0;">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-list me-1"></i> Journal Entry History
+            </span>
+            <div class="d-flex gap-2">
+                <span class="badge" style="background:#e8f5e9;color:#1b5e20;font-size:.7rem;font-weight:600;padding:4px 10px;border-radius:20px;">
+                    <i class="fas fa-check-circle me-1"></i>Active
+                </span>
+                <span class="badge" style="background:#fce4ec;color:#880e4f;font-size:.7rem;font-weight:600;padding:4px 10px;border-radius:20px;">
+                    <i class="fas fa-undo me-1"></i>Reversed
+                </span>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" id="jvTable">
+                <thead style="background:#f8f9fa;">
+                    <tr>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">JV</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Voucher Code</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">DR Amount</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;width:120px;">Action</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if rows %}
+                        {% for row in rows %}
+                        {% set reversed = row.is_reversed %}
+                        <tr style="border-bottom:1px solid #f1f3f4;{% if reversed %}opacity:.65;{% endif %}">
+                            <td style="padding:.75rem 1rem;">
+                                <span class="fw-bold font-monospace" style="color:#1a1a2e;">{{ row.JV }}</span>
+                            </td>
+                            <td style="padding:.75rem 1rem;">
+                                <span class="font-monospace" style="font-size:.85rem;color:#323130;">{{ row.VoucherCode }}</span>
+                            </td>
+                            <td style="padding:.75rem 1rem;color:#605E5C;font-size:.85rem;">{{ row.Date }}</td>
+                            <td class="text-truncate" style="padding:.75rem 1rem;max-width:220px;color:#323130;">{{ row.Narration }}</td>
+                            <td style="padding:.75rem 1rem;text-align:right;font-family:monospace;font-weight:700;color:#C42B1C;">
+                                {{ "{:,.2f}".format(row.Amount|float) }}
+                            </td>
+                            <td style="padding:.75rem 1rem;text-align:center;">
+                                {% if reversed %}
+                                <span style="background:#fce4ec;color:#c62828;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-block;">
+                                    <i class="fas fa-undo me-1"></i>Reversed
+                                </span>
+                                {% else %}
+                                <span style="background:#e8f5e9;color:#1b5e20;font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:20px;display:inline-block;">
+                                    <i class="fas fa-check me-1"></i>Active
+                                </span>
+                                {% endif %}
+                            </td>
+                            <td style="padding:.75rem 1rem;text-align:center;">
+                                {% if not reversed %}
+                                <form method="POST" action="/reversal_category/process"
+                                      onsubmit="return confirm('Reverse JV-{{ row.JV }}? This action cannot be undone.');">
+                                    <input type="hidden" name="jv" value="{{ row.JV }}">
+                                    <button type="submit" class="btn btn-sm"
+                                            style="border-radius:6px;font-size:.78rem;font-weight:600;background:#fce8e6;color:#C42B1C;border:1px solid #f5c6c2;">
+                                        <i class="fas fa-undo-alt me-1"></i> Reverse
+                                    </button>
+                                </form>
+                                {% else %}
+                                <span style="font-size:.78rem;color:#a0a0a0;">Already reversed</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center py-5" style="color:#605E5C;font-size:.9rem;">
+                                <i class="fas fa-inbox mb-2 d-block" style="font-size:1.8rem;opacity:.4;"></i>
+                                No journal entries found.
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

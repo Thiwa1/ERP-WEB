@@ -3452,8 +3452,20 @@ def cash_payment_submit():
                     p['id'], new_voucher, current_user_pk, payment_date
                 ))
 
-            # Batch execute Stored Procedure calls
-            cursor.executemany("CALL vender_settele(%s, %s, %s)", call_params)
+            # Update supplier outstanding — replaces CALL vender_settele(outstanding, amount, inv_id)
+            # vender_settele logic: SET oustanding = outstanding - amount, total_payment += amount
+            settle_params = [
+                (max(0, outstanding_map.get(str(p['id']), 0.0) - p['amount']),
+                 p['amount'],
+                 p['id'])
+                for p in payments
+            ]
+            cursor.executemany("""
+                UPDATE suppliers_invoice_data
+                SET suppliers_invoice_oustanding = GREATEST(0, %s),
+                    suppliers_invoice_total_payment = suppliers_invoice_total_payment + %s
+                WHERE s_i_id = %s
+            """, settle_params)
 
             # Batch insert Cash Book Records
             cursor.executemany("""
@@ -3487,25 +3499,52 @@ def delete_cash_payment_invoice():
     if not jv_no:
         return {'error': 'No JV Number provided'}, 400
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
         conn.start_transaction()
 
-        # 1. Delete Supplier Invoice (Mark as deleted)
-        cursor.execute("CALL Sup_Delete_Invoice(%s)", (jv_no,))
+        current_user_pk = get_current_user_pk()
+        today = date.today()
 
-        # 2. Delete Inventory Records (Mark as deleted)
-        cursor.execute("CALL Inventory_Delete(%s)", (jv_no,))
+        # 1. Mark supplier invoice as deleted
+        cursor.execute(
+            "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
+            (jv_no,))
+
+        # 2. Create reversal OUT movements for inventory (undo stock-in)
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code,
+                inventory_recod_action_date,
+                inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                inventory_recod_account, inventory_recod_user_id,
+                JV_No, inventory_recod_location
+            )
+            SELECT inventoy_name, inventoy_code, %s,
+                   0, inventory_recod_moument_in,
+                   inventory_recod_mesrmet, inventory_recod_unit_price,
+                   'Invoice Deletion', %s,
+                   %s, inventory_recod_location
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_moument_in > 0
+        """, (today, current_user_pk, jv_no, jv_no))
 
         conn.commit()
-        cursor.close()
-        conn.close()
-
         return {'success': True}
 
     except Exception as e:
+        if conn:
+            conn.rollback()
         return {'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/voucher/print/<string:voucher_type>/<int:jv_no>')
 @login_required
@@ -7337,8 +7376,7 @@ def pos_reversal_process():
 @login_required
 @has_permission('Access_Reversals')
 def bank_payment_reversal():
-    # Fetch recent Bank Payments (limit to 50 for performance)
-    # Using `bank_book_recod` joined with `jv_numbers` to get JV
+    # Show ALL bank payments (including reversed) for history — is_reversed flag controls UI
     query = """
         SELECT
             b.id,
@@ -7347,12 +7385,13 @@ def bank_payment_reversal():
             b.bank_book__accont_name as Account,
             b.bank_book__suplier_name as Supplier,
             b.bank_book__recode_cr as Amount,
-            b.jv_numbers_jv_id as JV
+            b.jv_numbers_jv_id as JV,
+            CASE WHEN (b.bank_book_book_recode_dr IS NOT NULL AND b.bank_book_book_recode_dr > 0)
+                 THEN 1 ELSE 0 END as is_reversed
         FROM bank_book_recod b
         WHERE b.bank_book__recode_cr > 0
-        AND (b.bank_book_book_recode_dr IS NULL OR b.bank_book_book_recode_dr = 0)
         ORDER BY b.Bank_Payment_Date DESC, b.id DESC
-        LIMIT 50
+        LIMIT 100
     """
     rows = db.execute_query(query)
     return render_template('bank_payment_reversal.html', rows=rows)
@@ -7462,26 +7501,81 @@ def bank_payment_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('bank_payment_reversal'))
 
-    current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
+    today = date.today()
 
     conn = None
     cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Guard: check transaction exists
+        cursor.execute(
+            "SELECT COUNT(*) FROM bank_book_recod WHERE jv_numbers_jv_id = %s AND bank_book__recode_cr > 0",
+            (jv,))
+        if cursor.fetchone()[0] == 0:
+            flash('Transaction not found.', 'danger')
+            return redirect(url_for('bank_payment_reversal'))
+
+        # Guard: already reversed (bank uses bank_book_book_recode_dr > 0 as reversal flag)
+        cursor.execute(
+            "SELECT COUNT(*) FROM bank_book_recod "
+            "WHERE jv_numbers_jv_id = %s AND bank_book_book_recode_dr IS NOT NULL AND bank_book_book_recode_dr > 0",
+            (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash('This bank payment has already been reversed.', 'warning')
+            return redirect(url_for('bank_payment_reversal'))
+
         conn.start_transaction()
 
-        # 1. Bank Transaction Reversal (Updates Bank Book Record)
-        cursor.execute("CALL `Bank_Transaction Revesale`(%s)", (jv,))
+        # Step 1: Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-BANK-{jv}', f'Bank Payment Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
 
-        # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # Step 2: Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Bank Payment Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
 
-        # 3. Reverse Supplier Outstanding (Bank Version)
-        cursor.execute("CALL Suplier_Oustanding_Revers_Bank(%s)", (jv,))
+        # Step 3: Restore supplier outstanding — undo the payment amount per invoice
+        # bank_book__suplier_oustanding_id links to suppliers_invoice_data.s_i_id
+        cursor.execute("""
+            UPDATE suppliers_invoice_data sid
+            JOIN bank_book_recod bbr
+                ON bbr.bank_book__suplier_oustanding_id = sid.s_i_id
+               AND bbr.jv_numbers_jv_id = %s
+               AND bbr.bank_book__recode_cr > 0
+            SET
+                sid.suppliers_invoice_total_payment = GREATEST(0,
+                    sid.suppliers_invoice_total_payment - bbr.bank_book__recode_cr),
+                sid.suppliers_invoice_oustanding = GREATEST(0,
+                    sid.suppliers_invoice_total_oustanding -
+                    GREATEST(0, sid.suppliers_invoice_total_payment - bbr.bank_book__recode_cr))
+            WHERE bbr.jv_numbers_jv_id = %s
+        """, (jv, jv))
+
+        # Step 4: Mark bank book record as reversed
+        # Set bank_book_book_recode_dr = payment amount — this is the existing reversal flag convention
+        cursor.execute("""
+            UPDATE bank_book_recod
+            SET bank_book_book_recode_dr = bank_book__recode_cr
+            WHERE jv_numbers_jv_id = %s
+        """, (jv,))
 
         conn.commit()
-        flash(f'Bank Payment (JV: {jv}) reversed successfully.', 'success')
+        flash(f'Bank Payment (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
 
     except Exception as e:
         if conn:
@@ -7500,8 +7594,7 @@ def bank_payment_reversal_process():
 @login_required
 @has_permission('Access_Reversals')
 def cash_payment_reversal():
-    # Fetch recent Cash Payments (from cash_book_recode)
-    # Filter where suplier_name is NOT NULL (Supplier Payments)
+    # Show ALL cash payments (including reversed) for history — is_reversed controls UI
     query = """
         SELECT
             c.chash_book_recod_id as id,
@@ -7510,13 +7603,13 @@ def cash_payment_reversal():
             c.cash_book_recode_accont_name as Account,
             c.cash_book_recode_suplier_name as Supplier,
             c.cash_book_recode_cr as Amount,
-            c.jv_numbers_jv_id as JV
+            c.jv_numbers_jv_id as JV,
+            CASE WHEN c.User_Revers IS NOT NULL THEN 1 ELSE 0 END as is_reversed
         FROM cash_book_recode c
         WHERE c.cash_book_recode_cr > 0
-        AND c.User_Revers IS NULL
         AND c.cash_book_recode_suplier_name IS NOT NULL
         ORDER BY c.Payment_Date DESC, c.chash_book_recod_id DESC
-        LIMIT 50
+        LIMIT 100
     """
     rows = db.execute_query(query)
     return render_template('cash_payment_reversal.html', rows=rows)
@@ -7529,26 +7622,80 @@ def cash_payment_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('cash_payment_reversal'))
 
-    current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
+    today = date.today()
 
     conn = None
     cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Guard: check transaction exists
+        cursor.execute(
+            "SELECT COUNT(*) FROM cash_book_recode "
+            "WHERE jv_numbers_jv_id = %s AND cash_book_recode_cr > 0",
+            (jv,))
+        if cursor.fetchone()[0] == 0:
+            flash('Transaction not found.', 'danger')
+            return redirect(url_for('cash_payment_reversal'))
+
+        # Guard: already reversed
+        cursor.execute(
+            "SELECT COUNT(*) FROM cash_book_recode "
+            "WHERE jv_numbers_jv_id = %s AND User_Revers IS NOT NULL",
+            (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash('This cash payment has already been reversed.', 'warning')
+            return redirect(url_for('cash_payment_reversal'))
+
         conn.start_transaction()
 
-        # 1. Update Reversal (Cash Book)
-        cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
+        # Step 1: Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-CASH-{jv}', f'Cash Payment Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
 
-        # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # Step 2: Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Cash Payment Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
 
-        # 3. Reverse Supplier Outstanding
-        cursor.execute("CALL Suplier_Oustanding_Revers(%s)", (jv,))
+        # Step 3: Restore supplier outstanding — undo the payment amount per invoice
+        # cash_book_recode_suplier_oustanding_id links to suppliers_invoice_data.s_i_id
+        cursor.execute("""
+            UPDATE suppliers_invoice_data sid
+            JOIN cash_book_recode cbr
+                ON cbr.cash_book_recode_suplier_oustanding_id = sid.s_i_id
+               AND cbr.jv_numbers_jv_id = %s
+               AND cbr.cash_book_recode_cr > 0
+            SET
+                sid.suppliers_invoice_total_payment = GREATEST(0,
+                    sid.suppliers_invoice_total_payment - cbr.cash_book_recode_cr),
+                sid.suppliers_invoice_oustanding = GREATEST(0,
+                    sid.suppliers_invoice_total_oustanding -
+                    GREATEST(0, sid.suppliers_invoice_total_payment - cbr.cash_book_recode_cr))
+            WHERE cbr.jv_numbers_jv_id = %s
+        """, (jv, jv))
+
+        # Step 4: Mark cash book record as reversed
+        cursor.execute("""
+            UPDATE cash_book_recode SET User_Revers = %s
+            WHERE jv_numbers_jv_id = %s
+        """, (current_user_pk, jv))
 
         conn.commit()
-        flash(f'Cash Payment (JV: {jv}) reversed successfully.', 'success')
+        flash(f'Cash Payment (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
 
     except Exception as e:
         if conn:
@@ -7567,9 +7714,7 @@ def cash_payment_reversal_process():
 @login_required
 @has_permission('Access_Reversals')
 def direct_payment_reversal():
-    # Fetch recent Direct Payments (Inventory related)
-    # These usually have inventory records attached or narration implies direct purchase
-    # We filter for those that have inventory records linked to this JV
+    # Show ALL direct payments (including reversed) for history
     query = """
         SELECT DISTINCT
             c.chash_book_recod_id as id,
@@ -7578,13 +7723,13 @@ def direct_payment_reversal():
             c.cash_book_recode_accont_name as Account,
             c.cash_book_recode_naration as Narration,
             c.cash_book_recode_cr as Amount,
-            c.jv_numbers_jv_id as JV
+            c.jv_numbers_jv_id as JV,
+            CASE WHEN c.User_Revers IS NOT NULL THEN 1 ELSE 0 END as is_reversed
         FROM cash_book_recode c
         JOIN inventory_recod i ON c.jv_numbers_jv_id = i.JV_No
         WHERE c.cash_book_recode_cr > 0
-        AND c.User_Revers IS NULL
         ORDER BY c.Payment_Date DESC
-        LIMIT 50
+        LIMIT 100
     """
     rows = db.execute_query(query)
     return render_template('direct_payment_reversal.html', rows=rows)
@@ -7597,29 +7742,86 @@ def direct_payment_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('direct_payment_reversal'))
 
-    current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
+    today = date.today()
 
     conn = None
     cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Guard: check transaction exists
+        cursor.execute(
+            "SELECT COUNT(*) FROM cash_book_recode "
+            "WHERE jv_numbers_jv_id = %s AND cash_book_recode_cr > 0",
+            (jv,))
+        if cursor.fetchone()[0] == 0:
+            flash('Transaction not found.', 'danger')
+            return redirect(url_for('direct_payment_reversal'))
+
+        # Guard: already reversed
+        cursor.execute(
+            "SELECT COUNT(*) FROM cash_book_recode "
+            "WHERE jv_numbers_jv_id = %s AND User_Revers IS NOT NULL",
+            (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash('This direct payment has already been reversed.', 'warning')
+            return redirect(url_for('direct_payment_reversal'))
+
         conn.start_transaction()
 
-        # 1. Update Reversal (Cash Book)
-        cursor.execute("CALL Pudate_Reversale(%s)", (jv,))
+        # Step 1: Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-DIRECT-{jv}', f'Direct Payment Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
 
-        # 2. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # Step 2: Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Direct Payment Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
 
-        # 3. Reverse Inventory In (Bring items out/mark deleted)
-        # Note: The C# code called `Inventory_Items_Revers_IN`.
-        # Logic in `Inventory_Items_Revers_IN` sets `inventory_recod_movment_out = var_In_Items`.
-        # This effectively reverses the IN movement by creating an OUT movement or modifying it.
-        cursor.execute("CALL Inventory_Items_Revers_IN(%s)", (jv,))
+        # Step 3: Reverse inventory IN movements — create matching OUT movements
+        # This undoes the stock increase from the original direct purchase
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code,
+                inventory_recod_action_date,
+                inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                inventory_recod_account, inventory_recod_user_id,
+                JV_No, inventory_recod_location
+            )
+            SELECT
+                inventoy_name, inventoy_code,
+                %s,
+                0, inventory_recod_moument_in,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                'Direct Payment Reversal',
+                %s, %s,
+                inventory_recod_location
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_moument_in > 0
+        """, (today, current_user_pk, rev_jv, jv))
+
+        # Step 4: Mark cash book record as reversed
+        cursor.execute("""
+            UPDATE cash_book_recode SET User_Revers = %s
+            WHERE jv_numbers_jv_id = %s
+        """, (current_user_pk, jv))
 
         conn.commit()
-        flash(f'Direct Payment (JV: {jv}) reversed successfully.', 'success')
+        flash(f'Direct Payment (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
 
     except Exception as e:
         if conn:
@@ -7679,6 +7881,102 @@ def get_reversal_details():
         text += "\n"
 
     return {'details': text.strip()}
+
+# --- Reversal Category (GL Journal Reversal) ---
+@app.route('/reversal_category')
+@login_required
+@has_permission('Access_Reversals')
+def reversal_category():
+    """Reverse general journal entries (JV entries not linked to cash/bank/POS)."""
+    query = """
+        SELECT
+            j.jv_id as JV,
+            j.jv_user_code as VoucherCode,
+            MIN(e.entry_effective_date) as Date,
+            j.jv_naration as Narration,
+            SUM(COALESCE(e.enty_values_DR, 0)) as Amount,
+            CASE WHEN j.jv_user_code LIKE 'REV-%' THEN 1 ELSE 0 END as is_reversed
+        FROM jv_numbers j
+        JOIN entry_details e ON j.jv_id = e.entry_jv
+        WHERE j.jv_user_code LIKE 'JV %'
+          AND j.jv_user_code NOT LIKE 'JV FROM PAYMENT%'
+          AND j.jv_user_code NOT LIKE 'JV FROM RECEIPT%'
+          AND j.jv_user_code NOT LIKE 'JV FORM SEN INVOICE%'
+        GROUP BY j.jv_id, j.jv_user_code, j.jv_naration
+        ORDER BY MIN(e.entry_effective_date) DESC
+        LIMIT 100
+    """
+    rows = db.execute_query(query)
+    return render_template('reversal_category.html', rows=rows)
+
+@app.route('/reversal_category/process', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def reversal_category_process():
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No journal entry selected', 'danger')
+        return redirect(url_for('reversal_category'))
+
+    current_user_pk = get_current_user_pk()
+    today = date.today()
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Guard: transaction exists
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s", (jv,))
+        if cursor.fetchone()[0] == 0:
+            flash('Journal entry not found.', 'danger')
+            return redirect(url_for('reversal_category'))
+
+        # Guard: already reversed (a reversal JV with REV-JV-{jv} exists)
+        cursor.execute(
+            "SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code = %s",
+            (f'REV-JV-{jv}',))
+        if cursor.fetchone()[0] > 0:
+            flash('This journal entry has already been reversed.', 'warning')
+            return redirect(url_for('reversal_category'))
+
+        conn.start_transaction()
+
+        # Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-JV-{jv}', f'Journal Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
+
+        # Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Journal Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
+
+        conn.commit()
+        flash(f'Journal Entry (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error reversing journal entry: {str(e)}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('reversal_category'))
 
 # --- Customer Receipt (Accounts Receivable) ---
 @app.route('/customer_receipt')
@@ -8108,14 +8406,49 @@ def delete_customer_invoice():
 
         conn.start_transaction()
 
+        current_user_pk = get_current_user_pk()
+        today = date.today()
+
         # 1. Mark Invoice as deleted
         cursor.execute("UPDATE Invoice_Oustanding SET oustanding_delete = 1 WHERE invoice_JV = %s", (jv_no,))
 
-        # 2. Reverse/Delete Inventory Records
-        cursor.execute("CALL Inventory_Delete(%s)", (jv_no,))
+        # 2. Reverse inventory records — mark IN movements as reversed by creating OUT movements
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code,
+                inventory_recod_action_date,
+                inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                inventory_recod_account, inventory_recod_user_id,
+                JV_No, inventory_recod_location
+            )
+            SELECT inventoy_name, inventoy_code, %s,
+                   0, inventory_recod_moument_in,
+                   inventory_recod_mesrmet, inventory_recod_unit_price,
+                   'Invoice Deletion Reversal', %s,
+                   %s, inventory_recod_location
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_moument_in > 0
+        """, (today, current_user_pk, jv_no, jv_no))
 
-        # 3. Reverse JV Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # 3. Create reversal JV and reverse GL entries
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-INV-{jv_no}', f'Customer Invoice Deletion Reversal of JV-{jv_no}'))
+        rev_jv = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Customer Invoice Deletion Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
 
         conn.commit()
         return {'success': True}
@@ -8140,16 +8473,65 @@ def reverse_customer_receipt():
     if not jv_no:
         return {'success': False, 'error': 'No JV Number provided'}, 400
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
+
+        # Guard: already reversed? Check if a reversal JV for this already exists
+        cursor.execute(
+            "SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code = %s",
+            (f'REV-RCPT-{jv_no}',))
+        if cursor.fetchone()[0] > 0:
+            return {'success': False, 'error': 'Receipt already reversed'}, 400
+
         conn.start_transaction()
 
-        # 1. Reverse JV entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        current_user_pk = get_current_user_pk()
+        today = date.today()
 
-        # 2. Reverse Receipt specifics
-        cursor.execute("CALL Revers_Recept_Simple(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # Step 1: Create reversal JV and reverse GL entries
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-RCPT-{jv_no}', f'Customer Receipt Reversal of JV-{jv_no}'))
+        rev_jv = cursor.lastrowid
+
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Customer Receipt Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
+
+        # Step 2: Restore Invoice_Oustanding payment amounts
+        # invoice_oustanding_Patment was increased when receipt was processed; undo that
+        cursor.execute("""
+            UPDATE Invoice_Oustanding io
+            JOIN cash_book_recode cbr ON cbr.cash_book_recode_suplier_oustanding_id = io.Id
+                                     AND cbr.jv_numbers_jv_id = %s
+                                     AND cbr.cash_book_recode_dr > 0
+            SET io.invoice_oustanding_Patment = GREATEST(0,
+                    COALESCE(io.invoice_oustanding_Patment, 0) - cbr.cash_book_recode_dr)
+            WHERE cbr.jv_numbers_jv_id = %s
+        """, (jv_no, jv_no))
+
+        # Also check bank book receipts
+        cursor.execute("""
+            UPDATE Invoice_Oustanding io
+            JOIN bank_book_recod bbr ON bbr.bank_book__suplier_oustanding_id = io.Id
+                                    AND bbr.jv_numbers_jv_id = %s
+                                    AND bbr.bank_book_book_recode_dr > 0
+            SET io.invoice_oustanding_Patment = GREATEST(0,
+                    COALESCE(io.invoice_oustanding_Patment, 0) - bbr.bank_book_book_recode_dr)
+            WHERE bbr.jv_numbers_jv_id = %s
+        """, (jv_no, jv_no))
 
         conn.commit()
         return {'success': True}
@@ -11252,31 +11634,62 @@ def reverse_journal_entry():
     jv_no = request.form.get('jv_no')
     if not jv_no: return {'error': 'JV No required'}, 400
 
-    current_user = get_current_user_id()
+    current_user_pk = get_current_user_pk()
+    today = date.today()
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
 
-        # Check if already reversed or linked to bank rec (simplified check)
-        # C# logic checks entry_deleted = 1
+        # Guard: check if already reversed (reversal JV exists with REV-JV- prefix)
+        cursor.execute(
+            "SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code = %s",
+            (f'REV-JV-{jv_no}',))
+        if cursor.fetchone()[0] > 0:
+            return {'error': 'Already reversed'}, 400
+
+        # Also check entry_deleted flag
         cursor.execute("SELECT entry_deleted FROM entry_details WHERE entry_jv = %s LIMIT 1", (jv_no,))
         res = cursor.fetchone()
         if res and res[0] == 1:
             return {'error': 'Already reversed or deleted'}, 400
 
-        # Call Stored Procedure
-        # Note: schema.sql defined `JV_Entry_Revers` with params (jv_No, User01, Edit_Date)
-        # User01 is TEXT, Edit_Date is DATE
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv_no, session.get("user_pk"), datetime.now().date()))
+        conn.start_transaction()
+
+        # Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-JV-{jv_no}', f'Journal Reversal of JV-{jv_no}'))
+        rev_jv = cursor.lastrowid
+
+        # Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Journal Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
 
         conn.commit()
-        cursor.close()
-        conn.close()
-        return {'success': True}
+        return {'success': True, 'rev_jv': rev_jv}
 
     except Exception as e:
+        if conn:
+            conn.rollback()
         return {'error': str(e)}, 500
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
 @app.route('/journal_entry/print/<int:jv_no>')
 @login_required
@@ -13400,14 +13813,35 @@ def service_entry_reversal_process():
 
         conn.start_transaction()
 
-        # 3. Reverse GL Entries
-        cursor.execute("CALL JV_Entry_Revers(%s, %s, %s)", (jv, session.get("user_pk"), datetime.utcnow().strftime("%Y-%m-%d")))
+        # 3. Create reversal JV
+        current_user_pk = get_current_user_pk()
+        today = date.today()
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-SEN-{jv}', f'Service Entry Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
 
-        # 4. Reverse Supplier Liability (Delete Outstanding)
-        cursor.execute("UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s", (jv,))
+        # 4. Reverse GL entries (swap DR ↔ CR)
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Service Entry Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
+
+        # 5. Reverse Supplier Liability (Mark outstanding as deleted)
+        cursor.execute(
+            "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
+            (jv,))
 
         conn.commit()
-        flash(f'Service Entry (JV: {jv}) reversed successfully.', 'success')
+        flash(f'Service Entry (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
 
     except Exception as e:
         if conn:
