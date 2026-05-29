@@ -3787,7 +3787,9 @@ def list_purchase_orders():
         subtotal = float(r['subtotal'] or 0)
         vat = float(r['VAT_Rate'] or 0)
         total = subtotal + (subtotal * vat / 100)
-        st = int(r.get('status') or 1)
+        # IMPORTANT: use explicit None check — 0 is falsy so 'or 1' would wrongly convert pending→approved
+        raw_st = r.get('status')
+        st = int(raw_st) if raw_st is not None else 1
         # status: 0=pending, 1=approved, 2=rejected
         status_label = {0: 'Pending', 1: 'Approved', 2: 'Rejected'}.get(st, 'Approved')
 
@@ -5766,6 +5768,23 @@ def inventory_balance():
     except Exception as e:
         flash(f'Error loading inventory data: {str(e)}', 'danger')
         report_data = []
+
+    # Decode inventoy_img bytes → base64 string for inline HTML display
+    # MySQL BLOB columns come back as bytes; we need a UTF-8 base64 string
+    def _decode_inv_img(img):
+        if not img:
+            return None
+        if isinstance(img, (bytes, bytearray)):
+            try:
+                return img.decode('utf-8')          # already b64 encoded text stored as bytes
+            except Exception:
+                return base64.b64encode(img).decode('utf-8')  # raw binary — encode it
+        return img  # already a string
+
+    report_data = [
+        dict(row, inventoy_img=_decode_inv_img(row.get('inventoy_img')))
+        for row in report_data
+    ]
 
     if download == 'csv':
         si = io.StringIO()
