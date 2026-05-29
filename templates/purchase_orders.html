@@ -314,14 +314,32 @@ function loadPos() {
         .then(data => {
             const tbody = document.getElementById("poListTable");
             tbody.innerHTML = "";
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-4" style="color:#a0aab4;font-size:.85rem;">
+                    <i class="fas fa-inbox" style="font-size:1.4rem;display:block;margin-bottom:6px;opacity:.4;"></i>No purchase orders found.</td></tr>`;
+                return;
+            }
             data.forEach(po => {
-                const statusBadge = po.approved
-                    ? '<span class="badge bg-success">Approved</span>'
-                    : '<span class="badge bg-warning text-dark">Pending</span>';
+                let statusBadge, actionBtns;
+                if (po.status === 0) {
+                    statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;background:#FFF4CE;color:#7A5800;white-space:nowrap;">
+                        <span style="width:5px;height:5px;border-radius:50%;background:#F7C948;display:inline-block;"></span>Pending Approval</span>`;
+                    actionBtns = `
+                        <button class="btn btn-sm btn-success me-1" onclick="approvePo(${po.id})" title="Approve"><i class="fas fa-check"></i></button>
+                        <button class="btn btn-sm" style="background:#fce8e6;color:#C42B1C;border:none;" onclick="rejectPo(${po.id})" title="Reject"><i class="fas fa-times"></i></button>`;
+                } else if (po.status === 2) {
+                    statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;background:#fde8e8;color:#C42B1C;white-space:nowrap;">
+                        <span style="width:5px;height:5px;border-radius:50%;background:#C42B1C;display:inline-block;"></span>Rejected</span>`;
+                    actionBtns = '';
+                } else {
+                    statusBadge = `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:20px;font-size:.7rem;font-weight:700;background:#e8f5e9;color:#166534;white-space:nowrap;">
+                        <span style="width:5px;height:5px;border-radius:50%;background:#107C10;display:inline-block;"></span>Approved</span>`;
+                    actionBtns = '';
+                }
 
-                const approveBtn = po.approved
-                    ? ''
-                    : `<button class="btn btn-sm btn-success me-1" onclick="approvePo(${po.id})"><i class="fas fa-check"></i></button>`;
+                const printBtn = (po.status === 1)
+                    ? `<a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm btn-secondary ms-1" title="Print"><i class="fas fa-print"></i></a>`
+                    : `<a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm" style="background:#f8f9fa;border:1px solid #e2e8f0;color:#605E5C;" title="Preview"><i class="fas fa-eye"></i></a>`;
 
                 tbody.innerHTML += `
                     <tr>
@@ -330,9 +348,9 @@ function loadPos() {
                         <td style="font-size:.875rem;">${po.supplier}</td>
                         <td>${statusBadge}</td>
                         <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${parseFloat(po.total).toFixed(2)}</td>
-                        <td class="text-end">
-                            ${approveBtn}
-                            <a href="/purchase_orders/print/${po.id}" target="_blank" class="btn btn-sm btn-secondary"><i class="fas fa-print"></i></a>
+                        <td class="text-end" style="white-space:nowrap;">
+                            ${actionBtns}
+                            ${printBtn}
                         </td>
                         <td class="text-center">
                             <button class="btn btn-sm" style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;"
@@ -348,7 +366,8 @@ function loadPos() {
                     </tr>
                 `;
             });
-        });
+        })
+        .catch(err => console.error('PO list error:', err));
 }
 
 function filterPos() {
@@ -368,7 +387,23 @@ function approvePo(id) {
             method: 'POST',
             headers: {'Content-Type': 'application/x-www-form-urlencoded'},
             body: `id=${id}`
-        }).then(() => loadPos());
+        }).then(r => r.json()).then(d => {
+            if (d.success) loadPos();
+            else alert(d.error || 'Error approving PO');
+        });
+    }
+}
+
+function rejectPo(id) {
+    if(confirm("Reject this Purchase Order? This action cannot be undone.")) {
+        fetch('/purchase_orders/reject', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `id=${id}`
+        }).then(r => r.json()).then(d => {
+            if (d.success) loadPos();
+            else alert(d.error || 'Error rejecting PO');
+        });
     }
 }
 

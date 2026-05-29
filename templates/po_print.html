@@ -329,7 +329,8 @@
         <div class="doc-header">
             <div class="company-block">
                 {% if company.company_log %}
-                <img src="data:image/png;base64,{{ company.company_log }}" class="company-logo">
+                <img src="data:image/jpeg;base64,{{ company.company_log }}" class="company-logo"
+                     onerror="this.src='data:image/png;base64,{{ company.company_log }}'">
                 {% endif %}
                 <div class="company-name">{{ company.company_name or 'SUWIN ERP' }}</div>
                 <div class="company-line">

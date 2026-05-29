@@ -667,6 +667,11 @@
             <div style="width:28px;height:28px;background:var(--win-danger-bg);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;color:var(--win-danger);font-size:.82rem;"><i class="fas fa-check-double"></i></div>
             <span class="win-card-title">Pending Approvals</span>
             <span class="nav-badge" id="pendingApprovalsBadge" style="margin-left:6px;font-size:.62rem;padding:2px 6px;border-radius:10px;background:var(--win-danger);color:#fff;font-weight:bold;display:none;">0</span>
+            <div style="margin-left:auto;">
+              <a href="/approvals" class="win11-btn win11-btn-secondary" style="font-size:.72rem;padding:4px 10px;">
+                <i class="fas fa-arrow-right" style="font-size:.65rem;"></i> View All
+              </a>
+            </div>
           </div>
           <div class="win-card-body compact" id="pendingApprovalsBody">
             <div style="padding:18px;text-align:center;color:#94a3b8;font-size:.8rem;">
@@ -960,8 +965,20 @@ function fetchModuleStats() {
                         </div>`;
                 } else {
                     const fmtAmt = v => Number(v).toLocaleString(undefined, {minimumFractionDigits:0,maximumFractionDigits:0});
-                    body.innerHTML = items.map(it => `
-                        <div class="appr-item">
+                    body.innerHTML = items.map(it => {
+                        const isPO  = it.source === 'po';
+                        const previewLink = isPO
+                            ? `<a href="/purchase_orders/print/${it.id}" target="_blank"
+                                 style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:#f0f4f8;color:#605E5C;text-decoration:none;border:1px solid #e2e8f0;"
+                                 title="Preview"><i class="fas fa-eye" style="font-size:.65rem;"></i></a>`
+                            : '';
+                        const approveEndpoint = isPO ? '/purchase_orders/approve' : '/approvals/action';
+                        const rejectEndpoint  = isPO ? '/purchase_orders/reject'  : '/approvals/action';
+                        const approveBody = isPO ? `id=${it.id}` : `id=${it.id}&source=jv&action=approve`;
+                        const rejectBody  = isPO ? `id=${it.id}` : `id=${it.id}&source=jv&action=reject`;
+
+                        return `
+                        <div class="appr-item" id="appr-item-${it.source}-${it.id}">
                           <div class="appr-icon" style="background:#f4eff7;color:${it.color}">
                             <i class="fas ${it.icon}"></i>
                           </div>
@@ -969,14 +986,89 @@ function fetchModuleStats() {
                             <div class="appr-name" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.ref_no}</div>
                             <div class="appr-sub" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${it.party || it.type}</div>
                           </div>
-                          <div style="text-align:right;flex-shrink:0;">
-                            <div class="appr-amount">${fmtAmt(it.amount)}</div>
+                          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+                            <div class="appr-amount" style="min-width:52px;text-align:right;">${fmtAmt(it.amount)}</div>
+                            ${previewLink}
+                            <button onclick="dashApprove('${approveEndpoint}','${approveBody}','${it.source}-${it.id}')"
+                                style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:#e8f5e9;color:#107C10;border:none;cursor:pointer;"
+                                title="Approve"><i class="fas fa-check" style="font-size:.65rem;"></i></button>
+                            <button onclick="dashReject('${rejectEndpoint}','${rejectBody}','${it.source}-${it.id}')"
+                                style="display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:5px;background:#fde8e8;color:#C42B1C;border:none;cursor:pointer;"
+                                title="Reject"><i class="fas fa-times" style="font-size:.65rem;"></i></button>
                           </div>
-                        </div>`).join('');
+                        </div>`;
+                    }).join('');
                 }
             }
         })
         .catch(err => console.error('Module stats error:', err));
+}
+
+// ── Dashboard inline approve / reject ──
+function dashApprove(endpoint, body, itemKey) {
+    if (!confirm('Approve this item?')) return;
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+        body: body
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success || d.message) {
+            const el = document.getElementById('appr-item-' + itemKey);
+            if (el) {
+                el.style.transition = 'opacity .3s';
+                el.style.opacity = '0';
+                setTimeout(() => { el.remove(); }, 320);
+            }
+            // Refresh badge count
+            const badge = document.getElementById('pendingApprovalsBadge');
+            if (badge) {
+                const cur = parseInt(badge.textContent) || 0;
+                const nxt = Math.max(0, cur - 1);
+                badge.textContent = nxt;
+                badge.style.display = nxt > 0 ? '' : 'none';
+                document.getElementById('kpiPendingApprovals').textContent = nxt;
+            }
+        } else {
+            alert(d.error || 'Error approving item');
+        }
+    })
+    .catch(() => alert('Network error'));
+}
+
+function dashReject(endpoint, body, itemKey) {
+    if (!confirm('Reject this item? This cannot be undone.')) return;
+    // For JV rejects we need action=reject in the body
+    const finalBody = body.includes('action=') ? body : body + '&action=reject';
+    fetch(endpoint, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-Requested-With': 'XMLHttpRequest'},
+        body: finalBody
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.success || d.message) {
+            const el = document.getElementById('appr-item-' + itemKey);
+            if (el) {
+                el.style.transition = 'opacity .3s';
+                el.style.opacity = '0';
+                setTimeout(() => { el.remove(); }, 320);
+            }
+            const badge = document.getElementById('pendingApprovalsBadge');
+            if (badge) {
+                const cur = parseInt(badge.textContent) || 0;
+                const nxt = Math.max(0, cur - 1);
+                badge.textContent = nxt;
+                badge.style.display = nxt > 0 ? '' : 'none';
+                const kpiEl = document.getElementById('kpiPendingApprovals');
+                if (kpiEl) kpiEl.textContent = nxt;
+            }
+        } else {
+            alert(d.error || 'Error rejecting item');
+        }
+    })
+    .catch(() => alert('Network error'));
 }
 
 // Initialize Dates

@@ -2497,6 +2497,8 @@ def approval_action():
     current_user_pk = get_current_user_pk()
     new_status = 1 if action == 'approve' else 2
 
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
     try:
         if source == 'po':
             db.execute_query("UPDATE OP_NO_Table SET status = %s, Aprove_By = %s, Aproed_Date = %s WHERE id = %s",
@@ -2506,8 +2508,12 @@ def approval_action():
             db.execute_query("UPDATE jv_numbers SET status = %s WHERE jv_id = %s",
                              (new_status, item_id), commit=True)
 
+        if is_ajax:
+            return jsonify({'success': True, 'message': f'Item {action}d'})
         flash(f'Item {action}d successfully', 'success')
     except Exception as e:
+        if is_ajax:
+            return jsonify({'success': False, 'error': str(e)}), 500
         flash(f'Error: {str(e)}', 'danger')
 
     return redirect(url_for('approvals'))
@@ -3701,8 +3707,8 @@ def save_purchase_order():
                 INSERT INTO OP_NO_Table (
                     OP_NO_Other, Creator_Id, Create_Date, Sup_ID, Sup_Name,
                     Special_Instractions, Expecting_Date, Deliver_Location, VAT_Rate,
-                    Save_Post, Delete_PO, Aprove_By, Edit_By
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0)
+                    Save_Post, Delete_PO, Aprove_By, Edit_By, status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 0, 0, 0, 0)
             """
             cursor.execute(query_header, (
                 po_number, current_user_pk, date.today(), sup_id, supplier,
@@ -3767,10 +3773,11 @@ def list_purchase_orders():
         SELECT
             h.id, h.OP_NO_Other as po_number, h.Create_Date as date,
             h.Sup_Name as supplier, h.Save_Post as approved,
+            COALESCE(h.status, 1) as status,
             (SELECT SUM(d.QTY * d.Unit_price) FROM PO_Recode_Details d WHERE d.Link_OP_NO_Table = h.id) as subtotal,
             h.VAT_Rate
         FROM OP_NO_Table h
-        WHERE h.Delete_PO = 0 AND h.status = 1
+        WHERE h.Delete_PO = 0
         ORDER BY h.id DESC
     """
     rows = db.execute_query(query)
@@ -3780,13 +3787,18 @@ def list_purchase_orders():
         subtotal = float(r['subtotal'] or 0)
         vat = float(r['VAT_Rate'] or 0)
         total = subtotal + (subtotal * vat / 100)
+        st = int(r.get('status') or 1)
+        # status: 0=pending, 1=approved, 2=rejected
+        status_label = {0: 'Pending', 1: 'Approved', 2: 'Rejected'}.get(st, 'Approved')
 
         data.append({
             'id': r['id'],
             'po_number': r['po_number'],
             'date': str(r['date']),
             'supplier': r['supplier'],
-            'approved': r['approved'] == 1,
+            'approved': st == 1,
+            'status': st,
+            'status_label': status_label,
             'total': total
         })
     return json.dumps(data)
@@ -3802,11 +3814,26 @@ def approve_purchase_order():
     if po_id:
         db.execute_query("""
             UPDATE OP_NO_Table
-            SET Save_Post = 1, Aprove_By = %s, Aproed_Date = %s
+            SET Save_Post = 1, status = 1, Aprove_By = %s, Aproed_Date = %s
             WHERE id = %s
         """, (current_user_pk, date.today(), po_id), commit=True)
-        return {'success': True}
-    return {'error': 'No ID provided'}, 400
+        return jsonify({'success': True})
+    return jsonify({'error': 'No ID provided'}), 400
+
+@app.route('/purchase_orders/reject', methods=['POST'])
+@login_required
+@has_permission('OP_Approved')
+def reject_purchase_order():
+    po_id = request.form.get('id')
+    current_user_pk = get_current_user_pk()
+    if po_id:
+        db.execute_query("""
+            UPDATE OP_NO_Table
+            SET status = 2, Aprove_By = %s, Aproed_Date = %s
+            WHERE id = %s
+        """, (current_user_pk, date.today(), po_id), commit=True)
+        return jsonify({'success': True})
+    return jsonify({'error': 'No ID provided'}), 400
 
 @app.route('/purchase_orders/print/<int:po_id>')
 @login_required
@@ -3823,6 +3850,12 @@ def print_purchase_order(po_id):
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
     company = company_res[0] if company_res else {}
+    # Decode binary logo to base64 for inline display
+    if company.get('company_log') and isinstance(company['company_log'], bytes):
+        try:
+            company['company_log'] = company['company_log'].decode('utf-8')
+        except Exception:
+            company['company_log'] = base64.b64encode(company['company_log']).decode('utf-8')
 
     # Fetch Supplier Address
     supplier_res = db.execute_query("SELECT * FROM suppliers WHERE sup_id = %s", (header['Sup_ID'],))
@@ -5663,30 +5696,101 @@ def inventory_balance():
     download = request.args.get('download')
     report_data = []
 
-    if view == 'all':
-        report_data = db.execute_query("CALL inventory_balance_01()")
-    elif view == 'low':
-        report_data = db.execute_query("CALL inventory_balance_02()")
-    elif view == 'out':
-        report_data = db.execute_query("CALL inventory_balance_03()")
+    try:
+        if view == 'all':
+            report_data = db.execute_query("""
+                SELECT
+                    ii.id,
+                    ii.inventoy_name,
+                    ii.inventoy_code,
+                    ii.inventoy_bach_code,
+                    ii.inventoy_items_messurment_unit AS unit,
+                    ii.inventoy_img,
+                    ii.Main_Catogry,
+                    ii.Sub_Catogory,
+                    COALESCE(ii.min_qty, 0) AS min_qty,
+                    COALESCE(p.inventory_price_selling, 0) AS selling_price,
+                    COALESCE(p.inventory_price_purcharsing, 0) AS cost_price,
+                    COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) AS current_qty,
+                    COALESCE(SUM(r.inventory_recod_total_value), 0) AS total_value
+                FROM inventoy_items ii
+                LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
+                LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
+                WHERE ii.active = 1
+                GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code, ii.inventoy_bach_code,
+                         ii.inventoy_items_messurment_unit, ii.inventoy_img, ii.Main_Catogry,
+                         ii.Sub_Catogory, ii.min_qty, p.inventory_price_selling, p.inventory_price_purcharsing
+                ORDER BY ii.inventoy_name
+            """)
+        elif view == 'low':
+            report_data = db.execute_query("""
+                SELECT
+                    ii.id,
+                    ii.inventoy_name,
+                    ii.inventoy_code,
+                    ii.inventoy_items_messurment_unit,
+                    ii.inventoy_img,
+                    ii.Main_Catogry,
+                    ii.Sub_Catogory,
+                    COALESCE(ii.min_qty, 0) AS min_qty,
+                    COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) AS current_balance
+                FROM inventoy_items ii
+                LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
+                WHERE ii.active = 1
+                GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code,
+                         ii.inventoy_items_messurment_unit, ii.inventoy_img,
+                         ii.Main_Catogry, ii.Sub_Catogory, ii.min_qty
+                HAVING current_balance > 0 AND current_balance < COALESCE(ii.min_qty, 0)
+                ORDER BY current_balance ASC
+            """)
+        elif view == 'out':
+            report_data = db.execute_query("""
+                SELECT
+                    ii.id,
+                    ii.inventoy_name,
+                    ii.inventoy_code,
+                    ii.inventoy_items_messurment_unit,
+                    ii.inventoy_img,
+                    ii.Main_Catogry,
+                    ii.Sub_Catogory,
+                    COALESCE(SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out), 0) AS current_balance
+                FROM inventoy_items ii
+                LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
+                WHERE ii.active = 1
+                GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code,
+                         ii.inventoy_items_messurment_unit, ii.inventoy_img,
+                         ii.Main_Catogry, ii.Sub_Catogory
+                HAVING current_balance <= 0
+                ORDER BY ii.inventoy_name
+            """)
+    except Exception as e:
+        flash(f'Error loading inventory data: {str(e)}', 'danger')
+        report_data = []
 
     if download == 'csv':
         si = io.StringIO()
         cw = csv.writer(si)
 
         if view == 'all':
-            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Total Qty', 'Total Price'])
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Barcode', 'Unit', 'Category Main', 'Category Sub',
+                         'Min Qty', 'Selling Price', 'Cost Price', 'Current Qty', 'Total Value'])
             for i, r in enumerate(report_data):
                 cw.writerow([
                     i + 1,
                     r.get('inventoy_name', ''),
                     r.get('inventoy_code', ''),
-                    r.get('inventory_recod_mesrmet', ''),
-                    f"{r.get('SUM(inventory_recod_moument_in - inventory_recod_movment_out)', 0):.2f}",
-                    f"{r.get('SUM(inventory_recod_total_value)', 0):.2f}"
+                    r.get('inventoy_bach_code', ''),
+                    r.get('unit', ''),
+                    r.get('Main_Catogry', ''),
+                    r.get('Sub_Catogory', ''),
+                    f"{r.get('min_qty', 0):.2f}",
+                    f"{r.get('selling_price', 0):.2f}",
+                    f"{r.get('cost_price', 0):.2f}",
+                    f"{r.get('current_qty', 0):.2f}",
+                    f"{r.get('total_value', 0):.2f}"
                 ])
         elif view == 'low':
-            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit Type', 'Current Balance', 'Min Qty', 'Status', 'Category-Main', 'Category-Sub'])
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit', 'Current Balance', 'Min Qty', 'Category Main', 'Category Sub'])
             for i, r in enumerate(report_data):
                 cw.writerow([
                     i + 1,
@@ -5695,18 +5799,20 @@ def inventory_balance():
                     r.get('inventoy_items_messurment_unit', ''),
                     f"{r.get('current_balance', 0):.2f}",
                     f"{r.get('min_qty', 0):.2f}",
-                    r.get('status', ''),
                     r.get('Main_Catogry', ''),
                     r.get('Sub_Catogory', '')
                 ])
         elif view == 'out':
-            cw.writerow(['No', 'Item Name', 'Item Code', 'Quantity'])
+            cw.writerow(['No', 'Item Name', 'Item Code', 'Unit', 'Category Main', 'Category Sub', 'Balance'])
             for i, r in enumerate(report_data):
                 cw.writerow([
                     i + 1,
                     r.get('inventoy_name', ''),
                     r.get('inventoy_code', ''),
-                    f"{r.get('Curent_Qty', 0):.2f}"
+                    r.get('inventoy_items_messurment_unit', ''),
+                    r.get('Main_Catogry', ''),
+                    r.get('Sub_Catogory', ''),
+                    f"{r.get('current_balance', 0):.2f}"
                 ])
 
         output = make_response(si.getvalue())
@@ -5714,7 +5820,20 @@ def inventory_balance():
         output.headers["Content-type"] = "text/csv"
         return output
 
-    return render_template('inventory_balance.html', view=view, report_data=report_data)
+    # Pre-compute summary stats for the 'all' view
+    stats = {}
+    if view == 'all' and report_data:
+        stats['total_items'] = len(report_data)
+        stats['total_value'] = sum(float(r.get('total_value') or 0) for r in report_data)
+        stats['out_stock']   = sum(1 for r in report_data if float(r.get('current_qty') or 0) <= 0)
+        stats['low_stock']   = sum(
+            1 for r in report_data
+            if float(r.get('current_qty') or 0) > 0
+            and float(r.get('min_qty') or 0) > 0
+            and float(r.get('current_qty') or 0) < float(r.get('min_qty') or 0)
+        )
+
+    return render_template('inventory_balance.html', view=view, report_data=report_data, stats=stats)
 
 # --- Inventory Reports ---
 @app.route('/inventory_reports')
