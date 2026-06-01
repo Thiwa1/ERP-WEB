@@ -5114,7 +5114,10 @@ def direct_purchasing():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
     items = db.execute_query("SELECT inventoy_name FROM inventoy_items")
-    jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit WHERE job_active = 1 ORDER BY job_number") if db.execute_query("SHOW TABLES LIKE 'jobs_unit'") else []
+    try:
+        jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit ORDER BY job_number")
+    except Exception:
+        jobs = []
 
     last_jv = request.args.get('last_jv')
 
