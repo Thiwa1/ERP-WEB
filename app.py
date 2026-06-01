@@ -5114,14 +5114,19 @@ def direct_purchasing():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
     items = db.execute_query("SELECT inventoy_name FROM inventoy_items")
+    jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit WHERE job_active = 1 ORDER BY job_number") if db.execute_query("SHOW TABLES LIKE 'jobs_unit'") else []
+
+    last_jv = request.args.get('last_jv')
 
     return render_template('direct_purchasing.html',
                            cash_accounts=cash_accounts,
                            cost_accounts=cost_accounts,
                            inventory_items=items,
+                           jobs=jobs,
                            today_date=datetime.now().strftime('%Y-%m-%d'),
                            session_payment_items=session.get('payment_items', []),
-                           total_value=session.get('payment_total', 0))
+                           total_value=session.get('payment_total', 0),
+                           last_jv=last_jv)
 
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
@@ -5139,15 +5144,16 @@ def direct_purchasing_add_item():
     except ValueError:
         price = 0.0
 
+    raw_job = request.form.get('job_no', '').strip()
     item = {
         'account': request.form.get('cost_account'),
         'item_name': request.form.get('inventory_item'),
-        'job_no': request.form.get('job_no'),
+        'job_no': raw_job if raw_job else None,   # store None, never empty string
         'qty': qty,
         'price': price,
-        'narration': request.form.get('narration')
+        'narration': request.form.get('narration', '')
     }
-    item['total'] = item['qty'] * item['price']
+    item['total'] = round(item['qty'] * item['price'], 2)
 
     if 'payment_items' not in session:
         session['payment_items'] = []
@@ -5155,10 +5161,34 @@ def direct_purchasing_add_item():
     session['payment_items'].append(item)
     session.modified = True
 
-    # Recalculate total
     total = sum(i['total'] for i in session['payment_items'])
-    session['payment_total'] = total
+    session['payment_total'] = round(total, 2)
 
+    return redirect(url_for('direct_purchasing'))
+
+@app.route('/direct_purchasing/remove_item', methods=['POST'])
+@login_required
+def direct_purchasing_remove_item():
+    try:
+        idx = int(request.form.get('index', -1))
+    except (ValueError, TypeError):
+        idx = -1
+
+    items = session.get('payment_items', [])
+    if 0 <= idx < len(items):
+        items.pop(idx)
+        session['payment_items'] = items
+        session['payment_total'] = round(sum(i['total'] for i in items), 2)
+        session.modified = True
+
+    return redirect(url_for('direct_purchasing'))
+
+@app.route('/direct_purchasing/clear', methods=['POST'])
+@login_required
+def direct_purchasing_clear():
+    session.pop('payment_items', None)
+    session.pop('payment_total', None)
+    session.modified = True
     return redirect(url_for('direct_purchasing'))
 
 @app.route('/direct_purchasing/submit', methods=['POST'])
@@ -5208,9 +5238,9 @@ def direct_purchasing_submit():
 
         # Debit Expense/Asset Accounts (Per Item)
         for item in items:
-            # Handle Job No
-            job_no = item.get('job_no')
-            if job_no and job_no.strip() == "": job_no = None
+            # Ensure job_no is None (NULL) if empty — prevents FK constraint violation
+            raw_job = item.get('job_no')
+            job_no = raw_job if raw_job and str(raw_job).strip() else None
 
             # Debit Entry
             cursor.execute("""
@@ -5218,7 +5248,8 @@ def direct_purchasing_submit():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (item['account'], item['total'], today_date, today_date, item['narration'], current_user, jv_no, job_no))
+            """, (item['account'], item['total'], today_date, today_date,
+                  item.get('narration') or 'Direct Purchase', current_user, jv_no, job_no))
 
             # 4. Cash Book Record
             cursor.execute("""
