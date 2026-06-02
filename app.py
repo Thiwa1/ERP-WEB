@@ -3376,6 +3376,7 @@ def cash_payment_submit():
         flash('No payment amounts entered', 'warning')
         return redirect(url_for('cash_payment'))
 
+    _cash_jv = None  # ensure always defined
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
