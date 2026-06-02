@@ -1,283 +1,430 @@
 {% extends "base.html" %}
-
 {% block title %}Direct Purchasing{% endblock %}
-
 {% block content %}
 <style>
-    .page-icon-tile {
-        width: 42px; height: 42px; border-radius: 10px;
-        display: flex; align-items: center; justify-content: center;
-        color: #fff; font-size: 1.1rem;
-        box-shadow: 0 4px 12px rgba(0,0,0,.15);
-        flex-shrink: 0;
-    }
-    .section-label {
-        font-size: .7rem; font-weight: 700; letter-spacing: .8px;
-        text-transform: uppercase; color: #605E5C;
-        margin-bottom: .6rem; display: block;
-    }
-    .form-label { font-size: .8rem !important; font-weight: 600 !important; color: #323130 !important; }
-    .panel-card { border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 8px rgba(0,0,0,.07); background: #fff; }
-    .amount-cell { font-family: 'JetBrains Mono','Courier New',monospace; }
-    .btn-remove-item {
-        width: 26px; height: 26px; border-radius: 6px; border: none;
-        background: #fce8e6; color: #C42B1C; font-size: .75rem;
-        display: inline-flex; align-items: center; justify-content: center;
-        cursor: pointer; transition: background .15s;
-        padding: 0; line-height: 1;
-    }
-    .btn-remove-item:hover { background: #C42B1C; color: #fff; }
+.page-icon-tile{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;}
+.section-label{font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;margin-bottom:.6rem;display:block;}
+.form-label{font-size:.8rem!important;font-weight:600!important;color:#323130!important;}
+.panel-card{border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;}
+.amount-cell{font-family:'JetBrains Mono','Courier New',monospace;}
+.btn-remove-item{width:26px;height:26px;border-radius:6px;border:none;background:#fce8e6;color:#C42B1C;font-size:.75rem;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;padding:0;}
+.btn-remove-item:hover{background:#C42B1C;color:#fff;}
+
+/* ── Document Upload Widget ── */
+.doc-upload-zone{border:2px dashed #d1d5db;border-radius:10px;padding:14px 16px;background:#fafafa;transition:border-color .2s,background .2s;}
+.doc-upload-zone.drag-over{border-color:#0078D4;background:#eff6ff;}
+.doc-chip{display:inline-flex;align-items:center;gap:6px;background:#f0f4ff;border:1px solid #c7d2fc;border-radius:20px;padding:3px 10px 3px 8px;font-size:.75rem;font-weight:600;color:#3730a3;max-width:200px;}
+.doc-chip .chip-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px;}
+.doc-chip .chip-del{cursor:pointer;color:#c5221f;flex-shrink:0;line-height:1;}
+.doc-chip .chip-del:hover{color:#991b1b;}
+.doc-chips-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;min-height:0;}
+.doc-upload-btn{background:#fff;border:1px solid #d1d5db;border-radius:8px;font-size:.78rem;font-weight:600;color:#374151;padding:5px 12px;cursor:pointer;display:inline-flex;align-items:center;gap:6px;transition:border-color .15s,color .15s;}
+.doc-upload-btn:hover{border-color:#0078D4;color:#0078D4;}
+.doc-upload-btn input[type=file]{display:none;}
+
+/* ── Post-submit doc panel ── */
+.jv-doc-panel{border-radius:10px;border:1px solid #e2e8f0;background:#fff;overflow:hidden;margin-top:20px;}
+.jv-doc-panel .dpanel-hdr{background:#f8f9fb;padding:12px 18px;border-bottom:1px solid #e2e8f0;font-size:.75rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#374151;display:flex;align-items:center;gap:8px;}
+.doc-file-row{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;border-bottom:1px solid #f1f5f9;font-size:.82rem;}
+.doc-file-row:last-child{border-bottom:none;}
+.doc-file-icon{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:.85rem;flex-shrink:0;}
 </style>
 
 <div class="container-fluid">
 
-    <!-- Page Header -->
-    <div class="d-flex align-items-center gap-3 mb-4">
-        <div class="page-icon-tile" style="background: linear-gradient(135deg,#CA5010,#A33D0E);">
-            <i class="fas fa-hand-holding-usd"></i>
+  <!-- Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="page-icon-tile" style="background:linear-gradient(135deg,#CA5010,#A33D0E);">
+      <i class="fas fa-hand-holding-usd"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#201f1e;">Direct Purchase</h5>
+      <small style="color:#605E5C;font-size:.78rem;">Purchasing</small>
+    </div>
+  </div>
+
+  <!-- Success Banner -->
+  {% if last_jv %}
+  <div id="successBanner" class="d-flex align-items-center justify-content-between mb-4 px-4 py-3"
+       style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
+    <div class="d-flex align-items-center gap-2">
+      <i class="fas fa-check-circle" style="color:#16a34a;font-size:1.1rem;"></i>
+      <div>
+        <div class="fw-bold" style="color:#15803d;font-size:.9rem;">Payment submitted successfully</div>
+        <div style="font-size:.78rem;color:#166534;">JV No: <strong>{{ last_jv }}</strong></div>
+      </div>
+    </div>
+    <a href="/voucher/print/direct/{{ last_jv }}" target="_blank"
+       class="btn btn-sm fw-bold"
+       style="background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:.8rem;padding:7px 18px;">
+      <i class="fas fa-print me-1"></i> Print Voucher
+    </a>
+  </div>
+  {% endif %}
+
+  <div class="row g-4">
+
+    <!-- LEFT: Items table -->
+    <div class="col-lg-7 order-lg-1">
+      <div class="panel-card h-100">
+        <div class="card-body p-0">
+          <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+            <span class="section-label mb-0">Payment Items</span>
+            {% if session_payment_items %}
+            <form method="POST" action="/direct_purchasing/clear" onsubmit="return confirm('Clear all items?');">
+              <button type="submit" class="btn btn-sm" style="background:#fce8e6;color:#C42B1C;border:none;border-radius:7px;font-size:.75rem;font-weight:600;padding:4px 12px;">
+                <i class="fas fa-trash me-1"></i> Clear All
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          <div class="table-responsive" style="border-top:1px solid #f0f2f5;">
+            <table class="table table-hover mb-0" id="itemsTable">
+              <thead style="background:#f8f9fa;">
+                <tr>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:32px;text-align:center;">#</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Qty</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
+                  <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:130px;">Attachment</th>
+                  <th style="width:34px;"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if session_payment_items %}
+                  {% for item in session_payment_items %}
+                  <tr>
+                    <td style="color:#605E5C;font-size:.85rem;text-align:center;">{{ loop.index }}</td>
+                    <td style="font-size:.82rem;color:#201f1e;">{{ item.account }}</td>
+                    <td style="font-size:.82rem;color:#201f1e;">{{ item.item_name or '—' }}</td>
+                    <td class="text-end amount-cell" style="font-size:.85rem;">{{ item.qty }}</td>
+                    <td class="text-end amount-cell fw-bold" style="font-size:.875rem;color:#201f1e;">{{ "{:,.2f}".format(item.total|float) }}</td>
+                    <!-- Per-line attachment (only usable after submit) -->
+                    <td style="padding:.4rem .5rem;">
+                      <span style="font-size:.72rem;color:#a0aec0;font-style:italic;">Submit first</span>
+                    </td>
+                    <td style="padding:.4rem .5rem;vertical-align:middle;">
+                      <form method="POST" action="/direct_purchasing/remove_item" style="margin:0;">
+                        <input type="hidden" name="index" value="{{ loop.index0 }}">
+                        <button type="submit" class="btn-remove-item" title="Remove item"><i class="fas fa-times"></i></button>
+                      </form>
+                    </td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="7" class="text-center py-5" style="color:#a0aec0;">
+                      <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.4;"></i>
+                      No items added yet.
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+              <tfoot style="background:#f8f9fa;border-top:2px solid #e2e8f0;">
+                <tr>
+                  <td colspan="4" class="text-end fw-bold" style="font-size:.85rem;color:#323130;padding:.75rem 1rem;">Total</td>
+                  <td class="text-end fw-bold amount-cell" style="font-size:1rem;color:#CA5010;padding:.75rem .75rem;">
+                    {{ "{:,.2f}".format(total_value|float) }}
+                  </td>
+                  <td colspan="2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </div>
-        <div>
-            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Direct Purchase</h5>
-            <small style="color:#605E5C; font-size:.78rem;">Purchasing</small>
-        </div>
+      </div>
     </div>
 
-    <!-- ── Success Banner with Print Voucher ── -->
-    {% if last_jv %}
-    <div class="d-flex align-items-center justify-content-between mb-4 px-4 py-3"
-         style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
-        <div class="d-flex align-items-center gap-2">
-            <i class="fas fa-check-circle" style="color:#16a34a;font-size:1.1rem;"></i>
-            <div>
-                <div class="fw-bold" style="color:#15803d;font-size:.9rem;">Payment submitted successfully</div>
-                <div style="font-size:.78rem;color:#166534;">JV No: <strong>{{ last_jv }}</strong></div>
+    <!-- RIGHT: Add item + Finalize -->
+    <div class="col-lg-5 order-lg-2">
+
+      <!-- Add Item Form -->
+      <div class="panel-card mb-4">
+        <div class="card-body px-4 py-4">
+          <span class="section-label">Add Line Item</span>
+          <form method="POST" action="/direct_purchasing/add_item">
+            <div class="mb-3">
+              <label class="form-label">Cost Account <span style="color:#C42B1C;">*</span></label>
+              <select name="cost_account" class="form-select select2" required>
+                <option value="">Select Expense / Asset Account</option>
+                {% for acc in cost_accounts %}
+                <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
+                {% endfor %}
+              </select>
             </div>
+            <div class="mb-3">
+              <label class="form-label">Inventory Item <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
+              <select name="inventory_item" class="form-select select2">
+                <option value="">— No Item —</option>
+                {% for item in inventory_items %}
+                <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Job Number <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
+              <select name="job_no" class="form-select select2">
+                <option value="">— No Job —</option>
+                {% for job in jobs %}
+                <option value="{{ job.job_number }}">{{ job.job_number }}{% if job.job_description %} – {{ job.job_description }}{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="row g-3 mb-3">
+              <div class="col-6">
+                <label class="form-label">Quantity</label>
+                <input type="number" name="qty" class="form-control" step="0.01" min="0" value="1">
+              </div>
+              <div class="col-6">
+                <label class="form-label">Unit Price <span style="color:#C42B1C;">*</span></label>
+                <input type="number" name="price" class="form-control" step="0.01" min="0" placeholder="0.00" required>
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">Narration</label>
+              <input type="text" name="narration" class="form-control" placeholder="Item description…">
+            </div>
+            <button type="submit" class="btn w-100 py-2" style="background:#CA5010;border:none;border-radius:8px;font-weight:600;color:#fff;">
+              <i class="fas fa-plus me-2"></i>Add Line Item
+            </button>
+          </form>
         </div>
-        <div class="d-flex gap-2">
-            <a href="/voucher/print/direct/{{ last_jv }}" target="_blank"
-               class="btn btn-sm fw-bold"
-               style="background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:.8rem;padding:7px 18px;">
-                <i class="fas fa-print me-1"></i> Print Payment Voucher
-            </a>
+      </div>
+
+      <!-- Finalize -->
+      <div class="panel-card">
+        <div class="card-body px-4 py-4">
+          <span class="section-label">Finalize Transaction</span>
+          <form method="POST" action="/direct_purchasing/submit"
+                onsubmit="return {% if not session_payment_items %}(alert('Add at least one item first.'),false){% else %}confirm('Submit this direct payment?'){% endif %};">
+            <div class="mb-3">
+              <label class="form-label">Transaction Date</label>
+              <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">Cash Account <span style="color:#605E5C;font-weight:400;">(Source)</span></label>
+              <select name="cash_account" class="form-select select2" required>
+                <option value="">Select Cash Account</option>
+                {% for acc in cash_accounts %}
+                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="d-flex justify-content-between align-items-center mb-4 px-3 py-2"
+                 style="background:#fff7f0;border:1px solid #fde8d0;border-radius:8px;">
+              <span style="font-size:.82rem;color:#605E5C;font-weight:600;">{{ session_payment_items|length }} item(s)</span>
+              <span class="fw-bold amount-cell" style="font-size:1rem;color:#CA5010;">{{ "{:,.2f}".format(total_value|float) }}</span>
+            </div>
+            <button type="submit" class="btn w-100 py-2"
+                    style="background:#CA5010;border:none;border-radius:8px;font-weight:600;color:#fff;font-size:.95rem;"
+                    {% if not session_payment_items %}disabled{% endif %}>
+              <i class="fas fa-check-circle me-2"></i>Submit Payment
+            </button>
+          </form>
         </div>
+      </div>
     </div>
-    {% endif %}
+  </div>
 
-    <div class="row g-4">
+  <!-- ═══ POST-SUBMIT: Document Upload per Line + Overall ═══ -->
+  {% if last_jv %}
+  <div id="docSection" class="mt-4">
 
-        <!-- LEFT: Item List Table -->
-        <div class="col-lg-7 order-lg-1">
-            <div class="panel-card h-100">
-                <div class="card-body p-0">
-                    <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
-                        <span class="section-label mb-0">Payment Items</span>
-                        {% if session_payment_items %}
-                        <form method="POST" action="/direct_purchasing/clear"
-                              onsubmit="return confirm('Clear all items?');">
-                            <button type="submit" class="btn btn-sm"
-                                    style="background:#fce8e6;color:#C42B1C;border:none;border-radius:7px;font-size:.75rem;font-weight:600;padding:4px 12px;">
-                                <i class="fas fa-trash me-1"></i> Clear All
-                            </button>
-                        </form>
-                        {% endif %}
-                    </div>
-                    <div class="table-responsive" style="border-top:1px solid #f0f2f5;">
-                        <table class="table table-hover mb-0">
-                            <thead style="background:#f8f9fa;">
-                                <tr>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:32px;text-align:center;">#</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Item</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Job</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Qty</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Price</th>
-                                    <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
-                                    <th style="width:36px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% if session_payment_items %}
-                                    {% for item in session_payment_items %}
-                                    <tr>
-                                        <td style="color:#605E5C;font-size:.85rem;text-align:center;">{{ loop.index }}</td>
-                                        <td style="font-size:.85rem;color:#201f1e;">{{ item.account }}</td>
-                                        <td style="font-size:.85rem;color:#201f1e;">{{ item.item_name or '—' }}</td>
-                                        <td style="font-size:.82rem;color:#605E5C;">{{ item.job_no or '—' }}</td>
-                                        <td class="text-end amount-cell" style="font-size:.85rem;">{{ item.qty }}</td>
-                                        <td class="text-end amount-cell" style="font-size:.85rem;">{{ "{:,.2f}".format(item.price|float) }}</td>
-                                        <td class="text-end amount-cell fw-bold" style="font-size:.875rem;color:#201f1e;">{{ "{:,.2f}".format(item.total|float) }}</td>
-                                        <td style="padding:.4rem .5rem;vertical-align:middle;">
-                                            <form method="POST" action="/direct_purchasing/remove_item" style="margin:0;">
-                                                <input type="hidden" name="index" value="{{ loop.index0 }}">
-                                                <button type="submit" class="btn-remove-item" title="Remove item">
-                                                    <i class="fas fa-times"></i>
-                                                </button>
-                                            </form>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                {% else %}
-                                    <tr>
-                                        <td colspan="8" class="text-center py-5" style="color:#a0aec0;">
-                                            <i class="fas fa-inbox fa-2x mb-2 d-block" style="opacity:.4;"></i>
-                                            No items added yet. Use the form on the right to add line items.
-                                        </td>
-                                    </tr>
-                                {% endif %}
-                            </tbody>
-                            <tfoot style="background:#f8f9fa;border-top:2px solid #e2e8f0;">
-                                <tr>
-                                    <td colspan="6" class="text-end fw-bold" style="font-size:.85rem;color:#323130;padding:.75rem 1rem;">Total Amount</td>
-                                    <td class="text-end fw-bold" style="font-size:1rem;color:#CA5010;font-family:monospace;padding:.75rem .75rem;">
-                                        {{ "{:,.2f}".format(total_value|float) }}
-                                    </td>
-                                    <td></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                </div>
-            </div>
+    <!-- Overall JV document upload -->
+    <div class="jv-doc-panel mb-4">
+      <div class="dpanel-hdr">
+        <i class="fas fa-paperclip" style="color:#CA5010;"></i>
+        Overall Payment Documents — JV #{{ last_jv }}
+      </div>
+      <div class="p-3">
+        <div class="doc-upload-zone" id="overallDropZone" ondragover="handleDragOver(event,'overallDropZone')" ondragleave="handleDragLeave('overallDropZone')" ondrop="handleDrop(event,'overall',null)">
+          <div class="d-flex align-items-center gap-3">
+            <label class="doc-upload-btn mb-0">
+              <i class="fas fa-cloud-upload-alt"></i> Choose File
+              <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                     onchange="uploadFiles(this.files,'overall',null)">
+            </label>
+            <span style="font-size:.78rem;color:#9ca3af;">or drag &amp; drop here — PDF, images, Word, Excel (max 10 MB each)</span>
+          </div>
+          <div class="doc-chips-row" id="chips-overall"></div>
         </div>
-
-        <!-- RIGHT: Controls -->
-        <div class="col-lg-5 order-lg-2">
-
-            <!-- Add Item Form -->
-            <div class="panel-card mb-4">
-                <div class="card-body px-4 py-4">
-                    <span class="section-label">Add Line Item</span>
-                    <form method="POST" action="/direct_purchasing/add_item">
-
-                        <div class="mb-3">
-                            <label class="form-label">Cost Account <span style="color:#C42B1C;">*</span></label>
-                            <select name="cost_account" class="form-select select2" required>
-                                <option value="">Select Expense / Asset Account</option>
-                                {% for acc in cost_accounts %}
-                                <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Inventory Item <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
-                            <select name="inventory_item" class="form-select select2">
-                                <option value="">— No Item —</option>
-                                {% for item in inventory_items %}
-                                <option value="{{ item.inventoy_name }}">{{ item.inventoy_name }}</option>
-                                {% endfor %}
-                            </select>
-                            <div class="mt-1" style="font-size:.74rem;color:#a0aec0;">Select only if this purchase adds stock to inventory.</div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Job Number <span style="color:#a0aec0;font-weight:400;">(Optional)</span></label>
-                            <select name="job_no" class="form-select select2">
-                                <option value="">— No Job —</option>
-                                {% for job in jobs %}
-                                <option value="{{ job.job_number }}">{{ job.job_number }}{% if job.job_description %} – {{ job.job_description }}{% endif %}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="row g-3 mb-3">
-                            <div class="col-6">
-                                <label class="form-label">Quantity</label>
-                                <input type="number" name="qty" class="form-control" step="0.01" min="0" value="1" placeholder="0.00">
-                            </div>
-                            <div class="col-6">
-                                <label class="form-label">Unit Price / Amount <span style="color:#C42B1C;">*</span></label>
-                                <input type="number" name="price" class="form-control" step="0.01" min="0" placeholder="0.00" required>
-                            </div>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="form-label">Narration</label>
-                            <input type="text" name="narration" class="form-control" placeholder="Item description…">
-                        </div>
-
-                        <button type="submit" class="btn w-100 fw-600 py-2"
-                                style="background:#CA5010;border:none;border-radius:8px;font-weight:600;color:#fff;">
-                            <i class="fas fa-plus me-2"></i>Add Line Item
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-            <!-- Finalize Transaction Card -->
-            <div class="panel-card">
-                <div class="card-body px-4 py-4">
-                    <span class="section-label">Finalize Transaction</span>
-                    <form method="POST" action="/direct_purchasing/submit"
-                          onsubmit="return {% if not session_payment_items %}(alert('Add at least one item first.'), false){% else %}confirm('Submit this direct payment?'){% endif %};">
-
-                        <div class="mb-3">
-                            <label class="form-label">Transaction Date</label>
-                            <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="form-label">Cash Account <span style="color:#605E5C;font-weight:400;">(Payment Source)</span></label>
-                            <select name="cash_account" class="form-select select2" required>
-                                <option value="">Select Cash Account</option>
-                                {% for acc in cash_accounts %}
-                                <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <!-- Summary row -->
-                        <div class="d-flex justify-content-between align-items-center mb-4 px-3 py-2"
-                             style="background:#fff7f0;border:1px solid #fde8d0;border-radius:8px;">
-                            <span style="font-size:.82rem;color:#605E5C;font-weight:600;">
-                                {{ session_payment_items|length }} item(s)
-                            </span>
-                            <span class="fw-bold" style="font-size:1rem;color:#CA5010;font-family:monospace;">
-                                {{ "{:,.2f}".format(total_value|float) }}
-                            </span>
-                        </div>
-
-                        <button type="submit" class="btn w-100 py-2"
-                                style="background:#CA5010;border:none;border-radius:8px;font-weight:600;color:#fff;font-size:.95rem;"
-                                {% if not session_payment_items %}disabled{% endif %}>
-                            <i class="fas fa-check-circle me-2"></i>Submit Payment
-                        </button>
-                    </form>
-                </div>
-            </div>
-
-        </div>
+      </div>
     </div>
-</div>
 
-<!-- Document Attachments — shown after successful direct payment -->
-<div id="dpDocSection" style="display:none;" class="container-fluid mt-4 mb-4">
-    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
-        <div class="px-4 pt-3 pb-2 d-flex align-items-center gap-2">
-            <i class="fas fa-paperclip" style="color:#CA5010;"></i>
-            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
-                Attachments — JV #<span id="dpJvLabel"></span>
-            </span>
-        </div>
-        <div class="px-4 pb-4">
-            <div id="dpDocWidget"></div>
-        </div>
+    <!-- Per-line document upload (fetched from DB after submit) -->
+    <div class="jv-doc-panel">
+      <div class="dpanel-hdr">
+        <i class="fas fa-list" style="color:#CA5010;"></i>
+        Per-Line Item Documents — JV #{{ last_jv }}
+        <span style="font-size:.7rem;font-weight:400;color:#9ca3af;margin-left:4px;">(attach receipts, invoices, photos per item)</span>
+      </div>
+      <div id="lineDocRows" class="p-0"></div>
     </div>
-</div>
+
+  </div>
+  {% endif %}
+
+</div><!-- /container-fluid -->
 
 <script>
-(function() {
-    {% if last_jv %}
-    const jv = '{{ last_jv }}';
-    document.getElementById('dpJvLabel').textContent = jv;
-    document.getElementById('dpDocSection').style.display = '';
-    const el = document.getElementById('dpDocWidget');
-    el.setAttribute('data-type', 'direct_payment');
-    el.setAttribute('data-id', jv);
-    el.setAttribute('data-label', 'Direct Payment JV #' + jv);
-    el.classList.add('doc-widget');
-    if (window.initDocWidget) window.initDocWidget(el);
-    {% endif %}
-})();
+const LAST_JV  = {{ last_jv|tojson if last_jv else 'null' }};
+const REF_TYPE = 'direct_payment';
+
+/* ── File upload core ── */
+function uploadFiles(files, scope, lineIndex) {
+  [...files].forEach(file => {
+    const fd = new FormData();
+    fd.append('ref_type', REF_TYPE);
+    fd.append('ref_id',   LAST_JV);
+    if (lineIndex !== null) fd.append('ref_line', lineIndex);
+    fd.append('file', file);
+
+    const chipId = `chip-${scope}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+    addChip(scope, lineIndex, chipId, file.name, null, true);
+
+    fetch('/documents/upload', { method:'POST', body: fd })
+      .then(r => r.json())
+      .then(res => {
+        if (res.success) {
+          updateChip(chipId, res.id, file.name, false);
+        } else {
+          removeChip(chipId);
+          alert('Upload failed: ' + (res.error || 'Unknown error'));
+        }
+      })
+      .catch(() => { removeChip(chipId); alert('Upload error.'); });
+  });
+}
+
+function chipsContainerId(scope, lineIndex) {
+  return lineIndex !== null ? `chips-line-${lineIndex}` : `chips-overall`;
+}
+
+function addChip(scope, lineIndex, chipId, name, docId, loading) {
+  const container = document.getElementById(chipsContainerId(scope, lineIndex));
+  if (!container) return;
+  const chip = document.createElement('span');
+  chip.className = 'doc-chip';
+  chip.id = chipId;
+  chip.dataset.docId = docId || '';
+  chip.innerHTML = `
+    ${loading ? '<i class="fas fa-spinner fa-spin" style="color:#6b7280;"></i>' : fileIcon(name)}
+    <span class="chip-name" title="${escHtml(name)}">${escHtml(name)}</span>
+    ${loading ? '' : `<span class="chip-del" onclick="deleteDoc(${docId},'${chipId}')">✕</span>`}`;
+  container.appendChild(chip);
+}
+
+function updateChip(chipId, docId, name, loading) {
+  const chip = document.getElementById(chipId);
+  if (!chip) return;
+  chip.dataset.docId = docId;
+  chip.innerHTML = `
+    ${fileIcon(name)}
+    <span class="chip-name" title="${escHtml(name)}">${escHtml(name)}</span>
+    <span class="chip-del" onclick="deleteDoc(${docId},'${chipId}')">✕</span>`;
+}
+
+function removeChip(chipId) {
+  const el = document.getElementById(chipId);
+  if (el) el.remove();
+}
+
+function deleteDoc(docId, chipId) {
+  if (!confirm('Remove this document?')) return;
+  fetch(`/documents/delete/${docId}`, { method:'POST' })
+    .then(r => r.json())
+    .then(res => { if (res.success) removeChip(chipId); });
+}
+
+function fileIcon(name) {
+  const ext = (name || '').split('.').pop().toLowerCase();
+  const map = { pdf:'fas fa-file-pdf', jpg:'fas fa-file-image', jpeg:'fas fa-file-image',
+                png:'fas fa-file-image', gif:'fas fa-file-image', webp:'fas fa-file-image',
+                doc:'fas fa-file-word', docx:'fas fa-file-word',
+                xls:'fas fa-file-excel', xlsx:'fas fa-file-excel', csv:'fas fa-file-csv',
+                txt:'fas fa-file-alt' };
+  const cls = map[ext] || 'fas fa-file';
+  return `<i class="${cls}" style="font-size:.8rem;"></i>`;
+}
+
+function escHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* ── Drag & drop ── */
+function handleDragOver(e, zoneId)  { e.preventDefault(); document.getElementById(zoneId).classList.add('drag-over'); }
+function handleDragLeave(zoneId)    { document.getElementById(zoneId).classList.remove('drag-over'); }
+function handleDrop(e, scope, line) {
+  e.preventDefault();
+  const zoneId = line !== null ? `dropZone-line-${line}` : 'overallDropZone';
+  document.getElementById(zoneId)?.classList.remove('drag-over');
+  uploadFiles(e.dataTransfer.files, scope, line);
+}
+
+/* ── Load existing docs & build per-line rows ── */
+function loadExistingDocs() {
+  if (!LAST_JV) return;
+
+  // Load overall docs
+  fetch(`/documents/list?ref_type=${REF_TYPE}&ref_id=${LAST_JV}`)
+    .then(r => r.json())
+    .then(docs => {
+      docs.forEach(d => {
+        if (d.ref_line === null || d.ref_line === undefined) {
+          const chipId = `chip-existing-${d.id}`;
+          addChip('overall', null, chipId, d.file_name, d.id, false);
+        }
+      });
+    });
+
+  // Build per-line rows from cash_book_recode linked to this JV
+  fetch(`/documents/line_items?jv=${LAST_JV}&ref_type=${REF_TYPE}`)
+    .then(r => r.json())
+    .then(lines => {
+      const container = document.getElementById('lineDocRows');
+      if (!container) return;
+      if (!lines || lines.length === 0) {
+        container.innerHTML = '<div class="px-4 py-3 text-muted" style="font-size:.82rem;">No line items found for this JV.</div>';
+        return;
+      }
+      lines.forEach((line, idx) => {
+        const lineIdx = idx;
+        const row = document.createElement('div');
+        row.style.cssText = 'border-bottom:1px solid #f1f5f9;padding:14px 18px;';
+        row.innerHTML = `
+          <div class="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+            <div style="min-width:0;">
+              <div style="font-size:.82rem;font-weight:600;color:#1a1a2e;">${escHtml(line.account)}</div>
+              <div style="font-size:.75rem;color:#605E5C;">${escHtml(line.narration||'')}${line.item_name?' · <em>'+escHtml(line.item_name)+'</em>':''} &nbsp;<span class="amount-cell fw-bold" style="color:#CA5010;">${Number(line.amount).toLocaleString('en',{minimumFractionDigits:2})}</span></div>
+            </div>
+            <div style="flex-shrink:0;min-width:250px;">
+              <div class="doc-upload-zone" id="dropZone-line-${lineIdx}"
+                   ondragover="handleDragOver(event,'dropZone-line-${lineIdx}')"
+                   ondragleave="handleDragLeave('dropZone-line-${lineIdx}')"
+                   ondrop="handleDrop(event,'line',${lineIdx})">
+                <label class="doc-upload-btn mb-1" style="font-size:.75rem;">
+                  <i class="fas fa-paperclip"></i> Attach
+                  <input type="file" multiple accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                         onchange="uploadFiles(this.files,'line',${lineIdx})">
+                </label>
+                <div class="doc-chips-row" id="chips-line-${lineIdx}"></div>
+              </div>
+            </div>
+          </div>`;
+        container.appendChild(row);
+
+        // Load existing docs for this line
+        fetch(`/documents/list?ref_type=${REF_TYPE}&ref_id=${LAST_JV}&ref_line=${lineIdx}`)
+          .then(r => r.json())
+          .then(docs => {
+            docs.forEach(d => {
+              const chipId = `chip-existing-line-${lineIdx}-${d.id}`;
+              addChip('line', lineIdx, chipId, d.file_name, d.id, false);
+            });
+          });
+      });
+    });
+}
+
+document.addEventListener('DOMContentLoaded', loadExistingDocs);
 </script>
 {% endblock %}

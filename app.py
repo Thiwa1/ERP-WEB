@@ -5303,6 +5303,222 @@ def direct_purchasing_submit():
         return redirect(url_for('direct_purchasing', last_jv=_dp_jv))
     return redirect(url_for('direct_purchasing'))
 
+# ================================================================
+# ── DOCUMENT / ATTACHMENT SYSTEM (DB-stored, no filesystem) ────
+# ================================================================
+# All files are stored as base64 in `transaction_documents` table.
+# Linked by ref_type (e.g. 'direct_payment') + ref_id (JV number)
+# and optionally ref_line (line index within that transaction).
+
+_DOCS_TABLE_CREATED = False
+
+def _ensure_docs_table():
+    """Create transaction_documents table if it doesn't exist yet."""
+    global _DOCS_TABLE_CREATED
+    if _DOCS_TABLE_CREATED:
+        return
+    try:
+        db.execute_query("""
+            CREATE TABLE IF NOT EXISTS transaction_documents (
+                id          INT AUTO_INCREMENT PRIMARY KEY,
+                ref_type    VARCHAR(60)  NOT NULL,
+                ref_id      VARCHAR(60)  NOT NULL,
+                ref_line    INT          DEFAULT NULL,
+                file_name   VARCHAR(255) NOT NULL,
+                file_type   VARCHAR(100) DEFAULT NULL,
+                file_data   LONGBLOB     NOT NULL,
+                file_size   INT          DEFAULT 0,
+                uploaded_by VARCHAR(100) DEFAULT NULL,
+                uploaded_at DATETIME     DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_ref (ref_type, ref_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """, commit=True)
+        _DOCS_TABLE_CREATED = True
+    except Exception as e:
+        logging.warning(f"_ensure_docs_table: {e}")
+
+ALLOWED_DOC_EXTENSIONS = {
+    'pdf', 'jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp',
+    'doc', 'docx', 'xls', 'xlsx', 'csv', 'txt'
+}
+MAX_DOC_SIZE_MB = 10
+
+def _allowed_doc(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_DOC_EXTENSIONS
+
+
+@app.route('/documents/upload', methods=['POST'])
+@login_required
+def document_upload():
+    """Upload a document and store it in the DB. Returns JSON."""
+    _ensure_docs_table()
+
+    ref_type = request.form.get('ref_type', '').strip()
+    ref_id   = request.form.get('ref_id',   '').strip()
+    ref_line = request.form.get('ref_line')      # optional line index
+    if not ref_type or not ref_id:
+        return jsonify({'success': False, 'error': 'ref_type and ref_id are required'}), 400
+
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file provided'}), 400
+
+    f = request.files['file']
+    if not f or f.filename == '':
+        return jsonify({'success': False, 'error': 'No file selected'}), 400
+
+    if not _allowed_doc(f.filename):
+        return jsonify({'success': False,
+                        'error': f'File type not allowed. Allowed: {", ".join(sorted(ALLOWED_DOC_EXTENSIONS))}'}), 400
+
+    data = f.read()
+    size_mb = len(data) / (1024 * 1024)
+    if size_mb > MAX_DOC_SIZE_MB:
+        return jsonify({'success': False,
+                        'error': f'File too large ({size_mb:.1f} MB). Max {MAX_DOC_SIZE_MB} MB.'}), 400
+
+    ref_line_val = int(ref_line) if ref_line and str(ref_line).isdigit() else None
+    username = get_current_user_id()
+
+    try:
+        db.execute_query("""
+            INSERT INTO transaction_documents
+                (ref_type, ref_id, ref_line, file_name, file_type, file_data, file_size, uploaded_by)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (ref_type, ref_id, ref_line_val,
+              f.filename, f.content_type, data, len(data), username),
+             commit=True)
+
+        # Get the new ID
+        rows = db.execute_query(
+            "SELECT id FROM transaction_documents WHERE ref_type=%s AND ref_id=%s "
+            "ORDER BY id DESC LIMIT 1",
+            (ref_type, ref_id))
+        new_id = rows[0]['id'] if rows else None
+
+        return jsonify({'success': True, 'id': new_id,
+                        'file_name': f.filename, 'size': len(data)})
+    except Exception as e:
+        logging.error(f"Document upload error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/documents/list')
+@login_required
+def document_list():
+    """Return JSON list of documents for a ref_type + ref_id (+ optional ref_line)."""
+    _ensure_docs_table()
+    ref_type = request.args.get('ref_type', '')
+    ref_id   = request.args.get('ref_id',   '')
+    ref_line = request.args.get('ref_line')
+
+    if not ref_type or not ref_id:
+        return jsonify([])
+
+    try:
+        if ref_line is not None:
+            rows = db.execute_query(
+                "SELECT id, ref_line, file_name, file_type, file_size, uploaded_by, uploaded_at "
+                "FROM transaction_documents WHERE ref_type=%s AND ref_id=%s AND ref_line=%s "
+                "ORDER BY id",
+                (ref_type, ref_id, ref_line))
+        else:
+            rows = db.execute_query(
+                "SELECT id, ref_line, file_name, file_type, file_size, uploaded_by, uploaded_at "
+                "FROM transaction_documents WHERE ref_type=%s AND ref_id=%s "
+                "ORDER BY ref_line, id",
+                (ref_type, ref_id))
+
+        result = []
+        for r in rows:
+            result.append({
+                'id':          r['id'],
+                'ref_line':    r['ref_line'],
+                'file_name':   r['file_name'],
+                'file_type':   r['file_type'] or '',
+                'file_size':   r['file_size'] or 0,
+                'uploaded_by': r['uploaded_by'] or '',
+                'uploaded_at': str(r['uploaded_at'])[:16] if r['uploaded_at'] else ''
+            })
+        return jsonify(result)
+    except Exception as e:
+        logging.error(f"Document list error: {e}")
+        return jsonify([])
+
+
+@app.route('/documents/view/<int:doc_id>')
+@login_required
+def document_view(doc_id):
+    """Stream a stored document (inline or download)."""
+    _ensure_docs_table()
+    try:
+        rows = db.execute_query(
+            "SELECT file_name, file_type, file_data FROM transaction_documents WHERE id=%s",
+            (doc_id,))
+        if not rows:
+            return "Document not found", 404
+        doc = rows[0]
+        data  = doc['file_data']
+        ctype = doc['file_type'] or 'application/octet-stream'
+        fname = doc['file_name']
+
+        from flask import Response as FlaskResponse
+        disposition = 'inline' if ctype.startswith('image/') or ctype == 'application/pdf' else 'attachment'
+        resp = FlaskResponse(data, mimetype=ctype)
+        resp.headers['Content-Disposition'] = f'{disposition}; filename="{fname}"'
+        resp.headers['Content-Length'] = len(data)
+        return resp
+    except Exception as e:
+        return str(e), 500
+
+
+@app.route('/documents/delete/<int:doc_id>', methods=['POST'])
+@login_required
+def document_delete(doc_id):
+    """Delete a stored document."""
+    _ensure_docs_table()
+    try:
+        db.execute_query(
+            "DELETE FROM transaction_documents WHERE id=%s",
+            (doc_id,), commit=True)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/documents/line_items')
+@login_required
+def document_line_items():
+    """Return ordered line items for a direct_payment JV so the UI
+    can render per-line upload zones indexed 0, 1, 2 …"""
+    jv       = request.args.get('jv', '')
+    ref_type = request.args.get('ref_type', 'direct_payment')
+    if not jv:
+        return jsonify([])
+
+    try:
+        # cash_book_recode rows for this JV represent each line item
+        rows = db.execute_query("""
+            SELECT cash_book_recode_accont_name  AS account,
+                   cash_book_recode_naration     AS narration,
+                   cash_book_recode_cr           AS amount,
+                   (SELECT inventoy_name
+                    FROM inventory_recod
+                    WHERE JV_No = c.jv_numbers_jv_id
+                    LIMIT 1)                     AS item_name
+            FROM cash_book_recode c
+            WHERE c.jv_numbers_jv_id = %s
+            ORDER BY c.chash_book_recod_id
+        """, (jv,))
+        return jsonify([{
+            'account':   r.get('account') or '',
+            'narration': r.get('narration') or '',
+            'amount':    float(r.get('amount') or 0),
+            'item_name': r.get('item_name') or ''
+        } for r in rows])
+    except Exception as e:
+        logging.error(f"document_line_items: {e}")
+        return jsonify([])
+
 # --- Inventory Price Editing ---
 @app.route('/inventory_price_editing', methods=['GET'])
 @login_required
