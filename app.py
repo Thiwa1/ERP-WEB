@@ -4364,8 +4364,8 @@ def add_new_user():
 def get_user_details(user_id):
     users = db.execute_query("SELECT id, User_Name, Password, Mobile_No, Email, User_Active FROM Login_Table WHERE id = %s", (user_id,))
     if users:
-        return json.dumps(users[0])
-    return json.dumps({'error': 'User not found'})
+        return jsonify(users[0])
+    return jsonify({'error': 'User not found'}), 404
 
 @app.route('/admin/users/update_details', methods=['POST'])
 @login_required
@@ -4455,8 +4455,8 @@ def update_user_details():
 def get_user_rights(user_id):
     rights = db.execute_query("SELECT * FROM User_Rights WHERE Link_To_Loging_Tabke = %s", (user_id,))
     if rights:
-        return json.dumps(rights[0])
-    return json.dumps({})
+        return jsonify(rights[0])
+    return jsonify({})
 
 @app.route('/admin/users/reset_password', methods=['GET', 'POST'])
 @login_required

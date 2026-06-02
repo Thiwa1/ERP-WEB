@@ -245,22 +245,39 @@
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             border-right: 1px solid rgba(0, 0, 0, 0.05);
             box-shadow: 2px 0 10px rgba(0,0,0,0.05);
-            overflow-y: auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
 
-        /* Webkit scrollbar specific for sidebar to blend in */
-        .sidebar::-webkit-scrollbar {
+        /* Only the menu content area scrolls; header + button stay fixed */
+        .sidebar-scroll-area {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+
+        /* Webkit scrollbar for the scrollable menu area */
+        .sidebar-scroll-area::-webkit-scrollbar {
             width: 4px;
         }
-        .sidebar::-webkit-scrollbar-track {
+        .sidebar-scroll-area::-webkit-scrollbar-track {
             background: transparent;
         }
-        .sidebar::-webkit-scrollbar-thumb {
+        .sidebar-scroll-area::-webkit-scrollbar-thumb {
             background: rgba(0, 0, 0, 0.1);
             border-radius: 4px;
         }
-        .sidebar::-webkit-scrollbar-thumb:hover {
+        .sidebar-scroll-area::-webkit-scrollbar-thumb:hover {
             background: rgba(0, 0, 0, 0.2);
+        }
+
+        /* NEW ITEM button container — always pinned at sidebar bottom */
+        .sidebar-new-item-wrap {
+            flex-shrink: 0;
+            padding: 12px 12px 16px 12px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+            background: rgba(243,243,243,0.98);
         }
 
         .sidebar-header {
@@ -427,11 +444,15 @@
             border-radius: 50%;
             width: 48px;
             height: 48px;
-            margin: 20px auto;
+            margin: 0 auto;
         }
 
         body.sidebar-collapsed .btn-add-new-pro .nav-text {
             display: none;
+        }
+
+        body.sidebar-collapsed .sidebar-new-item-wrap {
+            padding: 10px 0 14px 0;
         }
 
         /* Win11 Sidebar Toggle Button */
@@ -764,6 +785,7 @@
             </a>
         </div>
 
+        <div class="sidebar-scroll-area">
         <div class="sidebar-menu">
             <a href="/" class="nav-link {% if request.path == '/' %}active{% endif %}">
                 <i class="fas fa-th-large"></i> Dashboard
@@ -862,12 +884,16 @@
                 {% endif %}
             </div>
 
-            <div class="px-3">
-                <button class="btn-add-new-pro" data-bs-toggle="modal" data-bs-target="#quickActionsModal">
-                    <i class="fas fa-plus"></i> <span class="nav-text">NEW ITEM</span>
-                </button>
-            </div>
+        </div><!-- /.sidebar-menu -->
+        </div><!-- /.sidebar-scroll-area -->
+
+        <!-- Always-visible NEW ITEM button pinned at bottom -->
+        <div class="sidebar-new-item-wrap">
+            <button class="btn-add-new-pro" data-bs-toggle="modal" data-bs-target="#quickActionsModal">
+                <i class="fas fa-plus"></i> <span class="nav-text">NEW ITEM</span>
+            </button>
         </div>
+
     </nav>
     {% endif %}
 
