@@ -14899,7 +14899,7 @@ def _get_upload_dir():
 
 @app.route('/api/documents/upload', methods=['POST'])
 @login_required
-def document_upload():
+def api_document_upload():
     related_type = request.form.get('related_type', '').strip()
     related_id   = request.form.get('related_id', '').strip()
     notes        = request.form.get('notes', '').strip()
@@ -14963,7 +14963,7 @@ def document_upload():
 
 @app.route('/api/documents/list/<string:related_type>/<path:related_id>')
 @login_required
-def document_list(related_type, related_id):
+def api_document_list(related_type, related_id):
     docs = db.execute_query(
         """SELECT id, file_name, file_size, file_type, notes, uploaded_by,
                   DATE_FORMAT(uploaded_at, '%%d %%b %%Y %%H:%%i') as uploaded_at
@@ -14977,7 +14977,7 @@ def document_list(related_type, related_id):
 
 @app.route('/api/documents/view/<int:doc_id>')
 @login_required
-def document_view(doc_id):
+def api_document_view(doc_id):
     row = db.execute_query(
         "SELECT file_name, stored_name, file_type FROM documents WHERE id = %s", (doc_id,)
     )
@@ -15009,7 +15009,7 @@ def document_view(doc_id):
 
 @app.route('/api/documents/delete/<int:doc_id>', methods=['POST'])
 @login_required
-def document_delete(doc_id):
+def api_document_delete(doc_id):
     row = db.execute_query(
         "SELECT stored_name, uploaded_by FROM documents WHERE id = %s", (doc_id,)
     )
