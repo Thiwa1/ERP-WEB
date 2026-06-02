@@ -3239,7 +3239,9 @@ def company_profile():
 def bank_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
-    return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts, today_date=date.today().strftime('%Y-%m-%d'))
+    last_jv = request.args.get('last_jv')
+    return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts,
+                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv)
 
 # --- Cash Payment Module ---
 @app.route('/cash_payment', methods=['GET'])
@@ -3248,7 +3250,9 @@ def bank_payment():
 def cash_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
-    return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts, today_date=date.today().strftime('%Y-%m-%d'))
+    last_jv = request.args.get('last_jv')
+    return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts,
+                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv)
 
 def _get_supplier_history_data(supplier_name, payment_type):
     """Helper to fetch common supplier details, outstanding invoices, and payment history."""
@@ -3480,15 +3484,19 @@ def cash_payment_submit():
 
         conn.commit()
         flash(f'Cash Payment processed successfully. Voucher No: {new_voucher}', 'success')
+        _cash_jv = jv_no
 
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
         logging.error(f"Cash Payment Error: {e}")
+        _cash_jv = None
     finally:
         cursor.close()
         conn.close()
 
+    if _cash_jv:
+        return redirect(url_for('cash_payment', last_jv=_cash_jv))
     return redirect(url_for('cash_payment'))
 
 @app.route('/cash_payment/delete_invoice', methods=['POST'])
@@ -5518,6 +5526,147 @@ def document_line_items():
     except Exception as e:
         logging.error(f"document_line_items: {e}")
         return jsonify([])
+
+
+# ================================================================
+# ── AI DOCUMENT SCANNER (pytesseract + PyPDF2 + regex) ─────────
+# ================================================================
+
+@app.route('/documents/ai_extract', methods=['POST'])
+@login_required
+def documents_ai_extract():
+    """
+    Scan an uploaded file (image or PDF) with OCR / text extraction,
+    then use regex heuristics to pull out:
+      unit_price, quantity, total_amount, invoice_no, date
+    Returns JSON with the extracted fields.
+    """
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'error': 'No file'}), 400
+
+    f = request.files['file']
+    if not f or f.filename == '':
+        return jsonify({'success': False, 'error': 'Empty file'}), 400
+
+    filename_lower = f.filename.lower()
+    raw_data = f.read()
+
+    extracted_text = ''
+
+    try:
+        if filename_lower.endswith('.pdf'):
+            # ── PDF: use PyPDF2 text extraction ──
+            import PyPDF2
+            reader = PyPDF2.PdfReader(io.BytesIO(raw_data))
+            for page in reader.pages:
+                t = page.extract_text()
+                if t:
+                    extracted_text += t + '\n'
+
+        elif any(filename_lower.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif')):
+            # ── Image: use pytesseract OCR ──
+            try:
+                import pytesseract
+                from PIL import Image
+                img = Image.open(io.BytesIO(raw_data))
+                extracted_text = pytesseract.image_to_string(img)
+            except ImportError:
+                return jsonify({'success': False,
+                                'error': 'OCR not available on this server (pytesseract not installed)'}), 500
+        else:
+            # Try plain text
+            try:
+                extracted_text = raw_data.decode('utf-8', errors='replace')
+            except Exception:
+                extracted_text = ''
+
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Extraction error: {str(e)}'}), 500
+
+    if not extracted_text.strip():
+        return jsonify({'success': False,
+                        'error': 'Could not extract text from this document. '
+                                 'Try a clearer scan or a text-based PDF.'})
+
+    # ── Regex extraction ──
+    import re
+
+    def first_match(patterns, text):
+        for pat in patterns:
+            m = re.search(pat, text, re.IGNORECASE)
+            if m:
+                # return first captured group that is not None
+                for g in m.groups():
+                    if g is not None:
+                        return g.strip().replace(',', '')
+        return None
+
+    def clean_num(s):
+        if s is None:
+            return None
+        s = re.sub(r'[^\d.]', '', s)
+        try:
+            return float(s)
+        except Exception:
+            return None
+
+    # Unit price — look for "Unit Price", "Rate", "Price", "Unit Rate"
+    unit_price_str = first_match([
+        r'unit\s*(?:price|rate|cost)[:\s]*([0-9,]+\.?\d*)',
+        r'rate[:\s]+([0-9,]+\.?\d*)',
+        r'(?:price|cost)\s*per\s*(?:unit|item|piece)[:\s]*([0-9,]+\.?\d*)',
+        r'up[:\s]+([0-9,]+\.?\d{2})',
+    ], extracted_text)
+
+    # Quantity — look for "Qty", "Quantity", "Units", "No. of", "Nos"
+    qty_str = first_match([
+        r'(?:qty|quantity|units?|nos?\.?|pieces?|pcs)[:\s.]*([0-9,]+\.?\d*)',
+        r'(?:no\.|number)\s+of\s+(?:units?|items?|pieces?)[:\s]*([0-9,]+\.?\d*)',
+    ], extracted_text)
+
+    # Total amount — look for "Total", "Amount", "Grand Total", "Net Amount"
+    total_str = first_match([
+        r'(?:grand\s*)?total\s*(?:amount)?[:\s]*(?:lkr|rs\.?|usd|eur|gbp)?\s*([0-9,]+\.?\d{2})',
+        r'(?:net\s*)?amount\s*(?:due|payable)?[:\s]*(?:lkr|rs\.?|usd|eur|gbp)?\s*([0-9,]+\.?\d{2})',
+        r'(?:invoice\s*)?total[:\s]*([0-9,]+\.?\d{2})',
+    ], extracted_text)
+
+    # Invoice number
+    inv_no_str = first_match([
+        r'inv(?:oice)?\.?\s*(?:no\.?|number|#)[:\s]*([A-Z0-9\-/]+)',
+        r'bill\s*(?:no\.?|number|#)[:\s]*([A-Z0-9\-/]+)',
+        r'(?:ref|reference)\s*(?:no\.?|#)?[:\s]*([A-Z0-9\-/]{4,20})',
+    ], extracted_text)
+
+    # Date
+    date_str = first_match([
+        r'(?:invoice\s*|bill\s*|payment\s*)?date[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})',
+        r'(\d{4}[\/\-]\d{2}[\/\-]\d{2})',
+        r'(\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*\d{2,4})',
+    ], extracted_text)
+
+    unit_price = clean_num(unit_price_str)
+    quantity   = clean_num(qty_str)
+    total      = clean_num(total_str)
+
+    # Fallback: if unit_price and quantity both found but no total, compute it
+    if unit_price and quantity and not total:
+        total = round(unit_price * quantity, 2)
+
+    # Fallback: if total and quantity found but no unit_price, compute it
+    if total and quantity and quantity > 0 and not unit_price:
+        unit_price = round(total / quantity, 4)
+
+    result = {
+        'success':      True,
+        'unit_price':   unit_price,
+        'quantity':     quantity,
+        'total_amount': total,
+        'invoice_no':   inv_no_str,
+        'date':         date_str,
+        'raw_text':     extracted_text[:800],   # first 800 chars for debug preview
+    }
+    return jsonify(result)
 
 # --- Inventory Price Editing ---
 @app.route('/inventory_price_editing', methods=['GET'])

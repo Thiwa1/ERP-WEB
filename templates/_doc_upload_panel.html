@@ -1,0 +1,375 @@
+{#
+  Reusable document upload + AI scan panel.
+  Parameters (set as Jinja variables before {% include %}):
+    _doc_jv      — JV number (string/int)
+    _doc_reftype — ref_type string, e.g. 'cash_payment' or 'bank_payment'
+    _doc_color   — hex accent colour  e.g. '#107C10'  or '#0078D4'
+    _doc_label   — human label e.g. 'Cash Payment'
+#}
+{% set _jv      = _doc_jv      | string %}
+{% set _reftype = _doc_reftype %}
+{% set _color   = _doc_color   | default('#0078D4') %}
+{% set _label   = _doc_label   | default('Payment') %}
+
+<style>
+/* ── shared doc panel styles (scoped by .dp-widget) ── */
+.dp-widget .dz{border:2px dashed #d1d5db;border-radius:10px;padding:16px;background:#fafafa;transition:border-color .2s,background .2s;cursor:pointer;}
+.dp-widget .dz:hover,.dp-widget .dz.over{border-color:{{ _color }};background:#f0f7ff;}
+.dp-widget .chip{display:inline-flex;align-items:center;gap:5px;background:#f0f4ff;border:1px solid #c7d2fc;border-radius:20px;padding:3px 10px 3px 8px;font-size:.74rem;font-weight:600;color:#3730a3;max-width:220px;margin:3px;}
+.dp-widget .chip .cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:130px;}
+.dp-widget .chip .cd{cursor:pointer;color:#c5221f;flex-shrink:0;}
+.dp-widget .chip .cd:hover{color:#991b1b;}
+.dp-widget .ai-panel{background:linear-gradient(135deg,#0f172a,#1e3a5f);border-radius:10px;padding:18px 20px;color:#e2e8f0;}
+.dp-widget .ai-field label{font-size:.72rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#94a3b8;margin-bottom:3px;display:block;}
+.dp-widget .ai-field input{background:#1e293b;border:1px solid #334155;border-radius:7px;color:#f8fafc;font-size:.88rem;padding:6px 10px;width:100%;}
+.dp-widget .ai-field input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 2px rgba(59,130,246,.25);}
+.dp-widget .btn-scan{background:linear-gradient(135deg,#3b82f6,#1d4ed8);border:none;border-radius:8px;color:#fff;font-size:.8rem;font-weight:700;padding:8px 20px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;transition:opacity .15s;}
+.dp-widget .btn-scan:hover{opacity:.88;}
+.dp-widget .btn-scan:disabled{opacity:.5;cursor:not-allowed;}
+.dp-widget .ai-badge{display:inline-flex;align-items:center;gap:4px;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.3);border-radius:20px;padding:2px 10px;font-size:.7rem;font-weight:700;color:#93c5fd;margin-left:8px;}
+.dp-widget .scan-spinner{display:none;width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+
+<div class="dp-widget mt-4" id="dpWrap_{{ _jv }}">
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+    <!-- Header -->
+    <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+      <i class="fas fa-paperclip" style="color:{{ _color }};"></i>
+      <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+        {{ _label }} Documents — JV #{{ _jv }}
+      </span>
+      <span class="ai-badge"><i class="fas fa-robot"></i> AI Scan</span>
+    </div>
+
+    <div class="p-4">
+      <div class="row g-4">
+
+        <!-- LEFT: AI Scanner -->
+        <div class="col-lg-5">
+          <div class="ai-panel">
+            <div class="d-flex align-items-center gap-2 mb-3">
+              <i class="fas fa-robot" style="font-size:1.1rem;color:#60a5fa;"></i>
+              <div>
+                <div style="font-weight:700;font-size:.88rem;">AI Document Scanner</div>
+                <div style="font-size:.72rem;color:#94a3b8;">Upload invoice/receipt — AI extracts values</div>
+              </div>
+            </div>
+
+            <!-- AI file drop zone -->
+            <div class="dz mb-3" id="aiDz_{{ _jv }}"
+                 onclick="document.getElementById('aiFile_{{ _jv }}').click()"
+                 ondragover="dzOver(event,'aiDz_{{ _jv }}')"
+                 ondragleave="dzLeave('aiDz_{{ _jv }}')"
+                 ondrop="aiDrop(event,'{{ _jv }}')">
+              <div class="d-flex align-items-center gap-2" style="pointer-events:none;">
+                <i class="fas fa-cloud-upload-alt" style="font-size:1.4rem;color:#64748b;"></i>
+                <div>
+                  <div style="font-size:.82rem;font-weight:600;color:#374151;">Drop file or click to browse</div>
+                  <div style="font-size:.72rem;color:#9ca3af;">PDF, JPG, PNG (max 10 MB)</div>
+                </div>
+              </div>
+              <div id="aiFileName_{{ _jv }}" style="font-size:.75rem;color:#60a5fa;margin-top:6px;display:none;"></div>
+            </div>
+            <input type="file" id="aiFile_{{ _jv }}" style="display:none"
+                   accept=".pdf,.jpg,.jpeg,.png,.gif,.bmp,.tiff"
+                   onchange="aiFileSelected(this,'{{ _jv }}')">
+
+            <button class="btn-scan w-100" id="scanBtn_{{ _jv }}" disabled onclick="runAiScan('{{ _jv }}')">
+              <span class="scan-spinner" id="scanSpin_{{ _jv }}"></span>
+              <i class="fas fa-brain" id="scanIcon_{{ _jv }}"></i>
+              <span id="scanLabel_{{ _jv }}">Scan Document</span>
+            </button>
+
+            <!-- Raw text preview -->
+            <div id="rawPreview_{{ _jv }}" style="display:none;margin-top:10px;">
+              <div style="font-size:.7rem;font-weight:700;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Extracted Text Preview</div>
+              <div id="rawText_{{ _jv }}"
+                   style="background:#0f172a;border:1px solid #334155;border-radius:8px;padding:8px 10px;font-size:.7rem;font-family:monospace;color:#94a3b8;max-height:100px;overflow-y:auto;white-space:pre-wrap;"></div>
+            </div>
+          </div>
+
+          <!-- AI Results Fields -->
+          <div class="mt-3 p-3" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#374151;margin-bottom:10px;">
+              <i class="fas fa-magic me-1" style="color:#8b5cf6;"></i> Extracted Values
+            </div>
+            <div class="row g-2">
+              <div class="col-6 ai-field">
+                <label>Unit Price</label>
+                <input type="number" id="ai_unit_price_{{ _jv }}" placeholder="—" step="0.01" readonly
+                       style="background:#fff;border-color:#e2e8f0;color:#1a1a2e;">
+              </div>
+              <div class="col-6 ai-field">
+                <label>Quantity</label>
+                <input type="number" id="ai_qty_{{ _jv }}" placeholder="—" step="0.01" readonly
+                       style="background:#fff;border-color:#e2e8f0;color:#1a1a2e;">
+              </div>
+              <div class="col-6 ai-field">
+                <label>Total Amount</label>
+                <input type="number" id="ai_total_{{ _jv }}" placeholder="—" step="0.01" readonly
+                       style="background:#fff;border-color:#e2e8f0;color:#1a1a2e;">
+              </div>
+              <div class="col-6 ai-field">
+                <label>Invoice No</label>
+                <input type="text" id="ai_inv_{{ _jv }}" placeholder="—" readonly
+                       style="background:#fff;border-color:#e2e8f0;color:#1a1a2e;">
+              </div>
+              <div class="col-12 ai-field">
+                <label>Date</label>
+                <input type="text" id="ai_date_{{ _jv }}" placeholder="—" readonly
+                       style="background:#fff;border-color:#e2e8f0;color:#1a1a2e;">
+              </div>
+            </div>
+            <div id="aiStatus_{{ _jv }}" style="display:none;margin-top:8px;font-size:.75rem;border-radius:6px;padding:5px 10px;"></div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Document upload & list -->
+        <div class="col-lg-7">
+          <div style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;margin-bottom:8px;">
+            <i class="fas fa-folder-open me-1" style="color:{{ _color }};"></i> Attachments
+          </div>
+
+          <!-- Drop zone -->
+          <div class="dz mb-3" id="docDz_{{ _jv }}"
+               onclick="document.getElementById('docFile_{{ _jv }}').click()"
+               ondragover="dzOver(event,'docDz_{{ _jv }}')"
+               ondragleave="dzLeave('docDz_{{ _jv }}')"
+               ondrop="docDrop(event,'{{ _jv }}','{{ _reftype }}')">
+            <div class="d-flex align-items-center gap-2" style="pointer-events:none;">
+              <i class="fas fa-upload" style="font-size:1.1rem;color:{{ _color }};"></i>
+              <div>
+                <div style="font-size:.82rem;font-weight:600;color:#374151;">Attach documents</div>
+                <div style="font-size:.72rem;color:#9ca3af;">PDF, images, Word, Excel — drag & drop or click</div>
+              </div>
+            </div>
+          </div>
+          <input type="file" id="docFile_{{ _jv }}" style="display:none" multiple
+                 accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                 onchange="docUploadFiles(this.files,'{{ _jv }}','{{ _reftype }}')">
+
+          <!-- Chips -->
+          <div id="docChips_{{ _jv }}" style="display:flex;flex-wrap:wrap;gap:6px;min-height:0;margin-bottom:8px;"></div>
+
+          <!-- File list -->
+          <div id="docList_{{ _jv }}" style="border:1px solid #f1f5f9;border-radius:8px;overflow:hidden;"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── helpers (guard duplicate registration) ── */
+if (!window._dpInit) {
+window._dpInit = true;
+
+window.dzOver  = (e,id)=>{ e.preventDefault(); document.getElementById(id)?.classList.add('over'); };
+window.dzLeave = (id)  =>{ document.getElementById(id)?.classList.remove('over'); };
+
+window.aiDrop = (e, jv) => {
+  e.preventDefault(); dzLeave('aiDz_'+jv);
+  const f = e.dataTransfer.files[0];
+  if (f) { document.getElementById('aiFile_'+jv)._file = f; showAiFile(jv, f.name); }
+};
+
+window.docDrop = (e, jv, reftype) => {
+  e.preventDefault(); dzLeave('docDz_'+jv);
+  docUploadFiles(e.dataTransfer.files, jv, reftype);
+};
+
+window.aiFileSelected = (inp, jv) => {
+  if (inp.files[0]) showAiFile(jv, inp.files[0].name);
+};
+
+window.showAiFile = (jv, name) => {
+  const el = document.getElementById('aiFileName_'+jv);
+  el.textContent = '📄 ' + name; el.style.display = '';
+  document.getElementById('scanBtn_'+jv).disabled = false;
+};
+
+/* ── Run AI Scan ── */
+window.runAiScan = (jv) => {
+  const inp  = document.getElementById('aiFile_'+jv);
+  const file = inp._file || (inp.files && inp.files[0]);
+  if (!file) return;
+
+  const btn   = document.getElementById('scanBtn_'+jv);
+  const spin  = document.getElementById('scanSpin_'+jv);
+  const icon  = document.getElementById('scanIcon_'+jv);
+  const label = document.getElementById('scanLabel_'+jv);
+  const stat  = document.getElementById('aiStatus_'+jv);
+
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+  icon.style.display = 'none';
+  label.textContent = 'Scanning…';
+  stat.style.display = 'none';
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  fetch('/documents/ai_extract', { method:'POST', body: fd })
+    .then(r => r.json())
+    .then(res => {
+      spin.style.display = 'none';
+      icon.style.display = '';
+      label.textContent = 'Scan Document';
+      btn.disabled = false;
+
+      if (!res.success) {
+        showAiStatus(jv, '⚠️ ' + (res.error||'Failed'), 'warning');
+        return;
+      }
+
+      // Populate fields
+      setAiField(jv, 'unit_price', res.unit_price);
+      setAiField(jv, 'qty',        res.quantity);
+      setAiField(jv, 'total',      res.total_amount);
+      const invEl  = document.getElementById('ai_inv_'+jv);
+      const dateEl = document.getElementById('ai_date_'+jv);
+      if (invEl)  invEl.value  = res.invoice_no  || '';
+      if (dateEl) dateEl.value = res.date         || '';
+
+      // Show raw text preview
+      if (res.raw_text) {
+        document.getElementById('rawText_'+jv).textContent = res.raw_text;
+        document.getElementById('rawPreview_'+jv).style.display = '';
+      }
+
+      const found = [
+        res.unit_price  ? `Unit Price: ${res.unit_price}`  : null,
+        res.quantity    ? `Qty: ${res.quantity}`            : null,
+        res.total_amount? `Total: ${res.total_amount}`      : null,
+      ].filter(Boolean);
+
+      showAiStatus(jv,
+        found.length
+          ? '✅ Extracted: ' + found.join(' · ')
+          : '⚠️ No numeric values detected. Try a clearer document.',
+        found.length ? 'success' : 'warning');
+    })
+    .catch(() => {
+      spin.style.display='none'; icon.style.display=''; label.textContent='Scan Document';
+      btn.disabled = false;
+      showAiStatus(jv, '❌ Scan failed. Please try again.', 'danger');
+    });
+};
+
+window.setAiField = (jv, field, val) => {
+  const el = document.getElementById('ai_'+field+'_'+jv);
+  if (el && val !== null && val !== undefined) el.value = val;
+};
+
+window.showAiStatus = (jv, msg, type) => {
+  const el = document.getElementById('aiStatus_'+jv);
+  const colors = { success:'#f0fdf4;color:#166534;border:1px solid #bbf7d0',
+                   warning:'#fffbeb;color:#92400e;border:1px solid #fde68a',
+                   danger: '#fef2f2;color:#991b1b;border:1px solid #fecaca' };
+  el.style.cssText = 'display:block;background:' + (colors[type]||colors.warning);
+  el.textContent = msg;
+};
+
+/* ── Document upload ── */
+window.docUploadFiles = (files, jv, reftype) => {
+  [...files].forEach(file => {
+    const chipId = 'c_'+jv+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,5);
+    addDocChip(jv, chipId, file.name, null, true);
+    const fd = new FormData();
+    fd.append('ref_type', reftype);
+    fd.append('ref_id',   jv);
+    fd.append('file', file);
+    fetch('/documents/upload', { method:'POST', body: fd })
+      .then(r=>r.json())
+      .then(res => {
+        if (res.success) { finaliseChip(chipId, res.id, file.name); addDocRow(jv, res.id, file.name, file.size); }
+        else { removeChip(jv, chipId); alert('Upload failed: '+(res.error||'error')); }
+      })
+      .catch(()=>{ removeChip(jv, chipId); alert('Upload error'); });
+  });
+};
+
+window.addDocChip = (jv, chipId, name, docId, loading) => {
+  const box = document.getElementById('docChips_'+jv);
+  if (!box) return;
+  const s = document.createElement('span'); s.className='chip'; s.id=chipId;
+  s.innerHTML = loading
+    ? `<i class="fas fa-spinner fa-spin" style="font-size:.7rem;"></i><span class="cn">${esc(name)}</span>`
+    : `${fIcon(name)}<span class="cn" title="${esc(name)}">${esc(name)}</span><span class="cd" onclick="delDoc(${docId},'${chipId}','${jv}')">✕</span>`;
+  box.appendChild(s);
+};
+
+window.finaliseChip = (chipId, docId, name) => {
+  const el = document.getElementById(chipId);
+  if (el) el.innerHTML = `${fIcon(name)}<span class="cn" title="${esc(name)}">${esc(name)}</span><span class="cd" onclick="delDoc(${docId},'${chipId}',null)">✕</span>`;
+};
+
+window.removeChip = (jv, chipId) => { document.getElementById(chipId)?.remove(); };
+
+window.delDoc = (docId, chipId) => {
+  if (!confirm('Remove this attachment?')) return;
+  fetch(`/documents/delete/${docId}`, {method:'POST'}).then(r=>r.json()).then(res=>{
+    if (res.success) {
+      document.getElementById(chipId)?.remove();
+      document.getElementById('docRow_'+docId)?.remove();
+    }
+  });
+};
+
+window.addDocRow = (jv, docId, name, size) => {
+  const box = document.getElementById('docList_'+jv);
+  if (!box) return;
+  const row = document.createElement('div');
+  row.id = 'docRow_'+docId;
+  row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9;font-size:.8rem;';
+  row.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+      <span style="font-size:.9rem;">${fIcon(name)}</span>
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px;" title="${esc(name)}">${esc(name)}</span>
+      <span style="font-size:.7rem;color:#9ca3af;flex-shrink:0;">${fmtSize(size)}</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-shrink:0;">
+      <a href="/documents/view/${docId}" target="_blank"
+         style="background:#f0f4ff;border:none;border-radius:6px;padding:3px 10px;font-size:.75rem;font-weight:600;color:#3730a3;text-decoration:none;">
+        <i class="fas fa-eye me-1"></i>View
+      </a>
+      <button onclick="delDoc(${docId},'docRow_${docId}')" style="background:#fce8e6;border:none;border-radius:6px;padding:3px 10px;font-size:.75rem;font-weight:600;color:#c5221f;cursor:pointer;">
+        <i class="fas fa-trash"></i>
+      </button>
+    </div>`;
+  box.appendChild(row);
+};
+
+window.fIcon = name => {
+  const e=(name||'').split('.').pop().toLowerCase();
+  const m={pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',csv:'📊',txt:'📋'};
+  return `<span>${m[e]||'📎'}</span>`;
+};
+window.fmtSize = b => b<1024?b+'B':b<1048576?(b/1024).toFixed(1)+'KB':(b/1048576).toFixed(1)+'MB';
+window.esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+/* ── Load existing docs on init ── */
+window.loadDocPanel = (jv, reftype) => {
+  fetch(`/documents/list?ref_type=${reftype}&ref_id=${jv}`)
+    .then(r=>r.json())
+    .then(docs=>{
+      docs.forEach(d=>{
+        const cid='c_existing_'+d.id;
+        addDocChip(jv, cid, d.file_name, d.id, false);
+        addDocRow(jv, d.id, d.file_name, d.file_size||0);
+      });
+    });
+};
+
+} // end if !window._dpInit
+
+// Auto-init this panel instance
+(()=>{
+  const jv      = {{ _jv|tojson }};
+  const reftype = {{ _reftype|tojson }};
+  if (jv) loadDocPanel(String(jv), reftype);
+})();
+</script>
