@@ -317,25 +317,38 @@
     }
 
     function saveRights() {
-        const form = document.getElementById('rightsForm');
-        const formData = new FormData(form);
+        const userId = document.getElementById('rightsUserId').value;
+        if (!userId) { alert('Please select a user first.'); return; }
 
-        showLoading('Updating Permissions...');
+        // Build a real <form> and submit it — no fetch, no AJAX complexity
+        // This is the most reliable method: server processes, redirects with flash message
+        const f = document.createElement('form');
+        f.method = 'POST';
+        f.action = '/admin/users/rights/update';
 
-        fetch('/admin/users/rights/update', {
-            method: 'POST',
-            body: formData
-        }).then(r => r.json()).then(res => {
-            hideLoading();
-            if(res.success) {
-                alert('Permissions updated successfully');
-            } else {
-                alert('Error updating permissions');
-            }
-        }).catch(err => {
-            hideLoading();
-            alert('System Error');
+        // user_id
+        const uid = document.createElement('input');
+        uid.type = 'hidden'; uid.name = 'user_id'; uid.value = userId;
+        f.appendChild(uid);
+
+        // All checkboxes — send 1/0 explicitly so unchecked ones are included
+        const perms = [
+            'Add_New_User','OP_Approved','Access_Settings',
+            'Access_Sales','Access_Purchase','Access_Accounting',
+            'Access_Inventory','Access_POS','Access_HR','Access_CRM',
+            'Access_Reports','Access_Fixed_Assets','Access_VAT','Access_Reversals'
+        ];
+        perms.forEach(perm => {
+            const cb = document.querySelector(`#rightsForm input[name="${perm}"]`);
+            const inp = document.createElement('input');
+            inp.type = 'hidden';
+            inp.name = perm;
+            inp.value = (cb && cb.checked) ? perm : '';   // non-empty = checked
+            f.appendChild(inp);
         });
+
+        document.body.appendChild(f);
+        f.submit();
     }
 
     function editUser(event, userId) {

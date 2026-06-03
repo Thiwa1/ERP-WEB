@@ -4573,12 +4573,14 @@ def admin_verify_reset():
 @login_required
 @has_permission('Add_New_User')
 def update_user_rights():
-    user_id = request.form.get('user_id')
-    if not user_id: return {'error': 'No User ID'}, 400
+    user_id = request.form.get('user_id', '').strip()
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
 
-    # Map form fields to columns
-    # We use .get() which returns None if not present (unchecked)
-    # Checkbox sends 'on' if checked, nothing if unchecked.
+    if not user_id:
+        if is_ajax: return jsonify({'error': 'No User ID'}), 400
+        flash('No user selected', 'danger')
+        return redirect(url_for('admin_users'))
+
     all_perms = [
         'Add_New_User', 'OP_Approved',
         'Access_Sales', 'Access_Purchase', 'Access_Accounting',
@@ -4588,31 +4590,38 @@ def update_user_rights():
     ]
     perm_values = {p: 1 if request.form.get(p) else 0 for p in all_perms}
 
+    # Discover which columns exist to skip ones not yet migrated
     try:
-        # Try full update; if a column is missing, fall back column-by-column
-        set_clause = ', '.join([f"{p}=%s" for p in all_perms])
-        params = [perm_values[p] for p in all_perms] + [user_id]
-        try:
-            db.execute_query(
-                f"UPDATE User_Rights SET {set_clause} WHERE Link_To_Loging_Tabke=%s",
-                tuple(params), commit=True)
-        except Exception:
-            # Fallback: skip missing columns
-            conn = db.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SHOW COLUMNS FROM User_Rights")
-            existing_cols = {r[0] for r in cursor.fetchall()}
-            cursor.close(); conn.close()
-            set_parts = [f"{p}=%s" for p in all_perms if p in existing_cols]
-            vals = [perm_values[p] for p in all_perms if p in existing_cols] + [user_id]
-            if set_parts:
-                db.execute_query(
-                    f"UPDATE User_Rights SET {', '.join(set_parts)} WHERE Link_To_Loging_Tabke=%s",
-                    tuple(vals), commit=True)
-        return jsonify({'success': True})
+        col_rows = db.execute_query("SHOW COLUMNS FROM User_Rights") or []
+        # execute_query returns list of dicts; col name is key 'Field'
+        existing_cols = set()
+        for r in col_rows:
+            if isinstance(r, dict):
+                existing_cols.add(r.get('Field') or r.get('field') or list(r.values())[0])
+            else:
+                existing_cols.add(r[0])
+    except Exception as e:
+        logging.error(f"SHOW COLUMNS failed: {e}")
+        existing_cols = set(all_perms)
+
+    valid_perms = [p for p in all_perms if p in existing_cols] or all_perms
+    set_clause  = ', '.join([f"`{p}` = %s" for p in valid_perms])
+    params      = tuple(perm_values[p] for p in valid_perms) + (user_id,)
+
+    try:
+        db.execute_query(
+            f"UPDATE User_Rights SET {set_clause} WHERE Link_To_Loging_Tabke = %s",
+            params, commit=True)
+        if is_ajax:
+            return jsonify({'success': True})
+        flash('Access rights saved successfully.', 'success')
+        return redirect(url_for('admin_users'))
     except Exception as e:
         logging.error(f"Rights Update Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        if is_ajax:
+            return jsonify({'error': str(e)}), 500
+        flash(f'Error saving rights: {str(e)}', 'danger')
+        return redirect(url_for('admin_users'))
 
 # --- Job Management ---
 @app.route('/job_management', methods=['GET'])
@@ -5617,7 +5626,16 @@ def documents_ai_extract():
                 extracted_text = pytesseract.image_to_string(img)
             except ImportError:
                 return jsonify({'success': False,
-                                'error': 'OCR not available on this server (pytesseract not installed)'}), 500
+                                'error': 'Tesseract OCR is not installed on this server. '
+                                         'Please install it: sudo apt-get install tesseract-ocr '
+                                         '(or upload a text-based PDF instead — PDFs do not need Tesseract).'}), 500
+            except Exception as ocr_err:
+                # Tesseract binary missing even though pytesseract is installed
+                if 'tesseract' in str(ocr_err).lower() or 'not found' in str(ocr_err).lower():
+                    return jsonify({'success': False,
+                                    'error': 'Tesseract binary not found. '
+                                             'Install it on the server: sudo apt-get install tesseract-ocr'}), 500
+                raise
         else:
             # Try plain text
             try:
