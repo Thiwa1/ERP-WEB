@@ -3638,6 +3638,21 @@ def print_voucher(voucher_type, jv_no):
         else:
             voucher['reversal_id'] = f"User: {voucher.get('reversal_id')} (JV: {jv_no})"
 
+    # For direct payments: fetch actual GL entries so we show the real expense account,
+    # not the hardcoded "Account Payable" placeholder.
+    gl_entries = []
+    if voucher_type == 'direct':
+        gl_rows = db.execute_query("""
+            SELECT account_name,
+                   COALESCE(enty_values_DR, 0) AS dr,
+                   COALESCE(enty_values_CR, 0) AS cr,
+                   entry_naration
+            FROM entry_details
+            WHERE entry_jv = %s
+            ORDER BY enty_values_DR DESC
+        """, (jv_no,))
+        gl_entries = gl_rows or []
+
     # Fetch Company Info
     company_res = db.execute_query("SELECT * FROM company LIMIT 1")
     company = company_res[0] if company_res else {}
@@ -3651,7 +3666,8 @@ def print_voucher(voucher_type, jv_no):
     return render_template('payment_voucher_print.html',
                            voucher=voucher,
                            company=company,
-                           title=config['title'])
+                           title=config['title'],
+                           gl_entries=gl_entries)
 
 @app.route('/service_entry/print/<int:jv_no>')
 @login_required
@@ -4565,30 +4581,34 @@ def update_user_rights():
     # Checkbox sends 'on' if checked, nothing if unchecked.
     all_perms = [
         'Add_New_User', 'OP_Approved',
-        'Access_Accounting', 'Access_Inventory', 'Access_POS',
-        'Access_Reports', 'Access_Reversals',
-        'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM'
+        'Access_Sales', 'Access_Purchase', 'Access_Accounting',
+        'Access_Inventory', 'Access_POS',
+        'Access_Reports', 'Access_Fixed_Assets', 'Access_VAT',
+        'Access_Reversals', 'Access_HR', 'Access_CRM', 'Access_Settings'
     ]
     perm_values = {p: 1 if request.form.get(p) else 0 for p in all_perms}
 
     try:
-        # Build dynamic SET clause — gracefully skips columns not yet in schema
-        existing = db.execute_query("SHOW COLUMNS FROM User_Rights")
-        existing_cols = {r['Field'] for r in existing} if existing else set()
-
-        set_parts = []
-        params = []
-        for p in all_perms:
-            if p in existing_cols:
-                set_parts.append(f"{p}=%s")
-                params.append(perm_values[p])
-
-        if not set_parts:
-            return jsonify({'error': 'No columns to update'}), 500
-
-        params.append(user_id)
-        query = f"UPDATE User_Rights SET {', '.join(set_parts)} WHERE Link_To_Loging_Tabke=%s"
-        db.execute_query(query, tuple(params), commit=True)
+        # Try full update; if a column is missing, fall back column-by-column
+        set_clause = ', '.join([f"{p}=%s" for p in all_perms])
+        params = [perm_values[p] for p in all_perms] + [user_id]
+        try:
+            db.execute_query(
+                f"UPDATE User_Rights SET {set_clause} WHERE Link_To_Loging_Tabke=%s",
+                tuple(params), commit=True)
+        except Exception:
+            # Fallback: skip missing columns
+            conn = db.get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SHOW COLUMNS FROM User_Rights")
+            existing_cols = {r[0] for r in cursor.fetchall()}
+            cursor.close(); conn.close()
+            set_parts = [f"{p}=%s" for p in all_perms if p in existing_cols]
+            vals = [perm_values[p] for p in all_perms if p in existing_cols] + [user_id]
+            if set_parts:
+                db.execute_query(
+                    f"UPDATE User_Rights SET {', '.join(set_parts)} WHERE Link_To_Loging_Tabke=%s",
+                    tuple(vals), commit=True)
         return jsonify({'success': True})
     except Exception as e:
         logging.error(f"Rights Update Error: {e}")
@@ -4843,6 +4863,14 @@ def api_get_customers():
     query = "SELECT id, customer_name as name FROM customer ORDER BY customer_name"
     rows = db.execute_query(query)
     return json.dumps(rows)
+
+@app.route('/api/get_all_accounts')
+@login_required
+def api_get_all_accounts():
+    """Return all active account names for dropdowns (e.g. TB correction modal)."""
+    rows = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name")
+    return jsonify([{'account_name': r['account_name']} for r in rows] if rows else [])
 
 @app.route('/api/get_sub_accounts')
 @login_required
@@ -6875,6 +6903,55 @@ def get_ledger_data():
     return {'data': data, 'basement': basement}
 
 
+@app.route('/ledger_view/export')
+@login_required
+@has_permission('Access_Reports')
+def ledger_export():
+    """CSV export of ledger for a single account."""
+    account_name = request.args.get('account_name', '')
+    from_date    = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date      = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    if not account_name:
+        flash('No account selected', 'warning')
+        return redirect(url_for('ledger_view'))
+
+    # Reuse the ledger data logic via an internal request simulation
+    import flask
+    with flask.current_app.test_request_context(
+        json={'account_name': account_name, 'from_date': from_date, 'to_date': to_date}
+    ):
+        result = get_ledger_data()
+        if isinstance(result, tuple):
+            result = result[0]
+        if hasattr(result, 'get_json'):
+            result = result.get_json()
+        elif isinstance(result, dict):
+            pass
+        else:
+            result = {}
+
+    rows = result.get('data', [])
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow([f'Ledger: {account_name}'])
+    cw.writerow([f'Period: {from_date} to {to_date}'])
+    cw.writerow([])
+    cw.writerow(['Date', 'Narration', 'Debit', 'Credit', 'Balance'])
+    for r in rows:
+        cw.writerow([
+            r.get('date', ''),
+            r.get('narration', ''),
+            f"{float(r.get('dr', 0)):.2f}" if not r.get('is_opening') else '',
+            f"{float(r.get('cr', 0)):.2f}" if not r.get('is_opening') else '',
+            f"{float(r.get('balance', 0)):.2f}"
+        ])
+    output = make_response(si.getvalue())
+    safe_name = account_name.replace(' ', '_').replace('/', '-')[:40]
+    output.headers["Content-Disposition"] = f"attachment; filename=Ledger_{safe_name}_{from_date}.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
+
+
 # --- Trial Balance ---
 @app.route('/trial_balance')
 @login_required
@@ -6928,13 +7005,92 @@ def trial_balance():
         output.headers["Content-type"] = "text/csv"
         return output
 
+    # Find unbalanced JVs (where total DR ≠ total CR within the JV)
+    unbalanced_jvs = db.execute_query("""
+        SELECT
+            ed.entry_jv                          AS jv_id,
+            j.jv_user_code                       AS jv_code,
+            j.jv_naration                        AS narration,
+            MIN(ed.entry_effective_date)         AS entry_date,
+            SUM(COALESCE(ed.enty_values_DR, 0))  AS total_dr,
+            SUM(COALESCE(ed.enty_values_CR, 0))  AS total_cr,
+            ABS(SUM(COALESCE(ed.enty_values_DR,0)) - SUM(COALESCE(ed.enty_values_CR,0))) AS diff
+        FROM entry_details ed
+        LEFT JOIN jv_numbers j ON ed.entry_jv = j.jv_id
+        WHERE ed.entry_deleted = 0
+          AND ed.entry_effective_date <= %s
+        GROUP BY ed.entry_jv, j.jv_user_code, j.jv_naration
+        HAVING diff > 0.01
+        ORDER BY diff DESC
+        LIMIT 50
+    """, (as_at_date,)) or []
+
     return render_template('trial_balance.html',
                            as_at_date=as_at_date,
                            rows=rows,
                            total_dr=total_dr,
                            total_cr=total_cr,
                            status=status,
-                           is_balanced=is_balanced)
+                           is_balanced=is_balanced,
+                           unbalanced_jvs=unbalanced_jvs)
+
+@app.route('/trial_balance/correction', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def tb_correction():
+    """Create a correcting GL entry to balance a specific JV."""
+    jv_id        = request.form.get('jv_id')
+    account_name = request.form.get('account_name', '').strip()
+    narration    = request.form.get('narration', f'TB Correction for JV-{jv_id}').strip()
+
+    if not jv_id or not account_name:
+        return jsonify({'success': False, 'error': 'JV ID and account name required'}), 400
+
+    try:
+        # Get current imbalance for this JV
+        rows = db.execute_query("""
+            SELECT SUM(COALESCE(enty_values_DR,0)) AS dr, SUM(COALESCE(enty_values_CR,0)) AS cr,
+                   MIN(entry_effective_date) AS edate
+            FROM entry_details WHERE entry_jv = %s AND entry_deleted = 0
+        """, (jv_id,))
+        if not rows:
+            return jsonify({'success': False, 'error': 'JV not found'}), 404
+
+        total_dr = float(rows[0]['dr'] or 0)
+        total_cr = float(rows[0]['cr'] or 0)
+        diff     = total_dr - total_cr
+        edate    = rows[0]['edate'] or date.today()
+
+        if abs(diff) < 0.01:
+            return jsonify({'success': False, 'error': 'This JV is already balanced'}), 400
+
+        current_user_pk = get_current_user_pk()
+
+        # Insert correcting entry on the same JV
+        if diff > 0:
+            # More DR than CR → add CR entry
+            db.execute_query("""
+                INSERT INTO entry_details
+                    (account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                     entry_naration, entry_create_user, entry_jv)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (account_name, diff, edate, date.today(), narration, current_user_pk, jv_id),
+                 commit=True)
+        else:
+            # More CR than DR → add DR entry
+            db.execute_query("""
+                INSERT INTO entry_details
+                    (account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                     entry_naration, entry_create_user, entry_jv)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (account_name, abs(diff), edate, date.today(), narration, current_user_pk, jv_id),
+                 commit=True)
+
+        return jsonify({'success': True, 'corrected': round(abs(diff), 2)})
+    except Exception as e:
+        logging.error(f"TB Correction error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 
 # --- Supplier Aging Report ---
 @app.route('/supplier_aging')
@@ -9418,6 +9574,29 @@ def profit_loss():
         flash(f'Error generating report: {str(e)}', 'danger')
         return redirect(url_for('index'))
 
+    # CSV export
+    if request.args.get('download') == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Profit & Loss Report'])
+        cw.writerow([f'Period: {default_start} to {default_end}'])
+        cw.writerow([])
+        cw.writerow(['Category', 'Account', 'Amount'])
+        for section_name, section in report_data.items():
+            if isinstance(section, dict):
+                for cat, items in section.items():
+                    if isinstance(items, list):
+                        for item in items:
+                            cw.writerow([section_name, item.get('name', cat), f"{float(item.get('amount', 0)):.2f}"])
+                    else:
+                        cw.writerow([section_name, cat, f"{float(items):.2f}"])
+            else:
+                cw.writerow([section_name, '', f"{float(section):.2f}"])
+        output = make_response(si.getvalue())
+        output.headers["Content-Disposition"] = f"attachment; filename=ProfitLoss_{default_start}_{default_end}.csv"
+        output.headers["Content-type"] = "text/csv"
+        return output
+
     return render_template('profit_loss.html',
                            periods=periods,
                            report_data=report_data,
@@ -10964,7 +11143,8 @@ def run_schema_migrations(target_db_conn=None):
 
         new_columns = [
             'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports',
-            'Access_Reversals', 'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM'
+            'Access_Reversals', 'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM',
+            'Access_Sales', 'Access_Purchase', 'Access_Settings'
         ]
 
         for col in new_columns:

@@ -366,6 +366,17 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% if gl_entries %}
+                        {% for gl in gl_entries %}
+                        {% if gl.dr > 0 or gl.cr > 0 %}
+                        <tr>
+                            <td>{{ gl.account_name }}</td>
+                            <td class="col-amount">{% if gl.dr > 0 %}{{ "%.2f"|format(gl.dr) }}{% else %}-{% endif %}</td>
+                            <td class="col-amount">{% if gl.cr > 0 %}{{ "%.2f"|format(gl.cr) }}{% else %}-{% endif %}</td>
+                        </tr>
+                        {% endif %}
+                        {% endfor %}
+                    {% else %}
                     <tr>
                         <td>Account Payable ({{ voucher.paid_to }})</td>
                         <td class="col-amount">{{ "%.2f"|format(voucher.amount) }}</td>
@@ -376,6 +387,7 @@
                         <td class="col-amount">-</td>
                         <td class="col-amount">{{ "%.2f"|format(voucher.amount) }}</td>
                     </tr>
+                    {% endif %}
                 </tbody>
             </table>
         </div>

@@ -184,67 +184,79 @@
             <input type="hidden" name="user_id" id="rightsUserId">
             <div class="row g-3">
 
-              <!-- Admin & Core -->
+              <!-- Admin & System -->
               <div class="col-md-3">
-                <div class="perm-group-title">Admin &amp; Core</div>
+                <div class="perm-group-title"><i class="fas fa-shield-alt me-1" style="color:#69797E;"></i>Admin &amp; System</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Add_New_User" id="perm_admin">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_admin">User Management</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_admin">User Management</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Settings" id="perm_settings">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_settings">System Settings<br><span style="color:#a0aec0;font-size:.72rem;">Company, Accounts, Bank, Tax, Email, Backup</span></label>
                 </div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="OP_Approved" id="perm_po_approve">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_po_approve">PO Approval</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_po_approve">PO Approval</label>
+                </div>
+              </div>
+
+              <!-- Sales & Purchase -->
+              <div class="col-md-3">
+                <div class="perm-group-title"><i class="fas fa-exchange-alt me-1" style="color:#69797E;"></i>Sales &amp; Purchase</div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Sales" id="perm_sales">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_sales">Sales<br><span style="color:#a0aec0;font-size:.72rem;">Sales Invoice, Customer Receipt, Proforma</span></label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Purchase" id="perm_purchase">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_purchase">Purchasing<br><span style="color:#a0aec0;font-size:.72rem;">Suppliers, PO Generator, GRN</span></label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Accounting" id="perm_accounting">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_accounting">Accounting<br><span style="color:#a0aec0;font-size:.72rem;">Payments, Receipts, JV, Direct Purchase</span></label>
                 </div>
               </div>
 
               <!-- Inventory & POS -->
               <div class="col-md-3">
-                <div class="perm-group-title">Inventory &amp; POS</div>
+                <div class="perm-group-title"><i class="fas fa-boxes me-1" style="color:#69797E;"></i>Inventory &amp; POS</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_Inventory" id="perm_inventory">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_inventory">Inventory (GRN/Loc/PO)</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_inventory">Inventory<br><span style="color:#a0aec0;font-size:.72rem;">Items, GRN, Locations, Transfers, Proforma</span></label>
                 </div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_POS" id="perm_pos">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_pos">POS System</label>
-                </div>
-              </div>
-
-              <!-- Finance & Accounting -->
-              <div class="col-md-3">
-                <div class="perm-group-title">Finance &amp; Accounting</div>
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" name="Access_Accounting" id="perm_accounting">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_accounting">Accounting (Pay/Rec/JV)</label>
-                </div>
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" name="Access_Fixed_Assets" id="perm_fixed_assets">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_fixed_assets">Fixed Assets</label>
-                </div>
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" name="Access_VAT" id="perm_vat">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_vat">VAT Schedule</label>
-                </div>
-              </div>
-
-              <!-- Reports & Other -->
-              <div class="col-md-3">
-                <div class="perm-group-title">Reports &amp; Other</div>
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" name="Access_Reports" id="perm_reports">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reports">View Reports (BS/P&amp;L/TB)</label>
-                </div>
-                <div class="form-check form-switch mb-2">
-                  <input class="form-check-input" type="checkbox" name="Access_Reversals" id="perm_reversals">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reversals">Reversals &amp; Adjustments</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_pos">POS System<br><span style="color:#a0aec0;font-size:.72rem;">Point of Sale, POS Settings</span></label>
                 </div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_HR" id="perm_hr">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_hr">HR &amp; Payroll</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_hr">HR &amp; Payroll<br><span style="color:#a0aec0;font-size:.72rem;">Employees, Leave, Payroll</span></label>
                 </div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_CRM" id="perm_crm">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_crm">CRM &amp; Sales</label>
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_crm">CRM &amp; Sales Pipeline</label>
+                </div>
+              </div>
+
+              <!-- Reports & Finance -->
+              <div class="col-md-3">
+                <div class="perm-group-title"><i class="fas fa-chart-bar me-1" style="color:#69797E;"></i>Reports &amp; Finance</div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Reports" id="perm_reports">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_reports">Reports<br><span style="color:#a0aec0;font-size:.72rem;">Balance Sheet, P&amp;L, Trial Balance, Aging</span></label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Fixed_Assets" id="perm_fixed_assets">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_fixed_assets">Fixed Assets</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_VAT" id="perm_vat">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_vat">VAT Schedule</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Reversals" id="perm_reversals">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_reversals">Reversals &amp; Adjustments</label>
                 </div>
               </div>
 
@@ -272,17 +284,20 @@
             .then(data => {
                 if (!data) return;
                 const map = {
-                    'Add_New_User':      'perm_admin',
-                    'OP_Approved':       'perm_po_approve',
-                    'Access_Inventory':  'perm_inventory',
-                    'Access_POS':        'perm_pos',
-                    'Access_Accounting': 'perm_accounting',
+                    'Add_New_User':        'perm_admin',
+                    'OP_Approved':         'perm_po_approve',
+                    'Access_Settings':     'perm_settings',
+                    'Access_Sales':        'perm_sales',
+                    'Access_Purchase':     'perm_purchase',
+                    'Access_Accounting':   'perm_accounting',
+                    'Access_Inventory':    'perm_inventory',
+                    'Access_POS':          'perm_pos',
+                    'Access_HR':           'perm_hr',
+                    'Access_CRM':          'perm_crm',
+                    'Access_Reports':      'perm_reports',
                     'Access_Fixed_Assets': 'perm_fixed_assets',
-                    'Access_VAT':        'perm_vat',
-                    'Access_Reports':    'perm_reports',
-                    'Access_Reversals':  'perm_reversals',
-                    'Access_HR':         'perm_hr',
-                    'Access_CRM':        'perm_crm'
+                    'Access_VAT':          'perm_vat',
+                    'Access_Reversals':    'perm_reversals'
                 };
                 Object.entries(map).forEach(([key, id]) => {
                     const el = document.getElementById(id);

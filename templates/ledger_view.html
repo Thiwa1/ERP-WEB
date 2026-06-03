@@ -48,10 +48,17 @@
       </div>
 
       <!-- Load Button -->
-      <div class="col-md-2">
+      <div class="col-md-1">
         <button type="button" class="btn w-100 fw-bold text-white" onclick="loadLedger()"
           style="background:var(--accent-color);border:none;border-radius:8px;font-weight:600;padding:.55rem 0;">
-          <i class="fas fa-sync-alt me-1"></i> Load Details
+          <i class="fas fa-sync-alt me-1"></i> Load
+        </button>
+      </div>
+      <!-- Export CSV -->
+      <div class="col-md-1">
+        <button type="button" class="btn w-100 fw-bold" onclick="exportLedgerCSV()"
+          style="background:#f0f4ff;border:1px solid #c7d2fc;border-radius:8px;font-weight:600;color:#3730a3;padding:.55rem 0;">
+          <i class="fas fa-file-csv me-1"></i> CSV
         </button>
       </div>
 
@@ -186,6 +193,14 @@
             }
             tr[i].style.display = visible ? "" : "none";
         }
+    }
+
+    function exportLedgerCSV() {
+        const acc  = document.getElementById('accountSelect').value;
+        const from = document.getElementById('fromDate').value;
+        const to   = document.getElementById('toDate').value;
+        if (!acc) { alert('Please select an account first.'); return; }
+        window.location.href = `/ledger_view/export?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
     }
 </script>
 {% endblock %}
