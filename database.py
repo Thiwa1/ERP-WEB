@@ -18,7 +18,16 @@ class Database:
                 if dynamic_db:
                     config['database'] = dynamic_db
 
-            return mysql.connector.connect(**config)
+            # autocommit=True prevents implicit transactions on SELECT queries.
+            # Explicit transactions still work via conn.start_transaction() which
+            # temporarily disables autocommit for that block.
+            # Without this, running SELECT guard queries before start_transaction()
+            # silently opens an implicit transaction and causes:
+            # "InternalError: Transaction already in progress"
+            config.setdefault('autocommit', True)
+
+            conn = mysql.connector.connect(**config)
+            return conn
         except mysql.connector.Error as err:
             self.last_error = str(err)
             print(f"Error connecting to database: {err}")
