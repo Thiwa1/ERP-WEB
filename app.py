@@ -4563,38 +4563,36 @@ def update_user_rights():
     # Map form fields to columns
     # We use .get() which returns None if not present (unchecked)
     # Checkbox sends 'on' if checked, nothing if unchecked.
-    perms = {
-        'Add_New_User': 1 if request.form.get('Add_New_User') else 0,
-        'OP_Approved': 1 if request.form.get('OP_Approved') else 0,
-        'Access_Inventory': 1 if request.form.get('Access_Inventory') else 0,
-        'Access_POS': 1 if request.form.get('Access_POS') else 0,
-        'Access_Accounting': 1 if request.form.get('Access_Accounting') else 0,
-        'Access_Reports': 1 if request.form.get('Access_Reports') else 0,
-        'Access_Reversals': 1 if request.form.get('Access_Reversals') else 0
-    }
+    all_perms = [
+        'Add_New_User', 'OP_Approved',
+        'Access_Accounting', 'Access_Inventory', 'Access_POS',
+        'Access_Reports', 'Access_Reversals',
+        'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM'
+    ]
+    perm_values = {p: 1 if request.form.get(p) else 0 for p in all_perms}
 
     try:
-        # We construct update query dynamically to ignore missing columns if schema isn't fully migrated yet
-        # But for robustness, we should run migration at startup (next step).
-        query = """
-            UPDATE User_Rights SET
-            Add_New_User=%s, OP_Approved=%s,
-            Access_Inventory=%s, Access_POS=%s,
-            Access_Accounting=%s, Access_Reports=%s,
-            Access_Reversals=%s
-            WHERE Link_To_Loging_Tabke=%s
-        """
-        db.execute_query(query, (
-            perms['Add_New_User'], perms['OP_Approved'],
-            perms['Access_Inventory'], perms['Access_POS'],
-            perms['Access_Accounting'], perms['Access_Reports'],
-            perms['Access_Reversals'],
-            user_id
-        ), commit=True)
-        return {'success': True}
+        # Build dynamic SET clause — gracefully skips columns not yet in schema
+        existing = db.execute_query("SHOW COLUMNS FROM User_Rights")
+        existing_cols = {r['Field'] for r in existing} if existing else set()
+
+        set_parts = []
+        params = []
+        for p in all_perms:
+            if p in existing_cols:
+                set_parts.append(f"{p}=%s")
+                params.append(perm_values[p])
+
+        if not set_parts:
+            return jsonify({'error': 'No columns to update'}), 500
+
+        params.append(user_id)
+        query = f"UPDATE User_Rights SET {', '.join(set_parts)} WHERE Link_To_Loging_Tabke=%s"
+        db.execute_query(query, tuple(params), commit=True)
+        return jsonify({'success': True})
     except Exception as e:
         logging.error(f"Rights Update Error: {e}")
-        return {'error': str(e)}, 500
+        return jsonify({'error': str(e)}), 500
 
 # --- Job Management ---
 @app.route('/job_management', methods=['GET'])
@@ -5130,6 +5128,23 @@ def direct_purchasing():
 
     last_jv = request.args.get('last_jv')
 
+    # Payment history (recent direct purchases)
+    history = db.execute_query("""
+        SELECT
+            j.jv_id                          AS jv,
+            MIN(c.cash_book_recod_voucher_no) AS voucher,
+            MIN(c.Payment_Date)               AS date,
+            MIN(c.cash_book_recode_accont_name) AS account,
+            SUM(c.cash_book_recode_cr)        AS amount,
+            CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END AS is_reversed
+        FROM jv_numbers j
+        JOIN cash_book_recode c ON c.jv_numbers_jv_id = j.jv_id
+        WHERE j.jv_user_code = 'JV FROM DIRECT CASH'
+        GROUP BY j.jv_id
+        ORDER BY j.jv_id DESC
+        LIMIT 60
+    """) or []
+
     return render_template('direct_purchasing.html',
                            cash_accounts=cash_accounts,
                            cost_accounts=cost_accounts,
@@ -5138,7 +5153,8 @@ def direct_purchasing():
                            today_date=datetime.now().strftime('%Y-%m-%d'),
                            session_payment_items=session.get('payment_items', []),
                            total_value=session.get('payment_total', 0),
-                           last_jv=last_jv)
+                           last_jv=last_jv,
+                           history=history)
 
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
@@ -5820,23 +5836,19 @@ def balance_sheet():
     total_expenses = 0.0
 
     for row in retained_earnings_rows:
-        is_income = bool(row['account_income'])
+        is_income  = bool(row['account_income'])
         is_expense = bool(row['account_expenses'])
-        basement = row['account_basment']
-        debit_total = float(row['total_dr'] or 0)
+        debit_total  = float(row['total_dr'] or 0)
         credit_total = float(row['total_cr'] or 0)
 
-        balance = 0.0
-        if basement == "DR":
-            balance = debit_total - credit_total
-        else:
-            balance = credit_total - debit_total
-
         if is_income:
-            total_income += balance
+            # Income accounts: normal balance is CR (credit increases income)
+            total_income += credit_total - debit_total
         elif is_expense:
-            total_expenses += balance
+            # Expense accounts: normal balance is DR regardless of account_basment flag
+            total_expenses += debit_total - credit_total
 
+    # Net Profit/(Loss) = Income - Expenses (negative = loss)
     retained_earnings = total_income - total_expenses
 
     # Grouping
@@ -8114,25 +8126,47 @@ def cash_payment_reversal_process():
 @login_required
 @has_permission('Access_Reversals')
 def direct_payment_reversal():
-    # Show ALL direct payments (including reversed) for history
-    query = """
-        SELECT DISTINCT
-            c.chash_book_recod_id as id,
-            c.cash_book_recod_voucher_no as Voucher,
-            c.Payment_Date as Date,
-            c.cash_book_recode_accont_name as Account,
-            c.cash_book_recode_naration as Narration,
-            c.cash_book_recode_cr as Amount,
-            c.jv_numbers_jv_id as JV,
-            CASE WHEN c.User_Revers IS NOT NULL THEN 1 ELSE 0 END as is_reversed
+    # Search / filter params
+    search   = request.args.get('search', '').strip()
+    date_from = request.args.get('date_from', '')
+    date_to   = request.args.get('date_to', '')
+    show_reversed = request.args.get('show_reversed', '0')
+
+    params = []
+    filters = ["j.jv_user_code = 'JV FROM DIRECT CASH'", "c.cash_book_recode_cr > 0"]
+
+    if search:
+        filters.append("(c.cash_book_recode_accont_name LIKE %s OR c.cash_book_recode_naration LIKE %s)")
+        params += [f'%{search}%', f'%{search}%']
+    if date_from:
+        filters.append("c.Payment_Date >= %s"); params.append(date_from)
+    if date_to:
+        filters.append("c.Payment_Date <= %s"); params.append(date_to)
+    if show_reversed != '1':
+        filters.append("c.User_Revers IS NULL")
+
+    where = " AND ".join(filters)
+    query = f"""
+        SELECT
+            MIN(c.chash_book_recod_id)          AS id,
+            MIN(c.cash_book_recod_voucher_no)    AS Voucher,
+            MIN(c.Payment_Date)                  AS Date,
+            MIN(c.cash_book_recode_accont_name)  AS Account,
+            MIN(c.cash_book_recode_naration)     AS Narration,
+            SUM(c.cash_book_recode_cr)           AS Amount,
+            c.jv_numbers_jv_id                   AS JV,
+            CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END AS is_reversed
         FROM cash_book_recode c
-        JOIN inventory_recod i ON c.jv_numbers_jv_id = i.JV_No
-        WHERE c.cash_book_recode_cr > 0
-        ORDER BY c.Payment_Date DESC
+        JOIN jv_numbers j ON c.jv_numbers_jv_id = j.jv_id
+        WHERE {where}
+        GROUP BY c.jv_numbers_jv_id
+        ORDER BY MIN(c.Payment_Date) DESC
         LIMIT 100
     """
-    rows = db.execute_query(query)
-    return render_template('direct_payment_reversal.html', rows=rows)
+    rows = db.execute_query(query, tuple(params)) or []
+    return render_template('direct_payment_reversal.html', rows=rows,
+                           search=search, date_from=date_from, date_to=date_to,
+                           show_reversed=show_reversed)
 
 @app.route('/direct_payment_reversal/process', methods=['POST'])
 @login_required
@@ -10929,13 +10963,18 @@ def run_schema_migrations(target_db_conn=None):
         columns = [row[0] for row in cursor.fetchall()]
 
         new_columns = [
-            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports', 'Access_Reversals'
+            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports',
+            'Access_Reversals', 'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM'
         ]
 
         for col in new_columns:
             if col not in columns:
                 logging.info(f"Migrating: Adding {col} to User_Rights")
-                cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+                try:
+                    cursor.execute(f"ALTER TABLE User_Rights ADD COLUMN {col} TINYINT DEFAULT 0")
+                    conn.commit()
+                except Exception as e:
+                    logging.error(f"Migration add column {col}: {e}")
 
         # 1b. Password Column Expansion
         # Login_Table

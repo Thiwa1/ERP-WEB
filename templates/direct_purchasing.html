@@ -232,6 +232,71 @@
     </div>
   </div>
 
+  <!-- ── Payment History ── -->
+  <div class="mt-4 panel-card">
+    <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+      <span class="section-label mb-0"><i class="fas fa-history me-1"></i> Direct Payment History</span>
+      <span style="font-size:.75rem;color:#9ca3af;">Last 60 records</span>
+    </div>
+    <div class="table-responsive" style="border-top:1px solid #f0f2f5;max-height:320px;overflow-y:auto;">
+      <table class="table table-hover table-sm mb-0">
+        <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+          <tr>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.6rem 1rem;">JV</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Voucher</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Amount</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:90px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if history %}
+            {% for h in history %}
+            <tr>
+              <td class="font-monospace" style="padding:.5rem 1rem;font-size:.8rem;color:#605E5C;">{{ h.jv }}</td>
+              <td class="font-monospace" style="padding:.5rem .75rem;font-size:.8rem;">{{ h.voucher or '—' }}</td>
+              <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.date }}</td>
+              <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.account }}</td>
+              <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;font-size:.85rem;color:#CA5010;">
+                {{ "{:,.2f}".format(h.amount|float) }}
+              </td>
+              <td class="text-center" style="padding:.5rem .75rem;">
+                {% if h.is_reversed %}
+                <span style="background:#fce4ec;color:#c62828;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Reversed</span>
+                {% else %}
+                <span style="background:#e8f5e9;color:#1b5e20;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Active</span>
+                {% endif %}
+              </td>
+              <td style="padding:.4rem .75rem;">
+                <div class="d-flex gap-1">
+                  <a href="/voucher/print/direct/{{ h.jv }}" target="_blank"
+                     class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 8px;">
+                    <i class="fas fa-print"></i>
+                  </a>
+                  {% if not h.is_reversed %}
+                  <a href="/direct_payment_reversal?jv={{ h.jv }}"
+                     class="btn btn-sm" style="background:#fce8e6;border:none;border-radius:5px;font-size:.72rem;color:#C42B1C;padding:3px 8px;" title="Reverse">
+                    <i class="fas fa-undo"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center py-4" style="color:#9ca3af;font-size:.85rem;">
+                <i class="fas fa-inbox me-2" style="opacity:.4;"></i>No direct payment history yet.
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
   {% if last_jv %}
   <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
   {% set _doc_jv      = last_jv %}

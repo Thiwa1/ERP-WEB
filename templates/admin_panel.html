@@ -183,6 +183,8 @@
           <form id="rightsForm">
             <input type="hidden" name="user_id" id="rightsUserId">
             <div class="row g-3">
+
+              <!-- Admin & Core -->
               <div class="col-md-3">
                 <div class="perm-group-title">Admin &amp; Core</div>
                 <div class="form-check form-switch mb-2">
@@ -194,35 +196,58 @@
                   <label class="form-check-label" style="font-size:.82rem;" for="perm_po_approve">PO Approval</label>
                 </div>
               </div>
+
+              <!-- Inventory & POS -->
               <div class="col-md-3">
                 <div class="perm-group-title">Inventory &amp; POS</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_Inventory" id="perm_inventory">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_inventory">Inventory (GRN/Loc)</label>
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_inventory">Inventory (GRN/Loc/PO)</label>
                 </div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_POS" id="perm_pos">
                   <label class="form-check-label" style="font-size:.82rem;" for="perm_pos">POS System</label>
                 </div>
               </div>
+
+              <!-- Finance & Accounting -->
               <div class="col-md-3">
-                <div class="perm-group-title">Finance &amp; Reports</div>
+                <div class="perm-group-title">Finance &amp; Accounting</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_Accounting" id="perm_accounting">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_accounting">Accounting (Pay/Rec)</label>
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_accounting">Accounting (Pay/Rec/JV)</label>
                 </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Fixed_Assets" id="perm_fixed_assets">
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_fixed_assets">Fixed Assets</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_VAT" id="perm_vat">
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_vat">VAT Schedule</label>
+                </div>
+              </div>
+
+              <!-- Reports & Other -->
+              <div class="col-md-3">
+                <div class="perm-group-title">Reports &amp; Other</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_Reports" id="perm_reports">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reports">View Reports</label>
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reports">View Reports (BS/P&amp;L/TB)</label>
                 </div>
-              </div>
-              <div class="col-md-3">
-                <div class="perm-group-title">Reversals</div>
                 <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_Reversals" id="perm_reversals">
-                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reversals">Reversals &amp; Adjust</label>
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_reversals">Reversals &amp; Adjustments</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_HR" id="perm_hr">
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_hr">HR &amp; Payroll</label>
+                </div>
+                <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_CRM" id="perm_crm">
+                  <label class="form-check-label" style="font-size:.82rem;" for="perm_crm">CRM &amp; Sales</label>
                 </div>
               </div>
+
             </div>
           </form>
         </div>
@@ -245,16 +270,26 @@
         fetch(`/admin/users/rights/${userId}`)
             .then(r => r.json())
             .then(data => {
-                if(data) {
-                    if(data.Add_New_User) document.getElementById('perm_admin').checked = true;
-                    if(data.OP_Approved) document.getElementById('perm_po_approve').checked = true;
-                    if(data.Access_Inventory) document.getElementById('perm_inventory').checked = true;
-                    if(data.Access_POS) document.getElementById('perm_pos').checked = true;
-                    if(data.Access_Accounting) document.getElementById('perm_accounting').checked = true;
-                    if(data.Access_Reports) document.getElementById('perm_reports').checked = true;
-                    if(data.Access_Reversals) document.getElementById('perm_reversals').checked = true;
-                }
-            });
+                if (!data) return;
+                const map = {
+                    'Add_New_User':      'perm_admin',
+                    'OP_Approved':       'perm_po_approve',
+                    'Access_Inventory':  'perm_inventory',
+                    'Access_POS':        'perm_pos',
+                    'Access_Accounting': 'perm_accounting',
+                    'Access_Fixed_Assets': 'perm_fixed_assets',
+                    'Access_VAT':        'perm_vat',
+                    'Access_Reports':    'perm_reports',
+                    'Access_Reversals':  'perm_reversals',
+                    'Access_HR':         'perm_hr',
+                    'Access_CRM':        'perm_crm'
+                };
+                Object.entries(map).forEach(([key, id]) => {
+                    const el = document.getElementById(id);
+                    if (el) el.checked = data[key] == 1;
+                });
+            })
+            .catch(err => { hideLoading(); alert('Error loading rights: ' + err); });
     }
 
     function showLoading(text) {
