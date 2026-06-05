@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+{% block title %}Debit Note{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#C42B1C,#a4262c);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+      <i class="fas fa-file-invoice-dollar"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Debit Note</h5>
+      <div style="font-size:.78rem;color:#605E5C;">Issued to Supplier — Reduces Accounts Payable</div>
+    </div>
+  </div>
+
+  {% if last_dn %}
+  <div class="d-flex align-items-center justify-content-between mb-4 px-4 py-3"
+       style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;">
+    <div class="d-flex align-items-center gap-2">
+      <i class="fas fa-check-circle" style="color:#dc2626;font-size:1.2rem;"></i>
+      <div>
+        <div class="fw-bold" style="color:#991b1b;">Debit Note {{ last_dn }} created — JV #{{ last_jv }}</div>
+        <div style="font-size:.78rem;color:#7f1d1d;">
+          {{ sup_name }} · {{ dn_date }} · Amount: {{ "{:,.2f}".format(amount|float) }} · {{ narration }}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-plus-circle me-1" style="color:#C42B1C;"></i>Create Debit Note
+          </span>
+        </div>
+        <div class="p-4">
+          <form method="POST" action="/debit_note/submit">
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Supplier <span style="color:#c42b1c;">*</span></label>
+              <select name="supplier_id" class="form-select select2" required style="border-radius:8px;">
+                <option value="">— Select Supplier —</option>
+                {% for s in suppliers %}
+                <option value="{{ s.sup_id }}">{{ s.supplier_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Debit Note Date</label>
+              <input type="date" name="dn_date" class="form-control" value="{{ today_date }}" required style="border-radius:8px;">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Amount <span style="color:#c42b1c;">*</span></label>
+              <input type="number" name="amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required style="border-radius:8px;">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Accounts Payable Account</label>
+              <select name="ap_account" class="form-select select2" style="border-radius:8px;">
+                {% for a in ap_accounts %}
+                <option value="{{ a.account_name }}" {% if 'payable' in a.account_name|lower %}selected{% endif %}>
+                  {{ a.account_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Purchase Return / Expense Account (CR)</label>
+              <select name="expense_account" class="form-select select2" style="border-radius:8px;">
+                <option value="">— Same as AP Account —</option>
+                {% for a in expense_accounts %}
+                <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-bold small">Narration / Reason</label>
+              <input type="text" name="narration" class="form-control" placeholder="e.g. Purchase return — GRN #123" style="border-radius:8px;">
+            </div>
+
+            <button type="submit" class="btn w-100 py-2 fw-bold text-white"
+                    style="background:#C42B1C;border:none;border-radius:8px;">
+              <i class="fas fa-save me-2"></i>Issue Debit Note
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- GL Preview -->
+    <div class="col-lg-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-info-circle me-1" style="color:#C42B1C;"></i>How Debit Notes Work
+          </span>
+        </div>
+        <div class="p-4">
+          <div style="font-size:.85rem;color:#374151;line-height:1.8;">
+            <p class="mb-3">A <strong>Debit Note</strong> is issued to a supplier when:</p>
+            <ul style="padding-left:1.2rem;margin-bottom:1rem;">
+              <li>Goods are returned to the supplier</li>
+              <li>An overcharge by the supplier needs correction</li>
+              <li>A price reduction is agreed after receipt</li>
+            </ul>
+            <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:12px 14px;">
+              <div style="font-size:.75rem;font-weight:700;color:#991b1b;margin-bottom:6px;text-transform:uppercase;">Journal Entry Created</div>
+              <table style="width:100%;font-size:.82rem;">
+                <tr><td><strong>DR</strong> Accounts Payable</td><td class="text-end">Amount</td></tr>
+                <tr><td><strong>CR</strong> Purchase Return / Expense</td><td class="text-end">Amount</td></tr>
+              </table>
+              <div style="font-size:.72rem;color:#991b1b;margin-top:6px;">
+                Reduces the amount owed to the supplier.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

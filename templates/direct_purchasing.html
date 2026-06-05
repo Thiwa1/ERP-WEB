@@ -270,11 +270,15 @@
                 {% endif %}
               </td>
               <td style="padding:.4rem .75rem;">
-                <div class="d-flex gap-1">
+                <div class="d-flex gap-1 flex-wrap">
                   <a href="/voucher/print/direct/{{ h.jv }}" target="_blank"
-                     class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 8px;">
+                     class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 8px;" title="Print">
                     <i class="fas fa-print"></i>
                   </a>
+                  <button class="btn btn-sm" onclick="openDocPanel({{ h.jv }})"
+                          style="background:#fff7ed;border:1px solid #fed7aa;border-radius:5px;font-size:.72rem;color:#c2410c;padding:3px 8px;" title="View/Upload Documents">
+                    <i class="fas fa-paperclip"></i>
+                  </button>
                   {% if not h.is_reversed %}
                   <a href="/direct_payment_reversal?jv={{ h.jv }}"
                      class="btn btn-sm" style="background:#fce8e6;border:none;border-radius:5px;font-size:.72rem;color:#C42B1C;padding:3px 8px;" title="Reverse">
@@ -308,7 +312,125 @@
 
 </div><!-- /container-fluid -->
 
+<!-- ── Document Viewer Modal (history rows) ── -->
+<div class="modal fade" id="docViewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#CA5010,#A33D0E);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="fas fa-paperclip"></i>
+          <h6 class="modal-title fw-bold mb-0">Documents — JV <span id="dvJvLabel"></span></h6>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <!-- Upload zone -->
+        <div style="border:2px dashed #fed7aa;border-radius:10px;padding:14px;background:#fff7ed;cursor:pointer;margin-bottom:14px;"
+             onclick="document.getElementById('dvFileInput').click()"
+             ondragover="event.preventDefault();this.style.borderColor='#CA5010'"
+             ondragleave="this.style.borderColor='#fed7aa'"
+             ondrop="dvDrop(event)">
+          <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-cloud-upload-alt" style="font-size:1.3rem;color:#CA5010;"></i>
+            <div>
+              <div style="font-size:.82rem;font-weight:600;color:#374151;">Attach a document</div>
+              <div style="font-size:.72rem;color:#9ca3af;">PDF, images, Word, Excel — drag & drop or click</div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="dvFileInput" style="display:none" multiple
+               accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+               onchange="dvUpload(this.files)">
+        <!-- File list -->
+        <div id="dvFileList" style="min-height:60px;"></div>
+      </div>
+      <div class="modal-footer border-0 px-4 pb-4 pt-0">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
+                style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+let _dvJv = null;
+const _dvReftype = 'direct_payment';
+
+function openDocPanel(jv) {
+  _dvJv = String(jv);
+  document.getElementById('dvJvLabel').textContent = jv;
+  document.getElementById('dvFileList').innerHTML = '<div style="font-size:.78rem;color:#9ca3af;text-align:center;padding:10px;">Loading…</div>';
+  loadDocList();
+  new bootstrap.Modal(document.getElementById('docViewModal')).show();
+}
+
+function loadDocList() {
+  if (!_dvJv) return;
+  fetch(`/documents/list?ref_type=${_dvReftype}&ref_id=${_dvJv}`)
+    .then(r => r.json())
+    .then(docs => {
+      const box = document.getElementById('dvFileList');
+      if (!docs || docs.length === 0) {
+        box.innerHTML = '<div style="font-size:.78rem;color:#9ca3af;text-align:center;padding:10px;"><i class="fas fa-inbox me-1"></i>No documents attached yet.</div>';
+        return;
+      }
+      box.innerHTML = '';
+      docs.forEach(d => {
+        const row = document.createElement('div');
+        row.id = 'dvrow_' + d.id;
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:.82rem;';
+        const ext = (d.file_name||'').split('.').pop().toLowerCase();
+        const icons = {pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',csv:'📊',txt:'📋'};
+        const ic = icons[ext] || '📎';
+        const kb = d.file_size ? (d.file_size/1024).toFixed(1)+'KB' : '';
+        row.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:.9rem;">${ic}</span>
+            <div style="overflow:hidden;">
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;font-weight:600;">${d.file_name}</div>
+              <div style="font-size:.7rem;color:#9ca3af;">${kb} · ${d.uploaded_at}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <a href="/documents/view/${d.id}" target="_blank"
+               style="background:#f0f4ff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#3730a3;text-decoration:none;">
+              <i class="fas fa-eye me-1"></i>View
+            </a>
+            <button onclick="dvDelete(${d.id})"
+               style="background:#fce8e6;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#c5221f;cursor:pointer;">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>`;
+        box.appendChild(row);
+      });
+    });
+}
+
+function dvUpload(files) {
+  [...files].forEach(file => {
+    const fd = new FormData();
+    fd.append('ref_type', _dvReftype);
+    fd.append('ref_id', _dvJv);
+    fd.append('file', file);
+    fetch('/documents/upload', { method:'POST', body: fd })
+      .then(r => r.json())
+      .then(res => { if (res.success) loadDocList(); else alert('Upload failed: '+res.error); });
+  });
+}
+
+function dvDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.borderColor = '#fed7aa';
+  dvUpload(e.dataTransfer.files);
+}
+
+function dvDelete(docId) {
+  if (!confirm('Delete this document?')) return;
+  fetch(`/documents/delete/${docId}`, {method:'POST'})
+    .then(r => r.json())
+    .then(res => { if (res.success) { document.getElementById('dvrow_'+docId)?.remove(); } });
+}
+
 (function(){
   if (new URLSearchParams(window.location.search).get('last_jv')) {
     setTimeout(() => {

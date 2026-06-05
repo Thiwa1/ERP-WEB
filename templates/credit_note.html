@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Credit Note{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#107C10,#0a5c0a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+      <i class="fas fa-file-invoice"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Credit Note</h5>
+      <div style="font-size:.78rem;color:#605E5C;">Issued to Customer — Reduces Accounts Receivable</div>
+    </div>
+  </div>
+
+  {% if last_cn %}
+  <div class="d-flex align-items-center justify-content-between mb-4 px-4 py-3"
+       style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
+    <div class="d-flex align-items-center gap-2">
+      <i class="fas fa-check-circle" style="color:#16a34a;font-size:1.2rem;"></i>
+      <div>
+        <div class="fw-bold" style="color:#15803d;">Credit Note {{ last_cn }} created — JV #{{ last_jv }}</div>
+        <div style="font-size:.78rem;color:#166534;">
+          {{ cust_name }} · {{ cn_date }} · Amount: {{ "{:,.2f}".format(amount|float) }} · {{ narration }}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <div class="col-lg-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-plus-circle me-1" style="color:#107C10;"></i>Create Credit Note
+          </span>
+        </div>
+        <div class="p-4">
+          <form method="POST" action="/credit_note/submit">
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Customer <span style="color:#c42b1c;">*</span></label>
+              <select name="customer_id" class="form-select select2" required style="border-radius:8px;">
+                <option value="">— Select Customer —</option>
+                {% for c in customers %}
+                <option value="{{ c.sup_id }}">{{ c.supplier_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Credit Note Date</label>
+              <input type="date" name="cn_date" class="form-control" value="{{ today_date }}" required style="border-radius:8px;">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Amount <span style="color:#c42b1c;">*</span></label>
+              <input type="number" name="amount" class="form-control" step="0.01" min="0.01" placeholder="0.00" required style="border-radius:8px;">
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Sales / Revenue Account (CR reversal)</label>
+              <select name="sales_account" class="form-select select2" style="border-radius:8px;">
+                {% for a in income_accounts %}
+                <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Accounts Receivable Account</label>
+              <select name="ar_account" class="form-select select2" style="border-radius:8px;">
+                {% for a in ar_accounts %}
+                <option value="{{ a.account_name }}" {% if 'receivable' in a.account_name|lower %}selected{% endif %}>
+                  {{ a.account_name }}
+                </option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="mb-4">
+              <label class="form-label fw-bold small">Narration / Reason</label>
+              <input type="text" name="narration" class="form-control" placeholder="e.g. Sales return — Invoice #INV-001" style="border-radius:8px;">
+            </div>
+
+            <button type="submit" class="btn w-100 py-2 fw-bold text-white"
+                    style="background:#107C10;border:none;border-radius:8px;">
+              <i class="fas fa-save me-2"></i>Issue Credit Note
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- GL Preview -->
+    <div class="col-lg-6">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-info-circle me-1" style="color:#107C10;"></i>How Credit Notes Work
+          </span>
+        </div>
+        <div class="p-4">
+          <div style="font-size:.85rem;color:#374151;line-height:1.8;">
+            <p class="mb-3">A <strong>Credit Note</strong> is issued to a customer when:</p>
+            <ul style="padding-left:1.2rem;margin-bottom:1rem;">
+              <li>Goods are returned by the customer</li>
+              <li>An overcharge needs to be corrected</li>
+              <li>A discount is granted after invoicing</li>
+            </ul>
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 14px;">
+              <div style="font-size:.75rem;font-weight:700;color:#166534;margin-bottom:6px;text-transform:uppercase;">Journal Entry Created</div>
+              <table style="width:100%;font-size:.82rem;">
+                <tr><td><strong>DR</strong> Sales / Revenue</td><td class="text-end">Amount</td></tr>
+                <tr><td><strong>CR</strong> Accounts Receivable</td><td class="text-end">Amount</td></tr>
+              </table>
+              <div style="font-size:.72rem;color:#166534;margin-top:6px;">
+                Reduces the customer's outstanding balance.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -167,6 +167,8 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'cheque_print_setup', 'label': 'Cheque Print Setup',   'url': '/cheque_print_setup',     'icon': 'fas fa-print',               'category': 'Core Accounting'},
     {'key': 'journal_entry',      'label': 'Journal Entry',        'url': '/journal_entry',          'icon': 'fas fa-book',                'category': 'Core Accounting'},
     {'key': 'service_entry',      'label': 'Service Entry (SRN)',  'url': '/service_entry',          'icon': 'fas fa-file-invoice',        'category': 'Core Accounting'},
+    {'key': 'credit_note',        'label': 'Credit Note',          'url': '/credit_note',            'icon': 'fas fa-file-medical',        'category': 'Core Accounting'},
+    {'key': 'debit_note',         'label': 'Debit Note',           'url': '/debit_note',             'icon': 'fas fa-file-invoice-dollar', 'category': 'Core Accounting'},
     {'key': 'fixed_assets',       'label': 'Fixed Assets',         'url': '/fixed_assets',           'icon': 'fas fa-building',            'category': 'Core Accounting'},
     {'key': 'vat_schedule',       'label': 'VAT Schedule',         'url': '/vat_report',             'icon': 'fas fa-file-alt',            'category': 'Core Accounting'},
     # Reversals & Adjustments
@@ -5271,7 +5273,13 @@ def direct_purchasing_submit():
     items = session['payment_items']
     total_amount = session.get('payment_total', 0)
     current_user = get_current_user_id()
-    today_date = date.today()
+    today_date = date.today()                          # entry_create_date (when entered)
+    # Use user's transaction date as entry_effective_date (when transaction occurred)
+    raw_txn_date = request.form.get('date', '').strip()
+    try:
+        txn_date = date.fromisoformat(raw_txn_date) if raw_txn_date else today_date
+    except ValueError:
+        txn_date = today_date
     narration = "Direct Purchase / Cash Payment"
 
     try:
@@ -5292,14 +5300,14 @@ def direct_purchasing_submit():
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM DIRECT CASH', narration))
         jv_no = cursor.lastrowid
 
-        # 3. GL Entries
+        # 3. GL Entries — use txn_date (user's date) as effective date, today_date as create date
         # Credit Cash Account (Total)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (cash_account, total_amount, today_date, today_date, narration, current_user, jv_no))
+        """, (cash_account, total_amount, txn_date, today_date, narration, current_user, jv_no))
 
         # Debit Expense/Asset Accounts (Per Item)
         for item in items:
@@ -5313,7 +5321,7 @@ def direct_purchasing_submit():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (item['account'], item['total'], today_date, today_date,
+            """, (item['account'], item['total'], txn_date, today_date,
                   item.get('narration') or 'Direct Purchase', current_user, jv_no, job_no))
 
             # 4. Cash Book Record
@@ -5323,11 +5331,10 @@ def direct_purchasing_submit():
                     cash_book_recode_naration, jv_numbers_jv_id, cash_book_recod_voucher_no,
                     User_Enter, Payment_Date
                 ) VALUES (0, %s, %s, %s, %s, %s, %s, %s)
-            """, (item['total'], cash_account, item['narration'], jv_no, new_voucher, current_user, today_date))
+            """, (item['total'], cash_account, item['narration'], jv_no, new_voucher, current_user, txn_date))
 
             # 5. Inventory Record (if Item Name is present)
             if item.get('item_name'):
-                # Get item code
                 cursor.execute("SELECT inventoy_code, inventoy_items_messurment_unit FROM inventoy_items WHERE inventoy_name = %s", (item['item_name'],))
                 inv_res = cursor.fetchone()
 
@@ -5343,7 +5350,7 @@ def direct_purchasing_submit():
                             inventory_recod_account, inventory_recod_user_id,
                             inventory_recod_user_recod_date, JV_No
                         ) VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
-                    """, (item['item_name'], inv_code, today_date, item['qty'], inv_unit, item['price'], item['account'], current_user, today_date, jv_no))
+                    """, (item['item_name'], inv_code, txn_date, item['qty'], inv_unit, item['price'], item['account'], current_user, today_date, jv_no))
 
         conn.commit()
 
@@ -6968,6 +6975,197 @@ def ledger_export():
     output.headers["Content-Disposition"] = f"attachment; filename=Ledger_{safe_name}_{from_date}.csv"
     output.headers["Content-type"] = "text/csv"
     return output
+
+
+# ================================================================
+# ── CREDIT NOTE & DEBIT NOTE ────────────────────────────────────
+# ================================================================
+# Credit Note  → issued TO a customer  (reduces AR / sales return)
+# Debit Note   → issued TO a supplier  (reduces AP / purchase return)
+
+@app.route('/credit_note', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def credit_note():
+    customers = db.execute_query(
+        "SELECT sup_id, supplier_name FROM suppliers WHERE Is_Customer=1 ORDER BY supplier_name")
+    ar_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_assets=1 ORDER BY account_name")
+    income_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_income=1 ORDER BY account_name")
+    today = date.today().strftime('%Y-%m-%d')
+    return render_template('credit_note.html',
+                           customers=customers, ar_accounts=ar_accounts,
+                           income_accounts=income_accounts, today_date=today)
+
+
+@app.route('/credit_note/submit', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def credit_note_submit():
+    customer_id   = request.form.get('customer_id')
+    cn_date       = request.form.get('cn_date') or str(date.today())
+    narration     = request.form.get('narration', '').strip() or 'Credit Note'
+    ar_account    = request.form.get('ar_account', 'Account Receivable')
+    sales_account = request.form.get('sales_account', 'Sales')
+    try:
+        amount = float(request.form.get('amount', 0))
+    except ValueError:
+        amount = 0.0
+
+    if not customer_id or amount <= 0:
+        flash('Customer and a positive amount are required.', 'danger')
+        return redirect(url_for('credit_note'))
+
+    current_user_pk = get_current_user_pk()
+    today = date.today()
+    conn = None
+    cursor = None
+
+    try:
+        # Get customer name
+        cust = db.execute_query(
+            "SELECT supplier_name FROM suppliers WHERE sup_id=%s", (customer_id,))
+        cust_name = cust[0]['supplier_name'] if cust else ''
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Generate CN number
+        cursor.execute("SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code LIKE 'CN-%'")
+        cn_seq = (cursor.fetchone()[0] or 0) + 1
+        cn_code = f"CN-{cn_seq:05d}"
+
+        # 2. Create JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s,%s,1)",
+            (cn_code, f'Credit Note: {narration}'))
+        jv_no = cursor.lastrowid
+
+        # 3. GL entries
+        # DR: Sales / Revenue account (reverse the original sale)
+        cursor.execute("""
+            INSERT INTO entry_details
+              (account_name, enty_values_DR, entry_effective_date, entry_create_date,
+               entry_naration, entry_create_user, entry_jv)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """, (sales_account, amount, cn_date, today, narration, current_user_pk, jv_no))
+
+        # CR: Accounts Receivable (reduces what customer owes)
+        cursor.execute("""
+            INSERT INTO entry_details
+              (account_name, enty_values_CR, entry_effective_date, entry_create_date,
+               entry_naration, entry_create_user, entry_jv)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """, (ar_account, amount, cn_date, today, narration, current_user_pk, jv_no))
+
+        conn.commit()
+        flash(f'Credit Note {cn_code} created successfully. JV: {jv_no}', 'success')
+        return redirect(url_for('credit_note', last_cn=cn_code, last_jv=jv_no,
+                                cn_date=cn_date, cust_name=cust_name,
+                                amount=amount, narration=narration))
+    except Exception as e:
+        if conn: conn.rollback()
+        logging.error(f"Credit Note error: {e}")
+        flash(f'Error creating credit note: {str(e)}', 'danger')
+        return redirect(url_for('credit_note'))
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/debit_note', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def debit_note():
+    suppliers = db.execute_query(
+        "SELECT sup_id, supplier_name FROM suppliers WHERE Is_Suplier=1 ORDER BY supplier_name")
+    ap_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_liabilities=1 ORDER BY account_name")
+    expense_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_expenses=1 ORDER BY account_name")
+    today = date.today().strftime('%Y-%m-%d')
+    return render_template('debit_note.html',
+                           suppliers=suppliers, ap_accounts=ap_accounts,
+                           expense_accounts=expense_accounts, today_date=today)
+
+
+@app.route('/debit_note/submit', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def debit_note_submit():
+    supplier_id    = request.form.get('supplier_id')
+    dn_date        = request.form.get('dn_date') or str(date.today())
+    narration      = request.form.get('narration', '').strip() or 'Debit Note'
+    ap_account     = request.form.get('ap_account', 'Account Payable')
+    expense_account = request.form.get('expense_account', '')
+    try:
+        amount = float(request.form.get('amount', 0))
+    except ValueError:
+        amount = 0.0
+
+    if not supplier_id or amount <= 0:
+        flash('Supplier and a positive amount are required.', 'danger')
+        return redirect(url_for('debit_note'))
+
+    current_user_pk = get_current_user_pk()
+    today = date.today()
+    conn = None
+    cursor = None
+
+    try:
+        sup = db.execute_query(
+            "SELECT supplier_name FROM suppliers WHERE sup_id=%s", (supplier_id,))
+        sup_name = sup[0]['supplier_name'] if sup else ''
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # 1. Generate DN number
+        cursor.execute("SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code LIKE 'DN-%'")
+        dn_seq = (cursor.fetchone()[0] or 0) + 1
+        dn_code = f"DN-{dn_seq:05d}"
+
+        # 2. Create JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s,%s,1)",
+            (dn_code, f'Debit Note: {narration}'))
+        jv_no = cursor.lastrowid
+
+        # 3. GL entries
+        # DR: Accounts Payable (reduces what we owe the supplier)
+        cursor.execute("""
+            INSERT INTO entry_details
+              (account_name, enty_values_DR, entry_effective_date, entry_create_date,
+               entry_naration, entry_create_user, entry_jv)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """, (ap_account, amount, dn_date, today, narration, current_user_pk, jv_no))
+
+        # CR: Expense / Purchase Return account
+        if not expense_account:
+            expense_account = ap_account  # fallback
+        cursor.execute("""
+            INSERT INTO entry_details
+              (account_name, enty_values_CR, entry_effective_date, entry_create_date,
+               entry_naration, entry_create_user, entry_jv)
+            VALUES (%s,%s,%s,%s,%s,%s,%s)
+        """, (expense_account, amount, dn_date, today, narration, current_user_pk, jv_no))
+
+        conn.commit()
+        flash(f'Debit Note {dn_code} created successfully. JV: {jv_no}', 'success')
+        return redirect(url_for('debit_note', last_dn=dn_code, last_jv=jv_no,
+                                dn_date=dn_date, sup_name=sup_name,
+                                amount=amount, narration=narration))
+    except Exception as e:
+        if conn: conn.rollback()
+        logging.error(f"Debit Note error: {e}")
+        flash(f'Error creating debit note: {str(e)}', 'danger')
+        return redirect(url_for('debit_note'))
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 # --- Trial Balance ---
