@@ -207,14 +207,20 @@
               <label class="form-label">Transaction Date</label>
               <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
             </div>
-            <div class="mb-4">
+            <div class="mb-3">
               <label class="form-label">Cash Account <span style="color:#605E5C;font-weight:400;">(Source)</span></label>
-              <select name="cash_account" class="form-select select2" required>
+              <select name="cash_account" id="dpCashAccount" class="form-select select2" required onchange="fetchNextVoucher()">
                 <option value="">Select Cash Account</option>
                 {% for acc in cash_accounts %}
                 <option value="{{ acc.cash_book_account_name }}">{{ acc.cash_book_account_name }}</option>
                 {% endfor %}
               </select>
+            </div>
+            <div class="mb-4">
+              <label class="form-label">Voucher No <span style="color:#a0aec0;font-weight:400;">(optional — blank = auto)</span></label>
+              <input type="text" name="manual_voucher" id="dpManualVoucher" class="form-control"
+                     placeholder="Auto-generated if left blank">
+              <div id="dpVoucherHint" style="font-size:.72rem;color:#9ca3af;margin-top:3px;"></div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-4 px-3 py-2"
                  style="background:#fff7f0;border:1px solid #fde8d0;border-radius:8px;">
@@ -280,6 +286,11 @@
                     <i class="fas fa-paperclip"></i>
                   </button>
                   {% if not h.is_reversed %}
+                  <button class="btn btn-sm"
+                          onclick="openEditModal({{ h.jv }}, '{{ h.voucher or '' }}', '{{ h.date }}', '{{ (h.account or '')|replace("'", "") }}')"
+                          style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;font-size:.72rem;color:#1d4ed8;padding:3px 8px;" title="Edit (date / voucher / narration)">
+                    <i class="fas fa-pen"></i>
+                  </button>
                   <a href="/direct_payment_reversal?jv={{ h.jv }}"
                      class="btn btn-sm" style="background:#fce8e6;border:none;border-radius:5px;font-size:.72rem;color:#C42B1C;padding:3px 8px;" title="Reverse">
                     <i class="fas fa-undo"></i>
@@ -311,6 +322,52 @@
   {% endif %}
 
 </div><!-- /container-fluid -->
+
+<!-- ── Edit Metadata Modal ── -->
+<div class="modal fade" id="dpEditModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#1d4ed8,#1e40af);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="fas fa-pen"></i>
+          <h6 class="modal-title fw-bold mb-0">Edit Transaction — JV <span id="edJvLabel"></span></h6>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div class="mb-3 px-3 py-2" style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:.78rem;color:#1e40af;">
+          <i class="fas fa-info-circle me-1"></i> You can edit date, voucher number and narration only.
+          Amounts and accounts are locked to protect the ledger.
+        </div>
+        <input type="hidden" id="edJv">
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Account (read-only)</label>
+          <input type="text" id="edAccount" class="form-control" readonly style="border-radius:8px;background:#f8f9fb;">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Transaction Date</label>
+          <input type="date" id="edDate" class="form-control" style="border-radius:8px;">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-bold small">Voucher No</label>
+          <input type="text" id="edVoucher" class="form-control" style="border-radius:8px;">
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-bold small">Narration</label>
+          <input type="text" id="edNarration" class="form-control" placeholder="Transaction description" style="border-radius:8px;">
+        </div>
+        <div id="edStatus" style="display:none;font-size:.8rem;border-radius:6px;padding:7px 12px;margin-top:8px;"></div>
+      </div>
+      <div class="modal-footer border-0 px-4 pb-4 pt-0">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal" style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Cancel</button>
+        <button type="button" class="btn btn-sm fw-bold text-white" id="edSaveBtn" onclick="saveEdit()"
+                style="background:#1d4ed8;border:none;border-radius:8px;padding:7px 20px;">
+          <i class="fas fa-save me-1"></i> Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- ── Document Viewer Modal (history rows) ── -->
 <div class="modal fade" id="docViewModal" tabindex="-1">
@@ -429,6 +486,72 @@ function dvDelete(docId) {
   fetch(`/documents/delete/${docId}`, {method:'POST'})
     .then(r => r.json())
     .then(res => { if (res.success) { document.getElementById('dvrow_'+docId)?.remove(); } });
+}
+
+/* ── Manual voucher: fetch next auto number when cash account selected ── */
+function fetchNextVoucher() {
+  const acc = document.getElementById('dpCashAccount').value;
+  const hint = document.getElementById('dpVoucherHint');
+  const field = document.getElementById('dpManualVoucher');
+  if (!acc) { hint.textContent = ''; return; }
+  fetch(`/direct_purchasing/next_voucher?cash_account=${encodeURIComponent(acc)}`)
+    .then(r => r.json())
+    .then(d => {
+      if (d.next) {
+        field.placeholder = 'Auto: ' + d.next;
+        hint.textContent = 'Next available voucher for this account: ' + d.next + ' (leave blank to use it)';
+      }
+    });
+}
+
+/* ── Edit metadata modal ── */
+function openEditModal(jv, voucher, dateStr, account) {
+  document.getElementById('edJvLabel').textContent = jv;
+  document.getElementById('edJv').value = jv;
+  document.getElementById('edVoucher').value = voucher || '';
+  document.getElementById('edAccount').value = account || '';
+  // Normalize date to yyyy-mm-dd for the date input
+  let d = (dateStr || '').trim();
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  document.getElementById('edDate').value = m ? m[0] : '';
+  document.getElementById('edNarration').value = '';
+  document.getElementById('edStatus').style.display = 'none';
+  new bootstrap.Modal(document.getElementById('dpEditModal')).show();
+}
+
+function saveEdit() {
+  const jv = document.getElementById('edJv').value;
+  const btn = document.getElementById('edSaveBtn');
+  const stat = document.getElementById('edStatus');
+  const fd = new FormData();
+  fd.append('jv', jv);
+  fd.append('txn_date', document.getElementById('edDate').value);
+  fd.append('voucher_no', document.getElementById('edVoucher').value);
+  fd.append('narration', document.getElementById('edNarration').value);
+
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving…';
+
+  fetch('/direct_purchasing/edit', { method:'POST', body: fd })
+    .then(r => r.json())
+    .then(res => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save me-1"></i> Save Changes';
+      if (res.success) {
+        stat.style.cssText = 'display:block;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;';
+        stat.textContent = '✅ Saved. Reloading…';
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        stat.style.cssText = 'display:block;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;';
+        stat.textContent = '❌ ' + (res.error || 'Failed');
+      }
+    })
+    .catch(() => {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-save me-1"></i> Save Changes';
+      stat.style.cssText = 'display:block;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;';
+      stat.textContent = '❌ Network error';
+    });
 }
 
 (function(){

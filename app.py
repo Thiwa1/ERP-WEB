@@ -5258,6 +5258,95 @@ def direct_purchasing_clear():
     session.modified = True
     return redirect(url_for('direct_purchasing'))
 
+@app.route('/direct_purchasing/next_voucher')
+@login_required
+def direct_purchasing_next_voucher():
+    """Return the next auto voucher number for a given cash account."""
+    cash_account = request.args.get('cash_account', '')
+    if not cash_account:
+        return jsonify({'next': ''})
+    res = db.execute_query(
+        "SELECT MAX(cash_voucher_number) AS m FROM cash_voucher_no WHERE cash_voucher_link = %s",
+        (cash_account,))
+    mx = 0
+    if res and res[0].get('m') is not None:
+        try:
+            mx = int(res[0]['m'])
+        except (ValueError, TypeError):
+            mx = 0
+    return jsonify({'next': mx + 1})
+
+
+@app.route('/direct_purchasing/edit', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def direct_purchasing_edit():
+    """Edit metadata only (date, voucher no, narration) of a posted direct purchase.
+    Amounts and GL accounts are NOT editable to protect ledger integrity."""
+    jv = request.form.get('jv', '').strip()
+    new_date = request.form.get('txn_date', '').strip()
+    new_voucher = request.form.get('voucher_no', '').strip()
+    new_narration = request.form.get('narration', '').strip()
+
+    if not jv:
+        return jsonify({'success': False, 'error': 'No JV provided'}), 400
+
+    # Validate date
+    eff_date = None
+    if new_date:
+        try:
+            eff_date = date.fromisoformat(new_date)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # Update effective date across GL, cash book, inventory (NOT create date)
+        if eff_date:
+            cursor.execute(
+                "UPDATE entry_details SET entry_effective_date=%s WHERE entry_jv=%s",
+                (eff_date, jv))
+            cursor.execute(
+                "UPDATE cash_book_recode SET Payment_Date=%s WHERE jv_numbers_jv_id=%s",
+                (eff_date, jv))
+            cursor.execute(
+                "UPDATE inventory_recod SET inventory_recod_action_date=%s WHERE JV_No=%s",
+                (eff_date, jv))
+
+        # Update narration
+        if new_narration:
+            cursor.execute(
+                "UPDATE entry_details SET entry_naration=%s WHERE entry_jv=%s",
+                (new_narration, jv))
+            cursor.execute(
+                "UPDATE cash_book_recode SET cash_book_recode_naration=%s WHERE jv_numbers_jv_id=%s",
+                (new_narration, jv))
+            cursor.execute(
+                "UPDATE jv_numbers SET jv_naration=%s WHERE jv_id=%s",
+                (new_narration, jv))
+
+        # Update voucher number on cash book records
+        if new_voucher:
+            cursor.execute(
+                "UPDATE cash_book_recode SET cash_book_recod_voucher_no=%s WHERE jv_numbers_jv_id=%s",
+                (new_voucher, jv))
+
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn: conn.rollback()
+        logging.error(f"Direct Purchase edit error: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
 @app.route('/direct_purchasing/submit', methods=['POST'])
 @login_required
 def direct_purchasing_submit():
@@ -5280,19 +5369,22 @@ def direct_purchasing_submit():
         txn_date = date.fromisoformat(raw_txn_date) if raw_txn_date else today_date
     except ValueError:
         txn_date = today_date
-    narration = "Direct Purchase / Cash Payment"
+    narration = (request.form.get('narration') or '').strip() or "Direct Purchase / Cash Payment"
+    manual_voucher = (request.form.get('manual_voucher') or '').strip()
 
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
         conn.start_transaction()
 
-        # 1. Generate Voucher Number for Cash Book
-        # Check max voucher for this account
-        cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
-        res = cursor.fetchone()
-        max_voucher = res[0] if res and res[0] else 0
-        new_voucher = max_voucher + 1
+        # 1. Voucher Number — use manual override if provided, else auto-generate
+        if manual_voucher:
+            new_voucher = manual_voucher
+        else:
+            cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
+            res = cursor.fetchone()
+            max_voucher = res[0] if res and res[0] else 0
+            new_voucher = max_voucher + 1
 
         cursor.execute("INSERT INTO cash_voucher_no (cash_voucher_link, cash_voucher_number) VALUES (%s, %s)", (cash_account, new_voucher))
 
