@@ -407,7 +407,28 @@
     </div>
 </div>
 
+{% if last_jv %}
+<div class="container-fluid">
+  <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
+  {% set _doc_jv      = last_jv %}
+  {% set _doc_reftype = 'customer_receipt' %}
+  {% set _doc_color   = '#107C10' %}
+  {% set _doc_label   = 'Customer Receipt' %}
+  {% include '_doc_upload_panel.html' %}
+</div>
+{% endif %}
+
 <script>
+    // Auto-scroll to doc panel after a receipt is posted
+    (function(){
+        if (new URLSearchParams(window.location.search).get('last_jv')) {
+            setTimeout(() => {
+                const el = document.getElementById('docPanelAnchor');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 400);
+        }
+    })();
+
     // Live Clock Update
     setInterval(() => {
         const now = new Date();

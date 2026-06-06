@@ -499,6 +499,12 @@
                             </div>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="field-label">Invoice No <span style="color:#a0aec0;font-weight:400;">(optional — blank = auto)</span></label>
+                            <input type="text" class="form-control form-control-sm"
+                                   name="manual_invoice_no" placeholder="Auto-generated if left blank">
+                        </div>
+
                         <div class="row g-2 mb-3">
                             <div class="col-6">
                                 <label class="field-label">Location</label>
@@ -668,6 +674,36 @@
             </div><!-- /col-md-4 -->
         </div><!-- /row -->
     </form>
+
+    {% if last_jv %}
+    <!-- ── Success banner + Document panel ── -->
+    <div class="d-flex align-items-center justify-content-between mt-4 mb-3 px-4 py-3"
+         style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
+      <div class="d-flex align-items-center gap-2">
+        <i class="fas fa-check-circle" style="color:#16a34a;font-size:1.2rem;"></i>
+        <div>
+          <div class="fw-bold" style="color:#15803d;">Invoice {{ last_inv }} created — JV #{{ last_jv }}</div>
+          <div style="font-size:.78rem;color:#166534;">Attach documents below, or print the invoice.</div>
+        </div>
+      </div>
+      <div class="d-flex gap-2">
+        <a href="/invoice_print/{{ last_inv }}" target="_blank" class="btn btn-sm fw-bold"
+           style="background:#16a34a;color:#fff;border:none;border-radius:8px;font-size:.8rem;padding:7px 16px;">
+          <i class="fas fa-print me-1"></i> Print
+        </a>
+        <button onclick="document.getElementById('docPanelAnchor').scrollIntoView({behavior:'smooth'})"
+                class="btn btn-sm fw-bold" style="background:#0f766e;color:#fff;border:none;border-radius:8px;font-size:.8rem;padding:7px 16px;">
+          <i class="fas fa-paperclip me-1"></i> Attach Documents
+        </button>
+      </div>
+    </div>
+    <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
+    {% set _doc_jv      = last_jv %}
+    {% set _doc_reftype = 'sales_invoice' %}
+    {% set _doc_color   = '#0078D4' %}
+    {% set _doc_label   = 'Sales Invoice' %}
+    {% include '_doc_upload_panel.html' %}
+    {% endif %}
 </div>
 
 <!-- Select2 Initialization scripts -->
@@ -867,5 +903,15 @@
         document.getElementById('vatAmountDisplay').textContent = vatAmount.toFixed(2);
         document.getElementById('grandTotalDisplay').textContent = (subTotal + vatAmount).toFixed(2);
     }
+
+    // Auto-scroll to document panel after invoice creation
+    (function(){
+        if (new URLSearchParams(window.location.search).get('last_jv')) {
+            setTimeout(() => {
+                const el = document.getElementById('docPanelAnchor');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 400);
+        }
+    })();
 </script>
 {% endblock %}

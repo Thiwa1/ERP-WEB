@@ -8900,7 +8900,8 @@ def customer_receipt():
                            customers=customers,
                            cash_accounts=cash_accounts,
                            bank_accounts=bank_accounts,
-                           today_date=date.today().strftime('%Y-%m-%d'))
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           last_jv=request.args.get('last_jv'))
 
 @app.route('/customer_receipt/get_outstanding')
 @login_required
@@ -9265,15 +9266,19 @@ def submit_customer_receipt():
 
         conn.commit()
         flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')
+        _rcpt_jv = jv_no
 
     except Exception as e:
         conn.rollback()
         flash(f'Error processing receipt: {str(e)}', 'danger')
         logging.error(f"Receipt Error: {e}")
+        _rcpt_jv = None
     finally:
         cursor.close()
         conn.close()
 
+    if _rcpt_jv:
+        return redirect(url_for('customer_receipt', last_jv=_rcpt_jv))
     return redirect(url_for('customer_receipt'))
 
 @app.route('/customer_receipt/delete', methods=['POST'])
@@ -13604,7 +13609,9 @@ def invoice_creating():
                            locations=locations,
                            jobs=jobs,
                            inventory_items=items,
-                           today_date=today_date)
+                           today_date=today_date,
+                           last_jv=request.args.get('last_jv'),
+                           last_inv=request.args.get('last_inv'))
 
 @app.route('/invoice_print/<string:invoice_no>')
 @login_required
@@ -14053,10 +14060,11 @@ def submit_invoice():
         # Check Payment Type
         payment_type = request.form.get('payment_type', 'Credit')
 
-        # 3. Generate Invoice No (Credit_Invoice_No table)
+        # 3. Generate Invoice No (Credit_Invoice_No table) — manual override if provided
         cursor.execute("INSERT INTO Credit_Invoice_No (id) VALUES (0)")
         inv_id_seq = cursor.lastrowid
-        invoice_no = f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
+        manual_inv_no = (request.form.get('manual_invoice_no') or '').strip()
+        invoice_no = manual_inv_no if manual_inv_no else f"IV-{datetime.now().year}{datetime.now().month}-{inv_id_seq}"
 
         # 4. Create JV Header
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
@@ -14115,15 +14123,21 @@ def submit_invoice():
         post_invoice_gl_entries(gl_ctx)
         conn.commit()
         flash(f'Invoice {invoice_no} created successfully.|{invoice_no}', 'success')
+        _inv_jv = jv_no
+        _inv_no = invoice_no
 
     except Exception as e:
         conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
         print(f"Invoice Error: {e}")
+        _inv_jv = None
+        _inv_no = None
     finally:
         cursor.close()
         conn.close()
 
+    if _inv_jv:
+        return redirect(url_for('invoice_creating', last_jv=_inv_jv, last_inv=_inv_no))
     return redirect(url_for('invoice_creating'))
 
 # --- Inventory Production ---
