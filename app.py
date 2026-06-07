@@ -201,6 +201,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'sales_pipeline',     'label': 'Sales Pipeline',       'url': '/crm',                    'icon': 'fas fa-funnel-dollar',       'category': 'CRM & Sales'},
     {'key': 'add_lead',           'label': 'Add Lead',             'url': '/crm/lead/add',           'icon': 'fas fa-user-plus',           'category': 'CRM & Sales'},
     # Reports
+    {'key': 'transaction_search', 'label': 'Transaction Search',    'url': '/transaction_search',     'icon': 'fas fa-search-dollar',       'category': 'Reports'},
     {'key': 'ledger_view',        'label': 'Ledger View',          'url': '/ledger_view',            'icon': 'fas fa-book-open',           'category': 'Reports'},
     {'key': 'trial_balance',      'label': 'Trial Balance',        'url': '/trial_balance',          'icon': 'fas fa-balance-scale-left',  'category': 'Reports'},
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
@@ -7494,6 +7495,96 @@ def debit_note_submit():
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+
+# ================================================================
+# ── TRANSACTION SEARCH (powerful historical search) ─────────────
+# ================================================================
+@app.route('/transaction_search')
+@login_required
+@has_permission('Access_Reports')
+def transaction_search():
+    """Search ALL historical GL transactions by narration, amount, account,
+    JV, voucher, date range and DR/CR — across every transaction type."""
+    f = {
+        'narration':  request.args.get('narration', '').strip(),
+        'account':    request.args.get('account', '').strip(),
+        'jv':         request.args.get('jv', '').strip(),
+        'amount':     request.args.get('amount', '').strip(),
+        'amount_min': request.args.get('amount_min', '').strip(),
+        'amount_max': request.args.get('amount_max', '').strip(),
+        'date_from':  request.args.get('date_from', '').strip(),
+        'date_to':    request.args.get('date_to', '').strip(),
+        'dr_cr':      request.args.get('dr_cr', '').strip(),
+    }
+    download = request.args.get('download')
+
+    filters = ['ed.entry_deleted = 0']
+    params = []
+    if f['narration']:
+        filters.append('ed.entry_naration LIKE %s'); params.append(f"%{f['narration']}%")
+    if f['account']:
+        filters.append('ed.account_name LIKE %s'); params.append(f"%{f['account']}%")
+    if f['jv']:
+        filters.append('(ed.entry_jv = %s OR j.jv_user_code LIKE %s)')
+        params += [f['jv'], f"%{f['jv']}%"]
+    if f['date_from']:
+        filters.append('ed.entry_effective_date >= %s'); params.append(f['date_from'])
+    if f['date_to']:
+        filters.append('ed.entry_effective_date <= %s'); params.append(f['date_to'])
+    if f['amount']:
+        filters.append('(ed.enty_values_DR = %s OR ed.enty_values_CR = %s)')
+        params += [f['amount'], f['amount']]
+    if f['amount_min']:
+        filters.append('(ed.enty_values_DR >= %s OR ed.enty_values_CR >= %s)')
+        params += [f['amount_min'], f['amount_min']]
+    if f['amount_max']:
+        filters.append('GREATEST(COALESCE(ed.enty_values_DR,0), COALESCE(ed.enty_values_CR,0)) <= %s')
+        params.append(f['amount_max'])
+    if f['dr_cr'] == 'dr':
+        filters.append('ed.enty_values_DR > 0')
+    elif f['dr_cr'] == 'cr':
+        filters.append('ed.enty_values_CR > 0')
+
+    has_filter = any(v for v in f.values())
+    rows = []
+    if has_filter:
+        where = ' AND '.join(filters)
+        query = f"""
+            SELECT ed.id, ed.entry_jv AS jv, j.jv_user_code AS code,
+                   ed.entry_effective_date AS date, ed.account_name AS account,
+                   ed.entry_naration AS narration,
+                   COALESCE(ed.enty_values_DR,0) AS dr,
+                   COALESCE(ed.enty_values_CR,0) AS cr
+            FROM entry_details ed
+            LEFT JOIN jv_numbers j ON ed.entry_jv = j.jv_id
+            WHERE {where}
+            ORDER BY ed.entry_effective_date DESC, ed.id DESC
+            LIMIT 1000
+        """
+        rows = db.execute_query(query, tuple(params)) or []
+
+    # CSV export
+    if download == 'csv' and rows:
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Date', 'JV', 'Code', 'Account', 'Narration', 'Debit', 'Credit'])
+        for r in rows:
+            cw.writerow([r['date'], r['jv'], r['code'] or '', r['account'],
+                         r['narration'] or '',
+                         f"{float(r['dr']):.2f}", f"{float(r['cr']):.2f}"])
+        out = make_response(si.getvalue())
+        out.headers["Content-Disposition"] = "attachment; filename=transaction_search.csv"
+        out.headers["Content-type"] = "text/csv"
+        return out
+
+    total_dr = sum(float(r['dr']) for r in rows)
+    total_cr = sum(float(r['cr']) for r in rows)
+
+    return render_template('transaction_search.html',
+                           rows=rows, f=f, has_filter=has_filter,
+                           total_dr=total_dr, total_cr=total_cr,
+                           result_count=len(rows))
 
 
 # --- Trial Balance ---

@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}Transaction Search{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#4f46e5,#3730a3);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+      <i class="fas fa-search-dollar"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Transaction Search</h5>
+      <div style="font-size:.78rem;color:#605E5C;">Search all historical data — by amount, narration, account, JV, date</div>
+    </div>
+  </div>
+
+  <!-- Filter Card -->
+  <form method="GET" action="/transaction_search" class="mb-4">
+    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
+      <div class="row g-3">
+
+        <div class="col-md-4">
+          <label class="form-label fw-bold small" style="color:#374151;">Narration contains</label>
+          <input type="text" name="narration" value="{{ f.narration }}" class="form-control no-select2"
+                 placeholder="Search words in narration…" style="border-radius:8px;">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label fw-bold small" style="color:#374151;">Account contains</label>
+          <input type="text" name="account" value="{{ f.account }}" class="form-control no-select2"
+                 placeholder="Account name…" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">JV / Voucher</label>
+          <input type="text" name="jv" value="{{ f.jv }}" class="form-control no-select2"
+                 placeholder="JV no / code" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Type</label>
+          <select name="dr_cr" class="form-select">
+            <option value="" {% if f.dr_cr=='' %}selected{% endif %}>Both DR &amp; CR</option>
+            <option value="dr" {% if f.dr_cr=='dr' %}selected{% endif %}>Debit only</option>
+            <option value="cr" {% if f.dr_cr=='cr' %}selected{% endif %}>Credit only</option>
+          </select>
+        </div>
+
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Exact Amount</label>
+          <input type="number" step="0.01" name="amount" value="{{ f.amount }}" class="form-control no-select2"
+                 placeholder="e.g. 5000" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Amount Min</label>
+          <input type="number" step="0.01" name="amount_min" value="{{ f.amount_min }}" class="form-control no-select2"
+                 placeholder="≥" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Amount Max</label>
+          <input type="number" step="0.01" name="amount_max" value="{{ f.amount_max }}" class="form-control no-select2"
+                 placeholder="≤" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Date From</label>
+          <input type="date" name="date_from" value="{{ f.date_from }}" class="form-control no-select2" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label fw-bold small" style="color:#374151;">Date To</label>
+          <input type="date" name="date_to" value="{{ f.date_to }}" class="form-control no-select2" style="border-radius:8px;">
+        </div>
+        <div class="col-md-2 d-flex align-items-end gap-2">
+          <button type="submit" class="btn w-100 fw-bold text-white"
+                  style="background:#4f46e5;border:none;border-radius:8px;padding:.5rem 0;">
+            <i class="fas fa-search me-1"></i> Search
+          </button>
+          <a href="/transaction_search" class="btn"
+             style="border:1px solid #e2e8f0;border-radius:8px;padding:.5rem .75rem;color:#605E5C;">Reset</a>
+        </div>
+
+      </div>
+    </div>
+  </form>
+
+  <!-- Results -->
+  {% if has_filter %}
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 py-3 d-flex align-items-center justify-content-between" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+      <span style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#374151;">
+        <i class="fas fa-list me-1" style="color:#4f46e5;"></i>{{ result_count }} result(s){% if result_count == 1000 %} (showing first 1000){% endif %}
+      </span>
+      {% if rows %}
+      <a href="/transaction_search?narration={{ f.narration|urlencode }}&account={{ f.account|urlencode }}&jv={{ f.jv|urlencode }}&amount={{ f.amount }}&amount_min={{ f.amount_min }}&amount_max={{ f.amount_max }}&date_from={{ f.date_from }}&date_to={{ f.date_to }}&dr_cr={{ f.dr_cr }}&download=csv"
+         class="btn btn-sm fw-bold" style="background:#f0f4ff;border:1px solid #c7d2fc;border-radius:7px;color:#3730a3;font-size:.78rem;">
+        <i class="fas fa-file-csv me-1"></i> Export CSV
+      </a>
+      {% endif %}
+    </div>
+    <div class="table-responsive" style="max-height:560px;">
+      <table class="table table-hover mb-0">
+        <thead style="position:sticky;top:0;z-index:1;background:#f8f9fa;">
+          <tr>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem 1rem;">Date</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">JV</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Debit</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Credit</th>
+            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">View</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if rows %}
+            {% for r in rows %}
+            <tr>
+              <td style="padding:.5rem 1rem;font-size:.82rem;">{{ r.date }}</td>
+              <td style="padding:.5rem .75rem;font-size:.8rem;">
+                <span class="font-monospace fw-bold">{{ r.jv }}</span>
+                {% if r.code %}<div style="font-size:.7rem;color:#9ca3af;">{{ r.code }}</div>{% endif %}
+              </td>
+              <td style="padding:.5rem .75rem;font-size:.82rem;color:#1a1a2e;">{{ r.account }}</td>
+              <td style="padding:.5rem .75rem;font-size:.82rem;color:#605E5C;max-width:320px;">{{ r.narration }}</td>
+              <td class="text-end font-monospace" style="padding:.5rem .75rem;font-size:.82rem;color:{% if r.dr %}#16a34a{% else %}#cbd5e1{% endif %};">
+                {{ "{:,.2f}".format(r.dr|float) if r.dr else '—' }}
+              </td>
+              <td class="text-end font-monospace" style="padding:.5rem .75rem;font-size:.82rem;color:{% if r.cr %}#dc2626{% else %}#cbd5e1{% endif %};">
+                {{ "{:,.2f}".format(r.cr|float) if r.cr else '—' }}
+              </td>
+              <td class="text-center" style="padding:.4rem .75rem;">
+                <a href="/journal_entry/print/{{ r.jv }}" target="_blank"
+                   class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 9px;" title="View JV">
+                  <i class="fas fa-eye"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr><td colspan="7" class="text-center py-5" style="color:#9ca3af;font-size:.9rem;">
+              <i class="fas fa-search mb-2 d-block" style="font-size:1.8rem;opacity:.35;"></i>
+              No transactions match your search.
+            </td></tr>
+          {% endif %}
+        </tbody>
+        {% if rows %}
+        <tfoot style="background:#f8f9fa;border-top:2px solid #e2e8f0;">
+          <tr>
+            <td colspan="4" class="text-end fw-bold" style="padding:.7rem 1rem;font-size:.82rem;">Totals (this page)</td>
+            <td class="text-end fw-bold font-monospace" style="padding:.7rem .75rem;color:#16a34a;">{{ "{:,.2f}".format(total_dr) }}</td>
+            <td class="text-end fw-bold font-monospace" style="padding:.7rem .75rem;color:#dc2626;">{{ "{:,.2f}".format(total_cr) }}</td>
+            <td></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-5" style="color:#9ca3af;">
+    <i class="fas fa-search-dollar mb-3 d-block" style="font-size:2.5rem;opacity:.3;"></i>
+    <div style="font-size:.95rem;">Enter any combination of filters above and click <strong>Search</strong>.</div>
+    <div style="font-size:.8rem;margin-top:6px;">Search by amount, narration, account, JV number, date range, or DR/CR.</div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

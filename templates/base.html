@@ -905,6 +905,7 @@
                 <!-- Reports -->
                 {% if check_permission("Access_Reports") %}
                 <div class="menu-category">Reports</div>
+                {% if 'transaction_search' not in menu_disabled %}<a href="/transaction_search" class="nav-link"><i class="fas fa-search-dollar"></i> <span class="nav-text">Transaction Search</span></a>{% endif %}
                 {% if 'ledger_view' not in menu_disabled %}<a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>{% endif %}
                 {% if 'trial_balance' not in menu_disabled %}<a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>{% endif %}
                 {% if 'supplier_aging' not in menu_disabled %}<a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Supplier Aging</span></a>{% endif %}
