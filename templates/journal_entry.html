@@ -168,6 +168,23 @@
             </table>
         </div>
     </div>
+
+    {% if last_jv %}
+    <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
+    {% set _doc_jv      = last_jv %}
+    {% set _doc_reftype = 'journal_entry' %}
+    {% set _doc_color   = '#6366f1' %}
+    {% set _doc_label   = 'Journal Entry' %}
+    {% include '_doc_upload_panel.html' %}
+    <script>
+      (function(){
+        setTimeout(() => {
+          const el = document.getElementById('docPanelAnchor');
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 400);
+      })();
+    </script>
+    {% endif %}
 </div>
 
 <!-- Hidden Datalists -->

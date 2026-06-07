@@ -459,6 +459,25 @@
     </div><!-- /grid -->
 </form>
 
+{% if last_jv %}
+<div class="container-fluid">
+  <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
+  {% set _doc_jv      = last_jv %}
+  {% set _doc_reftype = 'service_entry' %}
+  {% set _doc_color   = '#C42B1C' %}
+  {% set _doc_label   = 'Service Entry' %}
+  {% include '_doc_upload_panel.html' %}
+</div>
+<script>
+  (function(){
+    setTimeout(() => {
+      const el = document.getElementById('docPanelAnchor');
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 400);
+  })();
+</script>
+{% endif %}
+
 <script>
     // Make variables available to JS
     const accountsOptions = `

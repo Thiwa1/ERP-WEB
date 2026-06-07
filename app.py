@@ -4991,11 +4991,15 @@ def bank_payment_submit():
         workflow_enabled = res_set and res_set[0] == '1'
         status = 0 if workflow_enabled else 1
 
-        # 2. Generate Voucher Number
-        cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
-        res = cursor.fetchone()
-        max_voucher = res[0] if res and res[0] else 0
-        new_voucher = max_voucher + 1
+        # 2. Voucher Number — manual override if provided, else auto
+        manual_voucher = (request.form.get('manual_voucher') or '').strip()
+        if manual_voucher:
+            new_voucher = manual_voucher
+        else:
+            cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
+            res = cursor.fetchone()
+            max_voucher = res[0] if res and res[0] else 0
+            new_voucher = max_voucher + 1
 
         cursor.execute("INSERT INTO bank_book_voucher_no (bank_book_voucher_link, bank_book_voucher_no, bank_book_chq_no) VALUES (%s, %s, %s)",
                        (bank_account, new_voucher, cheque_no))
@@ -12430,7 +12434,8 @@ def journal_entry():
                            jobs=jobs,
                            next_sys_jv=next_sys_jv,
                            base_currency=base_currency,
-                           today_date=date.today().strftime('%Y-%m-%d'))
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           last_jv=request.args.get('last_jv'))
 
 @app.route('/journal_entry/save', methods=['POST'])
 @login_required
@@ -12512,13 +12517,18 @@ def save_journal_entry():
 
             conn.commit()
             flash(f'Journal Entry created successfully. System JV: {jv_no}', 'success')
+            _je_jv = jv_no
 
         except Exception as ex:
             conn.rollback()
             flash(f'Database Error: {str(ex)}', 'danger')
+            _je_jv = None
         finally:
             cursor.close()
             conn.close()
+
+        if _je_jv:
+            return redirect(url_for('journal_entry', last_jv=_je_jv))
 
     except Exception as e:
         flash(f'System Error: {str(e)}', 'danger')
@@ -14564,7 +14574,8 @@ def service_entry():
                            accounts=accounts,
                            sub_accounts=sub_accounts,
                            jobs=jobs,
-                           today_date=date.today().strftime('%Y-%m-%d'))
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           last_jv=request.args.get('last_jv'))
 
 @app.route('/service_entry/save', methods=['POST'])
 @login_required
@@ -14679,13 +14690,18 @@ def save_service_entry():
 
             conn.commit()
             flash(f'Service Entry / Supplier Liability saved successfully. JV: {jv_no}', 'success')
+            _se_jv = jv_no
 
         except Exception as e:
             conn.rollback()
             flash(f'Database error: {str(e)}', 'danger')
+            _se_jv = None
         finally:
             cursor.close()
             conn.close()
+
+        if _se_jv:
+            return redirect(url_for('service_entry', last_jv=_se_jv))
 
     except Exception as e:
         flash(f'Error saving Service Entry: {str(e)}', 'danger')
