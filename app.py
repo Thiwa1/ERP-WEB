@@ -1760,11 +1760,11 @@ def edit_account(account_id):
 
     account = account[0]
 
-    # Pre-fetch lookup data
-    bs_categories = db.execute_query("SELECT name_of_category, holding_position FROM balace_sheet_catogory")
-    pl_categories = db.execute_query("SELECT name_of_category, holding_position FROM pl_catogory")
-    cf_categories = db.execute_query("SELECT catogory_name FROM cf_catogorys")
-    currencies = db.execute_query("SELECT currency_code, currency_name FROM multi_currency")
+    # Pre-fetch lookup data — use the same correct tables as add_new_account
+    bs_categories, pl_categories, cf_categories = get_cached_categories(db)
+    currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table")
+    if not currencies:
+        currencies = [{'currency_code': 'LKR', 'currency_name': 'Sri Lankan Rupee'}]
     existing_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1")
 
     return render_template('edit_account.html',
