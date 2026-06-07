@@ -13032,23 +13032,53 @@ def save_journal_entry():
 @app.route('/journal_entry/history')
 @login_required
 def journal_entry_history():
-    from_date = request.args.get('from')
-    to_date = request.args.get('to')
+    from_date   = request.args.get('from', '').strip()
+    to_date     = request.args.get('to', '').strip()
+    search      = request.args.get('search', '').strip()      # account or narration
+    jv_q        = request.args.get('jv', '').strip()
+    amount_min  = request.args.get('amount_min', '').strip()
+    amount_max  = request.args.get('amount_max', '').strip()
+    dr_cr       = request.args.get('dr_cr', '').strip()
 
-    if not from_date or not to_date:
-        return {'error': 'Dates required'}, 400
+    filters = ['ed.entry_deleted = 0']
+    params = []
+    if from_date:
+        filters.append('ed.entry_effective_date >= %s'); params.append(from_date)
+    if to_date:
+        filters.append('ed.entry_effective_date <= %s'); params.append(to_date)
+    if search:
+        filters.append('(ed.account_name LIKE %s OR ed.entry_naration LIKE %s)')
+        params += [f'%{search}%', f'%{search}%']
+    if jv_q:
+        filters.append('(ed.entry_jv = %s OR jv.jv_user_code LIKE %s)')
+        params += [jv_q, f'%{jv_q}%']
+    if amount_min:
+        filters.append('(ed.enty_values_DR >= %s OR ed.enty_values_CR >= %s)')
+        params += [amount_min, amount_min]
+    if amount_max:
+        filters.append('GREATEST(COALESCE(ed.enty_values_DR,0), COALESCE(ed.enty_values_CR,0)) <= %s')
+        params.append(amount_max)
+    if dr_cr == 'dr':
+        filters.append('ed.enty_values_DR > 0')
+    elif dr_cr == 'cr':
+        filters.append('ed.enty_values_CR > 0')
 
-    query = """
+    # Require at least one filter so we never dump the whole ledger unbounded
+    if not (from_date or to_date or search or jv_q or amount_min or amount_max or dr_cr):
+        return json.dumps([])
+
+    where = ' AND '.join(filters)
+    query = f"""
         SELECT
             ed.entry_jv, ed.entry_effective_date, ed.account_name,
             ed.entry_naration, ed.enty_values_DR, ed.enty_values_CR
         FROM entry_details ed
         JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
-        WHERE ed.entry_effective_date BETWEEN %s AND %s
-        AND ed.entry_deleted = 0
+        WHERE {where}
         ORDER BY ed.entry_jv DESC, ed.id ASC
+        LIMIT 1000
     """
-    rows = db.execute_query(query, (from_date, to_date))
+    rows = db.execute_query(query, tuple(params))
 
     data = []
     for r in rows:

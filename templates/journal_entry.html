@@ -132,22 +132,49 @@
             <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-3">
                 <i class="fas fa-history me-1"></i> Journal Entry History
             </div>
-            <div class="row g-3 mb-3 align-items-end">
+            <div class="row g-2 mb-3 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">From Date</label>
-                    <input type="date" class="form-control" id="histFromDate" value="{{ today_date }}"
-                           style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">To Date</label>
-                    <input type="date" class="form-control" id="histToDate" value="{{ today_date }}"
-                           style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Search (account / narration)</label>
+                    <input type="text" class="form-control form-control-sm no-select2" id="histSearch"
+                           placeholder="Type to search…" style="border-radius:8px;">
                 </div>
                 <div class="col-md-2">
-                    <button type="button" class="btn w-100 fw-bold" onclick="loadHistory()"
-                            style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.875rem;">
-                        Load
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">JV / Code</label>
+                    <input type="text" class="form-control form-control-sm no-select2" id="histJv" placeholder="JV no / code" style="border-radius:8px;">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">From Date</label>
+                    <input type="date" class="form-control form-control-sm no-select2" id="histFromDate" style="border-radius:8px;">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">To Date</label>
+                    <input type="date" class="form-control form-control-sm no-select2" id="histToDate" style="border-radius:8px;">
+                </div>
+                <div class="col-md-3"></div>
+
+                <div class="col-md-2">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Amount Min</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm no-select2" id="histAmtMin" placeholder="≥" style="border-radius:8px;">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Amount Max</label>
+                    <input type="number" step="0.01" class="form-control form-control-sm no-select2" id="histAmtMax" placeholder="≤" style="border-radius:8px;">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Type</label>
+                    <select class="form-select form-select-sm" id="histDrCr">
+                        <option value="">Both</option>
+                        <option value="dr">Debit only</option>
+                        <option value="cr">Credit only</option>
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
+                    <button type="button" class="btn btn-sm w-100 fw-bold text-white" onclick="loadHistory()"
+                            style="background:var(--accent-color);border:none;border-radius:8px;">
+                        <i class="fas fa-search me-1"></i> Search
                     </button>
+                    <button type="button" class="btn btn-sm" onclick="resetHistFilters()"
+                            style="border:1px solid #e2e8f0;border-radius:8px;color:#605E5C;">Reset</button>
                 </div>
             </div>
         </div>
@@ -411,15 +438,36 @@
         sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
     }
 
-    function loadHistory() {
-        const from = document.getElementById('histFromDate').value;
-        const to = document.getElementById('histToDate').value;
+    function resetHistFilters() {
+        ['histSearch','histJv','histFromDate','histToDate','histAmtMin','histAmtMax'].forEach(id => {
+            document.getElementById(id).value = '';
+        });
+        document.getElementById('histDrCr').value = '';
+        loadHistory();
+    }
 
-        fetch(`/journal_entry/history?from=${from}&to=${to}`)
+    function loadHistory() {
+        const p = new URLSearchParams({
+            from:       document.getElementById('histFromDate').value,
+            to:         document.getElementById('histToDate').value,
+            search:     document.getElementById('histSearch').value,
+            jv:         document.getElementById('histJv').value,
+            amount_min: document.getElementById('histAmtMin').value,
+            amount_max: document.getElementById('histAmtMax').value,
+            dr_cr:      document.getElementById('histDrCr').value
+        });
+
+        const tbody = document.querySelector('#historyTable tbody');
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted">Loading…</td></tr>';
+
+        fetch(`/journal_entry/history?${p.toString()}`)
             .then(r => r.json())
             .then(data => {
-                const tbody = document.querySelector('#historyTable tbody');
                 tbody.innerHTML = '';
+                if (!data || data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3 text-muted" style="font-size:.85rem;">No entries match your filters. Enter a search term, date range or amount.</td></tr>';
+                    return;
+                }
                 data.forEach(row => {
                     tbody.innerHTML += `
                         <tr>
