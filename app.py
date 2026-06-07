@@ -5291,8 +5291,43 @@ def direct_purchasing():
 
     last_jv = request.args.get('last_jv')
 
-    # Payment history (recent direct purchases)
-    history = db.execute_query("""
+    # ── History filters ──
+    hf = {
+        'search':     request.args.get('h_search', '').strip(),
+        'date_from':  request.args.get('h_date_from', '').strip(),
+        'date_to':    request.args.get('h_date_to', '').strip(),
+        'amount_min': request.args.get('h_amount_min', '').strip(),
+        'amount_max': request.args.get('h_amount_max', '').strip(),
+        'status':     request.args.get('h_status', '').strip(),  # '', 'active', 'reversed'
+    }
+
+    h_filters = ["j.jv_user_code = 'JV FROM DIRECT CASH'", "c.cash_book_recode_cr > 0"]
+    h_params = []
+    if hf['search']:
+        h_filters.append("(c.cash_book_recode_accont_name LIKE %s OR c.cash_book_recode_naration LIKE %s)")
+        h_params += [f"%{hf['search']}%", f"%{hf['search']}%"]
+    if hf['date_from']:
+        h_filters.append("c.Payment_Date >= %s"); h_params.append(hf['date_from'])
+    if hf['date_to']:
+        h_filters.append("c.Payment_Date <= %s"); h_params.append(hf['date_to'])
+    if hf['status'] == 'active':
+        h_filters.append("c.User_Revers IS NULL")
+    elif hf['status'] == 'reversed':
+        h_filters.append("c.User_Revers IS NOT NULL")
+
+    # amount filters applied via HAVING on the grouped sum
+    having = []
+    if hf['amount_min']:
+        having.append("SUM(c.cash_book_recode_cr) >= %s");
+    if hf['amount_max']:
+        having.append("SUM(c.cash_book_recode_cr) <= %s")
+    having_clause = (" HAVING " + " AND ".join(having)) if having else ""
+    having_params = []
+    if hf['amount_min']: having_params.append(hf['amount_min'])
+    if hf['amount_max']: having_params.append(hf['amount_max'])
+
+    where_clause = " AND ".join(h_filters)
+    history = db.execute_query(f"""
         SELECT
             j.jv_id                          AS jv,
             MIN(c.cash_book_recod_voucher_no) AS voucher,
@@ -5302,11 +5337,12 @@ def direct_purchasing():
             CASE WHEN MAX(c.User_Revers) IS NOT NULL THEN 1 ELSE 0 END AS is_reversed
         FROM jv_numbers j
         JOIN cash_book_recode c ON c.jv_numbers_jv_id = j.jv_id
-        WHERE j.jv_user_code = 'JV FROM DIRECT CASH'
+        WHERE {where_clause}
         GROUP BY j.jv_id
+        {having_clause}
         ORDER BY j.jv_id DESC
-        LIMIT 60
-    """) or []
+        LIMIT 200
+    """, tuple(h_params + having_params)) or []
 
     return render_template('direct_purchasing.html',
                            cash_accounts=cash_accounts,
@@ -5317,7 +5353,8 @@ def direct_purchasing():
                            session_payment_items=session.get('payment_items', []),
                            total_value=session.get('payment_total', 0),
                            last_jv=last_jv,
-                           history=history)
+                           history=history,
+                           hf=hf)
 
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
