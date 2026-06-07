@@ -919,6 +919,7 @@
                 <!-- Settings -->
                 <div class="menu-category">Settings</div>
                 {% if 'email_settings' not in menu_disabled %}<a href="/email_settings" class="nav-link"><i class="fas fa-envelope-open-text"></i> <span class="nav-text">Email Settings</span></a>{% endif %}
+                {% if 'period_close' not in menu_disabled %}<a href="/financial_period_close" class="nav-link"><i class="fas fa-lock"></i> <span class="nav-text">Financial Period Close</span></a>{% endif %}
 
                 <!-- Custom items added by superadmin -->
                 {% if custom_menu_items %}
@@ -1260,7 +1261,9 @@
                     <a href="/system_restore" class="win11-app-icon win10-tile" data-name="system restore">
                         <div class="icon-wrapper icon-green"><i class="fas fa-upload"></i></div><span>Restore</span>
                     </a>
-                    <div class="win11-app-icon-placeholder"></div>
+                    <a href="/financial_period_close" class="win11-app-icon win10-tile" data-name="financial period close lock month end">
+                        <div class="icon-wrapper icon-red"><i class="fas fa-lock"></i></div><span>Period Close</span>
+                    </a>
                     <div class="win11-app-icon-placeholder"></div>
                     <div class="win11-app-icon-placeholder"></div>
                 </div>

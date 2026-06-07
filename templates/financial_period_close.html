@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Financial Period Close{% endblock %}
+{% block content %}
+<div class="container-fluid py-4">
+
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0f172a,#334155);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+      <i class="fas fa-lock"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Financial Period Close</h5>
+      <div style="font-size:.78rem;color:#605E5C;">Lock finalized periods — blocks editing &amp; reversal of older transactions</div>
+    </div>
+  </div>
+
+  <!-- Current lock status -->
+  {% if lock_date %}
+  <div class="d-flex align-items-center gap-2 mb-4 px-4 py-3"
+       style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;">
+    <i class="fas fa-lock" style="color:#dc2626;font-size:1.1rem;"></i>
+    <div>
+      <div class="fw-bold" style="color:#991b1b;">Books are CLOSED through {{ lock_date }}</div>
+      <div style="font-size:.78rem;color:#7f1d1d;">Any transaction dated on or before this cannot be edited or reversed until re-opened.</div>
+    </div>
+  </div>
+  {% else %}
+  <div class="d-flex align-items-center gap-2 mb-4 px-4 py-3"
+       style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;">
+    <i class="fas fa-lock-open" style="color:#16a34a;font-size:1.1rem;"></i>
+    <div>
+      <div class="fw-bold" style="color:#15803d;">No period is currently closed</div>
+      <div style="font-size:.78rem;color:#166534;">All transactions are open for editing and reversal.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-4">
+    <!-- Close a period -->
+    <div class="col-lg-5">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-lock me-1" style="color:#0f172a;"></i>Close a Period
+          </span>
+        </div>
+        <div class="p-4">
+          <form method="POST" action="/financial_period_close/close"
+                onsubmit="return confirm('Close the books through this date? Transactions on or before it will be locked.');">
+            <div class="mb-3">
+              <label class="form-label fw-bold small">Close Through Date <span style="color:#c42b1c;">*</span></label>
+              <input type="date" name="period_end_date" class="form-control no-select2"
+                     value="{{ today_date }}" required style="border-radius:8px;">
+              <div style="font-size:.73rem;color:#9ca3af;margin-top:4px;">
+                Everything dated on or before this becomes read-only.
+              </div>
+            </div>
+            <div class="mb-4">
+              <label class="form-label fw-bold small">Notes</label>
+              <input type="text" name="notes" class="form-control" placeholder="e.g. May 2026 month-end close" style="border-radius:8px;">
+            </div>
+            <button type="submit" class="btn w-100 py-2 fw-bold text-white"
+                    style="background:#0f172a;border:none;border-radius:8px;">
+              <i class="fas fa-lock me-2"></i>Close Period
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- History -->
+    <div class="col-lg-7">
+      <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3" style="border-bottom:1px solid #e2e8f0;background:#f8f9fb;">
+          <span style="font-size:.7rem;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:#374151;">
+            <i class="fas fa-history me-1" style="color:#0f172a;"></i>Close History
+          </span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead style="background:#f8f9fa;">
+              <tr>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem 1rem;">Closed Through</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">By</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Closed At</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Notes</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
+                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:100px;">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if history %}
+                {% for h in history %}
+                <tr style="{% if h.reopened %}opacity:.6;{% endif %}">
+                  <td class="fw-bold font-monospace" style="padding:.6rem 1rem;">{{ h.period_end_date }}</td>
+                  <td style="font-size:.82rem;">{{ h.closed_by }}</td>
+                  <td style="font-size:.8rem;color:#605E5C;">{{ h.closed_at }}</td>
+                  <td style="font-size:.8rem;color:#605E5C;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ h.notes or '—' }}</td>
+                  <td class="text-center">
+                    {% if h.reopened %}
+                    <span style="background:#e8f5e9;color:#1b5e20;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Re-opened</span>
+                    {% else %}
+                    <span style="background:#fce4ec;color:#c62828;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Closed</span>
+                    {% endif %}
+                  </td>
+                  <td style="padding:.4rem 1rem;">
+                    {% if not h.reopened %}
+                    <form method="POST" action="/financial_period_close/reopen"
+                          onsubmit="return confirm('Re-open this period? Transactions will become editable again.');">
+                      <input type="hidden" name="id" value="{{ h.id }}">
+                      <button type="submit" class="btn btn-sm"
+                              style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;font-size:.72rem;color:#1d4ed8;padding:3px 10px;">
+                        <i class="fas fa-lock-open me-1"></i>Re-open
+                      </button>
+                    </form>
+                    {% else %}
+                    <span style="font-size:.75rem;color:#a0aec0;">—</span>
+                    {% endif %}
+                  </td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="6" class="text-center py-4" style="color:#9ca3af;font-size:.85rem;">
+                  <i class="fas fa-inbox me-2"></i>No periods have been closed yet.
+                </td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -212,6 +212,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'job_profit_analysis','label': 'Job Profit Analysis',  'url': '/job_profit_analysis',    'icon': 'fas fa-briefcase',           'category': 'Reports'},
     # Settings
     {'key': 'email_settings',     'label': 'Email Settings',       'url': '/email_settings',         'icon': 'fas fa-envelope-open-text',  'category': 'Settings'},
+    {'key': 'period_close',       'label': 'Financial Period Close','url': '/financial_period_close', 'icon': 'fas fa-lock',                'category': 'Settings'},
 ]
 
 # Database Configuration
@@ -609,6 +610,14 @@ def inject_globals():
         globals_dict['custom_menu_items'] = []
 
     globals_dict['check_permission'] = check_permission
+
+    # Financial period lock date — lets templates disable edit/reverse buttons
+    try:
+        lock = get_period_lock_date()
+        globals_dict['period_lock_date'] = lock.strftime('%Y-%m-%d') if lock else None
+    except Exception:
+        globals_dict['period_lock_date'] = None
+
     return globals_dict
 
 # Custom Filter for Currency Formatting
@@ -5262,6 +5271,130 @@ def direct_purchasing_clear():
     session.modified = True
     return redirect(url_for('direct_purchasing'))
 
+# ================================================================
+# ── FINANCIAL PERIOD CLOSING ────────────────────────────────────
+# ================================================================
+# When a period is closed (locked up to period_end_date), any transaction
+# whose effective date falls on or before that date can no longer be
+# edited or reversed. Protects finalized financial periods.
+
+_PERIOD_TABLE_READY = False
+
+def _ensure_period_table():
+    global _PERIOD_TABLE_READY
+    if _PERIOD_TABLE_READY:
+        return
+    try:
+        db.execute_query("""
+            CREATE TABLE IF NOT EXISTS financial_period_close (
+                id            INT AUTO_INCREMENT PRIMARY KEY,
+                period_end_date DATE NOT NULL,
+                closed_by     VARCHAR(100),
+                closed_at     DATETIME DEFAULT CURRENT_TIMESTAMP,
+                reopened      TINYINT DEFAULT 0,
+                reopened_by   VARCHAR(100),
+                reopened_at   DATETIME NULL,
+                notes         VARCHAR(255)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        """, commit=True)
+        _PERIOD_TABLE_READY = True
+    except Exception as e:
+        logging.warning(f"_ensure_period_table: {e}")
+
+def get_period_lock_date():
+    """Return the latest closed period_end_date (date) still in force, or None."""
+    _ensure_period_table()
+    try:
+        rows = db.execute_query(
+            "SELECT MAX(period_end_date) AS d FROM financial_period_close WHERE reopened = 0")
+        if rows and rows[0].get('d'):
+            d = rows[0]['d']
+            return d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
+    except Exception as e:
+        logging.warning(f"get_period_lock_date: {e}")
+    return None
+
+def jv_in_closed_period(jv):
+    """True if the JV's effective date is on/before the current lock date."""
+    lock = get_period_lock_date()
+    if not lock:
+        return False
+    try:
+        rows = db.execute_query(
+            "SELECT MIN(entry_effective_date) AS d FROM entry_details WHERE entry_jv = %s",
+            (jv,))
+        if rows and rows[0].get('d'):
+            d = rows[0]['d']
+            d = d if isinstance(d, date) else date.fromisoformat(str(d)[:10])
+            return d <= lock
+    except Exception as e:
+        logging.warning(f"jv_in_closed_period: {e}")
+    return False
+
+
+@app.route('/financial_period_close', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def financial_period_close():
+    _ensure_period_table()
+    history = db.execute_query("""
+        SELECT id, period_end_date, closed_by, closed_at, reopened, reopened_by, reopened_at, notes
+        FROM financial_period_close
+        ORDER BY period_end_date DESC, id DESC
+        LIMIT 50
+    """) or []
+    lock = get_period_lock_date()
+    return render_template('financial_period_close.html',
+                           history=history,
+                           lock_date=lock.strftime('%Y-%m-%d') if lock else None,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+
+@app.route('/financial_period_close/close', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def financial_period_close_action():
+    _ensure_period_table()
+    end_date = (request.form.get('period_end_date') or '').strip()
+    notes = (request.form.get('notes') or '').strip()
+    if not end_date:
+        flash('Please choose a period end date.', 'danger')
+        return redirect(url_for('financial_period_close'))
+    try:
+        date.fromisoformat(end_date)
+    except ValueError:
+        flash('Invalid date.', 'danger')
+        return redirect(url_for('financial_period_close'))
+
+    try:
+        db.execute_query(
+            "INSERT INTO financial_period_close (period_end_date, closed_by, notes) VALUES (%s, %s, %s)",
+            (end_date, get_current_user_id(), notes), commit=True)
+        flash(f'Period closed through {end_date}. Transactions on or before this date are now locked.', 'success')
+    except Exception as e:
+        flash(f'Error closing period: {str(e)}', 'danger')
+    return redirect(url_for('financial_period_close'))
+
+
+@app.route('/financial_period_close/reopen', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def financial_period_reopen():
+    _ensure_period_table()
+    close_id = request.form.get('id')
+    if not close_id:
+        flash('No record specified.', 'danger')
+        return redirect(url_for('financial_period_close'))
+    try:
+        db.execute_query(
+            "UPDATE financial_period_close SET reopened=1, reopened_by=%s, reopened_at=NOW() WHERE id=%s",
+            (get_current_user_id(), close_id), commit=True)
+        flash('Period re-opened. Affected transactions can be edited again.', 'success')
+    except Exception as e:
+        flash(f'Error re-opening period: {str(e)}', 'danger')
+    return redirect(url_for('financial_period_close'))
+
+
 @app.route('/transaction/edit_metadata', methods=['POST'])
 @login_required
 @has_permission('Access_Accounting')
@@ -5283,6 +5416,17 @@ def transaction_edit_metadata():
             eff_date = date.fromisoformat(new_date)
         except ValueError:
             return jsonify({'success': False, 'error': 'Invalid date'}), 400
+
+    # Period-close guard: block edits to transactions in a closed period,
+    # and block moving a transaction INTO a closed period.
+    lock = get_period_lock_date()
+    if lock:
+        if jv_in_closed_period(jv):
+            return jsonify({'success': False,
+                            'error': f'This transaction is in a closed period (locked through {lock}). Re-open the period to edit it.'}), 403
+        if eff_date and eff_date <= lock:
+            return jsonify({'success': False,
+                            'error': f'The new date falls in a closed period (locked through {lock}).'}), 403
 
     if not (eff_date or new_voucher or new_narration):
         return jsonify({'success': False, 'error': 'Nothing to update'}), 400
@@ -5368,6 +5512,16 @@ def direct_purchasing_edit():
             eff_date = date.fromisoformat(new_date)
         except ValueError:
             return jsonify({'success': False, 'error': 'Invalid date'}), 400
+
+    # Period-close guard
+    lock = get_period_lock_date()
+    if lock:
+        if jv_in_closed_period(jv):
+            return jsonify({'success': False,
+                            'error': f'This transaction is in a closed period (locked through {lock}). Re-open to edit.'}), 403
+        if eff_date and eff_date <= lock:
+            return jsonify({'success': False,
+                            'error': f'The new date falls in a closed period (locked through {lock}).'}), 403
 
     conn = None
     cursor = None
@@ -8219,6 +8373,10 @@ def pos_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('pos_reversal'))
 
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this sale is in a closed period (locked through {get_period_lock_date()}).', 'danger')
+        return redirect(url_for('pos_reversal'))
+
     current_user_pk = get_current_user_pk()
     today = date.today()
 
@@ -8459,6 +8617,10 @@ def bank_payment_reversal_process():
         flash('No transaction selected', 'danger')
         return redirect(url_for('bank_payment_reversal'))
 
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this transaction is in a closed period (locked through {get_period_lock_date()}).', 'danger')
+        return redirect(url_for('bank_payment_reversal'))
+
     current_user_pk = get_current_user_pk()
     today = date.today()
 
@@ -8578,6 +8740,10 @@ def cash_payment_reversal_process():
     jv = request.form.get('jv')
     if not jv:
         flash('No transaction selected', 'danger')
+        return redirect(url_for('cash_payment_reversal'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this transaction is in a closed period (locked through {get_period_lock_date()}).', 'danger')
         return redirect(url_for('cash_payment_reversal'))
 
     current_user_pk = get_current_user_pk()
@@ -8720,6 +8886,10 @@ def direct_payment_reversal_process():
     jv = request.form.get('jv')
     if not jv:
         flash('No transaction selected', 'danger')
+        return redirect(url_for('direct_payment_reversal'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this transaction is in a closed period (locked through {get_period_lock_date()}).', 'danger')
         return redirect(url_for('direct_payment_reversal'))
 
     current_user_pk = get_current_user_pk()
@@ -8896,6 +9066,10 @@ def reversal_category_process():
     jv = request.form.get('jv')
     if not jv:
         flash('No journal entry selected', 'danger')
+        return redirect(url_for('reversal_category'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this entry is in a closed period (locked through {get_period_lock_date()}).', 'danger')
         return redirect(url_for('reversal_category'))
 
     current_user_pk = get_current_user_pk()
@@ -9457,6 +9631,9 @@ def reverse_customer_receipt():
 
     if not jv_no:
         return {'success': False, 'error': 'No JV Number provided'}, 400
+
+    if jv_in_closed_period(jv_no):
+        return {'success': False, 'error': f'This receipt is in a closed period (locked through {get_period_lock_date()}).'}, 403
 
     conn = None
     cursor = None
@@ -12654,6 +12831,9 @@ def reverse_journal_entry():
     jv_no = request.form.get('jv_no')
     if not jv_no: return {'error': 'JV No required'}, 400
 
+    if jv_in_closed_period(jv_no):
+        return {'error': f'This entry is in a closed period (locked through {get_period_lock_date()}).'}, 403
+
     current_user_pk = get_current_user_pk()
     today = date.today()
 
@@ -14819,6 +14999,10 @@ def service_entry_reversal_process():
     jv = request.form.get('jv')
     if not jv:
         flash('No transaction selected', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this entry is in a closed period (locked through {get_period_lock_date()}).', 'danger')
         return redirect(url_for('service_entry_reversal'))
 
     current_user = get_current_user_id()
