@@ -2284,6 +2284,116 @@ def create_cash_account():
     cash_accounts = db.execute_query("SELECT * FROM cash_book ORDER BY cash_creat_date DESC")
     return render_template('create_cash_account.html', cash_accounts=cash_accounts)
 
+
+@app.route('/edit_bank_account', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def edit_bank_account():
+    """Edit a bank account's name / number. If the number changes, the rename
+    is cascaded to the linked GL account and transaction references."""
+    bank_id = request.form.get('id')
+    new_name = (request.form.get('bank_name') or '').strip()
+    new_number = (request.form.get('account_number') or '').strip()
+
+    if not bank_id or not new_name or not new_number:
+        flash('Bank name and account number are required.', 'danger')
+        return redirect(url_for('create_bank_account'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        # Current number (the linking key)
+        cursor.execute("SELECT bank_bookcol_account_number FROM bank_book WHERE id=%s", (bank_id,))
+        row = cursor.fetchone()
+        if not row:
+            flash('Bank account not found.', 'danger')
+            return redirect(url_for('create_bank_account'))
+        old_number = row[0]
+
+        # Update the bank_book row
+        cursor.execute(
+            "UPDATE bank_book SET bank_book_bank_name=%s, bank_bookcol_account_number=%s WHERE id=%s",
+            (new_name, new_number, bank_id))
+
+        # Cascade the number rename to linked records (each guarded)
+        if old_number and old_number != new_number:
+            for sql in [
+                ("UPDATE new_account_table SET account_name=%s WHERE account_name=%s", (new_number, old_number)),
+                ("UPDATE bank_book_recod SET bank_book__accont_name=%s WHERE bank_book__accont_name=%s", (new_number, old_number)),
+                ("UPDATE bank_book_voucher_no SET bank_book_voucher_link=%s WHERE bank_book_voucher_link=%s", (new_number, old_number)),
+            ]:
+                try:
+                    cursor.execute(sql[0], sql[1])
+                except Exception as ce:
+                    logging.warning(f"bank cascade skip: {ce}")
+
+        conn.commit()
+        flash('Bank account updated successfully.', 'success')
+    except Exception as e:
+        if conn: conn.rollback()
+        flash(f'Error updating bank account: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    return redirect(url_for('create_bank_account'))
+
+
+@app.route('/edit_cash_account', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def edit_cash_account():
+    """Edit a cash account name. Cascades the rename to the linked GL account
+    and transaction references."""
+    cash_id = request.form.get('id')
+    new_name = (request.form.get('account_name') or '').strip()
+
+    if not cash_id or not new_name:
+        flash('Account name is required.', 'danger')
+        return redirect(url_for('create_cash_account'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+
+        cursor.execute("SELECT cash_book_account_name FROM cash_book WHERE cash_id=%s", (cash_id,))
+        row = cursor.fetchone()
+        if not row:
+            flash('Cash account not found.', 'danger')
+            return redirect(url_for('create_cash_account'))
+        old_name = row[0]
+
+        cursor.execute(
+            "UPDATE cash_book SET cash_book_account_name=%s WHERE cash_id=%s",
+            (new_name, cash_id))
+
+        if old_name and old_name != new_name:
+            for sql in [
+                ("UPDATE new_account_table SET account_name=%s WHERE account_name=%s", (new_name, old_name)),
+                ("UPDATE cash_book_recode SET cash_book_recode_accont_name=%s WHERE cash_book_recode_accont_name=%s", (new_name, old_name)),
+                ("UPDATE cash_voucher_no SET cash_voucher_link=%s WHERE cash_voucher_link=%s", (new_name, old_name)),
+            ]:
+                try:
+                    cursor.execute(sql[0], sql[1])
+                except Exception as ce:
+                    logging.warning(f"cash cascade skip: {ce}")
+
+        conn.commit()
+        flash('Cash account updated successfully.', 'success')
+    except Exception as e:
+        if conn: conn.rollback()
+        flash(f'Error updating cash account: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    return redirect(url_for('create_cash_account'))
+
 # --- Control Panel (P&L Correction + Settings) ---
 @app.route('/control_panel', methods=['GET', 'POST'])
 @login_required
