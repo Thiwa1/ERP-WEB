@@ -5262,6 +5262,72 @@ def direct_purchasing_clear():
     session.modified = True
     return redirect(url_for('direct_purchasing'))
 
+@app.route('/transaction/edit_metadata', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def transaction_edit_metadata():
+    """Generic metadata-only editor for any posted transaction, keyed by JV.
+    Updates date / voucher / narration across whichever tables hold rows for
+    that JV. Amounts and GL accounts are never touched (ledger integrity)."""
+    jv = (request.form.get('jv') or '').strip()
+    new_date = (request.form.get('txn_date') or '').strip()
+    new_voucher = (request.form.get('voucher_no') or '').strip()
+    new_narration = (request.form.get('narration') or '').strip()
+
+    if not jv:
+        return jsonify({'success': False, 'error': 'No JV provided'}), 400
+
+    eff_date = None
+    if new_date:
+        try:
+            eff_date = date.fromisoformat(new_date)
+        except ValueError:
+            return jsonify({'success': False, 'error': 'Invalid date'}), 400
+
+    if not (eff_date or new_voucher or new_narration):
+        return jsonify({'success': False, 'error': 'Nothing to update'}), 400
+
+    # Each statement is independent; a JV may not have rows in every table.
+    # Missing table/column is caught and skipped so one type's schema never
+    # blocks another. 0 rows affected is normal, not an error.
+    stmts = []
+    if eff_date:
+        stmts += [
+            ("UPDATE entry_details SET entry_effective_date=%s WHERE entry_jv=%s", (eff_date, jv)),
+            ("UPDATE cash_book_recode SET Payment_Date=%s WHERE jv_numbers_jv_id=%s", (eff_date, jv)),
+            ("UPDATE bank_book_recod SET Bank_Payment_Date=%s WHERE jv_numbers_jv_id=%s", (eff_date, jv)),
+            ("UPDATE inventory_recod SET inventory_recod_action_date=%s WHERE JV_No=%s", (eff_date, jv)),
+            ("UPDATE Invoice_Oustanding SET invoice_date=%s WHERE invoice_JV=%s", (eff_date, jv)),
+            ("UPDATE suppliers_invoice_data SET suppliers_invoice_date=%s WHERE suppliers_invoice_JV=%s", (eff_date, jv)),
+        ]
+    if new_narration:
+        stmts += [
+            ("UPDATE entry_details SET entry_naration=%s WHERE entry_jv=%s", (new_narration, jv)),
+            ("UPDATE jv_numbers SET jv_naration=%s WHERE jv_id=%s", (new_narration, jv)),
+            ("UPDATE cash_book_recode SET cash_book_recode_naration=%s WHERE jv_numbers_jv_id=%s", (new_narration, jv)),
+            ("UPDATE bank_book_recod SET bank_book__naration=%s WHERE jv_numbers_jv_id=%s", (new_narration, jv)),
+        ]
+    if new_voucher:
+        stmts += [
+            ("UPDATE cash_book_recode SET cash_book_recod_voucher_no=%s WHERE jv_numbers_jv_id=%s", (new_voucher, jv)),
+            ("UPDATE bank_book_recod SET bank_book_recod_voucher_no=%s WHERE jv_numbers_jv_id=%s", (new_voucher, jv)),
+        ]
+
+    applied = 0
+    errors = []
+    for sql, params in stmts:
+        try:
+            db.execute_query(sql, params, commit=True)
+            applied += 1
+        except Exception as e:
+            # Skip missing table/column for this transaction type
+            errors.append(str(e).split('\n')[0])
+
+    if applied == 0:
+        return jsonify({'success': False, 'error': 'No matching records updated. ' + (errors[0] if errors else '')}), 500
+    return jsonify({'success': True})
+
+
 @app.route('/direct_purchasing/next_voucher')
 @login_required
 def direct_purchasing_next_voucher():
