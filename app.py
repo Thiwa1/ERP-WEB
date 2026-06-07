@@ -7092,7 +7092,13 @@ def credit_note():
     today = date.today().strftime('%Y-%m-%d')
     return render_template('credit_note.html',
                            customers=customers, ar_accounts=ar_accounts,
-                           income_accounts=income_accounts, today_date=today)
+                           income_accounts=income_accounts, today_date=today,
+                           last_cn=request.args.get('last_cn'),
+                           last_jv=request.args.get('last_jv'),
+                           cn_date=request.args.get('cn_date'),
+                           cust_name=request.args.get('cust_name'),
+                           amount=request.args.get('amount'),
+                           narration=request.args.get('narration'))
 
 
 @app.route('/credit_note/submit', methods=['POST'])
@@ -7184,7 +7190,13 @@ def debit_note():
     today = date.today().strftime('%Y-%m-%d')
     return render_template('debit_note.html',
                            suppliers=suppliers, ap_accounts=ap_accounts,
-                           expense_accounts=expense_accounts, today_date=today)
+                           expense_accounts=expense_accounts, today_date=today,
+                           last_dn=request.args.get('last_dn'),
+                           last_jv=request.args.get('last_jv'),
+                           dn_date=request.args.get('dn_date'),
+                           sup_name=request.args.get('sup_name'),
+                           amount=request.args.get('amount'),
+                           narration=request.args.get('narration'))
 
 
 @app.route('/debit_note/submit', methods=['POST'])
