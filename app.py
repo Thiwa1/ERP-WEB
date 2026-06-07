@@ -210,6 +210,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'custom_balance_sheet','label': 'Custom Balance Sheet','url': '/balance_sheet_custom',   'icon': 'fas fa-balance-scale',       'category': 'Reports'},
     {'key': 'profit_loss',        'label': 'Profit & Loss',        'url': '/profit_loss',            'icon': 'fas fa-chart-pie',           'category': 'Reports'},
     {'key': 'custom_profit_loss', 'label': 'Custom Profit & Loss', 'url': '/profit_loss_custom',     'icon': 'fas fa-chart-pie',           'category': 'Reports'},
+    {'key': 'cash_flow',          'label': 'Cash Flow Statement',  'url': '/cash_flow',              'icon': 'fas fa-water',               'category': 'Reports'},
     {'key': 'job_profit_analysis','label': 'Job Profit Analysis',  'url': '/job_profit_analysis',    'icon': 'fas fa-briefcase',           'category': 'Reports'},
     # Settings
     {'key': 'email_settings',     'label': 'Email Settings',       'url': '/email_settings',         'icon': 'fas fa-envelope-open-text',  'category': 'Settings'},
