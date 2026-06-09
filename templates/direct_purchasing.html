@@ -217,8 +217,8 @@
               </select>
             </div>
             <div class="mb-4">
-              <label class="form-label">Voucher No <span style="color:#a0aec0;font-weight:400;">(optional — blank = auto)</span></label>
-              <input type="text" name="manual_voucher" id="dpManualVoucher" class="form-control"
+              <label class="form-label">Voucher No <span style="color:#a0aec0;font-weight:400;">(optional — numbers only, blank = auto)</span></label>
+              <input type="number" min="1" step="1" name="manual_voucher" id="dpManualVoucher" class="form-control no-select2"
                      placeholder="Auto-generated if left blank">
               <div id="dpVoucherHint" style="font-size:.72rem;color:#9ca3af;margin-top:3px;"></div>
             </div>

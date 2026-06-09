@@ -5743,21 +5743,31 @@ def direct_purchasing_submit():
     except ValueError:
         txn_date = today_date
     narration = (request.form.get('narration') or '').strip() or "Direct Purchase / Cash Payment"
+    # cash_voucher_number is a NUMERIC column — only accept a numeric manual
+    # override. A non-numeric value would cause "1265 Data truncated" and abort.
     manual_voucher = (request.form.get('manual_voucher') or '').strip()
+    manual_voucher_num = None
+    if manual_voucher:
+        try:
+            manual_voucher_num = int(float(manual_voucher))
+        except (ValueError, TypeError):
+            manual_voucher_num = None  # ignore non-numeric; auto-generate instead
 
+    conn = None
+    cursor = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
         conn.start_transaction()
 
-        # 1. Voucher Number — use manual override if provided, else auto-generate
-        if manual_voucher:
-            new_voucher = manual_voucher
+        # 1. Voucher Number — use numeric manual override if valid, else auto-generate
+        if manual_voucher_num is not None:
+            new_voucher = manual_voucher_num
         else:
             cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
             res = cursor.fetchone()
             max_voucher = res[0] if res and res[0] else 0
-            new_voucher = max_voucher + 1
+            new_voucher = int(max_voucher) + 1
 
         cursor.execute("INSERT INTO cash_voucher_no (cash_voucher_link, cash_voucher_number) VALUES (%s, %s)", (cash_account, new_voucher))
 
@@ -5825,13 +5835,19 @@ def direct_purchasing_submit():
         _dp_jv = jv_no
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            try: conn.rollback()
+            except Exception: pass
         flash(f'Error submitting payment: {str(e)}', 'danger')
         logging.error(f"Direct Payment Error: {e}")
         _dp_jv = None
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            try: cursor.close()
+            except Exception: pass
+        if conn:
+            try: conn.close()
+            except Exception: pass
 
     if _dp_jv:
         return redirect(url_for('direct_purchasing', last_jv=_dp_jv))
