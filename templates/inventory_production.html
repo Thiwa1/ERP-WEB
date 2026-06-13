@@ -220,6 +220,93 @@
         </div>
 
     </div>
+
+    <!-- ── Production History ── -->
+    <div class="mt-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+            <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
+                <i class="fas fa-history me-1"></i> Production History
+            </span>
+            <span style="font-size:.75rem;color:#9ca3af;">Last 100 records</span>
+        </div>
+        <div class="table-responsive" style="border-top:1px solid #f0f2f5;max-height:360px;overflow-y:auto;">
+            <table class="table table-hover table-sm mb-0">
+                <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+                    <tr>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.6rem 1rem;">JV</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Type</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Location</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Value</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
+                        <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:120px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if history %}
+                        {% for h in history %}
+                        {% set reversed = h.rev_count and h.rev_count > 0 %}
+                        {% set locked = period_lock_date and (h.date|string)[:10] <= period_lock_date %}
+                        <tr style="{% if reversed %}opacity:.6;{% endif %}">
+                            <td class="font-monospace" style="padding:.5rem 1rem;font-size:.8rem;color:#605E5C;">{{ h.jv }}
+                                {% if locked %}<i class="fas fa-lock" style="color:#dc2626;font-size:.65rem;" title="Closed period"></i>{% endif %}
+                            </td>
+                            <td style="padding:.5rem .75rem;">
+                                {% if h.type == 'Receipt' %}
+                                <span style="background:#e8f5e9;color:#1b5e20;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">IN · Receipt</span>
+                                {% else %}
+                                <span style="background:#fff3e0;color:#e65100;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">OUT · Issue</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.date }}</td>
+                            <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.location or '—' }}</td>
+                            <td style="padding:.5rem .75rem;font-size:.8rem;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ h.narration }}</td>
+                            <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;font-size:.82rem;color:#CA5010;">{{ "{:,.2f}".format(h.value|float) }}</td>
+                            <td class="text-center" style="padding:.5rem .75rem;">
+                                {% if reversed %}
+                                <span style="background:#fce4ec;color:#c62828;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Reversed</span>
+                                {% else %}
+                                <span style="background:#e8f5e9;color:#1b5e20;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Active</span>
+                                {% endif %}
+                            </td>
+                            <td style="padding:.4rem .75rem;">
+                                <div class="d-flex gap-1">
+                                    {% if not reversed %}
+                                        {% if locked %}
+                                        <button class="btn btn-sm" disabled style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;font-size:.72rem;color:#a0aec0;padding:3px 8px;cursor:not-allowed;" title="Locked — period closed"><i class="fas fa-pen"></i></button>
+                                        <button class="btn btn-sm" disabled style="background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;font-size:.72rem;color:#a0aec0;padding:3px 8px;cursor:not-allowed;" title="Locked — period closed"><i class="fas fa-undo"></i></button>
+                                        {% else %}
+                                        <button class="btn btn-sm"
+                                                onclick="openMetaEdit('{{ h.jv }}', '', '{{ h.date }}', '{{ (h.narration or '')|replace("'", "") }}')"
+                                                style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;font-size:.72rem;color:#1d4ed8;padding:3px 8px;" title="Edit (date / narration)">
+                                            <i class="fas fa-pen"></i>
+                                        </button>
+                                        <form method="POST" action="/inventory_production/reverse" style="display:inline;"
+                                              onsubmit="return confirm('Reverse production JV-{{ h.jv }}? This restores the opposite stock movement and GL entry.');">
+                                            <input type="hidden" name="jv" value="{{ h.jv }}">
+                                            <button type="submit" class="btn btn-sm" style="background:#fce8e6;border:none;border-radius:5px;font-size:.72rem;color:#C42B1C;padding:3px 8px;" title="Reverse"><i class="fas fa-undo"></i></button>
+                                        </form>
+                                        {% endif %}
+                                    {% else %}
+                                    <span style="font-size:.75rem;color:#a0aec0;">—</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr><td colspan="8" class="text-center py-4" style="color:#9ca3af;font-size:.85rem;">
+                            <i class="fas fa-inbox me-2" style="opacity:.4;"></i>No production history yet.
+                        </td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% include '_edit_metadata_modal.html' %}
+
 </div>
 
 <!-- Template for new row -->

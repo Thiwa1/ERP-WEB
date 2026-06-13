@@ -14711,10 +14711,119 @@ def inventory_production():
         WHERE i.active = 1
     """)
 
+    # Production history — identified by the TF-Prod- marker on inventory records
+    history = db.execute_query("""
+        SELECT
+            r.JV_No                                   AS jv,
+            j.jv_naration                             AS narration,
+            MIN(r.inventory_recod_action_date)        AS date,
+            MIN(r.inventory_recod_location)           AS location,
+            SUM(COALESCE(r.inventory_recod_moument_in,0))  AS qty_in,
+            SUM(COALESCE(r.inventory_recod_movment_out,0)) AS qty_out,
+            SUM(COALESCE(r.inventory_recod_moument_in,0) * COALESCE(r.inventory_recod_unit_price,0)
+              + COALESCE(r.inventory_recod_movment_out,0) * COALESCE(r.inventory_recod_unit_price,0)) AS value,
+            CASE WHEN SUM(COALESCE(r.inventory_recod_moument_in,0)) > 0 THEN 'Receipt' ELSE 'Issue' END AS type,
+            (SELECT COUNT(*) FROM jv_numbers rj WHERE rj.jv_user_code = CONCAT('REV-PROD-', r.JV_No)) AS rev_count
+        FROM inventory_recod r
+        LEFT JOIN jv_numbers j ON r.JV_No = j.jv_id
+        WHERE r.inventory_recod_suplier_iv_no LIKE 'TF-Prod-%%'
+        GROUP BY r.JV_No, j.jv_naration
+        ORDER BY r.JV_No DESC
+        LIMIT 100
+    """) or []
+
     return render_template('inventory_production.html',
                            locations=locations, jobs=jobs, items=items,
                            expense_accounts=expense_accounts,
-                           today_date=date.today().strftime('%Y-%m-%d'))
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           history=history)
+
+
+@app.route('/inventory_production/reverse', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def inventory_production_reverse():
+    """Reverse a production issue/receipt: opposite inventory movement +
+    swapped GL entries. Blocked for closed periods and double-reversal."""
+    jv = request.form.get('jv', '').strip()
+    if not jv:
+        flash('No production transaction selected', 'danger')
+        return redirect(url_for('inventory_production'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot reverse: this transaction is in a closed period (locked through {get_period_lock_date()}).', 'danger')
+        return redirect(url_for('inventory_production'))
+
+    current_user_pk = get_current_user_pk()
+    today = date.today()
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # Guard: already reversed?
+        cursor.execute("SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code = %s", (f'REV-PROD-{jv}',))
+        if cursor.fetchone()[0] > 0:
+            flash('This production transaction has already been reversed.', 'warning')
+            return redirect(url_for('inventory_production'))
+
+        # Guard: exists?
+        cursor.execute("SELECT COUNT(*) FROM inventory_recod WHERE JV_No = %s AND inventory_recod_suplier_iv_no LIKE 'TF-Prod-%%'", (jv,))
+        if cursor.fetchone()[0] == 0:
+            flash('Production transaction not found.', 'danger')
+            return redirect(url_for('inventory_production'))
+
+        conn.start_transaction()
+
+        # 1. Reversal JV
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                       (f'REV-PROD-{jv}', f'Production Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
+
+        # 2. Reverse inventory movements — swap IN<->OUT
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                inventory_recod_user_recod_date, inventory_recod_location,
+                inventory_recod_action_date, inventory_recodcol_memo, JV_No
+            )
+            SELECT
+                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                inventory_recod_unit_price,
+                COALESCE(inventory_recod_movment_out,0),   -- OUT becomes IN
+                COALESCE(inventory_recod_moument_in,0),    -- IN becomes OUT
+                CONCAT('REV-', %s), %s, %s, inventory_recod_location,
+                %s, 'Production Reversal', %s
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_suplier_iv_no LIKE 'TF-Prod-%%'
+        """, (jv, current_user_pk, today, today, rev_jv, jv))
+
+        # 3. Reverse GL entries — swap DR<->CR
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR,0), COALESCE(enty_values_DR,0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'Production Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
+
+        conn.commit()
+        flash(f'Production transaction (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
+    except Exception as e:
+        if conn: conn.rollback()
+        logging.error(f"Production reversal error: {e}")
+        flash(f'Error reversing production transaction: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    return redirect(url_for('inventory_production'))
 
 @app.route('/inventory_production/issue', methods=['POST'])
 @login_required
@@ -14739,6 +14848,7 @@ def submit_production_issue():
             return redirect(url_for('inventory_production'))
 
         current_user = get_current_user_id()
+        current_user_pk = get_current_user_pk()
 
         conn = db.get_connection()
         cursor = conn.cursor()
@@ -14747,7 +14857,7 @@ def submit_production_issue():
         try:
             # 1. Create JV
             cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
-                           (str(current_user), f"Production Issue: {narration}"))
+                           ('JV FROM PRODUCTION ISSUE', f"Production Issue: {narration}"))
             jv_no = cursor.lastrowid
 
             total_value = 0
@@ -14843,7 +14953,7 @@ def submit_production_receive():
         try:
             # 1. Create JV
             cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
-                           (str(current_user), f"Production Receipt: {narration}"))
+                           ('JV FROM PRODUCTION RECEIPT', f"Production Receipt: {narration}"))
             jv_no = cursor.lastrowid
 
             total_value = 0
