@@ -46,6 +46,7 @@ def run_migrations(conn):
         _migrate_approval_workflow(cursor)
         _migrate_pos_security_features(cursor)
         _migrate_password_length(cursor)
+        _migrate_inventory_item_change_history(cursor)
 
         conn.commit()
         cursor.close()
@@ -321,6 +322,27 @@ def _migrate_password_length(cursor):
     except Exception as e:
                 pass # Ignore printing error for migrating Password column length (Pose_Setting_Table)
 
+def _migrate_inventory_item_change_history(cursor):
+    """Create inventory_item_change_history table to track item detail edits."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS inventory_item_change_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                item_id INT NOT NULL,
+                item_name VARCHAR(255),
+                field_changed VARCHAR(50) NOT NULL,
+                old_value TEXT,
+                new_value TEXT,
+                changed_by_user_code VARCHAR(100),
+                changed_by_user_pk INT,
+                changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception as e:
+        pass
 
 def _migrate_pos_security_features(cursor):
     """10. POS Security & Expiry Date Updates."""

@@ -6228,6 +6228,7 @@ def inventory_price_editing():
     query = """
         SELECT
             ii.id, ii.inventoy_name, ii.inventoy_code,
+            ii.Main_Catogry, ii.Sub_Catogory,
             ipr.inventory_price_selling, ipr.inventory_price_profit_marging_comen,
             ipr.inventory_price_purcharsing, ipr.inventory_price_for_Loyality_customer
         FROM inventoy_items ii
@@ -6244,7 +6245,26 @@ def inventory_price_editing():
     # Get all active items for the "Add New Price Tier" dropdown
     all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
 
-    return render_template('inventory_price_editing.html', items=items, all_items=all_items, search_query=search)
+    # Category dropdowns
+    main_categories = db.execute_query(
+        "SELECT main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != '' AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory"
+    ) or []
+    sub_categories = db.execute_query(
+        "SELECT sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != '' AND (dis_continue_sub IS NULL OR dis_continue_sub = 0) ORDER BY sub_catogory"
+    ) or []
+
+    # Recent change history
+    try:
+        change_history = db.execute_query(
+            "SELECT * FROM inventory_item_change_history ORDER BY changed_at DESC LIMIT 100"
+        ) or []
+    except Exception:
+        change_history = []
+
+    return render_template('inventory_price_editing.html',
+                           items=items, all_items=all_items, search_query=search,
+                           main_categories=main_categories, sub_categories=sub_categories,
+                           change_history=change_history)
 
 @app.route('/inventory_price_editing/update', methods=['POST'])
 @login_required
@@ -6253,10 +6273,19 @@ def update_inventory_prices():
     market_prices = request.form.getlist('market_prices[]')
     spm_prices = request.form.getlist('spm_prices[]')
     loyalty_prices = request.form.getlist('loyalty_prices[]')
+    item_names = request.form.getlist('item_names[]')
+    main_cats = request.form.getlist('main_cats[]')
+    sub_cats = request.form.getlist('sub_cats[]')
+    old_names = request.form.getlist('old_names[]')
+    old_main_cats = request.form.getlist('old_main_cats[]')
+    old_sub_cats = request.form.getlist('old_sub_cats[]')
 
     if not item_ids:
         flash('No items to update', 'warning')
         return redirect(url_for('inventory_price_editing'))
+
+    user_code = session.get('user_id', 'unknown')
+    user_pk = session.get('user_pk', 0)
 
     # Check existence in bulk
     placeholders = ', '.join(['%s'] * len(item_ids))
@@ -6265,7 +6294,6 @@ def update_inventory_prices():
 
     existing_links = set()
     if existing_records:
-        # execute_query with DictionaryCursor returns list of dicts
         if isinstance(existing_records[0], dict):
             existing_links = {str(r['inventory_price_link']) for r in existing_records}
         else:
@@ -6273,7 +6301,14 @@ def update_inventory_prices():
 
     for i in range(len(item_ids)):
         link_id = str(item_ids[i])
+        new_name = item_names[i].strip() if i < len(item_names) else ''
+        new_main = main_cats[i].strip() if i < len(main_cats) else ''
+        new_sub = sub_cats[i].strip() if i < len(sub_cats) else ''
+        prev_name = old_names[i] if i < len(old_names) else ''
+        prev_main = old_main_cats[i] if i < len(old_main_cats) else ''
+        prev_sub = old_sub_cats[i] if i < len(old_sub_cats) else ''
 
+        # Update prices
         if link_id in existing_links:
             db.execute_query("""
                 UPDATE inventory_price_recod SET
@@ -6289,7 +6324,36 @@ def update_inventory_prices():
                 VALUES (%s, %s, %s, %s)
             """, (link_id, market_prices[i], spm_prices[i], loyalty_prices[i]), commit=True)
 
-    flash('Prices updated successfully', 'success')
+        # Detect changes in name / category and log them
+        field_changes = []
+        if new_name and new_name != prev_name:
+            field_changes.append(('item_name', prev_name, new_name))
+        if new_main != prev_main:
+            field_changes.append(('main_category', prev_main, new_main))
+        if new_sub != prev_sub:
+            field_changes.append(('sub_category', prev_sub, new_sub))
+
+        if field_changes:
+            effective_name = new_name if new_name else prev_name
+            db.execute_query("""
+                UPDATE inventoy_items SET
+                inventoy_name = %s, Main_Catogry = %s, Sub_Catogory = %s
+                WHERE id = %s
+            """, (effective_name, new_main, new_sub, link_id), commit=True)
+
+            for field, old_val, new_val in field_changes:
+                try:
+                    db.execute_query("""
+                        INSERT INTO inventory_item_change_history
+                        (item_id, item_name, field_changed, old_value, new_value,
+                         changed_by_user_code, changed_by_user_pk)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (link_id, effective_name, field, old_val, new_val, user_code, user_pk),
+                    commit=True)
+                except Exception:
+                    pass
+
+    flash('Changes saved successfully', 'success')
     clear_pos_items_cache()
     return redirect(url_for('inventory_price_editing'))
 
@@ -6754,17 +6818,35 @@ def inventory_balance():
         flash(f'Error loading inventory data: {str(e)}', 'danger')
         report_data = []
 
-    # Decode inventoy_img bytes → base64 string for inline HTML display
-    # MySQL BLOB columns come back as bytes; we need a UTF-8 base64 string
+    # Decode inventoy_img bytes → small thumbnail base64 string for inline HTML display.
+    # Full-size images bloat the page; resize to 80×80 (2× for retina) before encoding.
     def _decode_inv_img(img):
         if not img:
             return None
-        if isinstance(img, (bytes, bytearray)):
-            try:
-                return img.decode('utf-8')          # already b64 encoded text stored as bytes
-            except Exception:
-                return base64.b64encode(img).decode('utf-8')  # raw binary — encode it
-        return img  # already a string
+        try:
+            from PIL import Image as _PILImage
+            import io as _io
+            # Resolve to raw bytes
+            if isinstance(img, (bytes, bytearray)):
+                try:
+                    raw = base64.b64decode(img.decode('utf-8'))
+                except Exception:
+                    raw = bytes(img)
+            else:
+                raw = base64.b64decode(img)
+            pil = _PILImage.open(_io.BytesIO(raw))
+            pil.thumbnail((80, 80))
+            buf = _io.BytesIO()
+            pil.save(buf, format='JPEG', quality=70)
+            return base64.b64encode(buf.getvalue()).decode('utf-8')
+        except Exception:
+            # Fallback: return as-is
+            if isinstance(img, (bytes, bytearray)):
+                try:
+                    return img.decode('utf-8')
+                except Exception:
+                    return base64.b64encode(img).decode('utf-8')
+            return img
 
     report_data = [
         dict(row, inventoy_img=_decode_inv_img(row.get('inventoy_img')))
