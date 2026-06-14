@@ -6225,6 +6225,9 @@ def documents_ai_extract():
 @has_permission('Access_Inventory')
 def inventory_price_editing():
     search = request.args.get('search', '')
+    # Join only the LATEST price record per item so each item shows exactly once.
+    # A plain LEFT JOIN duplicates items that have multiple price tiers, which made
+    # category edits look like they "didn't save" (the duplicate row still showed None).
     query = """
         SELECT
             ii.id, ii.inventoy_name, ii.inventoy_code,
@@ -6232,13 +6235,18 @@ def inventory_price_editing():
             ipr.inventory_price_selling, ipr.inventory_price_profit_marging_comen,
             ipr.inventory_price_purcharsing, ipr.inventory_price_for_Loyality_customer
         FROM inventoy_items ii
-        LEFT JOIN inventory_price_recod ipr ON ii.id = ipr.inventory_price_link
+        LEFT JOIN inventory_price_recod ipr
+            ON ipr.id = (
+                SELECT MAX(p2.id) FROM inventory_price_recod p2
+                WHERE p2.inventory_price_link = ii.id
+            )
     """
     params = None
     if search:
         query += " WHERE ii.inventoy_name LIKE %s OR ii.inventoy_code LIKE %s"
         search_pattern = f"%{search}%"
         params = (search_pattern, search_pattern)
+    query += " ORDER BY ii.inventoy_name"
 
     items = db.execute_query(query, params)
 
@@ -6734,12 +6742,14 @@ def inventory_item_save():
             "SELECT id FROM inventory_price_recod WHERE inventory_price_link = %s", (item_id,)
         )
         if existing:
+            # Update only the latest price tier (matches what the table displays)
             db.execute_query("""
                 UPDATE inventory_price_recod SET
                     inventory_price_selling = %s,
                     inventory_price_profit_marging_comen = %s,
                     inventory_price_for_Loyality_customer = %s
                 WHERE inventory_price_link = %s
+                ORDER BY id DESC LIMIT 1
             """, (market_p, spm_p, loyalty_p, item_id), commit=True)
         else:
             db.execute_query("""
