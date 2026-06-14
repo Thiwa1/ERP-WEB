@@ -126,12 +126,13 @@
 
                         <!-- Main Category -->
                         <td class="px-3">
-                            <select name="main_cat" class="form-select form-select-sm"
-                                    style="font-size:.82rem;border-radius:8px;border-color:#e2e8f0;">
+                            <select name="main_cat" class="form-select form-select-sm cat-search"
+                                    data-placeholder="Search main category…"
+                                    style="font-size:.82rem;border-radius:8px;border-color:#e2e8f0;min-width:150px;">
                                 <option value="">— None —</option>
                                 {% for cat in main_categories %}
                                 <option value="{{ cat.main_catogory }}"
-                                    {% if cat.main_catogory == (item.Main_Catogry or '')|trim %}selected{% endif %}>
+                                    {% if cat.main_catogory == item.Main_Catogry %}selected{% endif %}>
                                     {{ cat.main_catogory }}
                                 </option>
                                 {% endfor %}
@@ -140,12 +141,13 @@
 
                         <!-- Sub Category -->
                         <td class="px-3">
-                            <select name="sub_cat" class="form-select form-select-sm"
-                                    style="font-size:.82rem;border-radius:8px;border-color:#e2e8f0;">
+                            <select name="sub_cat" class="form-select form-select-sm cat-search"
+                                    data-placeholder="Search sub category…"
+                                    style="font-size:.82rem;border-radius:8px;border-color:#e2e8f0;min-width:150px;">
                                 <option value="">— None —</option>
                                 {% for cat in sub_categories %}
                                 <option value="{{ cat.sub_catogory }}"
-                                    {% if cat.sub_catogory == (item.Sub_Catogory or '')|trim %}selected{% endif %}>
+                                    {% if cat.sub_catogory == item.Sub_Catogory %}selected{% endif %}>
                                     {{ cat.sub_catogory }}
                                 </option>
                                 {% endfor %}
@@ -242,6 +244,13 @@
 document.addEventListener('DOMContentLoaded', function () {
     if (typeof $ !== 'undefined' && $.fn.select2) {
         $('.select2').select2({ theme: 'bootstrap-5', width: '100%' });
+        // Searchable category dropdowns on each row
+        $('.cat-search').select2({
+            theme: 'bootstrap-5',
+            width: '100%',
+            allowClear: true,
+            placeholder: function () { return $(this).data('placeholder') || 'Search…'; }
+        });
     }
 });
 

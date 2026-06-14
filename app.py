@@ -6253,13 +6253,14 @@ def inventory_price_editing():
     # Get all active items for the "Add New Price Tier" dropdown
     all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
 
-    # Category dropdowns — TRIM names so stray whitespace in inventory_carogory
-    # does not break matching against the stored item category (which is trimmed on save).
+    # Category dropdowns — use the EXACT stored names (no TRIM): inventoy_items.Main_Catogry
+    # is a foreign key into inventory_carogory.main_catogory, so option values must match
+    # the parent keys character-for-character or the save fails with FK error 1452.
     main_categories = db.execute_query(
-        "SELECT DISTINCT TRIM(main_catogory) AS main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND TRIM(main_catogory) != '' AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory"
+        "SELECT main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != '' AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory"
     ) or []
     sub_categories = db.execute_query(
-        "SELECT DISTINCT TRIM(sub_catogory) AS sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND TRIM(sub_catogory) != '' AND (dis_continue_sub IS NULL OR dis_continue_sub = 0) ORDER BY sub_catogory"
+        "SELECT sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != '' AND (dis_continue_sub IS NULL OR dis_continue_sub = 0) ORDER BY sub_catogory"
     ) or []
 
     # Recent change history
@@ -6726,8 +6727,11 @@ def inventory_item_save():
 
     item_id    = data.get('item_id')
     new_name   = (data.get('item_name') or '').strip()
-    new_main   = (data.get('main_cat') or '').strip()
-    new_sub    = (data.get('sub_cat') or '').strip()
+    # Category values are foreign keys into inventory_carogory, so they must match a
+    # parent key EXACTLY — do NOT strip/alter them. An empty selection ("None") maps
+    # to NULL (FK columns allow NULL); "" would violate the constraint.
+    new_main   = data.get('main_cat') or None
+    new_sub    = data.get('sub_cat') or None
     prev_name  = data.get('old_name', '')
     prev_main  = data.get('old_main', '')
     prev_sub   = data.get('old_sub', '')
@@ -6760,13 +6764,17 @@ def inventory_item_save():
                 VALUES (%s, %s, %s, %s)
             """, (item_id, market_p, spm_p, loyalty_p), commit=True)
 
+        # Normalize for change detection only (None/"" and stray spaces treated equal)
+        def _norm(v):
+            return (v or '').strip()
+
         field_changes = []
         if new_name and new_name != prev_name:
             field_changes.append(('item_name', prev_name, new_name))
-        if new_main != prev_main:
-            field_changes.append(('main_category', prev_main, new_main))
-        if new_sub != prev_sub:
-            field_changes.append(('sub_category', prev_sub, new_sub))
+        if _norm(new_main) != _norm(prev_main):
+            field_changes.append(('main_category', prev_main, new_main or ''))
+        if _norm(new_sub) != _norm(prev_sub):
+            field_changes.append(('sub_category', prev_sub, new_sub or ''))
 
         # Always write item name/category so a selection persists even if the page's
         # baseline ("old_*") was stale. This is the authoritative write for the item.
