@@ -6707,6 +6707,81 @@ def cash_flow_generate():
 
 
 
+@app.route('/inventory_item_save', methods=['POST'])
+@login_required
+def inventory_item_save():
+    """Per-row AJAX save: prices + name + category, with change history logging."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'success': False, 'error': 'No data'})
+
+    item_id    = data.get('item_id')
+    new_name   = (data.get('item_name') or '').strip()
+    new_main   = (data.get('main_cat') or '').strip()
+    new_sub    = (data.get('sub_cat') or '').strip()
+    prev_name  = data.get('old_name', '')
+    prev_main  = data.get('old_main', '')
+    prev_sub   = data.get('old_sub', '')
+    market_p   = data.get('market_price', 0)
+    spm_p      = data.get('spm_price', 0)
+    loyalty_p  = data.get('loyalty_price', 0)
+
+    user_code = session.get('user_id', 'unknown')
+    user_pk   = session.get('user_pk', 0)
+
+    try:
+        existing = db.execute_query(
+            "SELECT id FROM inventory_price_recod WHERE inventory_price_link = %s", (item_id,)
+        )
+        if existing:
+            db.execute_query("""
+                UPDATE inventory_price_recod SET
+                    inventory_price_selling = %s,
+                    inventory_price_profit_marging_comen = %s,
+                    inventory_price_for_Loyality_customer = %s
+                WHERE inventory_price_link = %s
+            """, (market_p, spm_p, loyalty_p, item_id), commit=True)
+        else:
+            db.execute_query("""
+                INSERT INTO inventory_price_recod
+                (inventory_price_link, inventory_price_selling,
+                 inventory_price_profit_marging_comen, inventory_price_for_Loyality_customer)
+                VALUES (%s, %s, %s, %s)
+            """, (item_id, market_p, spm_p, loyalty_p), commit=True)
+
+        field_changes = []
+        if new_name and new_name != prev_name:
+            field_changes.append(('item_name', prev_name, new_name))
+        if new_main != prev_main:
+            field_changes.append(('main_category', prev_main, new_main))
+        if new_sub != prev_sub:
+            field_changes.append(('sub_category', prev_sub, new_sub))
+
+        if field_changes:
+            effective_name = new_name or prev_name
+            db.execute_query("""
+                UPDATE inventoy_items SET
+                    inventoy_name = %s, Main_Catogry = %s, Sub_Catogory = %s
+                WHERE id = %s
+            """, (effective_name, new_main, new_sub, item_id), commit=True)
+            for field, old_val, new_val in field_changes:
+                try:
+                    db.execute_query("""
+                        INSERT INTO inventory_item_change_history
+                        (item_id, item_name, field_changed, old_value, new_value,
+                         changed_by_user_code, changed_by_user_pk)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (item_id, new_name or prev_name, field,
+                          old_val, new_val, user_code, user_pk), commit=True)
+                except Exception:
+                    pass
+
+        clear_pos_items_cache()
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+
 @app.route('/add_new_price_tier', methods=['POST'])
 @login_required
 @has_permission('Access_Inventory')
@@ -6736,6 +6811,44 @@ def add_new_price_tier():
         flash(f'Error adding new price tier: {str(e)}', 'danger')
 
     return redirect(url_for('inventory_price_editing'))
+
+# --- Inventory Image Endpoint ---
+
+@app.route('/inventory_image/<int:item_id>')
+@login_required
+def inventory_image(item_id):
+    """Serve inventory item image as JPEG. ?size=thumb resizes to 80×80."""
+    row = db.execute_query(
+        "SELECT inventoy_img FROM inventoy_items WHERE id = %s", (item_id,)
+    )
+    if not row or not row[0].get('inventoy_img'):
+        return '', 404
+
+    img_data = row[0]['inventoy_img']
+    try:
+        if isinstance(img_data, (bytes, bytearray)):
+            raw = base64.b64decode(img_data.decode('utf-8'))
+        else:
+            raw = base64.b64decode(img_data)
+    except Exception:
+        return '', 404
+
+    if request.args.get('size') == 'thumb':
+        try:
+            from PIL import Image as _PILImg
+            import io as _io
+            pil = _PILImg.open(_io.BytesIO(raw))
+            pil.thumbnail((80, 80))
+            buf = _io.BytesIO()
+            pil.save(buf, format='JPEG', quality=75)
+            raw = buf.getvalue()
+        except Exception:
+            pass
+
+    from flask import Response as _Resp
+    resp = _Resp(raw, mimetype='image/jpeg')
+    resp.headers['Cache-Control'] = 'public, max-age=3600'
+    return resp
 
 # --- Inventory Balance ---
 
@@ -6818,38 +6931,9 @@ def inventory_balance():
         flash(f'Error loading inventory data: {str(e)}', 'danger')
         report_data = []
 
-    # Decode inventoy_img bytes → small thumbnail base64 string for inline HTML display.
-    # Full-size images bloat the page; resize to 80×80 (2× for retina) before encoding.
-    def _decode_inv_img(img):
-        if not img:
-            return None
-        try:
-            from PIL import Image as _PILImage
-            import io as _io
-            # Resolve to raw bytes
-            if isinstance(img, (bytes, bytearray)):
-                try:
-                    raw = base64.b64decode(img.decode('utf-8'))
-                except Exception:
-                    raw = bytes(img)
-            else:
-                raw = base64.b64decode(img)
-            pil = _PILImage.open(_io.BytesIO(raw))
-            pil.thumbnail((80, 80))
-            buf = _io.BytesIO()
-            pil.save(buf, format='JPEG', quality=70)
-            return base64.b64encode(buf.getvalue()).decode('utf-8')
-        except Exception:
-            # Fallback: return as-is
-            if isinstance(img, (bytes, bytearray)):
-                try:
-                    return img.decode('utf-8')
-                except Exception:
-                    return base64.b64encode(img).decode('utf-8')
-            return img
-
+    # Images are now served via /inventory_image/<id> — just flag whether one exists.
     report_data = [
-        dict(row, inventoy_img=_decode_inv_img(row.get('inventoy_img')))
+        dict(row, has_image=bool(row.get('inventoy_img')))
         for row in report_data
     ]
 
