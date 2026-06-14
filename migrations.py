@@ -47,6 +47,7 @@ def run_migrations(conn):
         _migrate_pos_security_features(cursor)
         _migrate_password_length(cursor)
         _migrate_inventory_item_change_history(cursor)
+        _migrate_trim_category_whitespace(cursor)
 
         conn.commit()
         cursor.close()
@@ -321,6 +322,19 @@ def _migrate_password_length(cursor):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating Password column length (Pose_Setting_Table)
+
+def _migrate_trim_category_whitespace(cursor):
+    """Trim stray leading/trailing whitespace in category names so dropdowns match."""
+    try:
+        cursor.execute("UPDATE inventory_carogory SET main_catogory = TRIM(main_catogory) WHERE main_catogory IS NOT NULL AND main_catogory != TRIM(main_catogory)")
+        cursor.execute("UPDATE inventory_carogory SET sub_catogory = TRIM(sub_catogory) WHERE sub_catogory IS NOT NULL AND sub_catogory != TRIM(sub_catogory)")
+        cursor.execute("UPDATE inventoy_items SET Main_Catogry = TRIM(Main_Catogry) WHERE Main_Catogry IS NOT NULL AND Main_Catogry != TRIM(Main_Catogry)")
+        cursor.execute("UPDATE inventoy_items SET Sub_Catogory = TRIM(Sub_Catogory) WHERE Sub_Catogory IS NOT NULL AND Sub_Catogory != TRIM(Sub_Catogory)")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
 
 def _migrate_inventory_item_change_history(cursor):
     """Create inventory_item_change_history table to track item detail edits."""

@@ -1384,7 +1384,7 @@ def inventory_category():
 @app.route('/inventory_category/main', methods=['POST'])
 @login_required
 def add_main_category():
-    name = request.form.get('main_category')
+    name = (request.form.get('main_category') or '').strip()
     if name:
         db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (0, %s, NULL)", (name,), commit=True)
         flash('Main category added', 'success')
@@ -1393,7 +1393,7 @@ def add_main_category():
 @app.route('/inventory_category/sub', methods=['POST'])
 @login_required
 def add_sub_category():
-    name = request.form.get('sub_category')
+    name = (request.form.get('sub_category') or '').strip()
     if name:
         db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (0, NULL, %s)", (name,), commit=True)
         flash('Sub category added', 'success')
@@ -6253,12 +6253,13 @@ def inventory_price_editing():
     # Get all active items for the "Add New Price Tier" dropdown
     all_items = db.execute_query("SELECT id, inventoy_name, inventoy_code FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name")
 
-    # Category dropdowns
+    # Category dropdowns — TRIM names so stray whitespace in inventory_carogory
+    # does not break matching against the stored item category (which is trimmed on save).
     main_categories = db.execute_query(
-        "SELECT main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != '' AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory"
+        "SELECT DISTINCT TRIM(main_catogory) AS main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND TRIM(main_catogory) != '' AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory"
     ) or []
     sub_categories = db.execute_query(
-        "SELECT sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND sub_catogory != '' AND (dis_continue_sub IS NULL OR dis_continue_sub = 0) ORDER BY sub_catogory"
+        "SELECT DISTINCT TRIM(sub_catogory) AS sub_catogory FROM inventory_carogory WHERE sub_catogory IS NOT NULL AND TRIM(sub_catogory) != '' AND (dis_continue_sub IS NULL OR dis_continue_sub = 0) ORDER BY sub_catogory"
     ) or []
 
     # Recent change history

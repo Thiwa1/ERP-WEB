@@ -131,7 +131,7 @@
                                 <option value="">— None —</option>
                                 {% for cat in main_categories %}
                                 <option value="{{ cat.main_catogory }}"
-                                    {% if cat.main_catogory == item.Main_Catogry %}selected{% endif %}>
+                                    {% if cat.main_catogory == (item.Main_Catogry or '')|trim %}selected{% endif %}>
                                     {{ cat.main_catogory }}
                                 </option>
                                 {% endfor %}
@@ -145,7 +145,7 @@
                                 <option value="">— None —</option>
                                 {% for cat in sub_categories %}
                                 <option value="{{ cat.sub_catogory }}"
-                                    {% if cat.sub_catogory == item.Sub_Catogory %}selected{% endif %}>
+                                    {% if cat.sub_catogory == (item.Sub_Catogory or '')|trim %}selected{% endif %}>
                                     {{ cat.sub_catogory }}
                                 </option>
                                 {% endfor %}
@@ -276,8 +276,8 @@ function saveRow(btn) {
     .then(function(r){ return r.json(); })
     .then(function(result) {
         if (result.success) {
-            var selectedMain = tr.querySelector('[name="main_cat"]').value;
-            var storedMain = result.stored ? (result.stored.main_cat || '') : null;
+            var selectedMain = (tr.querySelector('[name="main_cat"]').value || '').trim();
+            var storedMain = result.stored ? (result.stored.main_cat || '').trim() : null;
             // Confirm the DB actually stored what we selected
             if (storedMain !== null && storedMain !== selectedMain) {
                 btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Mismatch';
