@@ -6767,28 +6767,46 @@ def inventory_item_save():
         if new_sub != prev_sub:
             field_changes.append(('sub_category', prev_sub, new_sub))
 
-        if field_changes:
-            effective_name = new_name or prev_name
-            db.execute_query("""
-                UPDATE inventoy_items SET
-                    inventoy_name = %s, Main_Catogry = %s, Sub_Catogory = %s
-                WHERE id = %s
-            """, (effective_name, new_main, new_sub, item_id), commit=True)
-            for field, old_val, new_val in field_changes:
-                try:
-                    db.execute_query("""
-                        INSERT INTO inventory_item_change_history
-                        (item_id, item_name, field_changed, old_value, new_value,
-                         changed_by_user_code, changed_by_user_pk)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (item_id, new_name or prev_name, field,
-                          old_val, new_val, user_code, user_pk), commit=True)
-                except Exception:
-                    pass
+        # Always write item name/category so a selection persists even if the page's
+        # baseline ("old_*") was stale. This is the authoritative write for the item.
+        effective_name = new_name or prev_name
+        db.execute_query("""
+            UPDATE inventoy_items SET
+                inventoy_name = %s, Main_Catogry = %s, Sub_Catogory = %s
+            WHERE id = %s
+        """, (effective_name, new_main, new_sub, item_id), commit=True)
+
+        for field, old_val, new_val in field_changes:
+            try:
+                db.execute_query("""
+                    INSERT INTO inventory_item_change_history
+                    (item_id, item_name, field_changed, old_value, new_value,
+                     changed_by_user_code, changed_by_user_pk)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (item_id, effective_name, field,
+                      old_val, new_val, user_code, user_pk), commit=True)
+            except Exception:
+                pass
 
         clear_pos_items_cache()
-        return jsonify({'success': True})
+
+        # Verify what is actually stored now, and return it so the client can confirm
+        check = db.execute_query(
+            "SELECT inventoy_name, Main_Catogry, Sub_Catogory FROM inventoy_items WHERE id = %s",
+            (item_id,)
+        )
+        stored = check[0] if check else {}
+        logging.info(f"inventory_item_save item={item_id} -> stored={stored}")
+        return jsonify({
+            'success': True,
+            'stored': {
+                'item_name': stored.get('inventoy_name'),
+                'main_cat':  stored.get('Main_Catogry'),
+                'sub_cat':   stored.get('Sub_Catogory'),
+            }
+        })
     except Exception as e:
+        logging.error(f"inventory_item_save error item={data.get('item_id')}: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
 

@@ -276,22 +276,37 @@ function saveRow(btn) {
     .then(function(r){ return r.json(); })
     .then(function(result) {
         if (result.success) {
+            var selectedMain = tr.querySelector('[name="main_cat"]').value;
+            var storedMain = result.stored ? (result.stored.main_cat || '') : null;
+            // Confirm the DB actually stored what we selected
+            if (storedMain !== null && storedMain !== selectedMain) {
+                btn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Mismatch';
+                btn.style.background = '#D67E1A';
+                alert('Save reported success but the database shows a different value.\n' +
+                      'Selected main category: "' + selectedMain + '"\n' +
+                      'Stored in database: "' + storedMain + '"');
+                setTimeout(function(){ resetBtn(btn); }, 3000);
+                return;
+            }
             btn.innerHTML = '<i class="fas fa-check"></i> Saved';
             btn.style.background = '#107C41';
             // Update baseline so next save detects only new changes
             tr.dataset.oldName = tr.querySelector('[name="item_name"]').value;
-            tr.dataset.oldMain = tr.querySelector('[name="main_cat"]').value;
+            tr.dataset.oldMain = selectedMain;
             tr.dataset.oldSub  = tr.querySelector('[name="sub_cat"]').value;
             setTimeout(function(){ resetBtn(btn); }, 2000);
         } else {
             btn.innerHTML = '<i class="fas fa-times"></i> Error';
             btn.style.background = '#D13438';
+            alert('Save failed: ' + (result.error || 'unknown error'));
             setTimeout(function(){ resetBtn(btn); }, 3000);
         }
     })
-    .catch(function() {
+    .catch(function(err) {
         btn.innerHTML = '<i class="fas fa-times"></i> Error';
         btn.style.background = '#D13438';
+        alert('Could not reach the save endpoint (the server may need a restart, ' +
+              'or the request was blocked). Details: ' + err);
         setTimeout(function(){ resetBtn(btn); }, 3000);
     });
 }
