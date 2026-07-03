@@ -1340,7 +1340,23 @@ def add_supplier():
         salutations = [row['salutation'] for row in salutations_data]
     except Exception as e:
         logging.error(f"Error loading salutations: {e}")
-    return render_template('add_supplier.html', salutations=salutations)
+
+    suppliers_list = []
+    try:
+        # Select explicit columns (sup_id aliased to id, no date columns) so the
+        # row is safely JSON-serialisable for the Edit button's tojson.
+        suppliers_list = db.execute_query("""
+            SELECT sup_id AS id, supplier_name, supplier_code,
+                   suppliers_teli_1, suppliers_teli_2, suppliers_credit_fasility,
+                   suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail
+            FROM suppliers
+            WHERE Is_Suplier = 1
+            ORDER BY supplier_name
+        """) or []
+    except Exception as e:
+        logging.error(f"Error loading suppliers: {e}")
+
+    return render_template('add_supplier.html', salutations=salutations, suppliers_list=suppliers_list)
 
 @app.route('/add_salutation', methods=['POST'])
 @login_required
