@@ -485,6 +485,124 @@
 </script>
 {% endif %}
 
+<!-- ── Service Entry History ── -->
+<div class="container-fluid mt-4">
+  <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
+      <span style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">
+        <i class="fas fa-history me-1"></i> Service Entry History
+      </span>
+      <button class="btn btn-sm" type="button" onclick="var f=document.getElementById('seHistFilters'); f.style.display = f.style.display==='none'?'block':'none';"
+              style="background:#eef2ff;border:1px solid #c7d2fc;border-radius:7px;color:#4f46e5;font-size:.75rem;font-weight:600;padding:4px 12px;">
+        <i class="fas fa-filter me-1"></i> Advanced Filter
+      </button>
+    </div>
+
+    <!-- Advanced filter bar -->
+    <form method="GET" action="/service_entry" id="seHistFilters"
+          style="display:{% if hf.search or hf.date_from or hf.date_to or hf.amount_min or hf.amount_max or hf.status %}block{% else %}none{% endif %};border-top:1px solid #f0f2f5;background:#fafbff;">
+      <div class="row g-2 px-4 py-3 align-items-end">
+        <div class="col-md-3">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Search</label>
+          <input type="text" name="h_search" value="{{ hf.search }}" class="form-control form-control-sm no-select2"
+                 placeholder="Supplier, invoice no or narration…" style="border-radius:7px;">
+        </div>
+        <div class="col-md-2">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">From</label>
+          <input type="date" name="h_date_from" value="{{ hf.date_from }}" class="form-control form-control-sm no-select2" style="border-radius:7px;">
+        </div>
+        <div class="col-md-2">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">To</label>
+          <input type="date" name="h_date_to" value="{{ hf.date_to }}" class="form-control form-control-sm no-select2" style="border-radius:7px;">
+        </div>
+        <div class="col-md-1">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Min</label>
+          <input type="number" step="0.01" name="h_amount_min" value="{{ hf.amount_min }}" class="form-control form-control-sm no-select2" placeholder="≥" style="border-radius:7px;">
+        </div>
+        <div class="col-md-1">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Max</label>
+          <input type="number" step="0.01" name="h_amount_max" value="{{ hf.amount_max }}" class="form-control form-control-sm no-select2" placeholder="≤" style="border-radius:7px;">
+        </div>
+        <div class="col-md-1">
+          <label style="font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Status</label>
+          <select name="h_status" class="form-select form-select-sm">
+            <option value="" {% if hf.status=='' %}selected{% endif %}>All</option>
+            <option value="active" {% if hf.status=='active' %}selected{% endif %}>Active</option>
+            <option value="reversed" {% if hf.status=='reversed' %}selected{% endif %}>Reversed</option>
+          </select>
+        </div>
+        <div class="col-md-2 d-flex gap-1">
+          <button type="submit" class="btn btn-sm fw-bold text-white" style="background:#4f46e5;border:none;border-radius:7px;flex:1;">
+            <i class="fas fa-search"></i>
+          </button>
+          <a href="/service_entry" class="btn btn-sm" style="border:1px solid #e2e8f0;border-radius:7px;color:#605E5C;">Reset</a>
+        </div>
+      </div>
+    </form>
+
+    <div class="table-responsive" style="border-top:1px solid #f0f2f5;max-height:340px;overflow-y:auto;">
+      <table class="table table-hover table-sm mb-0">
+        <thead style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
+          <tr>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.6rem 1rem;">JV</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice No</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Supplier</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Amount</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
+            <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:110px;">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if history %}
+            {% for h in history %}
+            <tr>
+              <td class="font-monospace" style="padding:.5rem 1rem;font-size:.8rem;color:#605E5C;">{{ h.jv }}</td>
+              <td class="font-monospace" style="padding:.5rem .75rem;font-size:.8rem;">{{ h.invoice_no or '—' }}</td>
+              <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.date }}</td>
+              <td style="padding:.5rem .75rem;font-size:.8rem;">{{ h.supplier or '—' }}</td>
+              <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;font-size:.85rem;color:#C42B1C;">
+                {{ "{:,.2f}".format(h.amount|float) }}
+              </td>
+              <td class="text-center" style="padding:.5rem .75rem;">
+                {% if h.is_reversed %}
+                <span style="background:#fce4ec;color:#c62828;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Reversed</span>
+                {% else %}
+                <span style="background:#e8f5e9;color:#1b5e20;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:20px;">Active</span>
+                {% endif %}
+              </td>
+              <td style="padding:.4rem .75rem;">
+                <div class="d-flex gap-1 flex-wrap">
+                  <a href="/service_entry/print/{{ h.jv }}" target="_blank"
+                     class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 8px;" title="Print">
+                    <i class="fas fa-print"></i>
+                  </a>
+                  {% if not h.is_reversed %}
+                  <a href="/service_entry_reversal"
+                     class="btn btn-sm" style="background:#fce8e6;border:none;border-radius:5px;font-size:.72rem;color:#C42B1C;padding:3px 8px;" title="Reverse this entry">
+                    <i class="fas fa-undo"></i>
+                  </a>
+                  {% endif %}
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center py-4" style="color:#9ca3af;font-size:.85rem;">
+                <i class="fas fa-inbox me-2" style="opacity:.4;"></i>
+                {% if hf.search or hf.date_from or hf.date_to or hf.amount_min or hf.amount_max or hf.status %}
+                No records match your filters. <a href="/service_entry">Reset</a>
+                {% else %}No service entries yet.{% endif %}
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
 <script>
     // Make variables available to JS
     const accountsOptions = `

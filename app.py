@@ -15780,13 +15780,61 @@ def service_entry():
     sub_accounts = db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1")
     jobs = db.execute_query("SELECT job_number FROM jobs_unit WHERE job_finsh = 0 AND job_cancell = 0")
 
+    # ── Service Entry History (with advanced filters, mirrors Direct Purchase) ──
+    hf = {
+        'search':     request.args.get('h_search', '').strip(),
+        'date_from':  request.args.get('h_date_from', '').strip(),
+        'date_to':    request.args.get('h_date_to', '').strip(),
+        'amount_min': request.args.get('h_amount_min', '').strip(),
+        'amount_max': request.args.get('h_amount_max', '').strip(),
+        'status':     request.args.get('h_status', '').strip(),  # '', 'active', 'reversed'
+    }
+
+    h_filters = ["j.jv_user_code LIKE %s"]
+    h_params = ['JV FORM SEN INVOICE%']
+    if hf['search']:
+        h_filters.append("(sup.supplier_name LIKE %s OR s.suppliers_invoice_number LIKE %s OR j.jv_naration LIKE %s)")
+        like = f"%{hf['search']}%"
+        h_params += [like, like, like]
+    if hf['date_from']:
+        h_filters.append("s.suppliers_invoice_date >= %s"); h_params.append(hf['date_from'])
+    if hf['date_to']:
+        h_filters.append("s.suppliers_invoice_date <= %s"); h_params.append(hf['date_to'])
+    if hf['amount_min']:
+        h_filters.append("s.suppliers_invoice_total_oustanding >= %s"); h_params.append(hf['amount_min'])
+    if hf['amount_max']:
+        h_filters.append("s.suppliers_invoice_total_oustanding <= %s"); h_params.append(hf['amount_max'])
+    if hf['status'] == 'active':
+        h_filters.append("s.suppliers_oustanding_delete = 0")
+    elif hf['status'] == 'reversed':
+        h_filters.append("s.suppliers_oustanding_delete = 1")
+
+    where_clause = " AND ".join(h_filters)
+    history = db.execute_query(f"""
+        SELECT
+            s.suppliers_invoice_JV               AS jv,
+            s.suppliers_invoice_number           AS invoice_no,
+            s.suppliers_invoice_date             AS date,
+            sup.supplier_name                    AS supplier,
+            s.suppliers_invoice_total_oustanding AS amount,
+            s.suppliers_oustanding_delete        AS is_reversed
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE {where_clause}
+        ORDER BY s.s_i_id DESC
+        LIMIT 200
+    """, tuple(h_params)) or []
+
     return render_template('service_entry.html',
                            suppliers=suppliers,
                            accounts=accounts,
                            sub_accounts=sub_accounts,
                            jobs=jobs,
                            today_date=date.today().strftime('%Y-%m-%d'),
-                           last_jv=request.args.get('last_jv'))
+                           last_jv=request.args.get('last_jv'),
+                           history=history,
+                           hf=hf)
 
 @app.route('/service_entry/save', methods=['POST'])
 @login_required
