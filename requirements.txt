@@ -1,4 +1,6 @@
 flask
+Werkzeug
+Jinja2
 mysql-connector-python
 num2words
 python-dotenv
