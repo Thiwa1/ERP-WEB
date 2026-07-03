@@ -15854,7 +15854,8 @@ def service_entry():
             s.suppliers_invoice_date             AS date,
             sup.supplier_name                    AS supplier,
             s.suppliers_invoice_total_oustanding AS amount,
-            s.suppliers_oustanding_delete        AS is_reversed
+            s.suppliers_oustanding_delete        AS is_reversed,
+            j.jv_naration                        AS narration
         FROM suppliers_invoice_data s
         JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
