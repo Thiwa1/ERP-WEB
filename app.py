@@ -2968,17 +2968,13 @@ def bank_statement_analysis():
 
     try:
         try:
-            from PIL import Image
-        except ImportError:
-            flash("Error processing image: No module named 'PIL'. Please install it using 'pip install Pillow'.", "danger")
+            text = ocr_image_bytes(file.read())
+        except RuntimeError:
+            flash(_TESSERACT_HELP, 'danger')
             return redirect(url_for('bulk_upload_gl'))
-        import pytesseract
-        _configure_tesseract(pytesseract)
-
-        img = Image.open(file.stream)
-        # Convert to grayscale for better OCR
-        img = img.convert('L')
-        text = pytesseract.image_to_string(img)
+        except ImportError:
+            flash("Error processing image: 'Pillow' is not installed. Install it with 'pip install Pillow'.", "danger")
+            return redirect(url_for('bulk_upload_gl'))
 
         # Parse extracted text for transactions (Date, Description, Amount)
         # We look for simple patterns: Date (05JAN26), Desc, Amount (142,739.00)
@@ -6292,12 +6288,53 @@ def _configure_tesseract(pytesseract):
 
 
 _TESSERACT_HELP = (
-    'Tesseract OCR binary was not found on this server. '
-    'On shared hosting: install tesseract in your account and set the TESSERACT_CMD '
-    'environment variable to its full path (e.g. TESSERACT_CMD=/home/USER/bin/tesseract). '
-    'On a server you control: sudo apt-get install tesseract-ocr. '
-    'Tip: text-based PDFs are read without Tesseract — upload a PDF instead of a photo/scan.'
+    'No OCR is available on this server. Easiest fix (no server install): set the '
+    'OCR_SPACE_API_KEY environment variable to a free key from https://ocr.space/ocrapi '
+    'and the app will read images via cloud OCR. '
+    'Alternatively install Tesseract in your account and set TESSERACT_CMD to its full path '
+    '(e.g. TESSERACT_CMD=/home/USER/bin/tesseract), or on a server you control run '
+    'sudo apt-get install tesseract-ocr. '
+    'Tip: text-based PDFs are read without any OCR — upload a PDF instead of a photo/scan.'
 )
+
+
+def ocr_image_bytes(raw_bytes):
+    """Return OCR text for image bytes.
+
+    Order of preference:
+      1. Local Tesseract binary (private, no data leaves the server).
+      2. OCR.space cloud API — only if OCR_SPACE_API_KEY is set (opt-in; the image
+         is sent to that third-party service).
+    Raises RuntimeError('OCR_UNAVAILABLE') if neither is usable."""
+    # 1. Local Tesseract
+    try:
+        import pytesseract
+        from PIL import Image
+        if _configure_tesseract(pytesseract):
+            img = Image.open(io.BytesIO(raw_bytes))
+            return pytesseract.image_to_string(img)
+    except Exception as e:
+        logging.warning(f"Local Tesseract OCR unavailable, will try cloud fallback: {e}")
+
+    # 2. Cloud fallback (opt-in)
+    api_key = os.getenv('OCR_SPACE_API_KEY')
+    if api_key:
+        try:
+            resp = requests.post(
+                'https://api.ocr.space/parse/image',
+                files={'file': ('upload.png', raw_bytes)},
+                data={'apikey': api_key, 'OCREngine': '2', 'scale': 'true'},
+                timeout=60,
+            )
+            j = resp.json()
+            if not j.get('IsErroredOnProcessing'):
+                results = j.get('ParsedResults') or []
+                return "\n".join(r.get('ParsedText', '') for r in results)
+            logging.error(f"OCR.space error: {j.get('ErrorMessage')}")
+        except Exception as e:
+            logging.error(f"OCR.space request failed: {e}")
+
+    raise RuntimeError('OCR_UNAVAILABLE')
 
 
 @app.route('/documents/ai_extract', methods=['POST'])
@@ -6334,20 +6371,13 @@ def documents_ai_extract():
         elif any(filename_lower.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif')):
             # ── Image: use pytesseract OCR ──
             try:
-                import pytesseract
-                from PIL import Image
-                _configure_tesseract(pytesseract)
-                img = Image.open(io.BytesIO(raw_data))
-                extracted_text = pytesseract.image_to_string(img)
+                extracted_text = ocr_image_bytes(raw_data)
+            except RuntimeError:
+                return jsonify({'success': False, 'error': _TESSERACT_HELP}), 500
             except ImportError:
                 return jsonify({'success': False,
                                 'error': "The 'pytesseract'/'Pillow' Python packages are not installed. "
                                          "Run: pip install pytesseract Pillow. " + _TESSERACT_HELP}), 500
-            except Exception as ocr_err:
-                # Tesseract binary missing even though pytesseract is installed
-                if 'tesseract' in str(ocr_err).lower() or 'not found' in str(ocr_err).lower():
-                    return jsonify({'success': False, 'error': _TESSERACT_HELP}), 500
-                raise
         else:
             # Try plain text
             try:
