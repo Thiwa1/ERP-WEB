@@ -191,8 +191,27 @@ window.showAiFile = (jv, name) => {
   document.getElementById('scanBtn_'+jv).disabled = false;
 };
 
+/* ── Load Tesseract.js (browser OCR) once, on demand ── */
+window._ensureTesseract = () => new Promise((resolve, reject) => {
+  if (window.Tesseract) return resolve();
+  const s = document.createElement('script');
+  s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+  s.onload = () => resolve();
+  s.onerror = () => reject(new Error('Could not load the in-browser OCR library (no internet?).'));
+  document.head.appendChild(s);
+});
+
+/* OCR an image entirely in the browser — the image never leaves the user's machine */
+window._ocrInBrowser = async (file, onProgress) => {
+  await window._ensureTesseract();
+  const { data } = await window.Tesseract.recognize(file, 'eng', {
+    logger: m => { if (m.status === 'recognizing text' && onProgress) onProgress(m.progress); }
+  });
+  return (data && data.text) || '';
+};
+
 /* ── Run AI Scan ── */
-window.runAiScan = (jv) => {
+window.runAiScan = async (jv) => {
   const inp  = document.getElementById('aiFile_'+jv);
   const file = inp._file || (inp.files && inp.files[0]);
   if (!file) return;
@@ -209,54 +228,67 @@ window.runAiScan = (jv) => {
   label.textContent = 'Scanning…';
   stat.style.display = 'none';
 
-  const fd = new FormData();
-  fd.append('file', file);
+  const restore = () => { spin.style.display='none'; icon.style.display=''; label.textContent='Scan Document'; btn.disabled = false; };
 
-  fetch('/documents/ai_extract', { method:'POST', body: fd })
-    .then(r => r.json())
-    .then(res => {
-      spin.style.display = 'none';
-      icon.style.display = '';
-      label.textContent = 'Scan Document';
-      btn.disabled = false;
+  try {
+    const fd = new FormData();
+    const isImage = (file.type && file.type.startsWith('image/')) || /\.(jpe?g|png|gif|bmp|webp|tiff?)$/i.test(file.name || '');
 
-      if (!res.success) {
-        showAiStatus(jv, '⚠️ ' + (res.error||'Failed'), 'warning');
+    if (isImage) {
+      // Read the image with in-browser OCR; send only the extracted TEXT
+      label.textContent = 'Reading image…';
+      let text = '';
+      try {
+        text = await window._ocrInBrowser(file, p => { label.textContent = 'Reading… ' + Math.round(p*100) + '%'; });
+      } catch (e) {
+        restore();
+        showAiStatus(jv, '⚠️ ' + e.message + ' You can upload a text-based PDF instead.', 'warning');
         return;
       }
+      label.textContent = 'Extracting…';
+      fd.append('ocr_text', text);
+    } else {
+      // PDF / text file — the server extracts (no OCR needed for text PDFs)
+      fd.append('file', file);
+    }
 
-      // Populate fields
-      setAiField(jv, 'unit_price', res.unit_price);
-      setAiField(jv, 'qty',        res.quantity);
-      setAiField(jv, 'total',      res.total_amount);
-      const invEl  = document.getElementById('ai_inv_'+jv);
-      const dateEl = document.getElementById('ai_date_'+jv);
-      if (invEl)  invEl.value  = res.invoice_no  || '';
-      if (dateEl) dateEl.value = res.date         || '';
+    const res = await fetch('/documents/ai_extract', { method:'POST', body: fd }).then(r => r.json());
+    restore();
 
-      // Show raw text preview
-      if (res.raw_text) {
-        document.getElementById('rawText_'+jv).textContent = res.raw_text;
-        document.getElementById('rawPreview_'+jv).style.display = '';
-      }
+    if (!res.success) {
+      showAiStatus(jv, '⚠️ ' + (res.error||'Failed'), 'warning');
+      return;
+    }
 
-      const found = [
-        res.unit_price  ? `Unit Price: ${res.unit_price}`  : null,
-        res.quantity    ? `Qty: ${res.quantity}`            : null,
-        res.total_amount? `Total: ${res.total_amount}`      : null,
-      ].filter(Boolean);
+    // Populate fields
+    setAiField(jv, 'unit_price', res.unit_price);
+    setAiField(jv, 'qty',        res.quantity);
+    setAiField(jv, 'total',      res.total_amount);
+    const invEl  = document.getElementById('ai_inv_'+jv);
+    const dateEl = document.getElementById('ai_date_'+jv);
+    if (invEl)  invEl.value  = res.invoice_no  || '';
+    if (dateEl) dateEl.value = res.date         || '';
 
-      showAiStatus(jv,
-        found.length
-          ? '✅ Extracted: ' + found.join(' · ')
-          : '⚠️ No numeric values detected. Try a clearer document.',
-        found.length ? 'success' : 'warning');
-    })
-    .catch(() => {
-      spin.style.display='none'; icon.style.display=''; label.textContent='Scan Document';
-      btn.disabled = false;
-      showAiStatus(jv, '❌ Scan failed. Please try again.', 'danger');
-    });
+    if (res.raw_text) {
+      document.getElementById('rawText_'+jv).textContent = res.raw_text;
+      document.getElementById('rawPreview_'+jv).style.display = '';
+    }
+
+    const found = [
+      res.unit_price  ? `Unit Price: ${res.unit_price}`  : null,
+      res.quantity    ? `Qty: ${res.quantity}`            : null,
+      res.total_amount? `Total: ${res.total_amount}`      : null,
+    ].filter(Boolean);
+
+    showAiStatus(jv,
+      found.length
+        ? '✅ Extracted: ' + found.join(' · ')
+        : '⚠️ No numeric values detected. Try a clearer document.',
+      found.length ? 'success' : 'warning');
+  } catch (e) {
+    restore();
+    showAiStatus(jv, '❌ Scan failed. Please try again.', 'danger');
+  }
 };
 
 window.setAiField = (jv, field, val) => {

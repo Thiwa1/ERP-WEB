@@ -6346,47 +6346,54 @@ def documents_ai_extract():
       unit_price, quantity, total_amount, invoice_no, date
     Returns JSON with the extracted fields.
     """
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'error': 'No file'}), 400
-
-    f = request.files['file']
-    if not f or f.filename == '':
-        return jsonify({'success': False, 'error': 'Empty file'}), 400
-
-    filename_lower = f.filename.lower()
-    raw_data = f.read()
+    # If the browser already OCR'd the image (Tesseract.js runs client-side), use that
+    # text directly — no server OCR needed and the image never leaves the user's machine.
+    browser_text = (request.form.get('ocr_text') or '').strip()
 
     extracted_text = ''
 
-    try:
-        if filename_lower.endswith('.pdf'):
-            # ── PDF: use PyPDF2 text extraction ──
-            import PyPDF2
-            reader = PyPDF2.PdfReader(io.BytesIO(raw_data))
-            for page in reader.pages:
-                t = page.extract_text()
-                if t:
-                    extracted_text += t + '\n'
+    if browser_text:
+        extracted_text = browser_text
+    else:
+        if 'file' not in request.files:
+            return jsonify({'success': False, 'error': 'No file'}), 400
 
-        elif any(filename_lower.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif')):
-            # ── Image: use pytesseract OCR ──
-            try:
-                extracted_text = ocr_image_bytes(raw_data)
-            except RuntimeError:
-                return jsonify({'success': False, 'error': _TESSERACT_HELP}), 500
-            except ImportError:
-                return jsonify({'success': False,
-                                'error': "The 'pytesseract'/'Pillow' Python packages are not installed. "
-                                         "Run: pip install pytesseract Pillow. " + _TESSERACT_HELP}), 500
-        else:
-            # Try plain text
-            try:
-                extracted_text = raw_data.decode('utf-8', errors='replace')
-            except Exception:
-                extracted_text = ''
+        f = request.files['file']
+        if not f or f.filename == '':
+            return jsonify({'success': False, 'error': 'Empty file'}), 400
 
-    except Exception as e:
-        return jsonify({'success': False, 'error': f'Extraction error: {str(e)}'}), 500
+        filename_lower = f.filename.lower()
+        raw_data = f.read()
+
+        try:
+            if filename_lower.endswith('.pdf'):
+                # ── PDF: use PyPDF2 text extraction ──
+                import PyPDF2
+                reader = PyPDF2.PdfReader(io.BytesIO(raw_data))
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        extracted_text += t + '\n'
+
+            elif any(filename_lower.endswith(ext) for ext in ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif')):
+                # ── Image: server-side OCR fallback (used only if browser OCR wasn't sent) ──
+                try:
+                    extracted_text = ocr_image_bytes(raw_data)
+                except RuntimeError:
+                    return jsonify({'success': False, 'error': _TESSERACT_HELP}), 500
+                except ImportError:
+                    return jsonify({'success': False,
+                                    'error': "The 'pytesseract'/'Pillow' Python packages are not installed. "
+                                             "Run: pip install pytesseract Pillow. " + _TESSERACT_HELP}), 500
+            else:
+                # Try plain text
+                try:
+                    extracted_text = raw_data.decode('utf-8', errors='replace')
+                except Exception:
+                    extracted_text = ''
+
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Extraction error: {str(e)}'}), 500
 
     if not extracted_text.strip():
         return jsonify({'success': False,
