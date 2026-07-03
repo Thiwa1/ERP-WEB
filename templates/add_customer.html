@@ -225,7 +225,15 @@
         <div class="card-section-header">
             <div class="section-label"><i class="fas fa-users"></i> Existing Customers</div>
         </div>
-        <div class="p-3 pt-3">
+        <div class="px-3 pt-3">
+            <div style="position:relative;max-width:420px;">
+                <i class="fas fa-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:#A0A0A0;font-size:.82rem;pointer-events:none;"></i>
+                <input type="text" id="customerSearch" placeholder="Filter by code, name, contact or VAT…"
+                       oninput="filterCustomerTable()"
+                       style="width:100%;padding:.5rem .8rem .5rem 34px;border:1px solid #d1d5db;border-radius:8px;font-size:.85rem;color:#323130;outline:none;">
+            </div>
+        </div>
+        <div class="p-3 pt-2">
             <div class="table-responsive">
                 <table class="table table-hover align-middle mb-0">
                     <thead>
@@ -240,9 +248,16 @@
                     </thead>
                     <tbody>
                         {% for customer in customers_list %}
-                        <tr>
+                        <tr data-search="{{ (customer.supplier_code or '')|lower }} {{ (customer.supplier_name or '')|lower }} {{ (customer.suppliers_teli_1 or '')|lower }} {{ (customer.suppliers_vat_regidter_no or '')|lower }}">
                             <td class="fw-bold mono">{{ customer.supplier_code }}</td>
-                            <td>{{ customer.supplier_name }}</td>
+                            <td>
+                                <a href="/customer_aging?customer_id={{ customer.id }}"
+                                   title="View aging report for {{ customer.supplier_name }}"
+                                   style="color:var(--accent-color,#0078D4);text-decoration:none;font-weight:600;">
+                                    {{ customer.supplier_name }}
+                                    <i class="fas fa-user-clock ms-1" style="font-size:.72rem;opacity:.6;"></i>
+                                </a>
+                            </td>
                             <td>{{ customer.suppliers_teli_1 or '-' }}</td>
                             <td class="mono">{{ "%.2f"|format(customer.suppliers_credit_fasility or 0.0) }}</td>
                             <td>{{ customer.suppliers_vat_regidter_no or '-' }}</td>
@@ -353,6 +368,14 @@
         document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> CREATE NEW CUSTOMER';
         document.getElementById('submitBtn').classList.replace('btn-warning', 'btn-primary');
         document.getElementById('resetBtn').style.display = 'none';
+    }
+
+    function filterCustomerTable() {
+        var q = document.getElementById('customerSearch').value.toLowerCase().trim();
+        var rows = document.querySelectorAll('tr[data-search]');
+        rows.forEach(function (row) {
+            row.style.display = (!q || row.getAttribute('data-search').includes(q)) ? '' : 'none';
+        });
     }
 </script>
 
