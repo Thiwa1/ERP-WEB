@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0078D4,#003d6b);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-scale-balanced"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">Opening Balances</h5>
+            <div style="font-size:.75rem;color:#605E5C;">Set starting balances for suppliers, customers &amp; accounts</div>
+        </div>
+    </div>
+
+    <div class="alert alert-info d-flex align-items-start gap-2" style="font-size:.83rem;border-radius:10px;">
+        <i class="fas fa-info-circle mt-1"></i>
+        <div>
+            Each opening balance posts a balanced double-entry journal. The <b>contra account</b> is where the
+            offsetting side is posted — leave it as <b>Opening Balance Equity</b> (auto-created) or pick your own.
+            Supplier &amp; customer balances also appear as outstanding items in the Aging reports so payments/receipts can be applied.
+        </div>
+    </div>
+
+    <div class="row g-4">
+
+        <!-- Supplier Opening Balance -->
+        <div class="col-lg-6">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+                <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;background:#fff8f0;">
+                    <i class="fas fa-truck" style="color:#9D5D00;"></i>
+                    <div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Supplier Opening Balance (Payable)</div>
+                </div>
+                <form method="POST" action="/opening_balances" class="p-4">
+                    <input type="hidden" name="action" value="supplier_ob">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Supplier</label>
+                        <select name="supplier_id" class="form-select ob-search" required style="font-size:.85rem;">
+                            <option value="">-- Select Supplier --</option>
+                            {% for s in suppliers %}
+                            <option value="{{ s.sup_id }}">{{ s.supplier_code }} — {{ s.supplier_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">Amount Owed (LKR)</label>
+                            <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required style="font-size:.85rem;font-family:monospace;">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">As of Date</label>
+                            <input type="date" name="ob_date" value="{{ today }}" class="form-control" required style="font-size:.85rem;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Reference / Invoice No <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="reference" class="form-control" placeholder="e.g. OB-2026 or original invoice no" style="font-size:.85rem;">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Contra Account</label>
+                        <select name="contra_account" class="form-select ob-search" style="font-size:.85rem;">
+                            <option value="">Opening Balance Equity (auto-create)</option>
+                            {% for a in accounts %}
+                            <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn w-100 fw-semibold" style="background:#9D5D00;color:#fff;border-radius:8px;">
+                        <i class="fas fa-save me-1"></i> Save Supplier Opening Balance
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Customer Opening Balance -->
+        <div class="col-lg-6">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+                <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;background:#f0f9ff;">
+                    <i class="fas fa-users" style="color:#0078D4;"></i>
+                    <div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Customer Opening Balance (Receivable)</div>
+                </div>
+                <form method="POST" action="/opening_balances" class="p-4">
+                    <input type="hidden" name="action" value="customer_ob">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Customer</label>
+                        <select name="customer_id" class="form-select ob-search" required style="font-size:.85rem;">
+                            <option value="">-- Select Customer --</option>
+                            {% for c in customers %}
+                            <option value="{{ c.sup_id }}">{{ c.supplier_code }} — {{ c.supplier_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">Amount Due (LKR)</label>
+                            <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required style="font-size:.85rem;font-family:monospace;">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">As of Date</label>
+                            <input type="date" name="ob_date" value="{{ today }}" class="form-control" required style="font-size:.85rem;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Reference / Invoice No <span class="text-muted fw-normal">(optional)</span></label>
+                        <input type="text" name="reference" class="form-control" placeholder="e.g. OB-2026 or original invoice no" style="font-size:.85rem;">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Contra Account</label>
+                        <select name="contra_account" class="form-select ob-search" style="font-size:.85rem;">
+                            <option value="">Opening Balance Equity (auto-create)</option>
+                            {% for a in accounts %}
+                            <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn w-100 fw-semibold" style="background:#0078D4;color:#fff;border-radius:8px;">
+                        <i class="fas fa-save me-1"></i> Save Customer Opening Balance
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Account Opening Balance -->
+        <div class="col-lg-6">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+                <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;background:#f0fdf4;">
+                    <i class="fas fa-book" style="color:#107C41;"></i>
+                    <div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Account Opening Balance (GL)</div>
+                </div>
+                <form method="POST" action="/opening_balances" class="p-4">
+                    <input type="hidden" name="action" value="account_ob">
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Account</label>
+                        <select name="account_name" class="form-select ob-search" required style="font-size:.85rem;">
+                            <option value="">-- Select Account --</option>
+                            {% for a in accounts %}
+                            <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-4">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">Side</label>
+                            <select name="side" class="form-select" required style="font-size:.85rem;">
+                                <option value="DR">Debit</option>
+                                <option value="CR">Credit</option>
+                            </select>
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">Amount</label>
+                            <input type="number" step="0.01" name="amount" class="form-control" placeholder="0.00" required style="font-size:.85rem;font-family:monospace;">
+                        </div>
+                        <div class="col-4">
+                            <label class="form-label fw-semibold" style="font-size:.82rem;">As of Date</label>
+                            <input type="date" name="ob_date" value="{{ today }}" class="form-control" required style="font-size:.85rem;">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-semibold" style="font-size:.82rem;">Contra Account</label>
+                        <select name="contra_account" class="form-select ob-search" style="font-size:.85rem;">
+                            <option value="">Opening Balance Equity (auto-create)</option>
+                            {% for a in accounts %}
+                            <option value="{{ a.account_name }}">{{ a.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <button type="submit" class="btn w-100 fw-semibold" style="background:#107C41;color:#fff;border-radius:8px;">
+                        <i class="fas fa-save me-1"></i> Save Account Opening Balance
+                    </button>
+                    <div class="text-center mt-2">
+                        <a href="/bulk_upload_tb" style="font-size:.78rem;color:#605E5C;">
+                            <i class="fas fa-file-upload me-1"></i> Bulk upload a full Trial Balance instead
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Recent Opening Balance Entries -->
+        <div class="col-lg-6">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;height:100%;">
+                <div class="px-4 py-3 d-flex align-items-center gap-2" style="border-bottom:1px solid #f1f3f5;">
+                    <i class="fas fa-history" style="color:#605E5C;"></i>
+                    <div style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">Recent Opening Balance Entries</div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead>
+                            <tr style="background:#f8f9fa;">
+                                <th class="py-2 px-4" style="font-size:.72rem;text-transform:uppercase;color:#605E5C;">JV No</th>
+                                <th class="py-2 px-4" style="font-size:.72rem;text-transform:uppercase;color:#605E5C;">Description</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in recent %}
+                            <tr>
+                                <td class="px-4" style="font-family:monospace;font-size:.82rem;color:#605E5C;">{{ r.jv_id }}</td>
+                                <td class="px-4" style="font-size:.83rem;">{{ r.jv_naration }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="2" class="text-center text-muted py-4" style="font-size:.85rem;font-style:italic;">No opening balances posted yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof $ !== 'undefined' && $.fn.select2) {
+        $('.ob-search').select2({ theme: 'bootstrap-5', width: '100%' });
+    }
+});
+</script>
+{% endblock %}

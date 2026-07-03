@@ -166,6 +166,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bank_payments',      'label': 'Bank Payments',        'url': '/bank_payment',           'icon': 'fas fa-university',          'category': 'Core Accounting'},
     {'key': 'cheque_print_setup', 'label': 'Cheque Print Setup',   'url': '/cheque_print_setup',     'icon': 'fas fa-print',               'category': 'Core Accounting'},
     {'key': 'journal_entry',      'label': 'Journal Entry',        'url': '/journal_entry',          'icon': 'fas fa-book',                'category': 'Core Accounting'},
+    {'key': 'opening_balances',   'label': 'Opening Balances',     'url': '/opening_balances',       'icon': 'fas fa-scale-balanced',      'category': 'Core Accounting'},
     {'key': 'service_entry',      'label': 'Service Entry (SRN)',  'url': '/service_entry',          'icon': 'fas fa-file-invoice',        'category': 'Core Accounting'},
     {'key': 'credit_note',        'label': 'Credit Note',          'url': '/credit_note',            'icon': 'fas fa-file-medical',        'category': 'Core Accounting'},
     {'key': 'debit_note',         'label': 'Debit Note',           'url': '/debit_note',             'icon': 'fas fa-file-invoice-dollar', 'category': 'Core Accounting'},
@@ -3144,6 +3145,161 @@ def bulk_upload_tb():
                 return redirect(url_for('bulk_upload_tb'))
 
     return render_template('bulk_upload_tb.html')
+
+# --- Opening Balances (Suppliers / Customers / Accounts) ---
+
+def ensure_opening_balance_account():
+    """Return the name of the 'Opening Balance Equity' contra account, creating it if missing."""
+    name = 'Opening Balance Equity'
+    existing = db.execute_query("SELECT account_name FROM new_account_table WHERE account_name = %s", (name,))
+    if existing:
+        return name
+    # Mirror the balance-sheet category/position of an existing equity account if one exists
+    ref = db.execute_query(
+        "SELECT account_name_of_catogory_Balace_sheet AS cat, account_hold_possion_Balace_Sheet AS pos "
+        "FROM new_account_table WHERE account_equity = 1 "
+        "AND account_name_of_catogory_Balace_sheet IS NOT NULL LIMIT 1"
+    )
+    bs_cat = ref[0]['cat'] if ref else 'Equity'
+    bs_pos = ref[0]['pos'] if ref else 'Liabilities'
+    try:
+        db.execute_query("""
+            INSERT INTO new_account_table (
+                account_name, account_hold_possion_PL, account_hold_possion_Balace_Sheet,
+                account_name_of_catogory_PL, account_name_of_catogory_Balace_sheet,
+                account_income, account_expenses, account_assets, account_liabilities, account_equity,
+                cf_catogory, accont_create_date, account_create_user, account_active, account_basment, currency_code
+            ) VALUES (%s, %s, %s, %s, %s, 0, 0, 0, 0, 1, %s, %s, %s, 1, '', 'LKR')
+        """, (name, None, bs_pos, None, bs_cat, 'Financing', date.today(), get_current_user_id()), commit=True)
+    except Exception as e:
+        logging.error(f"Could not auto-create Opening Balance Equity account: {e}")
+    return name
+
+
+def _post_ob_gl(cursor, account_name, dr, cr, ob_date, narration, user_pk, jv_no):
+    cursor.execute("""
+        INSERT INTO entry_details (account_name, enty_values_DR, enty_values_CR,
+            entry_effective_date, entry_create_date, entry_naration, entry_create_user, entry_jv)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (account_name, dr, cr, ob_date, date.today(), narration, user_pk, jv_no))
+
+
+@app.route('/opening_balances', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def opening_balances():
+    if request.method == 'POST':
+        action = request.form.get('action')
+        contra = (request.form.get('contra_account') or '').strip() or ensure_opening_balance_account()
+        ob_date = request.form.get('ob_date') or date.today().strftime('%Y-%m-%d')
+        current_user = get_current_user_id()
+        user_pk = get_current_user_pk()
+
+        if action == 'supplier_ob':
+            supplier_id = request.form.get('supplier_id')
+            amount = parse_float(request.form.get('amount'))
+            reference = (request.form.get('reference') or '').strip() or f"OB-{ob_date}"
+            if not supplier_id or amount <= 0:
+                flash('Select a supplier and enter an amount greater than zero.', 'danger')
+                return redirect(url_for('opening_balances'))
+
+            conn = db.get_connection(); cursor = conn.cursor(); conn.start_transaction()
+            try:
+                cursor.execute("SELECT supplier_code FROM suppliers WHERE sup_id = %s", (supplier_id,))
+                r = cursor.fetchone(); supplier_code = r[0] if r else ''
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                               (str(current_user), f'Supplier Opening Balance - {reference}'))
+                jv_no = cursor.lastrowid
+                # Payable subledger — outstanding invoice so it shows in aging & payments can be applied
+                cursor.execute("""
+                    INSERT INTO suppliers_invoice_data (
+                        suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                        suppliers_invoice_total_oustanding, suppliers_invoice_total_payment,
+                        suppliers_invoice_final_date, suppliers_invoice_buinding_supplier,
+                        suppliers_invoice_JV, suppliers_VAT_rate
+                    ) VALUES (%s, %s, %s, %s, 0, %s, %s, %s, 0)
+                """, (supplier_code, reference, ob_date, amount, ob_date, supplier_id, jv_no))
+                # GL: Credit Account Payable ; Debit contra
+                _post_ob_gl(cursor, 'Account Payable', 0, amount, ob_date, 'Supplier Opening Balance', user_pk, jv_no)
+                _post_ob_gl(cursor, contra, amount, 0, ob_date, 'Supplier Opening Balance', user_pk, jv_no)
+                conn.commit()
+                flash(f'Supplier opening balance of {amount:,.2f} saved (JV {jv_no}).', 'success')
+            except Exception as e:
+                conn.rollback(); flash(f'Error saving supplier opening balance: {e}', 'danger')
+            finally:
+                cursor.close(); conn.close()
+
+        elif action == 'customer_ob':
+            customer_id = request.form.get('customer_id')
+            amount = parse_float(request.form.get('amount'))
+            reference = (request.form.get('reference') or '').strip() or f"OB-{ob_date}"
+            if not customer_id or amount <= 0:
+                flash('Select a customer and enter an amount greater than zero.', 'danger')
+                return redirect(url_for('opening_balances'))
+
+            conn = db.get_connection(); cursor = conn.cursor(); conn.start_transaction()
+            try:
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                               (str(current_user), f'Customer Opening Balance - {reference}'))
+                jv_no = cursor.lastrowid
+                # Receivable subledger — outstanding invoice so it shows in aging & receipts can be applied
+                cursor.execute("""
+                    INSERT INTO Invoice_Oustanding (
+                        invoice_number, invoice_date, invoice_total_oustanding,
+                        invoice_oustanding_Patment, invoice_final_date,
+                        invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
+                    ) VALUES (%s, %s, %s, 0, %s, %s, %s, 0, 0)
+                """, (reference, ob_date, amount, ob_date, customer_id, jv_no))
+                # GL: Debit Account Receivable ; Credit contra
+                _post_ob_gl(cursor, 'Account Receivable', amount, 0, ob_date, 'Customer Opening Balance', user_pk, jv_no)
+                _post_ob_gl(cursor, contra, 0, amount, ob_date, 'Customer Opening Balance', user_pk, jv_no)
+                conn.commit()
+                flash(f'Customer opening balance of {amount:,.2f} saved (JV {jv_no}).', 'success')
+            except Exception as e:
+                conn.rollback(); flash(f'Error saving customer opening balance: {e}', 'danger')
+            finally:
+                cursor.close(); conn.close()
+
+        elif action == 'account_ob':
+            account_name = request.form.get('account_name')
+            amount = parse_float(request.form.get('amount'))
+            side = request.form.get('side')
+            if not account_name or amount <= 0 or side not in ('DR', 'CR'):
+                flash('Select an account, choose Debit/Credit and enter an amount.', 'danger')
+                return redirect(url_for('opening_balances'))
+            if account_name == contra:
+                flash('The account and the contra account cannot be the same.', 'danger')
+                return redirect(url_for('opening_balances'))
+
+            conn = db.get_connection(); cursor = conn.cursor(); conn.start_transaction()
+            try:
+                cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                               (str(current_user), 'Account Opening Balance'))
+                jv_no = cursor.lastrowid
+                acc_dr, acc_cr = (amount, 0) if side == 'DR' else (0, amount)
+                con_dr, con_cr = (0, amount) if side == 'DR' else (amount, 0)
+                _post_ob_gl(cursor, account_name, acc_dr, acc_cr, ob_date, 'Account Opening Balance', user_pk, jv_no)
+                _post_ob_gl(cursor, contra, con_dr, con_cr, ob_date, 'Account Opening Balance', user_pk, jv_no)
+                conn.commit()
+                flash(f'Account opening balance of {amount:,.2f} saved (JV {jv_no}).', 'success')
+            except Exception as e:
+                conn.rollback(); flash(f'Error saving account opening balance: {e}', 'danger')
+            finally:
+                cursor.close(); conn.close()
+
+        return redirect(url_for('opening_balances'))
+
+    # GET
+    suppliers = db.execute_query("SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    customers = db.execute_query("SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name") or []
+    accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
+    recent = db.execute_query(
+        "SELECT jv_id, jv_naration FROM jv_numbers WHERE jv_naration LIKE '%Opening Balance%' ORDER BY jv_id DESC LIMIT 30"
+    ) or []
+
+    return render_template('opening_balances.html',
+                           suppliers=suppliers, customers=customers, accounts=accounts,
+                           recent=recent, today=date.today().strftime('%Y-%m-%d'))
 
 # --- Cheque Print Setup ---
 @app.route('/cheque_print_setup', methods=['GET', 'POST'])
