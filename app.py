@@ -522,6 +522,19 @@ def create_tenant_db(company_name, username, password, email, mobile=None):
             VALUES (%s, %s, %s, %s, %s)
         """, (username, password, email, tenant_id, mobile), commit=True)
 
+        # Notify the superadmin by SMS so a new account request is never missed.
+        # Failure to send must not break the registration itself.
+        try:
+            superadmin_phone = os.getenv('SUPERADMIN_PHONE', '0700000000')
+            notify_msg = (
+                f"New account request: {company_name} "
+                f"(user: {username}, mobile: {mobile or '-'}, email: {email or '-'}). "
+                f"Please review and set up the database."
+            )
+            send_sms(superadmin_phone, notify_msg)
+        except Exception as e:
+            logging.error(f"Failed to send new-account SMS notification: {e}")
+
         return True, "Registration successful. Pending database setup by administrator."
 
     except Exception as e:
@@ -11462,8 +11475,8 @@ def pos_api_login():
 
 
 # --- POS Web Login with Device Fingerprinting & 2FA ---
-def send_sms_otp(mobile, code):
-    """Sends OTP via Notify.lk Gateway mirroring the legacy PHP logic."""
+def send_sms(mobile, message):
+    """Sends an arbitrary SMS via the Notify.lk Gateway. Returns True on success."""
     settings = {}
 
     # Try to load credentials from active tenant DB site_settings if available
@@ -11502,7 +11515,7 @@ def send_sms_otp(mobile, code):
         'api_key': api_key,
         'sender_id': sender_id,
         'to': phone,
-        'message': f"Your SUWIN verification code is {code}."
+        'message': message
     }
 
     try:
@@ -11517,7 +11530,7 @@ def send_sms_otp(mobile, code):
             conn = db.get_connection()
             cursor = conn.cursor()
             cursor.execute("INSERT INTO sms_delivery_logs (mobile, message, status, api_response) VALUES (%s, %s, %s, %s)",
-                           (phone, params['message'], status_msg, response.text))
+                           (phone, message, status_msg, response.text))
             conn.commit()
         except Exception as log_err:
             logging.error(f"Error logging SMS: {log_err}")
@@ -11534,6 +11547,11 @@ def send_sms_otp(mobile, code):
     except Exception as e:
         logging.error(f"Failed to send SMS: {e}")
         return False
+
+
+def send_sms_otp(mobile, code):
+    """Sends an OTP verification SMS via the Notify.lk Gateway."""
+    return send_sms(mobile, f"Your SUWIN verification code is {code}.")
 @app.route('/pos_login', methods=['GET', 'POST'])
 def pos_web_login():
     if request.method == 'GET':
