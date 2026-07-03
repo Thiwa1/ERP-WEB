@@ -2973,6 +2973,7 @@ def bank_statement_analysis():
             flash("Error processing image: No module named 'PIL'. Please install it using 'pip install Pillow'.", "danger")
             return redirect(url_for('bulk_upload_gl'))
         import pytesseract
+        _configure_tesseract(pytesseract)
 
         img = Image.open(file.stream)
         # Convert to grayscale for better OCR
@@ -3022,7 +3023,10 @@ def bank_statement_analysis():
 
     except Exception as e:
         logging.error(f"OCR Error: {e}")
-        flash(f'Error processing image: {str(e)}', 'danger')
+        if 'tesseract' in str(e).lower() or 'not found' in str(e).lower():
+            flash(_TESSERACT_HELP, 'danger')
+        else:
+            flash(f'Error processing image: {str(e)}', 'danger')
         return redirect(url_for('bulk_upload_gl'))
 
 
@@ -6259,6 +6263,43 @@ def document_line_items():
 # ── AI DOCUMENT SCANNER (pytesseract + PyPDF2 + regex) ─────────
 # ================================================================
 
+def _configure_tesseract(pytesseract):
+    """Point pytesseract at the tesseract binary and return its path (or None).
+
+    On shared hosting (cPanel) you usually cannot `sudo apt-get install`, but you
+    can install/build tesseract in your home dir. Allow an explicit override via
+    the TESSERACT_CMD env var and probe common locations."""
+    import shutil
+    candidates = []
+    env_cmd = os.getenv('TESSERACT_CMD')
+    if env_cmd:
+        candidates.append(env_cmd)
+    which = shutil.which('tesseract')
+    if which:
+        candidates.append(which)
+    candidates += [
+        '/usr/bin/tesseract',
+        '/usr/local/bin/tesseract',
+        '/bin/tesseract',
+        os.path.expanduser('~/bin/tesseract'),
+        os.path.expanduser('~/.local/bin/tesseract'),
+    ]
+    for c in candidates:
+        if c and os.path.exists(c):
+            pytesseract.pytesseract.tesseract_cmd = c
+            return c
+    return None
+
+
+_TESSERACT_HELP = (
+    'Tesseract OCR binary was not found on this server. '
+    'On shared hosting: install tesseract in your account and set the TESSERACT_CMD '
+    'environment variable to its full path (e.g. TESSERACT_CMD=/home/USER/bin/tesseract). '
+    'On a server you control: sudo apt-get install tesseract-ocr. '
+    'Tip: text-based PDFs are read without Tesseract — upload a PDF instead of a photo/scan.'
+)
+
+
 @app.route('/documents/ai_extract', methods=['POST'])
 @login_required
 def documents_ai_extract():
@@ -6295,19 +6336,17 @@ def documents_ai_extract():
             try:
                 import pytesseract
                 from PIL import Image
+                _configure_tesseract(pytesseract)
                 img = Image.open(io.BytesIO(raw_data))
                 extracted_text = pytesseract.image_to_string(img)
             except ImportError:
                 return jsonify({'success': False,
-                                'error': 'Tesseract OCR is not installed on this server. '
-                                         'Please install it: sudo apt-get install tesseract-ocr '
-                                         '(or upload a text-based PDF instead — PDFs do not need Tesseract).'}), 500
+                                'error': "The 'pytesseract'/'Pillow' Python packages are not installed. "
+                                         "Run: pip install pytesseract Pillow. " + _TESSERACT_HELP}), 500
             except Exception as ocr_err:
                 # Tesseract binary missing even though pytesseract is installed
                 if 'tesseract' in str(ocr_err).lower() or 'not found' in str(ocr_err).lower():
-                    return jsonify({'success': False,
-                                    'error': 'Tesseract binary not found. '
-                                             'Install it on the server: sudo apt-get install tesseract-ocr'}), 500
+                    return jsonify({'success': False, 'error': _TESSERACT_HELP}), 500
                 raise
         else:
             # Try plain text
