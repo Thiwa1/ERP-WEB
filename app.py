@@ -7797,6 +7797,52 @@ def get_ledger_data():
     return {'data': data, 'basement': basement}
 
 
+@app.route('/api/jv_details/<jv_no>')
+@login_required
+def api_jv_details(jv_no):
+    """Return all journal lines for a JV plus its header, for the ledger drill-down."""
+    header = db.execute_query(
+        "SELECT jv_id, jv_naration, jv_user_code, status FROM jv_numbers WHERE jv_id = %s", (jv_no,)
+    )
+    lines = db.execute_query("""
+        SELECT ed.account_name,
+               ed.enty_values_DR AS dr,
+               ed.enty_values_CR AS cr,
+               ed.entry_effective_date AS date,
+               ed.entry_naration AS narration,
+               ed.entry_job_number AS job_no,
+               s.sub_sub_accaount_name AS sub_account
+        FROM entry_details ed
+        LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
+        WHERE ed.entry_jv = %s AND ed.entry_deleted = 0
+        ORDER BY ed.id
+    """, (jv_no,))
+
+    if not lines:
+        return {'error': 'No journal details found for this JV.'}, 404
+
+    total_dr = 0.0
+    total_cr = 0.0
+    for l in lines:
+        l['dr'] = float(l['dr'] or 0)
+        l['cr'] = float(l['cr'] or 0)
+        l['date'] = str(l['date']) if l['date'] is not None else ''
+        l['job_no'] = l['job_no'] if l['job_no'] else ''
+        l['sub_account'] = l['sub_account'] or ''
+        total_dr += l['dr']
+        total_cr += l['cr']
+
+    return {
+        'jv_no': jv_no,
+        'narration': (header[0]['jv_naration'] if header else '') or '',
+        'user': (header[0]['jv_user_code'] if header else '') or '',
+        'status': (header[0]['status'] if header else None),
+        'lines': lines,
+        'total_dr': total_dr,
+        'total_cr': total_cr,
+    }
+
+
 @app.route('/ledger_view/export')
 @login_required
 @has_permission('Access_Reports')

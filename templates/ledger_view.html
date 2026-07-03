@@ -104,7 +104,100 @@
 
 </div>
 
+<!-- Journal Voucher Detail Modal -->
+<div class="modal fade" id="jvModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 8px 32px rgba(0,0,0,.15);">
+      <div class="modal-header" style="border-bottom:1px solid #f1f3f5;">
+        <h6 class="modal-title fw-bold" style="color:#1a1a2e;">
+          <i class="fas fa-file-invoice me-2" style="color:#4f46e5;"></i>
+          Journal Voucher <span id="jvModalNo" style="font-family:monospace;"></span>
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap gap-4 mb-3" style="font-size:.82rem;">
+          <div><span style="color:#605E5C;font-weight:600;">Narration:</span> <span id="jvModalNarration">—</span></div>
+          <div><span style="color:#605E5C;font-weight:600;">Entered by:</span> <span id="jvModalUser">—</span></div>
+        </div>
+        <div id="jvModalBody">
+          <div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>
+        </div>
+      </div>
+      <div class="modal-footer" style="border-top:1px solid #f1f3f5;">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
+    function showJV(jvNo) {
+        document.getElementById('jvModalNo').textContent = jvNo;
+        document.getElementById('jvModalNarration').textContent = '—';
+        document.getElementById('jvModalUser').textContent = '—';
+        document.getElementById('jvModalBody').innerHTML =
+            '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div></div>';
+
+        var modal = new bootstrap.Modal(document.getElementById('jvModal'));
+        modal.show();
+
+        fetch('/api/jv_details/' + encodeURIComponent(jvNo))
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+                if (d.error) {
+                    document.getElementById('jvModalBody').innerHTML =
+                        '<div class="text-center text-muted py-4">' + d.error + '</div>';
+                    return;
+                }
+                document.getElementById('jvModalNarration').textContent = d.narration || '—';
+                document.getElementById('jvModalUser').textContent = d.user || '—';
+
+                var rows = '';
+                d.lines.forEach(function (l) {
+                    var acct = l.account_name + (l.sub_account ? ' <span style="color:#94a3b8;">[' + l.sub_account + ']</span>' : '');
+                    var drTxt = l.dr ? parseFloat(l.dr).toLocaleString('en-US', {minimumFractionDigits: 2}) : '';
+                    var crTxt = l.cr ? parseFloat(l.cr).toLocaleString('en-US', {minimumFractionDigits: 2}) : '';
+                    rows +=
+                        '<tr style="border-bottom:1px solid #f1f3f5;">' +
+                          '<td style="padding:.5rem .75rem;">' + acct +
+                            (l.job_no ? '<div style="font-size:.7rem;color:#94a3b8;">Job: ' + l.job_no + '</div>' : '') +
+                            (l.narration ? '<div style="font-size:.72rem;color:#94a3b8;">' + l.narration + '</div>' : '') +
+                          '</td>' +
+                          '<td style="padding:.5rem .75rem;text-align:right;font-family:monospace;color:#dc2626;">' + drTxt + '</td>' +
+                          '<td style="padding:.5rem .75rem;text-align:right;font-family:monospace;color:#059669;">' + crTxt + '</td>' +
+                        '</tr>';
+                });
+
+                var totDr = parseFloat(d.total_dr).toLocaleString('en-US', {minimumFractionDigits: 2});
+                var totCr = parseFloat(d.total_cr).toLocaleString('en-US', {minimumFractionDigits: 2});
+                var balanced = Math.abs(d.total_dr - d.total_cr) < 0.01;
+
+                document.getElementById('jvModalBody').innerHTML =
+                    '<div style="font-size:.72rem;color:#94a3b8;margin-bottom:6px;">Date: ' + (d.lines[0] ? d.lines[0].date : '') + '</div>' +
+                    '<table class="table table-sm mb-0" style="font-size:.85rem;">' +
+                      '<thead><tr style="background:#f8f9fa;">' +
+                        '<th style="padding:.5rem .75rem;font-size:.7rem;text-transform:uppercase;color:#605E5C;">Account</th>' +
+                        '<th style="padding:.5rem .75rem;text-align:right;font-size:.7rem;text-transform:uppercase;color:#605E5C;">Debit</th>' +
+                        '<th style="padding:.5rem .75rem;text-align:right;font-size:.7rem;text-transform:uppercase;color:#605E5C;">Credit</th>' +
+                      '</tr></thead>' +
+                      '<tbody>' + rows + '</tbody>' +
+                      '<tfoot><tr style="border-top:2px solid #e2e8f0;font-weight:700;">' +
+                        '<td style="padding:.5rem .75rem;">Total ' +
+                          (balanced ? '<span style="color:#059669;font-size:.72rem;">(balanced)</span>' : '<span style="color:#dc2626;font-size:.72rem;">(not balanced)</span>') +
+                        '</td>' +
+                        '<td style="padding:.5rem .75rem;text-align:right;font-family:monospace;">' + totDr + '</td>' +
+                        '<td style="padding:.5rem .75rem;text-align:right;font-family:monospace;">' + totCr + '</td>' +
+                      '</tr></tfoot>' +
+                    '</table>';
+            })
+            .catch(function (err) {
+                console.error(err);
+                document.getElementById('jvModalBody').innerHTML =
+                    '<div class="text-center text-danger py-4">Could not load journal details.</div>';
+            });
+    }
+
     function loadLedger() {
         const account = $('#accountSelect').val(); // Select2 uses jQuery val()
         const fromDate = document.getElementById('fromDate').value;
@@ -154,12 +247,18 @@
                 const cr = row.cr !== 0 ? parseFloat(row.cr).toLocaleString('en-US', {minimumFractionDigits: 2}) : '-';
                 const bal = parseFloat(row.balance).toLocaleString('en-US', {minimumFractionDigits: 2});
                 const jv = row.jv_no || '-';
+                // Non-opening rows with a real JV are clickable to drill into the voucher
+                const clickable = (!isOpening && row.jv_no) ? true : false;
+                const clickAttr = clickable ? `onclick="showJV('${row.jv_no}')" style="border-bottom:1px solid #f1f3f5;cursor:pointer;"` : `style="border-bottom:1px solid #f1f3f5;"`;
+                const jvCell = clickable
+                    ? `<span style="color:#4f46e5;font-weight:700;">${jv} <i class="fas fa-external-link-alt" style="font-size:.68rem;opacity:.6;"></i></span>`
+                    : jv;
 
                 const tr = `
-                    <tr class="${rowClass}" style="border-bottom:1px solid #f1f3f5;">
+                    <tr class="${rowClass}" ${clickAttr}>
                         <td style="padding:.65rem 1rem;text-align:center;">${no}</td>
                         <td style="padding:.65rem 1rem;">${row.date}</td>
-                        <td style="padding:.65rem 1rem;text-align:center;font-family:'Courier New',monospace;font-size:.85rem;">${jv}</td>
+                        <td style="padding:.65rem 1rem;text-align:center;font-family:'Courier New',monospace;font-size:.85rem;">${jvCell}</td>
                         <td style="padding:.65rem 1rem;" class="${narrationStyle}">${row.narration}</td>
                         <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;color:#dc2626;">${dr}</td>
                         <td style="padding:.65rem 1rem;text-align:right;font-family:'Courier New',monospace;font-size:.88rem;color:#059669;">${cr}</td>
