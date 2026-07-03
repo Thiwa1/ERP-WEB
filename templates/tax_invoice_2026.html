@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tax Invoice - {{ header.invoice_number }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background:#f1f5f9; font-family:'Inter',Arial,sans-serif; font-size:12.5px; color:#111; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+
+        /* Controls (hidden on print) */
+        .no-print-bar { position:sticky; top:0; z-index:100; background:#1e293b; padding:10px 24px; display:flex; align-items:center; justify-content:center; gap:10px; box-shadow:0 2px 8px rgba(0,0,0,.18); }
+        .no-print-bar .bar-label { color:#94a3b8; font-size:.8rem; font-weight:500; margin-right:8px; }
+        .btn { border:none; border-radius:7px; padding:8px 18px; font-size:.8rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; text-decoration:none; }
+        .btn-print { background:#0078D4; color:#fff; }
+        .btn-print:hover { background:#005a9e; }
+        .btn-dl { background:#107C41; color:#fff; }
+        .btn-dl:hover { background:#0b5c30; }
+        .btn-grey { background:#334155; color:#cbd5e1; }
+        .btn-grey:hover { background:#475569; color:#fff; }
+
+        /* Invoice sheet — matches Gazette 2463/05 Annexure I */
+        .sheet { max-width:820px; margin:26px auto 48px; background:#fff; border:1.5px solid #111; }
+        .title { text-align:center; font-size:22px; font-weight:800; letter-spacing:1px; padding:12px 0 10px; border-bottom:1.5px solid #111; text-transform:uppercase; }
+
+        .parties { display:flex; border-bottom:1.5px solid #111; }
+        .party { flex:1; padding:12px 16px; font-size:12px; line-height:1.7; }
+        .party:first-child { border-right:1.5px solid #111; }
+        .party .lbl { font-weight:700; }
+        .party .cap { font-size:10.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase; color:#334155; margin-bottom:4px; }
+
+        .meta { display:flex; border-bottom:1.5px solid #111; }
+        .meta .cell { flex:1; padding:8px 16px; font-size:12px; }
+        .meta .cell:first-child { border-right:1.5px solid #111; }
+        .meta .lbl { font-weight:700; }
+
+        table.lines { width:100%; border-collapse:collapse; }
+        table.lines th, table.lines td { border:1px solid #111; padding:7px 8px; font-size:11.5px; }
+        table.lines th { background:#f1f5f9; font-weight:700; text-align:center; text-transform:uppercase; font-size:10.5px; letter-spacing:.3px; }
+        table.lines td.num { text-align:right; font-variant-numeric:tabular-nums; }
+        table.lines td.ctr { text-align:center; }
+
+        .totals td { border:1px solid #111; padding:7px 10px; font-size:12px; }
+        .totals .lbl { font-weight:700; text-align:right; }
+        .totals .val { text-align:right; font-variant-numeric:tabular-nums; width:180px; }
+        .totals .grand { font-weight:800; background:#f1f5f9; }
+
+        .footer-row { border-top:1.5px solid #111; padding:8px 16px; font-size:12px; }
+        .footer-row .lbl { font-weight:700; }
+        .note { text-align:center; font-size:10px; color:#64748b; padding:8px 16px 14px; }
+
+        @media print {
+            body { background:#fff; }
+            .no-print { display:none !important; }
+            .sheet { margin:0 auto; border:1.5px solid #000; max-width:100%; }
+            @page { size:A4; margin:12mm; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print-bar no-print">
+        <span class="bar-label">Tax Invoice (VAT Format 2026)</span>
+        <button class="btn btn-print" onclick="window.print()">&#128438; Print</button>
+        <a class="btn btn-dl" href="/download/vat_invoice_format_2026">&#128229; Download Official Gazette Format</a>
+        <button class="btn btn-grey" onclick="window.close()">&#10005; Close</button>
+    </div>
+
+    <div class="sheet">
+        <div class="title">Tax Invoice</div>
+
+        <!-- Supplier (left) / Purchaser (right) -->
+        <div class="parties">
+            <div class="party">
+                <div class="cap">Supplier</div>
+                <div><span class="lbl">TIN:</span> {{ company.company_vate_code or '—' }}</div>
+                <div><span class="lbl">Name:</span> {{ company.company_name or '—' }}</div>
+                <div><span class="lbl">Address:</span>
+                    {{ company.company_addras_1 or '' }}{% if company.company_addras_2 %}, {{ company.company_addras_2 }}{% endif %}{% if company.company_addras_3 %}, {{ company.company_addras_3 }}{% endif %}
+                </div>
+                <div><span class="lbl">Telephone No:</span> {{ company.company_land_line or '—' }}</div>
+            </div>
+            <div class="party">
+                <div class="cap">Purchaser</div>
+                <div><span class="lbl">TIN:</span> {{ customer.suppliers_TIN or customer.suppliers_vat_regidter_no or '—' }}</div>
+                <div><span class="lbl">Name:</span> {{ customer.supplier_name or '—' }}</div>
+                <div><span class="lbl">Address:</span>
+                    {{ customer.supplier_address_1 or '' }}{% if customer.supplier_address_2 %}, {{ customer.supplier_address_2 }}{% endif %}{% if customer.supplier_address_3 %}, {{ customer.supplier_address_3 }}{% endif %}
+                </div>
+                <div><span class="lbl">Telephone No:</span> {{ customer.suppliers_teli_1 or '—' }}</div>
+            </div>
+        </div>
+
+        <!-- Invoice meta -->
+        <div class="meta">
+            <div class="cell"><span class="lbl">Date of Invoice:</span> {{ invoice_date_fmt }}</div>
+            <div class="cell"><span class="lbl">Tax Invoice No.:</span> {{ gazette_serial }}</div>
+        </div>
+        <div class="meta">
+            <div class="cell"><span class="lbl">Date of Delivery:</span> {{ delivery_date_fmt }}</div>
+            <div class="cell"><span class="lbl">Place of Supply:</span> {{ company.company_addras_1 or '—' }}</div>
+        </div>
+
+        <!-- Line items -->
+        <table class="lines">
+            <thead>
+                <tr>
+                    <th style="width:60px;">Reference</th>
+                    <th>Description of Goods or Services</th>
+                    <th style="width:70px;">Quantity</th>
+                    <th style="width:100px;">Unit Price</th>
+                    <th style="width:130px;">Amount Excluding VAT (Rs.)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td class="ctr">{{ loop.index }}</td>
+                    <td>{{ item.invoice_item_name }}{% if item.invoice_unit %} <span style="color:#64748b;">({{ item.invoice_unit }})</span>{% endif %}</td>
+                    <td class="num">{{ "{:,.2f}".format(item.invoice_qty or 0) }}</td>
+                    <td class="num">{{ "{:,.2f}".format(item.invoice_price or 0) }}</td>
+                    <td class="num">{{ "{:,.0f}".format(item.total or 0) }}</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="ctr" style="color:#64748b;padding:16px;">No items.</td></tr>
+                {% endfor %}
+                {% if items and items|length < 6 %}
+                    {% for _ in range(6 - items|length) %}
+                    <tr><td>&nbsp;</td><td></td><td></td><td></td><td></td></tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+
+        <!-- Totals -->
+        <table class="totals" style="width:100%; border-collapse:collapse;">
+            <tr>
+                <td class="lbl">Total Value of Supply:</td>
+                <td class="val">{{ "{:,.0f}".format(net_amount) }}</td>
+            </tr>
+            <tr>
+                <td class="lbl">VAT Amount (Total Value of Supply @ {{ vat_percent|int }}%):</td>
+                <td class="val">{{ "{:,.0f}".format(vat_display_amount) }}</td>
+            </tr>
+            <tr>
+                <td class="lbl grand">Total Amount including VAT:</td>
+                <td class="val grand">{{ "{:,.0f}".format(total_incl_vat) }}</td>
+            </tr>
+        </table>
+
+        <div class="footer-row"><span class="lbl">Total Amount in words:</span> {{ total_in_words }}</div>
+        <div class="footer-row"><span class="lbl">Mode of Payment:</span> ______________________________</div>
+        <div class="footer-row"><span class="lbl">Additional Information if any:</span> {{ invoice_terms or '' }}</div>
+
+        <div class="note">
+            Issued per Gazette Extraordinary No. 2463/05 (17.11.2025), Value Added Tax Act No. 14 of 2002 — effective 01 January 2026.
+            Amounts shown in Sri Lankan Rupees (LKR) without cents.
+        </div>
+    </div>
+
+    <script>
+        // Auto-open print dialog like the classic invoice preview
+        window.addEventListener('load', function () { setTimeout(function(){ window.print(); }, 350); });
+    </script>
+</body>
+</html>

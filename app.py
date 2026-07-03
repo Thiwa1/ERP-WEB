@@ -14403,10 +14403,10 @@ def invoice_creating():
                            last_jv=request.args.get('last_jv'),
                            last_inv=request.args.get('last_inv'))
 
-@app.route('/invoice_print/<string:invoice_no>')
-@login_required
-@has_permission('Access_Accounting')
-def invoice_print(invoice_no):
+def build_invoice_context(invoice_no):
+    """Fetch and compute everything needed to render an invoice.
+    Returns a context dict, or None if the invoice does not exist.
+    Shared by the classic invoice print and the 2026 VAT Tax Invoice format."""
     # Fetch Invoice Header from Invoice_Oustanding
     header = db.execute_query("""
         SELECT o.invoice_number, o.invoice_date, o.invoice_final_date as due_date,
@@ -14418,14 +14418,14 @@ def invoice_print(invoice_no):
     """, (invoice_no,))
 
     if not header:
-        flash("Invoice not found.", "danger")
-        return redirect(url_for('invoice_creating'))
+        return None
 
     header = header[0]
 
     # Fetch Customer Info
     customer = db.execute_query("""
-        SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3, suppliers_TIN, suppliers_vat_regidter_no
+        SELECT supplier_name, supplier_address_1, supplier_address_2, supplier_address_3,
+               suppliers_TIN, suppliers_vat_regidter_no, suppliers_teli_1
         FROM suppliers
         WHERE sup_id = %s
         LIMIT 1
@@ -14506,17 +14506,97 @@ def invoice_print(invoice_no):
     except Exception as e:
         print(f"Error fetching invoice_terms for print: {e}")
 
-    return render_template('invoice_print.html',
-                           header=header,
-                           customer=customer,
-                           company=company,
-                           items=items,
-                           subtotal=subtotal,
-                           vat_rate=vat_rate,
-                           vat_amount=vat_amount,
-                           grand_total=grand_total,
-                           invoice_title=invoice_title,
-                           invoice_terms=invoice_terms)
+    return dict(
+        header=header,
+        customer=customer,
+        company=company,
+        items=items,
+        subtotal=subtotal,
+        vat_rate=vat_rate,
+        vat_amount=vat_amount,
+        grand_total=grand_total,
+        invoice_title=invoice_title,
+        invoice_terms=invoice_terms,
+    )
+
+
+@app.route('/invoice_print/<string:invoice_no>')
+@login_required
+@has_permission('Access_Accounting')
+def invoice_print(invoice_no):
+    ctx = build_invoice_context(invoice_no)
+    if ctx is None:
+        flash("Invoice not found.", "danger")
+        return redirect(url_for('invoice_creating'))
+    return render_template('invoice_print.html', **ctx)
+
+
+@app.route('/tax_invoice_2026/<string:invoice_no>')
+@login_required
+@has_permission('Access_Accounting')
+def tax_invoice_2026(invoice_no):
+    """Render an invoice in the new VAT Tax Invoice format mandated by
+    Gazette Extraordinary No. 2463/05 (2025-11-17), effective 2026-01-01."""
+    ctx = build_invoice_context(invoice_no)
+    if ctx is None:
+        flash("Invoice not found.", "danger")
+        return redirect(url_for('invoice_creating'))
+
+    from datetime import datetime as _dt
+    import re as _re
+
+    # Gazette requires values in LKR without cents
+    net   = round(ctx['subtotal'] or 0)
+    vat   = round(ctx['vat_amount'] or 0)
+    total = round(ctx['grand_total'] or 0)
+
+    # Resolve invoice date
+    inv_date = ctx['header'].get('invoice_date')
+    def _to_dt(v):
+        try:
+            if isinstance(v, str):
+                return _dt.strptime(v[:10], '%Y-%m-%d')
+            return _dt(v.year, v.month, v.day)
+        except Exception:
+            return None
+    d = _to_dt(inv_date) or _dt.now()
+
+    def _fmt_mmddyyyy(v):
+        dd = _to_dt(v)
+        return dd.strftime('%m/%d/%Y') if dd else (v or '')
+
+    # Suggested gazette serial number: YYMMM_QQQQ_XXXXX (max 40 chars, no spaces)
+    yy  = d.strftime('%y')
+    mmm = d.strftime('%b').upper()
+    digits = _re.sub(r'\D', '', str(ctx['header'].get('invoice_number') or '')) or '1'
+    xxxxx = str(int(digits))
+    branch_code = 'MAIN'
+    gazette_serial = f"{yy}{mmm}_{branch_code}_{xxxxx}"[:40]
+
+    ctx.update(
+        net_amount=net,
+        vat_display_amount=vat,
+        total_incl_vat=total,
+        total_in_words=amount_in_words(total),
+        gazette_serial=gazette_serial,
+        invoice_date_fmt=_fmt_mmddyyyy(inv_date),
+        delivery_date_fmt=_fmt_mmddyyyy(inv_date),
+        vat_percent=(ctx['vat_rate'] or 18),
+    )
+    return render_template('tax_invoice_2026.html', **ctx)
+
+
+@app.route('/download/vat_invoice_format_2026')
+@login_required
+def download_vat_invoice_format_2026():
+    """Download the official Gazette 2463/05 (2025-11-17) Tax Invoice specification PDF."""
+    from flask import send_from_directory
+    docs_dir = os.path.join(app.root_path, 'static', 'docs')
+    return send_from_directory(
+        docs_dir, 'vat_tax_invoice_format_2026.pdf',
+        as_attachment=True,
+        download_name='VAT_Tax_Invoice_Format_2026_Gazette_2463-05.pdf'
+    )
 
 @app.route('/api/get_item_prices/<string:item_ids>')
 @login_required
