@@ -7839,7 +7839,8 @@ def get_ledger_data():
             ed.entry_jv as jv_no,
             s.sub_sub_accaount_name as sub_account
         FROM entry_details ed
-        LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
+        LEFT JOIN sub_accont_for_new_account s
+            ON ed.entry_sub_account_code = s.sub_account_code AND ed.entry_sub_account_code != 0
         WHERE ed.account_name = %s
           AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) BETWEEN %s AND %s
           AND ed.entry_deleted = 0
@@ -7901,18 +7902,38 @@ def api_jv_details(jv_no):
         SELECT ed.account_name,
                ed.enty_values_DR AS dr,
                ed.enty_values_CR AS cr,
-               ed.entry_effective_date AS date,
+               COALESCE(ed.entry_effective_date, ed.entry_create_date) AS date,
                ed.entry_naration AS narration,
                ed.entry_job_number AS job_no,
+               ed.entry_create_user AS create_user,
                s.sub_sub_accaount_name AS sub_account
         FROM entry_details ed
-        LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
+        LEFT JOIN sub_accont_for_new_account s
+            ON ed.entry_sub_account_code = s.sub_account_code AND ed.entry_sub_account_code != 0
         WHERE ed.entry_jv = %s AND ed.entry_deleted = 0
         ORDER BY ed.id
     """, (jv_no,))
 
     if not lines:
         return {'error': 'No journal details found for this JV.'}, 404
+
+    # Resolve the actual user who entered it (jv_user_code is a source label like
+    # 'JV FORM SEN INVOICE', not a person). entry_create_user may hold the Login id
+    # or the User_Code depending on the transaction type — match either.
+    entered_by = ''
+    create_user = lines[0].get('create_user') if lines else None
+    if create_user:
+        try:
+            u = db.execute_query(
+                "SELECT User_Name FROM Login_Table WHERE id = %s OR User_Code = %s LIMIT 1",
+                (create_user, create_user)
+            )
+            if u:
+                entered_by = u[0].get('User_Name') or ''
+        except Exception:
+            pass
+    if not entered_by:
+        entered_by = (header[0]['jv_user_code'] if header else '') or ''
 
     total_dr = 0.0
     total_cr = 0.0
@@ -7922,13 +7943,14 @@ def api_jv_details(jv_no):
         l['date'] = str(l['date']) if l['date'] is not None else ''
         l['job_no'] = l['job_no'] if l['job_no'] else ''
         l['sub_account'] = l['sub_account'] or ''
+        l.pop('create_user', None)
         total_dr += l['dr']
         total_cr += l['cr']
 
     return {
         'jv_no': jv_no,
         'narration': (header[0]['jv_naration'] if header else '') or '',
-        'user': (header[0]['jv_user_code'] if header else '') or '',
+        'user': entered_by,
         'status': (header[0]['status'] if header else None),
         'lines': lines,
         'total_dr': total_dr,
