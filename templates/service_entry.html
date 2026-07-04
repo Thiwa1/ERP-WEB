@@ -348,7 +348,7 @@
               </div>
               <div class="form-group">
                 <label class="win-label">Narration</label>
-                <textarea class="win-textarea" name="main_narration" placeholder="Enter transaction narration…" required></textarea>
+                <textarea class="win-textarea" name="main_narration" placeholder="Enter transaction narration…" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences" required></textarea>
               </div>
             </div>
           </div>
@@ -490,10 +490,17 @@
     <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
       <span style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#605E5C;">
         <i class="fas fa-history me-1"></i> Service Entry History
+        <span style="text-transform:none;font-weight:500;color:#9ca3af;letter-spacing:0;margin-left:6px;">
+          {% if hf.date_from or hf.date_to %}
+            · Showing {{ hf.date_from or '…' }} → {{ hf.date_to or '…' }}
+          {% else %}
+            · Showing all
+          {% endif %}
+        </span>
       </span>
       <button class="btn btn-sm" type="button" onclick="var f=document.getElementById('seHistFilters'); f.style.display = f.style.display==='none'?'block':'none';"
               style="background:#eef2ff;border:1px solid #c7d2fc;border-radius:7px;color:#4f46e5;font-size:.75rem;font-weight:600;padding:4px 12px;">
-        <i class="fas fa-filter me-1"></i> Advanced Filter
+        <i class="fas fa-filter me-1"></i> Filter / Date Range
       </button>
     </div>
 
@@ -763,7 +770,7 @@ function seDvDelete(docId) {
             <td><select class="win-select account-select" onchange="fetchSubs(this); calculateTotals()" required>${accountsOptions}</select></td>
             <td><select class="win-select subaccount-select" disabled><option value="">None</option></select></td>
             <td><select class="win-select job-select">${jobsOptions}</select></td>
-            <td><input type="text" class="win-input memo-input" placeholder="Line Narration..."></td>
+            <td><input type="text" class="win-input memo-input" placeholder="Line Narration..." spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences"></td>
             <td><input type="number" step="0.01" class="win-input dr-input" value="0.00" style="text-align:right;" oninput="calculateTotals()"></td>
             <td><button type="button" class="btn-del" onclick="removeRow(this)" title="Delete row"><i class="fas fa-trash-alt"></i></button></td>
         `;

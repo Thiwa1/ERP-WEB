@@ -15827,6 +15827,17 @@ def service_entry():
         'status':     request.args.get('h_status', '').strip(),  # '', 'active', 'reversed'
     }
 
+    # Default to the CURRENT MONTH on a fresh load so we don't scan/return everything.
+    # If the user submits the filter (any h_* param present), respect exactly what they set
+    # (clearing both dates then filtering shows all records).
+    hist_filter_submitted = any(
+        k in request.args for k in
+        ('h_search', 'h_date_from', 'h_date_to', 'h_amount_min', 'h_amount_max', 'h_status')
+    )
+    if not hist_filter_submitted:
+        hf['date_from'] = date.today().replace(day=1).strftime('%Y-%m-%d')
+        hf['date_to'] = date.today().strftime('%Y-%m-%d')
+
     h_filters = ["j.jv_user_code LIKE %s"]
     h_params = ['JV FORM SEN INVOICE%']
     if hf['search']:
