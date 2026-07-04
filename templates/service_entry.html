@@ -579,6 +579,10 @@
                      class="btn btn-sm" style="background:#f0f4ff;border:none;border-radius:5px;font-size:.72rem;color:#3730a3;padding:3px 8px;" title="Print">
                     <i class="fas fa-print"></i>
                   </a>
+                  <button class="btn btn-sm" onclick="seOpenDocPanel({{ h.jv }})"
+                          style="background:#fff7ed;border:1px solid #fed7aa;border-radius:5px;font-size:.72rem;color:#c2410c;padding:3px 8px;" title="View / Attach Documents">
+                    <i class="fas fa-paperclip"></i>
+                  </button>
                   {% if not h.is_reversed %}
                   {% if locked %}
                   <button class="btn btn-sm" disabled
@@ -619,6 +623,124 @@
 
 {# Reusable metadata edit modal — included once, used by both the history rows and the last-entry button #}
 {% include '_edit_metadata_modal.html' %}
+
+<!-- ── Document Viewer / Upload Modal (per history row) ── -->
+<div class="modal fade" id="seDocViewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#C42B1C,#8B1A10);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="fas fa-paperclip"></i>
+          <h6 class="modal-title fw-bold mb-0">Documents — JV <span id="seDvJvLabel"></span></h6>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4">
+        <div style="border:2px dashed #fecaca;border-radius:10px;padding:14px;background:#fef2f2;cursor:pointer;margin-bottom:14px;"
+             onclick="document.getElementById('seDvFileInput').click()"
+             ondragover="event.preventDefault();this.style.borderColor='#C42B1C'"
+             ondragleave="this.style.borderColor='#fecaca'"
+             ondrop="seDvDrop(event)">
+          <div class="d-flex align-items-center gap-2">
+            <i class="fas fa-cloud-upload-alt" style="font-size:1.3rem;color:#C42B1C;"></i>
+            <div>
+              <div style="font-size:.82rem;font-weight:600;color:#374151;">Attach a document</div>
+              <div style="font-size:.72rem;color:#9ca3af;">PDF, images, Word, Excel — drag &amp; drop or click</div>
+            </div>
+          </div>
+        </div>
+        <input type="file" id="seDvFileInput" style="display:none" multiple
+               accept=".pdf,.jpg,.jpeg,.png,.gif,.doc,.docx,.xls,.xlsx,.csv,.txt"
+               onchange="seDvUpload(this.files)">
+        <div id="seDvFileList" style="min-height:60px;"></div>
+      </div>
+      <div class="modal-footer border-0 px-4 pb-4 pt-0">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
+                style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let _seDvJv = null;
+const _seDvReftype = 'service_entry';
+
+function seOpenDocPanel(jv) {
+  _seDvJv = String(jv);
+  document.getElementById('seDvJvLabel').textContent = jv;
+  document.getElementById('seDvFileList').innerHTML = '<div style="font-size:.78rem;color:#9ca3af;text-align:center;padding:10px;">Loading…</div>';
+  seLoadDocList();
+  new bootstrap.Modal(document.getElementById('seDocViewModal')).show();
+}
+
+function seLoadDocList() {
+  if (!_seDvJv) return;
+  fetch(`/documents/list?ref_type=${_seDvReftype}&ref_id=${_seDvJv}`)
+    .then(r => r.json())
+    .then(docs => {
+      const box = document.getElementById('seDvFileList');
+      if (!docs || docs.length === 0) {
+        box.innerHTML = '<div style="font-size:.78rem;color:#9ca3af;text-align:center;padding:10px;"><i class="fas fa-inbox me-1"></i>No documents attached yet.</div>';
+        return;
+      }
+      box.innerHTML = '';
+      docs.forEach(d => {
+        const row = document.createElement('div');
+        row.id = 'sedvrow_' + d.id;
+        row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-bottom:1px solid #f1f5f9;font-size:.82rem;';
+        const ext = (d.file_name||'').split('.').pop().toLowerCase();
+        const icons = {pdf:'📄',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',doc:'📝',docx:'📝',xls:'📊',xlsx:'📊',csv:'📊',txt:'📋'};
+        const ic = icons[ext] || '📎';
+        const kb = d.file_size ? (d.file_size/1024).toFixed(1)+'KB' : '';
+        row.innerHTML = `
+          <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span style="font-size:.9rem;">${ic}</span>
+            <div style="overflow:hidden;">
+              <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;font-weight:600;">${d.file_name}</div>
+              <div style="font-size:.7rem;color:#9ca3af;">${kb} · ${d.uploaded_at}</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:6px;flex-shrink:0;">
+            <a href="/documents/view/${d.id}" target="_blank"
+               style="background:#f0f4ff;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#3730a3;text-decoration:none;">
+              <i class="fas fa-eye me-1"></i>View
+            </a>
+            <button onclick="seDvDelete(${d.id})"
+               style="background:#fce8e6;border:none;border-radius:6px;padding:4px 10px;font-size:.75rem;font-weight:600;color:#c5221f;cursor:pointer;">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>`;
+        box.appendChild(row);
+      });
+    });
+}
+
+function seDvUpload(files) {
+  [...files].forEach(file => {
+    const fd = new FormData();
+    fd.append('ref_type', _seDvReftype);
+    fd.append('ref_id', _seDvJv);
+    fd.append('file', file);
+    fetch('/documents/upload', { method:'POST', body: fd })
+      .then(r => r.json())
+      .then(res => { if (res.success) seLoadDocList(); else alert('Upload failed: '+(res.error||'')); });
+  });
+}
+
+function seDvDrop(e) {
+  e.preventDefault();
+  e.currentTarget.style.borderColor = '#fecaca';
+  seDvUpload(e.dataTransfer.files);
+}
+
+function seDvDelete(docId) {
+  if (!confirm('Delete this document?')) return;
+  fetch(`/documents/delete/${docId}`, {method:'POST'})
+    .then(r => r.json())
+    .then(res => { if (res.success) { const el=document.getElementById('sedvrow_'+docId); if(el) el.remove(); } });
+}
+</script>
 
 <script>
     // Make variables available to JS
