@@ -7807,11 +7807,14 @@ def get_ledger_data():
     op_dr = 0
     op_cr = 0
 
-    # Calculate Sums before from_date
+    # Calculate Sums before from_date — filter strictly by EFFECTIVE date (when the
+    # transaction occurred), falling back to create date only when effective is NULL.
     op_res = db.execute_query("""
         SELECT SUM(enty_values_DR), SUM(enty_values_CR)
         FROM entry_details
-        WHERE account_name = %s AND entry_effective_date < %s AND entry_deleted = 0
+        WHERE account_name = %s
+          AND DATE(COALESCE(entry_effective_date, entry_create_date)) < %s
+          AND entry_deleted = 0
     """, (account_name, from_date))
 
     if op_res:
@@ -7825,10 +7828,11 @@ def get_ledger_data():
         opening_balance = op_cr - op_dr
 
 
-    # 3. Fetch Transactions
+    # 3. Fetch Transactions — show and filter by EFFECTIVE date (transaction date),
+    # not the entry/create date. DATE() so datetime values on the last day are included.
     rows = db.execute_query("""
         SELECT
-            ed.entry_effective_date as date,
+            COALESCE(ed.entry_effective_date, ed.entry_create_date) as date,
             ed.entry_naration as narration,
             ed.enty_values_DR as dr,
             ed.enty_values_CR as cr,
@@ -7836,8 +7840,10 @@ def get_ledger_data():
             s.sub_sub_accaount_name as sub_account
         FROM entry_details ed
         LEFT JOIN sub_accont_for_new_account s ON ed.entry_sub_account_code = s.sub_account_code
-        WHERE ed.account_name = %s AND ed.entry_effective_date BETWEEN %s AND %s AND ed.entry_deleted = 0
-        ORDER BY ed.entry_effective_date, ed.id
+        WHERE ed.account_name = %s
+          AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) BETWEEN %s AND %s
+          AND ed.entry_deleted = 0
+        ORDER BY COALESCE(ed.entry_effective_date, ed.entry_create_date), ed.id
     """, (account_name, from_date, to_date))
 
 
