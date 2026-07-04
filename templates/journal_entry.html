@@ -435,7 +435,21 @@
 
     function toggleHistory() {
         const sec = document.getElementById('historySection');
-        sec.style.display = sec.style.display === 'none' ? 'block' : 'none';
+        const opening = sec.style.display === 'none';
+        sec.style.display = opening ? 'block' : 'none';
+        if (opening) {
+            // Default to the current month so we don't need a full-ledger scan
+            const f = document.getElementById('histFromDate');
+            const t = document.getElementById('histToDate');
+            if (!f.value && !t.value) {
+                const now = new Date();
+                const pad = n => String(n).padStart(2, '0');
+                const fmt = d => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+                f.value = fmt(new Date(now.getFullYear(), now.getMonth(), 1));
+                t.value = fmt(now);
+            }
+            loadHistory();
+        }
     }
 
     function resetHistFilters() {
