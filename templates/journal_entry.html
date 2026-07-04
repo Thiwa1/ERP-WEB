@@ -36,7 +36,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Main Narration</label>
-                        <input type="text" class="form-control" name="main_narration"
+                        <input spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences" type="text" class="form-control" name="main_narration"
                                placeholder="Enter description for this journal entry" required
                                style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                     </div>
@@ -271,7 +271,7 @@
                 <input type="number" class="form-control form-control-sm text-end cr-input font-monospace" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;">
             </td>
             <td style="padding:.4rem .6rem;">
-                <input type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration" style="border-radius:6px;font-size:.82rem;">
+                <input spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences" type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration" style="border-radius:6px;font-size:.82rem;">
             </td>
             <td class="text-center" style="padding:.4rem .6rem;">
                 <button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeRow(this)" style="border-radius:6px;">

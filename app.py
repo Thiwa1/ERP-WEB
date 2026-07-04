@@ -5487,6 +5487,17 @@ def direct_purchasing():
         'status':     request.args.get('h_status', '').strip(),  # '', 'active', 'reversed'
     }
 
+    # Default to the CURRENT MONTH on a fresh load so we don't scan/return everything.
+    # Any submitted h_* param means the user is filtering — respect exactly what they set
+    # (clearing both dates then filtering shows all records).
+    hist_filter_submitted = any(
+        k in request.args for k in
+        ('h_search', 'h_date_from', 'h_date_to', 'h_amount_min', 'h_amount_max', 'h_status')
+    )
+    if not hist_filter_submitted:
+        hf['date_from'] = date.today().replace(day=1).strftime('%Y-%m-%d')
+        hf['date_to'] = date.today().strftime('%Y-%m-%d')
+
     h_filters = ["j.jv_user_code = 'JV FROM DIRECT CASH'", "c.cash_book_recode_cr > 0"]
     h_params = []
     if hf['search']:

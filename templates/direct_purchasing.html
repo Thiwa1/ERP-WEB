@@ -188,7 +188,7 @@
             </div>
             <div class="mb-4">
               <label class="form-label">Narration</label>
-              <input type="text" name="narration" class="form-control" placeholder="Item description…">
+              <input type="text" name="narration" class="form-control" placeholder="Item description…" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences">
             </div>
             <button type="submit" class="btn w-100 py-2" style="background:#CA5010;border:none;border-radius:8px;font-weight:600;color:#fff;">
               <i class="fas fa-plus me-2"></i>Add Line Item
@@ -241,10 +241,14 @@
   <!-- ── Payment History ── -->
   <div class="mt-4 panel-card">
     <div class="px-4 pt-4 pb-2 d-flex align-items-center justify-content-between">
-      <span class="section-label mb-0"><i class="fas fa-history me-1"></i> Direct Payment History</span>
+      <span class="section-label mb-0"><i class="fas fa-history me-1"></i> Direct Payment History
+        <span style="text-transform:none;font-weight:500;color:#9ca3af;letter-spacing:0;margin-left:6px;font-size:.72rem;">
+          {% if hf.date_from or hf.date_to %}· Showing {{ hf.date_from or '…' }} → {{ hf.date_to or '…' }}{% else %}· Showing all{% endif %}
+        </span>
+      </span>
       <button class="btn btn-sm" type="button" onclick="var f=document.getElementById('dpHistFilters'); f.style.display = f.style.display==='none'?'block':'none';"
               style="background:#eef2ff;border:1px solid #c7d2fc;border-radius:7px;color:#4f46e5;font-size:.75rem;font-weight:600;padding:4px 12px;">
-        <i class="fas fa-filter me-1"></i> Advanced Filter
+        <i class="fas fa-filter me-1"></i> Filter / Date Range
       </button>
     </div>
 
@@ -416,7 +420,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label fw-bold small">Narration</label>
-          <input type="text" id="edNarration" class="form-control" placeholder="Transaction description" style="border-radius:8px;">
+          <input type="text" id="edNarration" class="form-control" placeholder="Transaction description" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences" style="border-radius:8px;">
         </div>
         <div id="edStatus" style="display:none;font-size:.8rem;border-radius:6px;padding:7px 12px;margin-top:8px;"></div>
       </div>
