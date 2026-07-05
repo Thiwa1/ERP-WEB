@@ -1933,13 +1933,14 @@
 })();
 </script>
 
-<!-- ── Built-in spell checker for narration fields (works without browser spellcheck) ── -->
+<!-- ── Built-in spell checker for text fields (works without browser spellcheck) ── -->
 <style>
-  .sc-wrap { position: relative; }
+  .sc-wrap { position: relative; display:block; }
   .sc-backdrop { position:absolute; top:0; left:0; right:0; bottom:0; overflow:hidden; pointer-events:none; background:transparent; z-index:0; }
   .sc-highlights { color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word; }
+  .sc-highlights.sc-single { white-space:pre; word-wrap:normal; overflow-wrap:normal; }
   .sc-highlights mark { background:transparent; color:transparent; text-decoration:underline wavy #e11d48; -webkit-text-decoration:underline wavy #e11d48; text-decoration-skip-ink:none; }
-  textarea.sc-input { position:relative; z-index:1; background-color:transparent !important; }
+  .sc-input { position:relative; z-index:1; background-color:transparent !important; }
 </style>
 <script>
 (function(){
@@ -1967,13 +1968,34 @@
 
   function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+  // Don't spell-check codes, amounts, searches, etc. — only prose-like fields.
+  var NON_PROSE = /code|amount|qty|quantity|price|rate|vat|tin|nic|phone|tel|mobile|email|number|voucher|percent|discount|balance|total|currency|search|barcode|pin|password|otp|url|http|date|time|serial|ref\b/i;
+
+  function eligible(el){
+    if (!el || el._scInit) return false;
+    var tag = el.tagName;
+    if (tag === 'INPUT') { if ((el.getAttribute('type')||'text').toLowerCase() !== 'text') return false; }
+    else if (tag !== 'TEXTAREA') return false;
+    if (el.disabled || el.readOnly) return false;
+    if (el.classList.contains('no-spell') || el.hasAttribute('data-nospell')) return false;
+    if (el.classList.contains('select2-search__field')) return false;
+    if (el.closest('.input-group') || el.closest('.select2') || el.closest('.select2-container')) return false;
+    var meta = ((el.name||'')+' '+(el.id||'')+' '+(el.getAttribute('placeholder')||''));
+    if (NON_PROSE.test(meta)) return false;
+    var p = el.parentElement;
+    if (p) { var pd = getComputedStyle(p).display; if (pd==='flex'||pd==='inline-flex'||pd==='grid'||pd==='inline-grid') return false; }
+    if (el.offsetWidth && el.offsetWidth < 60) return false;
+    return true;
+  }
+
   function initSpell(ta){
-    if (!ta || ta._scInit) return; ta._scInit = true;
+    if (!eligible(ta)) return; ta._scInit = true;
+    var single = ta.tagName === 'INPUT';
 
     var wrap = document.createElement('div'); wrap.className = 'sc-wrap';
     ta.parentNode.insertBefore(wrap, ta);
     var backdrop = document.createElement('div'); backdrop.className = 'sc-backdrop';
-    var hl = document.createElement('div'); hl.className = 'sc-highlights';
+    var hl = document.createElement('div'); hl.className = 'sc-highlights' + (single ? ' sc-single' : '');
     backdrop.appendChild(hl); wrap.appendChild(backdrop); wrap.appendChild(ta);
     ta.classList.add('sc-input');
 
@@ -1996,20 +2018,31 @@
         try { return dict.check(bare) ? w : '<mark>'+w+'</mark>'; } catch(e){ return w; }
       });
       hl.innerHTML = html;
+      if (single) hl.scrollLeft = ta.scrollLeft;
     }
-    function onScroll(){ backdrop.scrollTop = ta.scrollTop; backdrop.scrollLeft = ta.scrollLeft; }
+    function onScroll(){ backdrop.scrollTop = ta.scrollTop; backdrop.scrollLeft = ta.scrollLeft; if (single) hl.scrollLeft = ta.scrollLeft; }
 
     ta.addEventListener('input', render);
     ta.addEventListener('scroll', onScroll);
+    if (single) { ['keyup','click','select'].forEach(function(ev){ ta.addEventListener(ev, function(){ hl.scrollLeft = ta.scrollLeft; }); }); }
     window.addEventListener('resize', sync);
     sync();
-    // Load the dictionary the first time the user focuses a narration field
+    // Load the dictionary the first time the user focuses any eligible field
     ta.addEventListener('focus', function(){ loadDict().then(function(){ sync(); render(); }); }, { once:true });
   }
 
+  function scan(root){
+    (root || document).querySelectorAll('textarea, input[type="text"], input:not([type])').forEach(initSpell);
+  }
+
   document.addEventListener('DOMContentLoaded', function(){
-    document.querySelectorAll('textarea[name="main_narration"], textarea[name="narration"], textarea.spellcheck-on')
-      .forEach(initSpell);
+    scan(document);
+    // Catch fields added later (dynamic rows, modals) — debounced
+    try {
+      var t = null;
+      new MutationObserver(function(){ clearTimeout(t); t = setTimeout(function(){ scan(document); }, 400); })
+        .observe(document.body, { childList:true, subtree:true });
+    } catch(e){}
   });
 })();
 </script>
