@@ -850,6 +850,7 @@
                 {% if 'cash_payments' not in menu_disabled %}<a href="/cash_payment" class="nav-link"><i class="fas fa-money-bill"></i> <span class="nav-text">Cash Payments</span></a>{% endif %}
                 {% if 'direct_purchase' not in menu_disabled %}<a href="/direct_purchasing" class="nav-link"><i class="fas fa-hand-holding-usd"></i> <span class="nav-text">Direct Purchase</span></a>{% endif %}
                 {% if 'bank_payments' not in menu_disabled %}<a href="/bank_payment" class="nav-link"><i class="fas fa-university"></i> <span class="nav-text">Bank Payments</span></a>{% endif %}
+                {% if 'bank_reconciliation' not in menu_disabled %}<a href="/bank_reconciliation" class="nav-link"><i class="fas fa-check-double"></i> <span class="nav-text">Bank Reconciliation</span></a>{% endif %}
                 {% if 'cheque_print_setup' not in menu_disabled %}<a href="/cheque_print_setup" class="nav-link"><i class="fas fa-print"></i> <span class="nav-text">Cheque Print Setup</span></a>{% endif %}
                 {% if 'journal_entry' not in menu_disabled %}<a href="/journal_entry" class="nav-link"><i class="fas fa-book"></i> <span class="nav-text">Journal Entry</span></a>{% endif %}
                 {% if 'service_entry' not in menu_disabled %}<a href="/service_entry" class="nav-link"><i class="fas fa-file-invoice"></i> <span class="nav-text">Service Entry (SRN)</span></a>{% endif %}
@@ -908,6 +909,7 @@
                 {% if 'transaction_search' not in menu_disabled %}<a href="/transaction_search" class="nav-link"><i class="fas fa-search-dollar"></i> <span class="nav-text">Transaction Search</span></a>{% endif %}
                 {% if 'ledger_view' not in menu_disabled %}<a href="/ledger_view" class="nav-link"><i class="fas fa-book-open"></i> <span class="nav-text">Ledger View</span></a>{% endif %}
                 {% if 'trial_balance' not in menu_disabled %}<a href="/trial_balance" class="nav-link"><i class="fas fa-balance-scale-left"></i> <span class="nav-text">Trial Balance</span></a>{% endif %}
+                {% if 'bank_rec_history' not in menu_disabled %}<a href="/bank_reconciliation/history" class="nav-link"><i class="fas fa-clipboard-check"></i> <span class="nav-text">Bank Rec. History</span></a>{% endif %}
                 {% if 'supplier_aging' not in menu_disabled %}<a href="/supplier_aging" class="nav-link"><i class="fas fa-history"></i> <span class="nav-text">Supplier Aging</span></a>{% endif %}
                 {% if 'customer_aging' not in menu_disabled %}<a href="/customer_aging" class="nav-link"><i class="fas fa-user-clock"></i> <span class="nav-text">Customer Aging</span></a>{% endif %}
                 {% if 'balance_sheet' not in menu_disabled %}<a href="/balance_sheet" class="nav-link"><i class="fas fa-balance-scale"></i> <span class="nav-text">Balance Sheet</span></a>{% endif %}
