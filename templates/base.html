@@ -1932,5 +1932,86 @@
   window.initDocWidget = function(el) { buildWidget(el); };
 })();
 </script>
+
+<!-- ── Built-in spell checker for narration fields (works without browser spellcheck) ── -->
+<style>
+  .sc-wrap { position: relative; }
+  .sc-backdrop { position:absolute; top:0; left:0; right:0; bottom:0; overflow:hidden; pointer-events:none; background:transparent; z-index:0; }
+  .sc-highlights { color:transparent; white-space:pre-wrap; word-wrap:break-word; overflow-wrap:break-word; }
+  .sc-highlights mark { background:transparent; color:transparent; text-decoration:underline wavy #e11d48; -webkit-text-decoration:underline wavy #e11d48; text-decoration-skip-ink:none; }
+  textarea.sc-input { position:relative; z-index:1; background-color:transparent !important; }
+</style>
+<script>
+(function(){
+  var dictPromise = null;
+  function loadDict(){
+    if (dictPromise) return dictPromise;
+    dictPromise = new Promise(function(resolve){
+      var s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/gh/cfinke/Typo.js@master/typo/typo.js';
+      s.onload = function(){
+        var base = 'https://cdn.jsdelivr.net/gh/cfinke/Typo.js@master/typo/dictionaries/en_US/';
+        Promise.all([
+          fetch(base+'en_US.aff').then(function(r){return r.text();}),
+          fetch(base+'en_US.dic').then(function(r){return r.text();})
+        ]).then(function(res){
+          try { window._scDict = new Typo('en_US', res[0], res[1]); } catch(e){ console.warn('spellcheck init failed', e); }
+          resolve();
+        }).catch(function(){ resolve(); });
+      };
+      s.onerror = function(){ resolve(); };
+      document.head.appendChild(s);
+    });
+    return dictPromise;
+  }
+
+  function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function initSpell(ta){
+    if (!ta || ta._scInit) return; ta._scInit = true;
+
+    var wrap = document.createElement('div'); wrap.className = 'sc-wrap';
+    ta.parentNode.insertBefore(wrap, ta);
+    var backdrop = document.createElement('div'); backdrop.className = 'sc-backdrop';
+    var hl = document.createElement('div'); hl.className = 'sc-highlights';
+    backdrop.appendChild(hl); wrap.appendChild(backdrop); wrap.appendChild(ta);
+    ta.classList.add('sc-input');
+
+    function sync(){
+      var cs = getComputedStyle(ta);
+      ['fontFamily','fontSize','fontWeight','fontStyle','lineHeight','letterSpacing',
+       'paddingTop','paddingRight','paddingBottom','paddingLeft',
+       'borderTopWidth','borderRightWidth','borderBottomWidth','borderLeftWidth',
+       'boxSizing','textTransform'].forEach(function(p){ hl.style[p] = cs[p]; });
+      hl.style.borderStyle = 'solid'; hl.style.borderColor = 'transparent';
+      hl.style.width = ta.offsetWidth + 'px';
+      hl.style.height = ta.offsetHeight + 'px';
+    }
+    function render(){
+      var dict = window._scDict;
+      if (!dict){ hl.innerHTML = ''; return; }
+      var html = escapeHtml(ta.value).replace(/[A-Za-z][A-Za-z']*/g, function(w){
+        var bare = w.replace(/'+$/,'');
+        if (bare.length < 3) return w;
+        try { return dict.check(bare) ? w : '<mark>'+w+'</mark>'; } catch(e){ return w; }
+      });
+      hl.innerHTML = html;
+    }
+    function onScroll(){ backdrop.scrollTop = ta.scrollTop; backdrop.scrollLeft = ta.scrollLeft; }
+
+    ta.addEventListener('input', render);
+    ta.addEventListener('scroll', onScroll);
+    window.addEventListener('resize', sync);
+    sync();
+    // Load the dictionary the first time the user focuses a narration field
+    ta.addEventListener('focus', function(){ loadDict().then(function(){ sync(); render(); }); }, { once:true });
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    document.querySelectorAll('textarea[name="main_narration"], textarea[name="narration"], textarea.spellcheck-on')
+      .forEach(initSpell);
+  });
+})();
+</script>
 </body>
 </html>
