@@ -158,11 +158,12 @@
         if (typeof $ === 'undefined') return;
         var $bs = $('select[name="bs_category"]');
         var $pl = $('select[name="income_category"]');
+        // .trigger('change') refreshes the Select2 display; the value-guards stop any loop.
         $bs.on('change', function () {
-            if ($bs.val()) { $pl.val('').trigger('change.select2'); }
+            if ($bs.val() && $pl.val()) { $pl.val(null).trigger('change'); }
         });
         $pl.on('change', function () {
-            if ($pl.val()) { $bs.val('').trigger('change.select2'); }
+            if ($pl.val() && $bs.val()) { $bs.val(null).trigger('change'); }
         });
     });
 </script>
