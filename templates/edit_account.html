@@ -151,5 +151,19 @@
             }
         });
     });
+
+    // An account is EITHER a Balance Sheet account OR a P&L account — never both.
+    // Selecting one category clears the other so you can freely switch between them.
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof $ === 'undefined') return;
+        var $bs = $('select[name="bs_category"]');
+        var $pl = $('select[name="income_category"]');
+        $bs.on('change', function () {
+            if ($bs.val()) { $pl.val('').trigger('change.select2'); }
+        });
+        $pl.on('change', function () {
+            if ($pl.val()) { $bs.val('').trigger('change.select2'); }
+        });
+    });
 </script>
 {% endblock %}
