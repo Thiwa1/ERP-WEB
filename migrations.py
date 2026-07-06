@@ -47,6 +47,7 @@ def run_migrations(conn):
         _migrate_pos_security_features(cursor)
         _migrate_password_length(cursor)
         _migrate_inventory_item_change_history(cursor)
+        _migrate_invoice_currency(cursor)
 
         conn.commit()
         cursor.close()
@@ -321,6 +322,21 @@ def _migrate_password_length(cursor):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating Password column length (Pose_Setting_Table)
+
+def _migrate_invoice_currency(cursor):
+    """Add currency + exchange rate columns to Invoice_Oustanding for multi-currency sales invoices."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM Invoice_Oustanding")
+        cols = [row[0] for row in cursor.fetchall()]
+        if 'invoice_currency' not in cols:
+            cursor.execute("ALTER TABLE Invoice_Oustanding ADD COLUMN invoice_currency VARCHAR(10) NULL")
+        if 'invoice_exchange_rate' not in cols:
+            cursor.execute("ALTER TABLE Invoice_Oustanding ADD COLUMN invoice_exchange_rate DOUBLE DEFAULT 1")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
 
 def _migrate_inventory_item_change_history(cursor):
     """Create inventory_item_change_history table to track item detail edits."""

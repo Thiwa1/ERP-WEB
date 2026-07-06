@@ -507,6 +507,24 @@
 
                         <div class="row g-2 mb-3">
                             <div class="col-6">
+                                <label class="field-label">Currency</label>
+                                <select class="form-select form-select-sm" name="invoice_currency" id="invCurrency" onchange="onInvCurrencyChange()">
+                                    <option value="{{ base_currency }}">{{ base_currency }} (base)</option>
+                                    {% for c in currencies %}{% if c.currency_code and c.currency_code != base_currency %}
+                                    <option value="{{ c.currency_code }}">{{ c.currency_code }}{% if c.currency_name %} — {{ c.currency_name }}{% endif %}</option>
+                                    {% endif %}{% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="field-label">Exchange Rate <span style="color:#a0aec0;font-weight:400;">(to {{ base_currency }})</span></label>
+                                <input type="number" step="0.0001" class="form-control form-control-sm no-select2"
+                                       name="exchange_rate" id="invRate" value="1.0000" readonly>
+                            </div>
+                        </div>
+                        <div id="invCurrencyNote" style="display:none;font-size:.72rem;color:#0d6efd;margin:-6px 0 10px;"></div>
+
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
                                 <label class="field-label">Location</label>
                                 <select class="form-select form-select-sm" name="location" required>
                                     {% for loc in locations %}
@@ -907,7 +925,41 @@
 
         document.getElementById('vatAmountDisplay').textContent = vatAmount.toFixed(2);
         document.getElementById('grandTotalDisplay').textContent = (subTotal + vatAmount).toFixed(2);
+        updateInvCurrencyNote(subTotal + vatAmount);
     }
+
+    var INV_BASE_CURRENCY = "{{ base_currency }}";
+
+    function updateInvCurrencyNote(grandTotalFC){
+        var sel = document.getElementById('invCurrency');
+        var note = document.getElementById('invCurrencyNote');
+        if (!sel || !note) return;
+        var cur = sel.value;
+        var rate = parseFloat(document.getElementById('invRate').value) || 1;
+        if (cur === INV_BASE_CURRENCY || rate === 1){ note.style.display = 'none'; return; }
+        var base = (grandTotalFC * rate).toLocaleString('en-US', {minimumFractionDigits: 2});
+        note.style.display = 'block';
+        note.textContent = 'Prices are in ' + cur + '. Posts to the ledger as ' + INV_BASE_CURRENCY + ' ' + base + ' (rate ' + rate.toFixed(4) + ').';
+    }
+
+    function onInvCurrencyChange(){
+        var sel = document.getElementById('invCurrency');
+        var rate = document.getElementById('invRate');
+        var cur = sel.value;
+        if (cur === INV_BASE_CURRENCY){
+            rate.value = '1.0000'; rate.readOnly = true; recalcTotals(); return;
+        }
+        rate.readOnly = false;
+        fetch('/api/get_exchange_rate?from=' + encodeURIComponent(cur) + '&to=' + encodeURIComponent(INV_BASE_CURRENCY))
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d && d.rate) rate.value = parseFloat(d.rate).toFixed(4); recalcTotals(); })
+            .catch(function(){ recalcTotals(); });
+    }
+    // Recompute base note whenever the rate is edited manually
+    document.addEventListener('DOMContentLoaded', function(){
+        var r = document.getElementById('invRate');
+        if (r) r.addEventListener('input', recalcTotals);
+    });
 
     // Auto-scroll to document panel after invoice creation
     (function(){

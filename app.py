@@ -14713,12 +14713,28 @@ def invoice_creating():
     """)
 
     today_date = date.today().strftime('%Y-%m-%d')
+
+    # Multi-currency support
+    base_currency = 'LKR'
+    try:
+        res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
+        if res and res[0].get('company_curency'):
+            base_currency = res[0]['company_curency']
+    except Exception:
+        pass
+    try:
+        currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table") or []
+    except Exception:
+        currencies = []
+
     return render_template('invoice_creating.html',
                            customers=customers,
                            locations=locations,
                            jobs=jobs,
                            inventory_items=items,
                            today_date=today_date,
+                           base_currency=base_currency,
+                           currencies=currencies,
                            last_jv=request.args.get('last_jv'),
                            last_inv=request.args.get('last_inv'))
 
@@ -14993,6 +15009,8 @@ class OutstandingRecordContext:
     cust_name: str
     jv_no: str
     vat_rate: float
+    currency: str = ''
+    exchange_rate: float = 1.0
 
 def create_outstanding_record(ctx: OutstandingRecordContext):
     ctx.cursor.execute("SELECT sup_id FROM suppliers WHERE supplier_name = %s LIMIT 1", (ctx.cust_name,))
@@ -15003,9 +15021,11 @@ def create_outstanding_record(ctx: OutstandingRecordContext):
         INSERT INTO Invoice_Oustanding (
             invoice_number, invoice_date, invoice_total_oustanding,
             invoice_oustanding_Patment, invoice_final_date,
-            invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete
-        ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0)
-    """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no, ctx.vat_rate))
+            invoice_buinding_Customer, invoice_JV, VAT_rate, oustanding_delete,
+            invoice_currency, invoice_exchange_rate
+        ) VALUES (%s, %s, %s, 0, %s, %s, %s, %s, 0, %s, %s)
+    """, (ctx.invoice_no, ctx.inv_date, ctx.grand_total, ctx.due_date, cust_id, ctx.jv_no,
+          ctx.vat_rate, (ctx.currency or None), (ctx.exchange_rate or 1.0)))
     return ctx.cursor.lastrowid
 
 
@@ -15171,6 +15191,12 @@ def parse_invoice_form_data(form):
     vat_rate = parse_float(form.get('vat_rate', 0))
     apply_vat = 1 if form.get('apply_vat') else 0
 
+    # Multi-currency: the invoice is billed in this currency; exchange_rate converts to base
+    invoice_currency = (form.get('invoice_currency') or '').strip()
+    exchange_rate = parse_float(form.get('exchange_rate', 1)) or 1.0
+    if exchange_rate <= 0:
+        exchange_rate = 1.0
+
     inv_items_json = form.get('inventory_items_json')
     non_inv_items_json = form.get('non_inventory_items_json')
 
@@ -15192,7 +15218,9 @@ def parse_invoice_form_data(form):
         'vat_rate': vat_rate,
         'apply_vat': apply_vat,
         'inv_items': inv_items,
-        'non_inv_items': non_inv_items
+        'non_inv_items': non_inv_items,
+        'invoice_currency': invoice_currency,
+        'exchange_rate': exchange_rate
     }, None
 
 @app.route('/invoice_creating/submit', methods=['POST'])
@@ -15260,14 +15288,19 @@ def submit_invoice():
                        (str(current_user), "Credit Sales"))
         jv_no = cursor.lastrowid
 
-        # 5. Calculate Totals
-        totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
-        total_sales = totals['total_sales']
-        total_cost = totals['total_cost']
-        vat_amount = totals['vat_amount']
-        grand_total = totals['grand_total']
+        # 5. Calculate Totals (in the invoice currency) then convert to base for the GL
+        inv_currency = parsed_data.get('invoice_currency') or ''
+        rate = parsed_data.get('exchange_rate') or 1.0
 
-        # 6. Insert Outstanding Record
+        totals = calculate_invoice_totals(inv_items, non_inv_items, vat_rate, apply_vat)
+        # Sales / VAT / grand total are in the invoice currency -> multiply by rate for base (LKR).
+        # Cost (COGS) is already stored in base currency, so it is NOT converted.
+        total_sales = round(totals['total_sales'] * rate, 2)
+        vat_amount  = round(totals['vat_amount'] * rate, 2)
+        grand_total = round(totals['grand_total'] * rate, 2)
+        total_cost  = totals['total_cost']
+
+        # 6. Insert Outstanding Record (stored in base currency, with FC info for reference)
         ctx = OutstandingRecordContext(
             cursor=cursor,
             invoice_no=invoice_no,
@@ -15276,7 +15309,9 @@ def submit_invoice():
             due_date=due_date,
             cust_name=customer_name,
             jv_no=jv_no,
-            vat_rate=vat_rate
+            vat_rate=vat_rate,
+            currency=inv_currency,
+            exchange_rate=rate
         )
         outstanding_id = create_outstanding_record(ctx)
 
