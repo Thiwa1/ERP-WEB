@@ -130,6 +130,9 @@
                                    style="border-radius:8px;border-color:#e2e8f0;font-size:.875rem;">
                         </div>
 
+                        {% set uid = 'cp' %}{% set cur_name = 'payment_currency' %}{% set rate_name = 'exchange_rate' %}
+                        {% include '_currency_fields.html' %}
+
                         <div class="mb-3">
                             <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Select Cash Account</label>
                             <select class="form-select" name="cash_account" required

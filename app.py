@@ -3542,6 +3542,21 @@ def company_profile():
 
     return render_template('company_profile.html', company=company, currencies=currencies)
 
+def _base_currency_and_list():
+    """Return (base_currency_code, [currencies]) for multi-currency transaction pages."""
+    base_currency = 'LKR'
+    try:
+        res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
+        if res and res[0].get('company_curency'):
+            base_currency = res[0]['company_curency']
+    except Exception:
+        pass
+    try:
+        currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table") or []
+    except Exception:
+        currencies = []
+    return base_currency, currencies
+
 # --- Bank Payment Module ---
 @app.route('/bank_payment', methods=['GET'])
 @login_required
@@ -3550,8 +3565,10 @@ def bank_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
     last_jv = request.args.get('last_jv')
+    base_currency, currencies = _base_currency_and_list()
     return render_template('bank_payment.html', suppliers=suppliers, bank_accounts=bank_accounts,
-                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv)
+                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv,
+                           base_currency=base_currency, currencies=currencies)
 
 # --- Cash Payment Module ---
 @app.route('/cash_payment', methods=['GET'])
@@ -3561,8 +3578,10 @@ def cash_payment():
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment'")
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     last_jv = request.args.get('last_jv')
+    base_currency, currencies = _base_currency_and_list()
     return render_template('cash_payment.html', suppliers=suppliers, cash_accounts=cash_accounts,
-                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv)
+                           today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv,
+                           base_currency=base_currency, currencies=currencies)
 
 def _get_supplier_history_data(supplier_name, payment_type):
     """Helper to fetch common supplier details, outstanding invoices, and payment history."""
@@ -3662,11 +3681,18 @@ def cash_payment_submit():
     narration = request.form.get('narration')
     wht_amount = parse_float(request.form.get('wht_amount', 0))
 
+    # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
+    payment_currency = (request.form.get('payment_currency') or '').strip()
+    exchange_rate = parse_float(request.form.get('exchange_rate', 1)) or 1.0
+    if exchange_rate <= 0:
+        exchange_rate = 1.0
+
     if not supplier_name or not cash_account:
         flash('Missing supplier or cash account', 'danger')
         return redirect(url_for('cash_payment'))
 
-    # Collect payments (Total Gross Payment to Supplier)
+    # Collect payments (Total Gross Payment to Supplier). 'amount' is in the payment
+    # currency; 'base' is the LKR-equivalent posted to the ledger and outstanding.
     payments = []
     total_payment = 0
 
@@ -3677,7 +3703,7 @@ def cash_payment_submit():
             try:
                 amount = parse_float(request.form[key])
                 if amount > 0:
-                    payments.append({'id': inv_id, 'amount': amount})
+                    payments.append({'id': inv_id, 'amount': amount, 'base': round(amount * exchange_rate, 2)})
                     total_payment += amount
             except (ValueError, TypeError):
                 continue
@@ -3685,6 +3711,11 @@ def cash_payment_submit():
     if not payments:
         flash('No payment amounts entered', 'warning')
         return redirect(url_for('cash_payment'))
+
+    total_payment_base = round(total_payment * exchange_rate, 2)
+    wht_base = round(wht_amount * exchange_rate, 2)
+    if payment_currency and exchange_rate != 1.0:
+        narration = (narration or '') + f" [{payment_currency} {total_payment:,.2f} @ {exchange_rate:.4f}]"
 
     _cash_jv = None  # ensure always defined
     try:
@@ -3714,16 +3745,16 @@ def cash_payment_submit():
 
         # 3. Create GL Entries
 
-        # A. Debit AP (Full Invoice Amount settled)
+        # A. Debit AP (Full Invoice Amount settled) — in base currency
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_sub_account_code
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user_pk, jv_no, sub_ac_code))
+        """, ('Account Payable', total_payment_base, payment_date, date.today(), narration, current_user_pk, jv_no, sub_ac_code))
 
-        # B. Credit Cash (Net Amount = Total - WHT)
-        net_payment = total_payment - wht_amount
+        # B. Credit Cash (Net Amount = Total - WHT) — in base currency
+        net_payment = total_payment_base - wht_base
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
@@ -3731,14 +3762,14 @@ def cash_payment_submit():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (cash_account, net_payment, payment_date, date.today(), narration, current_user_pk, jv_no))
 
-        # C. Credit WHT Payable (If any)
-        if wht_amount > 0:
+        # C. Credit WHT Payable (If any) — in base currency
+        if wht_base > 0:
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
+            """, ('WHT Payable', wht_base, payment_date, date.today(), f"WHT on {narration}", current_user_pk, jv_no))
 
         # 4. Process Individual Payments (Update Outstanding)
         if payments:
@@ -3755,11 +3786,12 @@ def cash_payment_submit():
 
             for p in payments:
                 current_outstanding = outstanding_map.get(str(p['id']), 0.0)
-                call_params.append((current_outstanding, p['amount'], p['id']))
+                call_params.append((current_outstanding, p['base'], p['id']))
 
-                net_item_amount = p['amount']
-                if total_payment > 0:
-                    net_item_amount = p['amount'] * (net_payment / total_payment)
+                # Net cash portion of this line (base), after proportional WHT
+                net_item_amount = p['base']
+                if total_payment_base > 0:
+                    net_item_amount = p['base'] * (net_payment / total_payment_base)
 
                 insert_params.append((
                     net_item_amount, cash_account, narration,
@@ -3767,11 +3799,10 @@ def cash_payment_submit():
                     p['id'], new_voucher, current_user_pk, payment_date
                 ))
 
-            # Update supplier outstanding — replaces CALL vender_settele(outstanding, amount, inv_id)
-            # vender_settele logic: SET oustanding = outstanding - amount, total_payment += amount
+            # Update supplier outstanding (in base currency) — settle by the base amount
             settle_params = [
-                (max(0, outstanding_map.get(str(p['id']), 0.0) - p['amount']),
-                 p['amount'],
+                (max(0, outstanding_map.get(str(p['id']), 0.0) - p['base']),
+                 p['base'],
                  p['id'])
                 for p in payments
             ]
@@ -5226,11 +5257,17 @@ def bank_payment_submit():
     cheque_no = request.form.get('cheque_no')
     wht_amount = float(request.form.get('wht_amount', 0))
 
+    # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
+    payment_currency = (request.form.get('payment_currency') or '').strip()
+    exchange_rate = parse_float(request.form.get('exchange_rate', 1)) or 1.0
+    if exchange_rate <= 0:
+        exchange_rate = 1.0
+
     if not supplier_name or not bank_account:
         flash('Missing supplier or bank account', 'danger')
         return redirect(url_for('bank_payment'))
 
-    # Collect payments
+    # Collect payments. 'amount' is in the payment currency; 'base' is the LKR-equivalent.
     payments = []
     total_payment = 0
     inv_ids = request.form.getlist('inv_id[]')
@@ -5239,12 +5276,17 @@ def bank_payment_submit():
         amount_str = request.form.get(f'payment_{inv_id}')
         if amount_str and float(amount_str) > 0:
             amount = float(amount_str)
-            payments.append({'id': inv_id, 'amount': amount})
+            payments.append({'id': inv_id, 'amount': amount, 'base': round(amount * exchange_rate, 2)})
             total_payment += amount
 
     if not payments:
         flash('No payment amounts entered', 'warning')
         return redirect(url_for('bank_payment'))
+
+    total_payment_base = round(total_payment * exchange_rate, 2)
+    wht_base = round(wht_amount * exchange_rate, 2)
+    if payment_currency and exchange_rate != 1.0:
+        narration = (narration or '') + f" [{payment_currency} {total_payment:,.2f} @ {exchange_rate:.4f}]"
 
     try:
         conn = db.get_connection()
@@ -5270,13 +5312,13 @@ def bank_payment_submit():
                 current_outstanding = inv_d[0]
                 current_paid = inv_d[1]
 
-                if p['amount'] > current_outstanding:
-                    raise Exception(f"Payment amount {p['amount']} exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+                if p['base'] > current_outstanding + 0.01:
+                    raise Exception(f"Payment amount {p['base']} (base) exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
 
-                new_total_paid = current_paid + p['amount']
+                new_total_paid = current_paid + p['base']
 
                 # Update the cached data so subsequent duplicate payments use the new total
-                inv_d[0] = current_outstanding - p['amount'] # Reduce outstanding conceptually, although not checked directly here it is safer
+                inv_d[0] = current_outstanding - p['base'] # Reduce outstanding conceptually, although not checked directly here it is safer
                 inv_d[1] = new_total_paid
 
                 update_args.append((new_total_paid, p['id']))
@@ -5342,16 +5384,16 @@ def bank_payment_submit():
         res = cursor.fetchone()
         sub_ac_code = res[0] if res else 0
 
-        # Debit AP (Full amount settled)
+        # Debit AP (Full amount settled) — in base currency
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv, entry_sub_account_code
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+        """, ('Account Payable', total_payment_base, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
 
-        # Credit Bank (Net amount = Total - WHT)
-        net_payment = total_payment - wht_amount
+        # Credit Bank (Net amount = Total - WHT) — in base currency
+        net_payment = total_payment_base - wht_base
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
@@ -5359,14 +5401,14 @@ def bank_payment_submit():
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
 
-        # Credit WHT Payable (If any)
-        if wht_amount > 0:
+        # Credit WHT Payable (If any) — in base currency
+        if wht_base > 0:
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_CR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_amount, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+            """, ('WHT Payable', wht_base, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
 
         # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
         # Bank Book typically matches bank statement, so record NET payment.
@@ -5375,9 +5417,9 @@ def bank_payment_submit():
         sup_id = sup_id_res[0]['sup_id'] if sup_id_res else 0
 
         for p in payments:
-            net_item_amount = p['amount']
-            if total_payment > 0:
-                net_item_amount = p['amount'] * (net_payment / total_payment)
+            net_item_amount = p['base']
+            if total_payment_base > 0:
+                net_item_amount = p['base'] * (net_payment / total_payment_base)
 
             cursor.execute("""
                 INSERT INTO bank_book_recod (

@@ -1,0 +1,39 @@
+{# Reusable multi-currency selector.
+   Set before include: uid (unique prefix), cur_name, rate_name.
+   Requires context: base_currency, currencies. #}
+<div class="row g-2 mb-3">
+    <div class="col-6">
+        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Currency</label>
+        <select name="{{ cur_name }}" id="{{ uid }}Currency" class="form-select" onchange="ccCurrencyChange('{{ uid }}','{{ base_currency }}')"
+                style="border-radius:8px;font-size:.875rem;">
+            <option value="{{ base_currency }}">{{ base_currency }} (base)</option>
+            {% for c in currencies %}{% if c.currency_code and c.currency_code != base_currency %}
+            <option value="{{ c.currency_code }}">{{ c.currency_code }}{% if c.currency_name %} — {{ c.currency_name }}{% endif %}</option>
+            {% endif %}{% endfor %}
+        </select>
+    </div>
+    <div class="col-6">
+        <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Exchange Rate <span style="color:#a0aec0;font-weight:400;">(to {{ base_currency }})</span></label>
+        <input type="number" step="0.0001" name="{{ rate_name }}" id="{{ uid }}Rate" class="form-control no-select2"
+               value="1.0000" readonly style="border-radius:8px;font-size:.875rem;font-family:monospace;">
+    </div>
+</div>
+<div id="{{ uid }}CurrencyNote" style="display:none;font-size:.72rem;color:#0d6efd;margin:-6px 0 10px;">
+    Enter amounts in the selected currency; they post to the ledger in {{ base_currency }} at this rate.
+</div>
+<script>
+if (!window.ccCurrencyChange) {
+    window.ccCurrencyChange = function(uid, base){
+        var sel = document.getElementById(uid+'Currency');
+        var rate = document.getElementById(uid+'Rate');
+        var note = document.getElementById(uid+'CurrencyNote');
+        if (!sel || !rate) return;
+        if (sel.value === base){ rate.value = '1.0000'; rate.readOnly = true; if (note) note.style.display='none'; return; }
+        rate.readOnly = false; if (note) note.style.display = 'block';
+        fetch('/api/get_exchange_rate?from=' + encodeURIComponent(sel.value) + '&to=' + encodeURIComponent(base))
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d && d.rate) rate.value = parseFloat(d.rate).toFixed(4); })
+            .catch(function(){});
+    };
+}
+</script>
