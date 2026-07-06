@@ -9958,11 +9958,25 @@ def customer_receipt():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
     bank_accounts = db.execute_query("SELECT bank_bookcol_account_number FROM bank_book")
 
+    base_currency = 'LKR'
+    try:
+        res = db.execute_query("SELECT company_curency FROM company LIMIT 1")
+        if res and res[0].get('company_curency'):
+            base_currency = res[0]['company_curency']
+    except Exception:
+        pass
+    try:
+        currencies = db.execute_query("SELECT currency_code, currency_name FROM currency_table") or []
+    except Exception:
+        currencies = []
+
     return render_template('customer_receipt.html',
                            customers=customers,
                            cash_accounts=cash_accounts,
                            bank_accounts=bank_accounts,
                            today_date=date.today().strftime('%Y-%m-%d'),
+                           base_currency=base_currency,
+                           currencies=currencies,
                            last_jv=request.args.get('last_jv'))
 
 @app.route('/customer_receipt/get_outstanding')
@@ -10170,6 +10184,12 @@ def submit_customer_receipt():
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
 
+    # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
+    receipt_currency = (request.form.get('receipt_currency') or '').strip()
+    exchange_rate = parse_float(request.form.get('exchange_rate', 1)) or 1.0
+    if exchange_rate <= 0:
+        exchange_rate = 1.0
+
     # Optional extended WPF fields
     manual_receipt_no = request.form.get('manual_receipt_no')
     payment_method = request.form.get('payment_method')
@@ -10195,7 +10215,8 @@ def submit_customer_receipt():
             try:
                 amount = float(request.form[key])
                 if amount > 0:
-                    payments.append({'id': inv_id, 'amount': amount})
+                    # 'amount' is in the receipt currency; 'base' is the LKR-equivalent posted to the ledger
+                    payments.append({'id': inv_id, 'amount': amount, 'base': round(amount * exchange_rate, 2)})
                     total_receipt += amount
             except (ValueError, TypeError):
                 pass
@@ -10203,6 +10224,10 @@ def submit_customer_receipt():
     if total_receipt <= 0:
         flash('No payment amount entered', 'warning')
         return redirect(url_for('customer_receipt'))
+
+    total_receipt_base = round(total_receipt * exchange_rate, 2)
+    if receipt_currency and exchange_rate != 1.0:
+        narration = (narration or '') + f" [{receipt_currency} {total_receipt:,.2f} @ {exchange_rate:.4f}]"
 
     current_user = get_current_user_id()
 
@@ -10222,11 +10247,11 @@ def submit_customer_receipt():
             res = cursor.fetchall()
             current_balances = {str(row[0]): float(row[1]) for row in res}
 
-            # Aggregate amounts per invoice in case of duplicates
+            # Aggregate BASE amounts per invoice (outstanding is stored in base currency)
             payment_totals = {}
             for p in payments:
                 pid = str(p['id'])
-                payment_totals[pid] = payment_totals.get(pid, 0.0) + p['amount']
+                payment_totals[pid] = payment_totals.get(pid, 0.0) + p['base']
 
             # Prepare batch update data
             update_data = []
@@ -10257,14 +10282,14 @@ def submit_customer_receipt():
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM RECEIPT', narration))
         jv_no = cursor.lastrowid
 
-        # 4. GL Entries
+        # 4. GL Entries (posted in base currency)
         # Debit Cash/Bank
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (account_name, total_receipt, payment_date, date.today(), narration, current_user, jv_no))
+        """, (account_name, total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
 
         # Credit Accounts Receivable
         # Need sub account code for customer if possible, usually stored in `sub_accont_for_new_account`
@@ -10274,7 +10299,7 @@ def submit_customer_receipt():
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Receivable', total_receipt, payment_date, date.today(), narration, current_user, jv_no))
+        """, ('Account Receivable', total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
 
         # 5. Record Transaction (Cash/Bank Book)
         # Using `cash_book_recode` for cash receipts or `bank_book_recod` ??
@@ -10296,7 +10321,7 @@ def submit_customer_receipt():
                         cash_book_recode_suplier_name, jv_numbers_jv_id,
                         cash_book_recod_voucher_no, User_Enter, Payment_Date
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
+                """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
         else:
             # Insert into cash_bank_payment_type first (mirroring WPF)
             cursor.execute("""
@@ -10324,7 +10349,7 @@ def submit_customer_receipt():
                         bank_book__suplier_name, jv_numbers_jv_id,
                         bank_book_recod_voucher_no, bank_book_chque_no, Bank_User_Id, Bank_Payment_Date
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['amount'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
+                """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
 
         conn.commit()
         flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')

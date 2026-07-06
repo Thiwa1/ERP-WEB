@@ -230,6 +230,25 @@
                             <input type="date" name="payment_date" class="form-control form-control-sm" value="{{ today_date }}" required>
                         </div>
 
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="field-label">Currency</label>
+                                <select name="receipt_currency" id="rcptCurrency" class="form-select form-select-sm" onchange="onRcptCurrencyChange()">
+                                    <option value="{{ base_currency }}">{{ base_currency }} (base)</option>
+                                    {% for c in currencies %}{% if c.currency_code and c.currency_code != base_currency %}
+                                    <option value="{{ c.currency_code }}">{{ c.currency_code }}{% if c.currency_name %} — {{ c.currency_name }}{% endif %}</option>
+                                    {% endif %}{% endfor %}
+                                </select>
+                            </div>
+                            <div class="col-6">
+                                <label class="field-label">Exchange Rate <span style="color:#a0aec0;font-weight:400;">(to {{ base_currency }})</span></label>
+                                <input type="number" step="0.0001" name="exchange_rate" id="rcptRate" class="form-control form-control-sm no-select2" value="1.0000" readonly>
+                            </div>
+                        </div>
+                        <div id="rcptCurrencyNote" style="display:none;font-size:.72rem;color:#0d6efd;margin:-6px 0 10px;">
+                            Enter the amounts in the selected currency; they post to the ledger in {{ base_currency }} at the rate above.
+                        </div>
+
                         <div class="mb-3">
                             <label class="field-label">Account Type</label>
                             <select id="accountType" name="account_type" class="form-select form-select-sm" onchange="toggleAccountType()" required>
@@ -778,6 +797,25 @@
             statusText.className = 'text-danger fw-bold';
             processBtn.disabled = false;
         });
+    }
+
+    // ── Multi-currency receipt ──
+    var RCPT_BASE_CURRENCY = "{{ base_currency }}";
+    function onRcptCurrencyChange(){
+        var sel = document.getElementById('rcptCurrency');
+        var rate = document.getElementById('rcptRate');
+        var note = document.getElementById('rcptCurrencyNote');
+        if (!sel) return;
+        var cur = sel.value;
+        if (cur === RCPT_BASE_CURRENCY){
+            rate.value = '1.0000'; rate.readOnly = true; if (note) note.style.display='none'; return;
+        }
+        rate.readOnly = false;
+        if (note) note.style.display = 'block';
+        fetch('/api/get_exchange_rate?from=' + encodeURIComponent(cur) + '&to=' + encodeURIComponent(RCPT_BASE_CURRENCY))
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d && d.rate) rate.value = parseFloat(d.rate).toFixed(4); })
+            .catch(function(){});
     }
 </script>
 {% endblock %}
