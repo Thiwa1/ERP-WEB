@@ -5585,6 +5585,7 @@ def direct_purchasing():
         LIMIT 200
     """, tuple(h_params + having_params)) or []
 
+    base_currency, currencies = _base_currency_and_list()
     return render_template('direct_purchasing.html',
                            cash_accounts=cash_accounts,
                            cost_accounts=cost_accounts,
@@ -5595,7 +5596,9 @@ def direct_purchasing():
                            total_value=session.get('payment_total', 0),
                            last_jv=last_jv,
                            history=history,
-                           hf=hf)
+                           hf=hf,
+                           base_currency=base_currency,
+                           currencies=currencies)
 
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
@@ -5983,6 +5986,16 @@ def direct_purchasing_submit():
     except ValueError:
         txn_date = today_date
     narration = (request.form.get('narration') or '').strip() or "Direct Purchase / Cash Payment"
+
+    # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
+    dp_currency = (request.form.get('payment_currency') or '').strip()
+    exchange_rate = parse_float(request.form.get('exchange_rate', 1)) or 1.0
+    if exchange_rate <= 0:
+        exchange_rate = 1.0
+    total_amount_base = round(parse_float(total_amount) * exchange_rate, 2)
+    if dp_currency and exchange_rate != 1.0:
+        narration = narration + f" [{dp_currency} {parse_float(total_amount):,.2f} @ {exchange_rate:.4f}]"
+
     # cash_voucher_number is a NUMERIC column — only accept a numeric manual
     # override. A non-numeric value would cause "1265 Data truncated" and abort.
     manual_voucher = (request.form.get('manual_voucher') or '').strip()
@@ -6015,20 +6028,21 @@ def direct_purchasing_submit():
         cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM DIRECT CASH', narration))
         jv_no = cursor.lastrowid
 
-        # 3. GL Entries — use txn_date (user's date) as effective date, today_date as create date
+        # 3. GL Entries (posted in base currency) — txn_date effective, today_date create
         # Credit Cash Account (Total)
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_CR, entry_effective_date, entry_create_date,
                 entry_naration, entry_create_user, entry_jv
             ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (cash_account, total_amount, txn_date, today_date, narration, current_user, jv_no))
+        """, (cash_account, total_amount_base, txn_date, today_date, narration, current_user, jv_no))
 
         # Debit Expense/Asset Accounts (Per Item)
         for item in items:
             # Ensure job_no is None (NULL) if empty — prevents FK constraint violation
             raw_job = item.get('job_no')
             job_no = raw_job if raw_job and str(raw_job).strip() else None
+            item_total_base = round(parse_float(item['total']) * exchange_rate, 2)
 
             # Debit Entry
             cursor.execute("""
@@ -6036,7 +6050,7 @@ def direct_purchasing_submit():
                     account_name, enty_values_DR, entry_effective_date, entry_create_date,
                     entry_naration, entry_create_user, entry_jv, entry_job_number
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (item['account'], item['total'], txn_date, today_date,
+            """, (item['account'], item_total_base, txn_date, today_date,
                   item.get('narration') or 'Direct Purchase', current_user, jv_no, job_no))
 
             # 4. Cash Book Record
@@ -6046,7 +6060,7 @@ def direct_purchasing_submit():
                     cash_book_recode_naration, jv_numbers_jv_id, cash_book_recod_voucher_no,
                     User_Enter, Payment_Date
                 ) VALUES (0, %s, %s, %s, %s, %s, %s, %s)
-            """, (item['total'], cash_account, item['narration'], jv_no, new_voucher, current_user, txn_date))
+            """, (item_total_base, cash_account, item['narration'], jv_no, new_voucher, current_user, txn_date))
 
             # 5. Inventory Record (if Item Name is present)
             if item.get('item_name'):
@@ -6065,7 +6079,7 @@ def direct_purchasing_submit():
                             inventory_recod_account, inventory_recod_user_id,
                             inventory_recod_user_recod_date, JV_No
                         ) VALUES (%s, %s, %s, %s, 0, %s, %s, %s, %s, %s, %s)
-                    """, (item['item_name'], inv_code, txn_date, item['qty'], inv_unit, item['price'], item['account'], current_user, today_date, jv_no))
+                    """, (item['item_name'], inv_code, txn_date, item['qty'], inv_unit, round(parse_float(item['price']) * exchange_rate, 2), item['account'], current_user, today_date, jv_no))
 
         conn.commit()
 
@@ -16018,6 +16032,7 @@ def service_entry():
         LIMIT 200
     """, tuple(h_params)) or []
 
+    base_currency, currencies = _base_currency_and_list()
     return render_template('service_entry.html',
                            suppliers=suppliers,
                            accounts=accounts,
@@ -16026,7 +16041,9 @@ def service_entry():
                            today_date=date.today().strftime('%Y-%m-%d'),
                            last_jv=request.args.get('last_jv'),
                            history=history,
-                           hf=hf)
+                           hf=hf,
+                           base_currency=base_currency,
+                           currencies=currencies)
 
 @app.route('/service_entry/save', methods=['POST'])
 @login_required
@@ -16044,6 +16061,15 @@ def save_service_entry():
         vat_rate = parse_float(request.form.get('vat_rate')) if include_vat else 0.0
         entries_json = request.form.get('entries_json')
         total_amount = parse_float(request.form.get('total_amount'))
+
+        # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
+        entry_currency = (request.form.get('entry_currency') or '').strip()
+        exchange_rate = parse_float(request.form.get('exchange_rate', 1)) or 1.0
+        if exchange_rate <= 0:
+            exchange_rate = 1.0
+        total_amount_base = round(total_amount * exchange_rate, 2)
+        if entry_currency and exchange_rate != 1.0:
+            main_narration = (main_narration or '') + f" [{entry_currency} {total_amount:,.2f} @ {exchange_rate:.4f}]"
 
         entries = json.loads(entries_json) if entries_json else []
 
@@ -16083,12 +16109,12 @@ def save_service_entry():
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 supplier_code, invoice_number, invoice_date,
-                total_amount, 0,
+                total_amount_base, 0,
                 due_date, supplier_id,
                 jv_no, vat_rate
             ))
 
-            # 3. Journal Entries
+            # 3. Journal Entries (posted in base currency)
             # Credit Account Payable
             cursor.execute("""
                 INSERT INTO entry_details (
@@ -16097,13 +16123,13 @@ def save_service_entry():
                     entry_job_number, entry_sub_account_code, entry_jv
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
-                'Account Payable', 0, 0, total_amount,
+                'Account Payable', 0, 0, total_amount_base,
                 effective_date, date.today(), main_narration, current_user_pk,
                 header_job if header_job else None, 0, jv_no
             ))
 
-            # Debit VAT Control if applicable
-            total_dr_base = sum(parse_float(e['dr']) for e in entries)
+            # Debit VAT Control if applicable (converted to base)
+            total_dr_base = sum(parse_float(e['dr']) for e in entries) * exchange_rate
             if include_vat and vat_rate > 0:
                 vat_amount = total_dr_base * (vat_rate / 100.0)
                 cursor.execute("""
@@ -16134,7 +16160,7 @@ def save_service_entry():
                         entry_job_number, entry_sub_account_code, entry_jv
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
-                    e['account'], 0, e['dr'], 0,
+                    e['account'], 0, round(parse_float(e['dr']) * exchange_rate, 2), 0,
                     effective_date, date.today(), e['memo'], current_user_pk,
                     job_no, sub_code, jv_no
                 ))

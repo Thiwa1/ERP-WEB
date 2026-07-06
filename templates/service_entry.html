@@ -338,6 +338,21 @@
             </div>
             <div class="form-row cols-2">
               <div class="form-group">
+                <label class="win-label">Currency</label>
+                <select class="win-select" name="entry_currency" id="seCurrency" onchange="seCurrencyChange()">
+                  <option value="{{ base_currency }}">{{ base_currency }} (base)</option>
+                  {% for c in currencies %}{% if c.currency_code and c.currency_code != base_currency %}
+                  <option value="{{ c.currency_code }}">{{ c.currency_code }}{% if c.currency_name %} — {{ c.currency_name }}{% endif %}</option>
+                  {% endif %}{% endfor %}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="win-label">Exchange Rate (to {{ base_currency }})</label>
+                <input type="number" step="0.0001" class="win-input" name="exchange_rate" id="seRate" value="1.0000" readonly>
+              </div>
+            </div>
+            <div class="form-row cols-2">
+              <div class="form-group">
                 <label class="win-label">Job Number (Header)</label>
                 <select class="win-select" name="header_job_number">
                   <option value="">None</option>
@@ -902,6 +917,19 @@ function seDvDelete(docId) {
         document.getElementById('journalBody').innerHTML = '';
         addRow();
         calculateTotals();
+    }
+
+    var SE_BASE_CURRENCY = "{{ base_currency }}";
+    function seCurrencyChange() {
+        var sel = document.getElementById('seCurrency');
+        var rate = document.getElementById('seRate');
+        if (!sel || !rate) return;
+        if (sel.value === SE_BASE_CURRENCY) { rate.value = '1.0000'; rate.readOnly = true; return; }
+        rate.readOnly = false;
+        fetch('/api/get_exchange_rate?from=' + encodeURIComponent(sel.value) + '&to=' + encodeURIComponent(SE_BASE_CURRENCY))
+            .then(function(r){ return r.json(); })
+            .then(function(d){ if (d && d.rate) rate.value = parseFloat(d.rate).toFixed(4); })
+            .catch(function(){});
     }
 
     document.addEventListener('DOMContentLoaded', () => {

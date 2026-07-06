@@ -207,6 +207,10 @@
               <label class="form-label">Transaction Date</label>
               <input type="date" name="date" class="form-control" value="{{ today_date }}" required>
             </div>
+
+            {% set uid = 'dp' %}{% set cur_name = 'payment_currency' %}{% set rate_name = 'exchange_rate' %}
+            {% include '_currency_fields.html' %}
+
             <div class="mb-3">
               <label class="form-label">Cash Account <span style="color:#605E5C;font-weight:400;">(Source)</span></label>
               <select name="cash_account" id="dpCashAccount" class="form-select select2" required onchange="fetchNextVoucher()">
