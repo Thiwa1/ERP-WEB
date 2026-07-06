@@ -7448,7 +7448,9 @@ def bank_reconciliation():
     opening_balance = 0
 
     if bank_account:
-        # Deposits (DR > 0, Not Reconciled)
+        # Deposits (DR > 0, Not Reconciled, up to the reconciliation date).
+        # GROUP BY ed.id: a JV can have several bank_book_recod rows (one per settled
+        # invoice), which would duplicate the entry and double-count ticked amounts.
         deposits = db.execute_query("""
             SELECT
                 ed.entry_save,
@@ -7456,7 +7458,7 @@ def bank_reconciliation():
                 ed.id,
                 ed.entry_effective_date,
                 ed.entry_naration,
-                bbr.bank_book_chque_no,
+                MIN(bbr.bank_book_chque_no) AS bank_book_chque_no,
                 ed.enty_values_DR
             FROM entry_details ed
             LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
@@ -7464,10 +7466,13 @@ def bank_reconciliation():
             AND ed.enty_values_DR > 0
             AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
             AND ed.entry_deleted = 0
+            AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_effective_date,
+                     ed.entry_naration, ed.enty_values_DR
             ORDER BY ed.entry_effective_date
-        """, (bank_account,))
+        """, (bank_account, rec_date))
 
-        # Payments (CR > 0, Not Reconciled)
+        # Payments (CR > 0, Not Reconciled, up to the reconciliation date)
         payments = db.execute_query("""
             SELECT
                 ed.entry_save,
@@ -7475,7 +7480,7 @@ def bank_reconciliation():
                 ed.id,
                 ed.entry_effective_date,
                 ed.entry_naration,
-                bbr.bank_book_chque_no,
+                MIN(bbr.bank_book_chque_no) AS bank_book_chque_no,
                 ed.enty_values_CR
             FROM entry_details ed
             LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
@@ -7483,34 +7488,39 @@ def bank_reconciliation():
             AND ed.enty_values_CR > 0
             AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
             AND ed.entry_deleted = 0
+            AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_effective_date,
+                     ed.entry_naration, ed.enty_values_CR
             ORDER BY ed.entry_effective_date
-        """, (bank_account,))
+        """, (bank_account, rec_date))
 
-        # Book Balance logic
+        # Book Balance — computed directly from the ledger (same basis as Ledger View).
+        # The legacy bank_book_balance stored procedure returns no usable result on
+        # some deployments, which made this silently show 0.
         try:
-            bb_res = db.execute_query("CALL bank_book_balance(%s, %s)", (rec_date, bank_account))
-            book_balance = float(bb_res[0].get('bank_book_balance', 0)) if bb_res else 0
-        except Exception as e:
-            # Fallback
             bb_res = db.execute_query("""
                 SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
                 FROM entry_details
-                WHERE account_name = %s AND entry_effective_date <= %s
+                WHERE account_name = %s
+                  AND DATE(COALESCE(entry_effective_date, entry_create_date)) <= %s
+                  AND entry_deleted = 0
             """, (bank_account, rec_date))
             book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
-
-        # Opening Balance logic
-        try:
-            op_res = db.execute_query("CALL bank_opening_balance(%s)", (bank_account,))
-            opening_balance = float(op_res[0].get('bank_opening_balance', 0)) if op_res else 0
         except Exception as e:
-            # Fallback
+            logging.error(f"Book balance error: {e}")
+            book_balance = 0
+
+        # Opening Balance — net of everything already reconciled
+        try:
             op_res = db.execute_query("""
                 SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
                 FROM entry_details
-                WHERE account_name = %s AND entry_Rec = 1
+                WHERE account_name = %s AND entry_Rec = 1 AND entry_deleted = 0
             """, (bank_account,))
             opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
+        except Exception as e:
+            logging.error(f"Opening balance error: {e}")
+            opening_balance = 0
 
     return render_template('bank_reconciliation.html',
                            bank_accounts=bank_accounts,

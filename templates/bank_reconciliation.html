@@ -52,7 +52,11 @@
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
                         <span>Uncleared Deposits / Receipts</span>
-                        <span class="badge bg-light text-success" id="clearedDepositsCount">0 Selected</span>
+                        <span class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('deposit', true)">Select All</button>
+                            <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('deposit', false)">None</button>
+                            <span class="badge bg-light text-success" id="clearedDepositsCount">0 Selected</span>
+                        </span>
                     </div>
                     <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
                         <table class="table table-sm table-hover mb-0">
@@ -91,7 +95,11 @@
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
                         <span>Uncleared Payments</span>
-                        <span class="badge bg-light text-danger" id="clearedPaymentsCount">0 Selected</span>
+                        <span class="d-flex align-items-center gap-2">
+                            <button type="button" class="btn btn-sm btn-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('payment', true)">Select All</button>
+                            <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('payment', false)">None</button>
+                            <span class="badge bg-light text-danger" id="clearedPaymentsCount">0 Selected</span>
+                        </span>
                     </div>
                     <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
                         <table class="table table-sm table-hover mb-0">
@@ -244,7 +252,12 @@
         } else {
             diffEl.className = 'col-6 text-end fw-bold fs-4 text-danger';
             statusEl.className = 'alert alert-danger py-2 mb-3 fw-bold';
-            statusEl.textContent = `Difference: ${formatter.format(Math.abs(diff))} - Review transactions`;
+            const bookBal = parseFloat("{{ book_balance }}") || 0;
+            if (stmtBal !== 0 && Math.abs(bookBal - stmtBal) < 1) {
+                statusEl.textContent = `Difference: ${formatter.format(Math.abs(diff))} — your book balance already matches the statement; use "Select All" to clear the remaining unreconciled items.`;
+            } else {
+                statusEl.textContent = `Difference: ${formatter.format(Math.abs(diff))} - Review transactions`;
+            }
             processBtn.disabled = true; // Optionally allow processing with difference? Usually not.
         }
     }
@@ -253,6 +266,15 @@
         document.querySelectorAll('.select-transaction').forEach(cb => {
             cb.checked = false;
             cb.dispatchEvent(new Event('change'));
+        });
+        calculateSummary();
+    }
+
+    function toggleAll(kind, state) {
+        document.querySelectorAll('.select-' + kind).forEach(cb => {
+            cb.checked = state;
+            const hidden = cb.parentElement.querySelector('.uncleared-' + kind);
+            if (hidden) hidden.disabled = state;
         });
         calculateSummary();
     }
