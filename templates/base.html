@@ -2135,5 +2135,18 @@
   };
 })();
 </script>
+
+<!-- ── Global print styles: hide app chrome so any page prints cleanly ── -->
+<style>
+  .print-only { display: none; }
+  @media print {
+    .sidebar, .top-navbar, .win11-page-footer, .sidebar-toggle, .alert,
+    #msgBoxOverlay, .no-print, .d-print-none { display: none !important; }
+    .main-content { margin-left: 0 !important; }
+    body { background: #fff !important; }
+    .print-only { display: block !important; }
+    .table-responsive { overflow: visible !important; max-height: none !important; }
+  }
+</style>
 </body>
 </html>

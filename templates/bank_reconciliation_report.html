@@ -3,7 +3,7 @@
 <div class="container-fluid py-4">
 
     <!-- Page Header -->
-    <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="d-flex align-items-center gap-3 mb-4 d-print-none">
         <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#008B8B,#006B6B);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,139,139,.35);">
             <i class="fas fa-file-invoice-dollar text-white" style="font-size:.95rem;"></i>
         </div>
@@ -21,6 +21,14 @@
     </div>
 
     {% if rec %}
+    <!-- Print-only report header -->
+    <div class="print-only" style="margin-bottom:14px;border-bottom:2px solid #111;padding-bottom:8px;">
+        <h4 style="margin:0 0 4px;font-weight:800;">Bank Reconciliation Report #{{ rec.id }}</h4>
+        <div style="font-size:.85rem;color:#374151;">
+            Account: <b>{{ rec.bank_accont_no }}</b>
+            &nbsp;·&nbsp; Period: {{ rec.opene_date.strftime('%Y-%m-%d') if rec.opene_date else 'N/A' }} to {{ rec.closing_date.strftime('%Y-%m-%d') if rec.closing_date else 'N/A' }}
+        </div>
+    </div>
     <div class="row g-4">
 
         <!-- Left: Report Details -->
@@ -81,7 +89,7 @@
                         </div>
                     </div>
 
-                    <button onclick="window.print()"
+                    <button onclick="window.print()" class="d-print-none"
                             style="width:100%;background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.6rem 1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
                         <i class="fas fa-print"></i> Print Report
                     </button>

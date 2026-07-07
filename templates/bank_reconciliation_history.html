@@ -3,7 +3,7 @@
 <div class="container-fluid py-4">
 
     <!-- Page Header -->
-    <div class="d-flex align-items-center gap-3 mb-4">
+    <div class="d-flex align-items-center gap-3 mb-4 d-print-none">
         <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#008B8B,#006B6B);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(0,139,139,.35);">
             <i class="fas fa-history text-white" style="font-size:.95rem;"></i>
         </div>
@@ -11,7 +11,13 @@
             <h5 class="mb-0" style="color:#1a1a2e;font-weight:700;">Reconciliation History</h5>
             <span style="font-size:.75rem;color:#605E5C;">Banking</span>
         </div>
-        <div class="ms-auto">
+        <div class="ms-auto d-flex gap-2">
+            {% if selected_account %}
+            <button type="button" onclick="window.print()"
+                    style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:8px;border:none;background:#008B8B;color:#fff;font-weight:600;font-size:.82rem;cursor:pointer;">
+                <i class="fas fa-print" style="font-size:.75rem;"></i> Print
+            </button>
+            {% endif %}
             <a href="{{ url_for('bank_reconciliation') }}"
                style="display:inline-flex;align-items:center;gap:.4rem;padding:.5rem 1rem;border-radius:8px;border:1px solid #e2e8f0;background:#fff;color:#374151;font-weight:600;font-size:.82rem;text-decoration:none;transition:all .15s;"
                onmouseover="this.style.background='#f8f9fa'" onmouseout="this.style.background='#fff'">
@@ -20,8 +26,19 @@
         </div>
     </div>
 
+    <!-- Print-only report header -->
+    {% if selected_account %}
+    <div class="print-only" style="margin-bottom:14px;border-bottom:2px solid #111;padding-bottom:8px;">
+        <h4 style="margin:0 0 4px;font-weight:800;">Bank Reconciliation History</h4>
+        <div style="font-size:.85rem;color:#374151;">
+            Account: <b>{{ selected_account }}</b>
+            &nbsp;·&nbsp; Printed: <span id="printDate"></span>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Account Selection -->
-    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
+    <div class="d-print-none" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;margin-bottom:1.25rem;">
         <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f0f0f0;">
             <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
                 <i class="fas fa-university me-2" style="color:#008B8B;"></i>Account Selection
@@ -65,7 +82,7 @@
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Statement Bal</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-end">Difference</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Status</th>
-                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center">Actions</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;" class="text-center d-print-none">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -104,7 +121,7 @@
                                 {% endif %}
                             </span>
                         </td>
-                        <td style="padding:.75rem 1rem;" class="text-center">
+                        <td style="padding:.75rem 1rem;" class="text-center d-print-none">
                             <div class="d-flex align-items-center justify-content-center gap-1">
                                 <a href="{{ url_for('bank_reconciliation_report', rec_id=h.id) }}"
                                    style="width:30px;height:30px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#008B8B;display:inline-flex;align-items:center;justify-content:center;text-decoration:none;transition:all .15s;"
@@ -183,5 +200,9 @@ function showReverseModal(id, date) {
     document.getElementById('reverseDate').textContent = date;
     new bootstrap.Modal(document.getElementById('reverseModal')).show();
 }
+document.addEventListener('DOMContentLoaded', function () {
+    var pd = document.getElementById('printDate');
+    if (pd) pd.textContent = new Date().toLocaleString();
+});
 </script>
 {% endblock %}
