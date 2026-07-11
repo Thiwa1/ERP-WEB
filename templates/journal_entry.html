@@ -376,12 +376,12 @@
         document.querySelectorAll('.dr-input').forEach(inp => totalDr += parseFloat(inp.value) || 0);
         document.querySelectorAll('.cr-input').forEach(inp => totalCr += parseFloat(inp.value) || 0);
 
-        document.getElementById('totalDr').innerText = totalDr.toFixed(2);
-        document.getElementById('totalCr').innerText = totalCr.toFixed(2);
+        document.getElementById('totalDr').innerText = fmtNum(totalDr);
+        document.getElementById('totalCr').innerText = fmtNum(totalCr);
 
         const diff = totalDr - totalCr;
         const diffEl = document.getElementById('totalDiff');
-        diffEl.innerText = diff.toFixed(2);
+        diffEl.innerText = fmtNum(diff);
 
         if (Math.abs(diff) > 0.01) {
             diffEl.style.color = '#c42b1c';
@@ -489,8 +489,8 @@
                             <td style="padding:.5rem .75rem;">${row.date}</td>
                             <td style="padding:.5rem .75rem;">${row.account}</td>
                             <td style="padding:.5rem .75rem;">${row.narration}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${row.dr.toFixed(2)}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${row.cr.toFixed(2)}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(row.dr)}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(row.cr)}</td>
                             <td style="padding:.5rem .75rem;">
                                 <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
                                 <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>

@@ -846,7 +846,7 @@ function seDvDelete(docId) {
             totalDr += val;
         });
 
-        document.getElementById('totalWithoutVat').innerText = totalDr.toFixed(2);
+        document.getElementById('totalWithoutVat').innerText = fmtNum(totalDr);
 
         let vatRate = 0;
         if (document.getElementById('includeVat').checked) {
@@ -854,7 +854,7 @@ function seDvDelete(docId) {
         }
 
         const totalWithVat = totalDr + (totalDr * vatRate / 100);
-        document.getElementById('totalWithVat').innerText = totalWithVat.toFixed(2);
+        document.getElementById('totalWithVat').innerText = fmtNum(totalWithVat);
         document.getElementById('totalAmount').value = totalWithVat.toFixed(2);
     }
 

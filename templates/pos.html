@@ -496,9 +496,9 @@
             btn.innerHTML = `
                 <div>
                     <h6 class="mb-0 fw-bold text-primary">${item.name}</h6>
-                    <small class="text-muted">Cost: ${item.cost.toFixed(2)} | Code: ${item.code}</small>
+                    <small class="text-muted">Cost: ${fmtNum(item.cost)} | Code: ${item.code}</small>
                 </div>
-                <span class="badge bg-success rounded-pill fs-6">${activePrice.toFixed(2)}</span>
+                <span class="badge bg-success rounded-pill fs-6">${fmtNum(activePrice)}</span>
             `;
 
             btn.onclick = () => {
@@ -584,8 +584,8 @@
 
             // Market price cell: show strikethrough if discounted
             const marketCell = (saving > 0)
-                ? `<span style="text-decoration:line-through;color:#aaa;font-size:.75rem;">${item.price_market.toFixed(2)}</span>`
-                : `<span style="color:#888;font-size:.8rem;">${item.price_market.toFixed(2)}</span>`;
+                ? `<span style="text-decoration:line-through;color:#aaa;font-size:.75rem;">${fmtNum(item.price_market)}</span>`
+                : `<span style="color:#888;font-size:.8rem;">${fmtNum(item.price_market)}</span>`;
 
             // Price cell: highlight in green when discounted
             const priceColor = saving > 0 ? 'color:#16a34a;font-weight:700;' : '';
@@ -601,18 +601,18 @@
                     <td style="font-size:.8rem;">${item.name}</td>
                     <td class="text-center" style="font-size:.8rem;">${item.qty}</td>
                     <td class="text-end">${marketCell}</td>
-                    <td class="text-end" style="${priceColor}font-size:.8rem;">${item.price.toFixed(2)}${discountBadge}</td>
-                    <td class="text-end fw-bold" style="font-size:.85rem;">${item.total.toFixed(2)}</td>
+                    <td class="text-end" style="${priceColor}font-size:.8rem;">${fmtNum(item.price)}${discountBadge}</td>
+                    <td class="text-end fw-bold" style="font-size:.85rem;">${fmtNum(item.total)}</td>
                     <td class="text-center"><button class="btn btn-sm btn-danger py-0" style="font-size:.75rem;" onclick="removeFromCart(${idx})">✕</button></td>
                 </tr>
             `;
         });
 
-        document.getElementById('grandTotal').innerText = total.toFixed(2);
+        document.getElementById('grandTotal').innerText = fmtNum(total);
 
         if(savings > 0) {
             document.getElementById('savingsDisplay').style.display = 'block';
-            document.getElementById('totalSavings').innerText = savings.toFixed(2);
+            document.getElementById('totalSavings').innerText = fmtNum(savings);
         } else {
             document.getElementById('savingsDisplay').style.display = 'none';
         }

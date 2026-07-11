@@ -555,9 +555,9 @@
                                 <td class="mono">${inv.jv_no}</td>
                                 <td>${inv.date}</td>
                                 <td>${inv.due_date}</td>
-                                <td class="text-end mono">${inv.total.toFixed(2)}</td>
-                                <td class="text-end mono">${inv.paid.toFixed(2)}</td>
-                                <td class="text-end mono fw-bold text-danger">${inv.balance.toFixed(2)}</td>
+                                <td class="text-end mono">${fmtNum(inv.total)}</td>
+                                <td class="text-end mono">${fmtNum(inv.paid)}</td>
+                                <td class="text-end mono fw-bold text-danger">${fmtNum(inv.balance)}</td>
                                 <td class="text-center">
                                     <input type="number" id="pay_input_${inv.inv_no}" name="pay_${inv.id}" class="form-control form-control-sm text-end pay-input border-primary mono"
                                            style="background-color: #F0F5FF; font-weight: bold; color: #2E86AB;"
@@ -573,7 +573,7 @@
                         tbody.innerHTML += row;
                     });
                 }
-                totalOutDisplay.textContent = '{{ company_currency }} ' + totalOut.toFixed(2);
+                totalOutDisplay.textContent = '{{ company_currency }} ' + fmtNum(totalOut);
                 updateTotal();
 
                 // Auto-fill logic for Cash payment redirect
@@ -603,7 +603,7 @@
                                 <td class="mono">${h.jv_no}</td>
                                 <td>${h.account}</td>
                                 <td class="text-end mono">0.00</td>
-                                <td class="text-end mono fw-bold text-success">${h.amount.toFixed(2)}</td>
+                                <td class="text-end mono fw-bold text-success">${fmtNum(h.amount)}</td>
                                 <td>${h.date}</td>
                                 <td>${h.user_id || 'System'}</td>
                                 <td class="text-truncate" style="max-width: 120px;" title="${h.narration}">${h.narration}</td>
@@ -633,7 +633,7 @@
             const val = parseFloat(input.value);
             if (!isNaN(val)) total += val;
         });
-        document.getElementById('totalReceiptDisplay').textContent = '{{ company_currency }} ' + total.toFixed(2);
+        document.getElementById('totalReceiptDisplay').textContent = '{{ company_currency }} ' + fmtNum(total);
     }
 
     let selectedReversalJV = null;
@@ -736,7 +736,7 @@
         // Populate modal data
         document.getElementById('revVoucherNo').textContent = selectedReversalData.voucher_no || 'N/A';
         document.getElementById('revDate').textContent = selectedReversalData.date;
-        document.getElementById('revAmount').textContent = selectedReversalData.amount.toFixed(2);
+        document.getElementById('revAmount').textContent = fmtNum(selectedReversalData.amount);
         document.getElementById('revAccount').textContent = selectedReversalData.account;
         document.getElementById('revNarration').textContent = selectedReversalData.narration;
         document.getElementById('revJvNo').value = selectedReversalJV;

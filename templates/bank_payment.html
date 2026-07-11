@@ -272,9 +272,9 @@ function loadSupplierData() {
                             <td style="padding:.5rem .85rem;" class="font-monospace">${inv.invoice_no} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
                             <td style="padding:.5rem .75rem;">${inv.date}</td>
                             <td style="padding:.5rem .75rem;">${inv.due_date}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${inv.total.toFixed(2)}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${inv.paid.toFixed(2)}</td>
-                            <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;color:#c42b1c;">${inv.balance.toFixed(2)}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.total)}</td>
+                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.paid)}</td>
+                            <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;color:#c42b1c;">${fmtNum(inv.balance)}</td>
                             <td style="padding:.35rem .75rem;">
                                 <input type="number" class="form-control form-control-sm text-end pay-input font-monospace"
                                        name="payment_${inv.id}" step="0.01" min="0" max="${inv.balance}"
@@ -298,7 +298,7 @@ function loadSupplierData() {
                         <td class="font-monospace" style="padding:.5rem 1rem;">${hist.voucher || '-'}</td>
                         <td style="padding:.5rem .75rem;">${hist.date}</td>
                         <td style="padding:.5rem .75rem;">${hist.account}</td>
-                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${hist.amount.toFixed(2)}</td>
+                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(hist.amount)}</td>
                         <td style="padding:.5rem .75rem;">${hist.narration}</td>
                         <td style="padding:.35rem .75rem;">
                             <div class="btn-group btn-group-sm">

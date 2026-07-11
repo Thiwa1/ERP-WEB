@@ -179,6 +179,11 @@
     </div>
 
     <script>
+        // Standalone page (does not extend base.html) — local thousand-separator formatter
+        function fmtNum(n) {
+            return Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        }
+
         function updateDisplay(state) {
             if (!state || !state.cart || state.cart.length === 0) {
                 document.getElementById('welcomeScreen').style.display = 'flex';
@@ -203,17 +208,17 @@
                     <tr>
                         <td><strong>${item.name}</strong><br><small class="text-muted">${item.code}</small></td>
                         <td class="text-center align-middle fw-bold fs-4">${item.qty}</td>
-                        <td class="text-end align-middle">${item.price.toFixed(2)}</td>
-                        <td class="text-end align-middle fw-bold fs-5">${item.total.toFixed(2)}</td>
+                        <td class="text-end align-middle">${fmtNum(item.price)}</td>
+                        <td class="text-end align-middle fw-bold fs-5">${fmtNum(item.total)}</td>
                     </tr>
                 `;
             });
 
-            document.getElementById('grandTotal').innerText = total.toFixed(2);
+            document.getElementById('grandTotal').innerText = fmtNum(total);
 
             if (savings > 0) {
                 document.getElementById('savingsCard').style.display = 'block';
-                document.getElementById('totalSavings').innerText = savings.toFixed(2);
+                document.getElementById('totalSavings').innerText = fmtNum(savings);
             } else {
                 document.getElementById('savingsCard').style.display = 'none';
             }

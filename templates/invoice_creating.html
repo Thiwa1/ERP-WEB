@@ -878,8 +878,8 @@
                         <td class="text-center text-muted" style="font-size:0.8rem;">${item.code}</td>
                         <td class="text-center text-muted" style="font-size:0.8rem;">${item.unit}</td>
                         <td class="text-end amount-cell">${item.qty}</td>
-                        <td class="text-end amount-cell">${item.price.toFixed(2)}</td>
-                        <td class="text-end amount-cell fw-bold">${item.total.toFixed(2)}</td>
+                        <td class="text-end amount-cell">${fmtNum(item.price)}</td>
+                        <td class="text-end amount-cell fw-bold">${fmtNum(item.total)}</td>
                         <td class="text-center">
                             <button type="button" class="btn-remove-item"
                                 onclick="removeItem('${item.source}', ${item.idx})" title="Remove item">
@@ -913,7 +913,7 @@
         inventoryItems.forEach(i => subTotal += i.total);
         nonInventoryItems.forEach(i => subTotal += i.total);
 
-        document.getElementById('subTotalDisplay').textContent = subTotal.toFixed(2);
+        document.getElementById('subTotalDisplay').textContent = fmtNum(subTotal);
 
         const applyVat = document.getElementById('applyVat').checked;
         const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
@@ -923,8 +923,8 @@
             vatAmount = (subTotal * vatRate) / 100;
         }
 
-        document.getElementById('vatAmountDisplay').textContent = vatAmount.toFixed(2);
-        document.getElementById('grandTotalDisplay').textContent = (subTotal + vatAmount).toFixed(2);
+        document.getElementById('vatAmountDisplay').textContent = fmtNum(vatAmount);
+        document.getElementById('grandTotalDisplay').textContent = fmtNum(subTotal + vatAmount);
         updateInvCurrencyNote(subTotal + vatAmount);
     }
 

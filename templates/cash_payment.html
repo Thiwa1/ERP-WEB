@@ -252,9 +252,9 @@
                     row.innerHTML = `
                         <td class="font-monospace" style="padding:.5rem 1rem;">${inv.invoice_no}</td>
                         <td style="padding:.5rem .75rem;">${inv.date}</td>
-                        <td class="font-monospace" style="padding:.5rem .75rem;">${inv.total.toFixed(2)}</td>
-                        <td class="font-monospace" style="padding:.5rem .75rem;">${inv.paid.toFixed(2)}</td>
-                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${inv.balance.toFixed(2)}</td>
+                        <td class="font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.total)}</td>
+                        <td class="font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.paid)}</td>
+                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.balance)}</td>
                         <td style="padding:.35rem .75rem;">
                             <input type="number" class="form-control form-control-sm text-end payment-input font-monospace"
                                    data-id="${inv.id}"
@@ -276,7 +276,7 @@
                         <tr>
                             <td class="font-monospace" style="padding:.45rem 1rem;">${h.voucher}</td>
                             <td style="padding:.45rem .75rem;">${h.date}</td>
-                            <td class="font-monospace" style="padding:.45rem .75rem;">${h.amount.toFixed(2)}</td>
+                            <td class="font-monospace" style="padding:.45rem .75rem;">${fmtNum(h.amount)}</td>
                             <td style="padding:.45rem .75rem;">${h.account}</td>
                             <td style="padding:.45rem .75rem;">${h.user_id || '-'}</td>
                             <td style="padding:.35rem .75rem;">

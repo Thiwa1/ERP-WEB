@@ -338,8 +338,8 @@
                         <td style="font-size:.875rem;color:#605E5C;">${item.code}</td>
                         <td style="font-size:.875rem;color:#605E5C;">${item.unit}</td>
                         <td class="text-end amount-cell" style="font-size:.875rem;">${item.qty}</td>
-                        <td class="text-end amount-cell" style="font-size:.875rem;">${item.cost.toFixed(2)}</td>
-                        <td class="text-end amount-cell fw-bold" style="font-size:.875rem;">${item.total.toFixed(2)}</td>
+                        <td class="text-end amount-cell" style="font-size:.875rem;">${fmtNum(item.cost)}</td>
+                        <td class="text-end amount-cell fw-bold" style="font-size:.875rem;">${fmtNum(item.total)}</td>
                         <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem(${index})"><i class="fas fa-trash"></i></button></td>
                     </tr>
                 `;

@@ -270,7 +270,7 @@ function applyCorrection() {
         btn.innerHTML = '<i class="fas fa-check me-1"></i> Apply Correction';
         if (res.success) {
             stat.style.cssText = 'display:block;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;';
-            stat.textContent = `✅ Corrected! Added entry of ${parseFloat(res.corrected).toFixed(2)} to "${account}".`;
+            stat.textContent = `✅ Corrected! Added entry of ${fmtNum(res.corrected)} to "${account}".`;
             setTimeout(() => { location.reload(); }, 1800);
         } else {
             stat.style.cssText = 'display:block;background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;';

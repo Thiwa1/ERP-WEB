@@ -347,7 +347,7 @@ function loadPos() {
                         <td style="font-size:.875rem;color:#605E5C;">${po.date}</td>
                         <td style="font-size:.875rem;">${po.supplier}</td>
                         <td>${statusBadge}</td>
-                        <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${parseFloat(po.total).toFixed(2)}</td>
+                        <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${fmtNum(po.total)}</td>
                         <td class="text-end" style="white-space:nowrap;">
                             ${actionBtns}
                             ${printBtn}

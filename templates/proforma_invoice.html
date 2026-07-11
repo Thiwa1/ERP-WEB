@@ -252,16 +252,16 @@
                     <td style="font-size:.875rem;">${item.name || '-'}</td>
                     <td style="font-size:.875rem;color:#605E5C;">${item.desc || '-'}</td>
                     <td style="font-size:.875rem;">${item.qty}</td>
-                    <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${item.price.toFixed(2)}</td>
-                    <td class="text-end fw-bold" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${item.total.toFixed(2)}</td>
+                    <td class="text-end" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${fmtNum(item.price)}</td>
+                    <td class="text-end fw-bold" style="font-family:'JetBrains Mono','Courier New',monospace;font-size:.875rem;">${fmtNum(item.total)}</td>
                     <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger border-0" onclick="removeItem(${idx})"><i class="fas fa-times"></i></button></td>
                 </tr>
             `;
         });
 
         document.getElementById('itemCount').textContent = items.length + " Item" + (items.length !== 1 ? "s" : "");
-        document.getElementById('subTotal').textContent = total.toFixed(2);
-        document.getElementById('grandTotal').textContent = total.toFixed(2);
+        document.getElementById('subTotal').textContent = fmtNum(total);
+        document.getElementById('grandTotal').textContent = fmtNum(total);
         document.getElementById('itemsJson').value = JSON.stringify(items);
     }
 </script>
