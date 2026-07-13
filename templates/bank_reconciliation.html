@@ -77,7 +77,15 @@
                                         <input type="checkbox" name="cleared_deposits[]" value="{{ item.id }}|{{ rec_date }}" class="form-check-input select-deposit select-transaction" data-amount="{{ item.enty_values_DR }}" {% if item.entry_save == 1 %}checked{% endif %}>
                                         <input type="hidden" name="uncleared_deposits[]" value="{{ item.id }}" class="uncleared-deposit" {% if item.entry_save == 1 %}disabled{% endif %}>
                                     </td>
-                                    <td class="align-middle text-muted">#{{ item.id }}</td>
+                                    <td class="align-middle">
+                                        {% if item.entry_effective_date %}
+                                        <a href="/ledger_view?account={{ selected_account|urlencode }}&from={{ item.entry_effective_date.strftime('%Y-%m-01') }}&to={{ item.entry_effective_date.strftime('%Y-%m-%d') }}&jv={{ item.entry_jv }}"
+                                           target="_blank" title="Open this transaction in the account ledger"
+                                           style="text-decoration:none;font-weight:600;color:#0d6efd;">
+                                            #{{ item.id }} <i class="fas fa-external-link-alt" style="font-size:.62rem;opacity:.6;"></i>
+                                        </a>
+                                        {% else %}<span class="text-muted">#{{ item.id }}</span>{% endif %}
+                                    </td>
                                     <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
                                     <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
@@ -120,7 +128,15 @@
                                         <input type="checkbox" name="cleared_payments[]" value="{{ item.id }}|{{ rec_date }}" class="form-check-input select-payment select-transaction" data-amount="{{ item.enty_values_CR }}" {% if item.entry_save == 1 %}checked{% endif %}>
                                         <input type="hidden" name="uncleared_payments[]" value="{{ item.id }}" class="uncleared-payment" {% if item.entry_save == 1 %}disabled{% endif %}>
                                     </td>
-                                    <td class="align-middle text-muted">#{{ item.id }}</td>
+                                    <td class="align-middle">
+                                        {% if item.entry_effective_date %}
+                                        <a href="/ledger_view?account={{ selected_account|urlencode }}&from={{ item.entry_effective_date.strftime('%Y-%m-01') }}&to={{ item.entry_effective_date.strftime('%Y-%m-%d') }}&jv={{ item.entry_jv }}"
+                                           target="_blank" title="Open this transaction in the account ledger"
+                                           style="text-decoration:none;font-weight:600;color:#0d6efd;">
+                                            #{{ item.id }} <i class="fas fa-external-link-alt" style="font-size:.62rem;opacity:.6;"></i>
+                                        </a>
+                                        {% else %}<span class="text-muted">#{{ item.id }}</span>{% endif %}
+                                    </td>
                                     <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
                                     <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>

@@ -253,9 +253,11 @@
                 const jvCell = clickable
                     ? `<span style="color:#4f46e5;font-weight:700;">${jv} <i class="fas fa-external-link-alt" style="font-size:.68rem;opacity:.6;"></i></span>`
                     : jv;
+                // Deep-linked transaction (e.g. from bank reconciliation) gets highlighted
+                const hl = !isOpening && window.HL_JV && String(row.jv_no) === String(window.HL_JV);
 
                 const tr = `
-                    <tr class="${rowClass}" ${clickAttr}>
+                    <tr class="${rowClass}${hl ? ' jv-highlight' : ''}" ${clickAttr}>
                         <td style="padding:.65rem 1rem;text-align:center;">${no}</td>
                         <td style="padding:.65rem 1rem;">${row.date}</td>
                         <td style="padding:.65rem 1rem;text-align:center;font-family:'Courier New',monospace;font-size:.85rem;">${jvCell}</td>
@@ -267,6 +269,14 @@
                 `;
                 tbody.innerHTML += tr;
             });
+
+            // Deep link: scroll to the highlighted transaction (e.g. from bank reconciliation)
+            if (window.HL_JV) {
+                setTimeout(() => {
+                    const el = document.querySelector('tr.jv-highlight');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 120);
+            }
         })
         .catch(err => {
             console.error(err);
@@ -305,5 +315,27 @@
         if (!acc) { alert('Please select an account first.'); return; }
         window.location.href = `/ledger_view/export?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
     }
+
+    // ── Deep link: /ledger_view?account=X&from=Y&to=Z&jv=N ──
+    // Used by Bank Reconciliation "click transaction → open in ledger". Pre-selects
+    // the account and date range, loads the ledger, and highlights the JV's rows.
+    window.addEventListener('load', function () {
+        const p = new URLSearchParams(window.location.search);
+        const acc = p.get('account');
+        if (!acc) return;
+        window.HL_JV = p.get('jv') || null;
+        if (p.get('from')) document.getElementById('fromDate').value = p.get('from');
+        if (p.get('to'))   document.getElementById('toDate').value   = p.get('to');
+        // Small delay so Select2 has initialised before we set its value
+        setTimeout(function () {
+            if (window.$ && $.fn.select2) { $('#accountSelect').val(acc).trigger('change'); }
+            else { document.getElementById('accountSelect').value = acc; }
+            loadLedger();
+        }, 250);
+    });
 </script>
+<style>
+    tr.jv-highlight td { background: #fff3cd !important; }
+    tr.jv-highlight { outline: 2px solid #f59e0b; }
+</style>
 {% endblock %}

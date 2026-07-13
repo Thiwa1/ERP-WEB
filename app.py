@@ -7456,6 +7456,7 @@ def bank_reconciliation():
                 ed.entry_save,
                 ed.entry_date,
                 ed.id,
+                ed.entry_jv,
                 ed.entry_effective_date,
                 ed.entry_naration,
                 MIN(bbr.bank_book_chque_no) AS bank_book_chque_no,
@@ -7467,7 +7468,7 @@ def bank_reconciliation():
             AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
             AND ed.entry_deleted = 0
             AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
-            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_effective_date,
+            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_jv, ed.entry_effective_date,
                      ed.entry_naration, ed.enty_values_DR
             ORDER BY ed.entry_effective_date
         """, (bank_account, rec_date))
@@ -7478,6 +7479,7 @@ def bank_reconciliation():
                 ed.entry_save,
                 ed.entry_date,
                 ed.id,
+                ed.entry_jv,
                 ed.entry_effective_date,
                 ed.entry_naration,
                 MIN(bbr.bank_book_chque_no) AS bank_book_chque_no,
@@ -7489,7 +7491,7 @@ def bank_reconciliation():
             AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
             AND ed.entry_deleted = 0
             AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
-            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_effective_date,
+            GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_jv, ed.entry_effective_date,
                      ed.entry_naration, ed.enty_values_CR
             ORDER BY ed.entry_effective_date
         """, (bank_account, rec_date))
