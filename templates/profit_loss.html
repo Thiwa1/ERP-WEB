@@ -72,7 +72,7 @@
             <a href="/pl_account_order" class="win11-btn win11-btn-secondary" style="text-decoration:none;">
                 <i class="fas fa-sort-amount-down me-1"></i> Arrange Order
             </a>
-            <a href="/profit_loss?from_date={{ default_start }}&to_date={{ default_end }}&download=csv"
+            <a href="/profit_loss?download=csv{% for p in periods %}&start_date[]={{ p.start }}&end_date[]={{ p.end }}{% endfor %}"
                class="win11-btn win11-btn-secondary" style="text-decoration:none;">
                 <i class="fas fa-file-csv me-1"></i> Export CSV
             </a>

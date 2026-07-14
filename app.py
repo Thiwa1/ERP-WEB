@@ -11110,7 +11110,7 @@ def profit_loss():
         si = io.StringIO()
         cw = csv.writer(si)
         cw.writerow(['Profit & Loss Report'])
-        cw.writerow([f'Period: {default_start} to {default_end}'])
+        cw.writerow(['Periods: ' + '; '.join(f"{p['start']} to {p['end']}" for p in periods)])
         cw.writerow([])
         n_periods = max(1, len(periods))
         cw.writerow(['Type', 'Category', 'Account'] + [f'Period {i+1}' for i in range(n_periods)])
@@ -11126,7 +11126,9 @@ def profit_loss():
         cw.writerow(['', '', 'TOTAL EXPENSES'] + [f"{float(v):.2f}" for v in report_data.get('total_expense', [])])
         cw.writerow(['', '', 'NET PROFIT / (LOSS)'] + [f"{float(v):.2f}" for v in report_data.get('net_profit', [])])
         output = make_response(si.getvalue())
-        output.headers["Content-Disposition"] = f"attachment; filename=ProfitLoss_{default_start}_{default_end}.csv"
+        fname_start = periods[0]['start'] if periods else default_start
+        fname_end = periods[-1]['end'] if periods else default_end
+        output.headers["Content-Disposition"] = f"attachment; filename=ProfitLoss_{fname_start}_{fname_end}.csv"
         output.headers["Content-type"] = "text/csv"
         return output
 

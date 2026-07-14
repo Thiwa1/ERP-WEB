@@ -32,12 +32,18 @@ class ProfitLossReportGenerator:
 
     def _get_profit_loss_periods(self, req):
         periods = []
-        if req.method == 'POST':
-            starts = req.form.getlist('start_date[]')
-            ends = req.form.getlist('end_date[]')
-            for s, e in zip(starts, ends):
-                if s and e:
-                    periods.append({'start': s, 'end': e})
+        # Accept periods from the form (Generate button, POST) or from query
+        # parameters (CSV export link, GET) so the export matches the screen.
+        source = req.form if req.method == 'POST' else req.args
+        starts = source.getlist('start_date[]')
+        ends = source.getlist('end_date[]')
+        for s, e in zip(starts, ends):
+            if s and e:
+                periods.append({'start': s, 'end': e})
+
+        # Legacy single-range GET params
+        if not periods and req.args.get('from_date') and req.args.get('to_date'):
+            periods.append({'start': req.args.get('from_date'), 'end': req.args.get('to_date')})
 
         if not periods:
             today = date.today()
