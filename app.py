@@ -6707,42 +6707,53 @@ def balance_sheet():
     # Using existing stored procedures if possible, or reproducing logic
     # Reproducing logic from Balance_sheet.xaml.cs using queries for portablity
 
-    assets = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
-        WHERE na.account_assets = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date,))
+    def _bs_section(flag_col, balance_expr):
+        """Fetch one balance-sheet section ordered by category Holding Level, then the
+        per-account order (account_bs_sort), then name. Falls back gracefully if the
+        account_bs_sort column has not been migrated yet."""
+        ordered = f"""
+            SELECT
+                na.account_name_of_catogory_Balace_sheet as category,
+                na.account_name as name,
+                {balance_expr} as balance
+            FROM new_account_table na
+            LEFT JOIN entry_details ed ON na.account_name = ed.account_name
+                AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
+            WHERE na.{flag_col} = 1
+            GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet,
+                     na.account_hold_possion_Balace_Sheet, na.account_bs_sort
+            ORDER BY COALESCE(na.account_hold_possion_Balace_Sheet, 9999) + 0,
+                     COALESCE(na.account_bs_sort, 9999), na.account_name
+        """
+        fallback = f"""
+            SELECT
+                na.account_name_of_catogory_Balace_sheet as category,
+                na.account_name as name,
+                {balance_expr} as balance
+            FROM new_account_table na
+            LEFT JOIN entry_details ed ON na.account_name = ed.account_name
+                AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
+            WHERE na.{flag_col} = 1
+            GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet,
+                     na.account_hold_possion_Balace_Sheet
+            ORDER BY COALESCE(na.account_hold_possion_Balace_Sheet, 9999) + 0, na.account_name
+        """
+        try:
+            return db.execute_query(ordered, (as_at_date,))
+        except Exception:
+            return db.execute_query(fallback, (as_at_date,))
 
+    assets = _bs_section(
+        'account_assets',
+        "COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0)")
 
-    liabilities = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
-        WHERE na.account_liabilities = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date,))
+    liabilities = _bs_section(
+        'account_liabilities',
+        "COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0)")
 
-    equity = db.execute_query("""
-        SELECT
-            na.account_name_of_catogory_Balace_sheet as category,
-            na.account_name as name,
-            COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0) as balance
-        FROM new_account_table na
-        LEFT JOIN entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
-        WHERE na.account_equity = 1
-        GROUP BY na.account_name, na.account_name_of_catogory_Balace_sheet
-    """, (as_at_date,))
+    equity = _bs_section(
+        'account_equity',
+        "COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0)")
 
     # Calculate Retained Earnings (Income - Expense - COGS) matching legacy C# logic
     retained_earnings_query = """
@@ -11122,10 +11133,86 @@ def pl_account_order():
         cat = r['cat'] or 'Uncategorized'
         if cat not in idx:
             idx[cat] = len(groups)
-            groups.append({'name': cat, 'pos': r['pos'], 'is_income': r['account_income'] == 1, 'accounts': []})
+            is_income = r['account_income'] == 1
+            groups.append({'name': cat, 'pos': r['pos'],
+                           'type_label': 'INCOME' if is_income else 'EXPENSE',
+                           'color': '#107C10' if is_income else '#C42B1C',
+                           'accounts': []})
         groups[idx[cat]]['accounts'].append(r['account_name'])
 
-    return render_template('pl_account_order.html', groups=groups)
+    return render_template('pl_account_order.html', groups=groups,
+                           page_title='P&L Account Order',
+                           page_subtitle='Arrange how accounts appear inside each category on the Profit & Loss',
+                           back_url='/profit_loss', back_label='Back to P&L',
+                           save_url='/pl_account_order',
+                           categories_page='P&L Categories')
+
+
+@app.route('/bs_account_order', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bs_account_order():
+    if request.method == 'POST':
+        try:
+            items = json.loads(request.form.get('order_json') or '[]')
+            for it in items:
+                name = (it.get('name') or '').strip()
+                sort = it.get('sort')
+                if not name:
+                    continue
+                db.execute_query(
+                    "UPDATE new_account_table SET account_bs_sort = %s WHERE account_name = %s",
+                    (sort, name), commit=True
+                )
+            flash('Balance Sheet account order saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving order: {e}', 'danger')
+        return redirect(url_for('bs_account_order'))
+
+    try:
+        rows = db.execute_query("""
+            SELECT account_name, account_name_of_catogory_Balace_sheet AS cat,
+                   account_hold_possion_Balace_Sheet AS pos,
+                   account_assets, account_liabilities, account_equity, account_bs_sort
+            FROM new_account_table
+            WHERE (account_assets = 1 OR account_liabilities = 1 OR account_equity = 1)
+              AND account_active = 1
+            ORDER BY COALESCE(account_hold_possion_Balace_Sheet, 9999) + 0,
+                     COALESCE(account_bs_sort, 9999), account_name
+        """) or []
+    except Exception:
+        rows = db.execute_query("""
+            SELECT account_name, account_name_of_catogory_Balace_sheet AS cat,
+                   account_hold_possion_Balace_Sheet AS pos,
+                   account_assets, account_liabilities, account_equity, NULL AS account_bs_sort
+            FROM new_account_table
+            WHERE (account_assets = 1 OR account_liabilities = 1 OR account_equity = 1)
+              AND account_active = 1
+            ORDER BY COALESCE(account_hold_possion_Balace_Sheet, 9999) + 0, account_name
+        """) or []
+
+    groups = []
+    idx = {}
+    for r in rows:
+        cat = r['cat'] or 'Uncategorized'
+        if cat not in idx:
+            idx[cat] = len(groups)
+            if r['account_assets'] == 1:
+                label, color = 'ASSET', '#107C10'
+            elif r['account_liabilities'] == 1:
+                label, color = 'LIABILITY', '#C42B1C'
+            else:
+                label, color = 'EQUITY', '#0d6efd'
+            groups.append({'name': cat, 'pos': r['pos'],
+                           'type_label': label, 'color': color, 'accounts': []})
+        groups[idx[cat]]['accounts'].append(r['account_name'])
+
+    return render_template('pl_account_order.html', groups=groups,
+                           page_title='Balance Sheet Account Order',
+                           page_subtitle='Arrange how accounts appear inside each category on the Balance Sheet',
+                           back_url='/balance_sheet', back_label='Back to Balance Sheet',
+                           save_url='/bs_account_order',
+                           categories_page='Balance Sheet Categories')
 
 @app.route('/api/dashboard/monthly_revenue')
 @login_required
