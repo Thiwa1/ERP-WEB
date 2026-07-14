@@ -170,11 +170,14 @@
                         <tr class="{{ 'pl-section-income' if cat.is_income else 'pl-section-expense' }}">
                             <td colspan="{{ periods|length + 1 }}">
                                 <i class="fas {{ 'fa-arrow-up' if cat.is_income else 'fa-arrow-down' }} me-2"></i>{{ cat.name }}
-                                <span style="font-weight:500;opacity:.65;font-size:.65rem;margin-left:6px;">{{ 'INCOME' if cat.is_income else 'EXPENSE' }}</span>
+                                <span style="font-weight:500;opacity:.65;font-size:.65rem;margin-left:6px;">
+                                    {%- if cat.mixed %}INCOME · NET OF DEDUCTIONS{% elif cat.is_income %}INCOME{% else %}EXPENSE{% endif -%}
+                                </span>
                             </td>
                         </tr>
                         {% for acc in cat.accounts %}
-                        <tr class="{{ 'pl-income-row' if cat.is_income else 'pl-expense-row' }}">
+                        {% set row_income = acc.is_income if acc.is_income is defined else cat.is_income %}
+                        <tr class="{{ 'pl-income-row' if row_income else 'pl-expense-row' }}">
                             <td>{{ acc.name }}</td>
                             {% for val in acc.amounts %}
                             <td class="text-end amount-cell">{{ val|currency }}</td>

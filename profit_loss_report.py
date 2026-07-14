@@ -15,6 +15,7 @@ class ProfitLossReportGenerator:
 
         try:
             acc_map = self._fetch_profit_loss_accounts(cursor, periods)
+            cat_levels = self._fetch_pl_category_levels(cursor)
             if not periods:
                 return periods, {}, '', ''
             acc_map = self._fetch_profit_loss_data(cursor, periods, acc_map)
@@ -22,7 +23,7 @@ class ProfitLossReportGenerator:
             cursor.close()
             conn.close()
 
-        report_data = self._process_profit_loss_categories(acc_map, periods)
+        report_data = self._process_profit_loss_categories(acc_map, periods, cat_levels)
 
         default_start = date.today().replace(day=1).strftime('%Y-%m-%d')
         default_end = date.today().strftime('%Y-%m-%d')
@@ -114,9 +115,28 @@ class ProfitLossReportGenerator:
 
         return acc_map
 
-    def _process_profit_loss_categories(self, acc_map, periods):
-        income_cats_dict = {}
-        expense_cats_dict = {}
+    def _fetch_pl_category_levels(self, cursor):
+        """Authoritative {category: holding_level} from the P&L Categories table.
+        The per-account copies in new_account_table go stale when a category's
+        level is edited later."""
+        try:
+            cursor.execute("SELECT name_of_category, holding_position FROM `p&l_category`")
+            out = {}
+            for r in cursor.fetchall():
+                try:
+                    out[r['name_of_category']] = int(r['holding_position'])
+                except (TypeError, ValueError):
+                    out[r['name_of_category']] = 9999
+            return out
+        except Exception:
+            return {}
+
+    def _process_profit_loss_categories(self, acc_map, periods, cat_levels=None):
+        # ONE block per category, exactly as defined on the P&L Categories page.
+        # A category may contain both income and expense accounts (e.g. Revenue
+        # holding Sales plus Opening Stock - Finished Goods as a deduction).
+        cats_dict = {}
+        cat_levels = cat_levels or {}
 
         for name, data in acc_map.items():
             if all(abs(v) < 0.01 for v in data['values']):
@@ -124,54 +144,61 @@ class ProfitLossReportGenerator:
 
             cat_name = data['meta']['account_name_of_catogory_PL'] or 'Uncategorized'
             is_income = data['meta']['account_income'] == 1
-            sort_order = data['meta']['account_hold_possion_PL'] or 999
+            sort_order = cat_levels.get(cat_name)
+            if sort_order is None:
+                try:
+                    sort_order = int(data['meta']['account_hold_possion_PL'])
+                except (TypeError, ValueError):
+                    sort_order = 999
             acc_sort = data['meta'].get('account_pl_sort')
 
-            target_dict = income_cats_dict if is_income else expense_cats_dict
-
-            if cat_name not in target_dict:
-                target_dict[cat_name] = {'name': cat_name, 'order': sort_order,
-                                         'is_income': is_income, 'accounts': []}
-
-            target_dict[cat_name]['accounts'].append({
+            if cat_name not in cats_dict:
+                cats_dict[cat_name] = {'name': cat_name, 'order': sort_order,
+                                       'has_income': False, 'has_expense': False,
+                                       'accounts': []}
+            cat = cats_dict[cat_name]
+            cat['has_income'] = cat['has_income'] or is_income
+            cat['has_expense'] = cat['has_expense'] or (not is_income)
+            cat['accounts'].append({
                 'name': name,
                 'amounts': data['values'],
-                'sort': acc_sort
+                'sort': acc_sort,
+                'is_income': is_income
             })
 
-        # Order accounts inside each category by their explicit position, then name
-        for d in (income_cats_dict, expense_cats_dict):
-            for cat in d.values():
-                cat['accounts'].sort(key=lambda a: (a['sort'] if a['sort'] is not None else 9999, a['name']))
+        for cat in cats_dict.values():
+            cat['accounts'].sort(key=lambda a: (a['sort'] if a['sort'] is not None else 9999, a['name']))
+            # A block that contains any income account renders income-style; expense
+            # accounts inside it are shown as deductions (negative), so the category
+            # total is the NET of the block. Pure-expense blocks stay positive/red.
+            cat['is_income'] = cat['has_income']
+            cat['mixed'] = cat['has_income'] and cat['has_expense']
 
-        income_categories = sorted(income_cats_dict.values(), key=lambda x: x['order'])
-        expense_categories = sorted(expense_cats_dict.values(), key=lambda x: x['order'])
-
-        # Unified statement order: the category holding level drives the WHOLE layout,
-        # so e.g. Manufacturing Account (level 1) can appear before Revenue (level 2).
-        all_categories = sorted(
-            list(income_cats_dict.values()) + list(expense_cats_dict.values()),
-            key=lambda x: (x['order'], 0 if x['is_income'] else 1, x['name'])
-        )
-
+        # The category holding level drives the WHOLE statement layout
+        all_categories = sorted(cats_dict.values(), key=lambda x: (x['order'], x['name']))
 
         total_income = [0.0] * len(periods)
         total_expense = [0.0] * len(periods)
 
-        for cat in income_categories:
+        for cat in all_categories:
             cat['total'] = [0.0] * len(periods)
             for acc in cat['accounts']:
+                # Global totals always split by the ACCOUNT's own type
+                for i, v in enumerate(acc['amounts']):
+                    if acc['is_income']:
+                        total_income[i] += v
+                    else:
+                        total_expense[i] += v
+                # Display: inside an income-style block, expense accounts are deductions
+                if cat['is_income'] and not acc['is_income']:
+                    acc['amounts'] = [-v for v in acc['amounts']]
                 for i, v in enumerate(acc['amounts']):
                     cat['total'][i] += v
-                    total_income[i] += v
 
-        for cat in expense_categories:
-            cat['total'] = [0.0] * len(periods)
-            for acc in cat['accounts']:
-                for i, v in enumerate(acc['amounts']):
-                    cat['total'][i] += v
-                    total_expense[i] += v
         net_profit = [i - e for i, e in zip(total_income, total_expense)]
+
+        income_categories = [c for c in all_categories if c['is_income']]
+        expense_categories = [c for c in all_categories if not c['is_income']]
 
         return {
             'income_categories': income_categories,

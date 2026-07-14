@@ -1808,27 +1808,66 @@ def edit_account(account_id):
                            currencies=currencies,
                            existing_accounts=existing_accounts)
 
+def _category_levels(table):
+    """Return {category_name: holding_level} from a categories table.
+    This is the AUTHORITATIVE holding level (the per-account copies in
+    new_account_table go stale when a category's level is edited later)."""
+    try:
+        rows = db.execute_query(f"SELECT name_of_category, holding_position FROM {table}") or []
+    except Exception:
+        return {}
+    out = {}
+    for r in rows:
+        try:
+            out[r['name_of_category']] = int(r['holding_position'])
+        except (TypeError, ValueError):
+            out[r['name_of_category']] = 9999
+    return out
+
+
 # --- Chart of Accounts ---
 @app.route('/chart_of_accounts')
 @login_required
 @has_permission('Access_Accounting')
 def chart_of_accounts():
     accounts = db.execute_query("""
-        SELECT *,
-            SUM(CASE WHEN account_name_of_catogory_PL IS NOT NULL AND account_name_of_catogory_PL != '' THEN 1 ELSE 0 END) OVER() as computed_pl_count,
-            SUM(CASE WHEN account_name_of_catogory_Balace_sheet IS NOT NULL AND account_name_of_catogory_Balace_sheet != '' THEN 1 ELSE 0 END) OVER() as computed_bs_count
-        FROM new_account_table
+        SELECT * FROM new_account_table
         WHERE account_active = 1
-    """)
+        ORDER BY account_name
+    """) or []
 
-    if accounts:
-        pl_count = int(accounts[0]['computed_pl_count'] or 0)
-        bs_count = int(accounts[0]['computed_bs_count'] or 0)
-    else:
-        pl_count = 0
-        bs_count = 0
+    pl_levels = _category_levels('`p&l_category`')
+    bs_levels = _category_levels('balance_sheet_category')
 
-    return render_template('chart_of_accounts.html', accounts=accounts, total_accounts=len(accounts), pl_count=pl_count, bs_count=bs_count)
+    def build_groups(accs, cat_field, levels, sort_field):
+        groups = {}
+        for a in accs:
+            cat = a.get(cat_field) or 'Uncategorized'
+            g = groups.setdefault(cat, {'name': cat, 'level': levels.get(cat), 'accounts': []})
+            g['accounts'].append(a)
+        for g in groups.values():
+            g['accounts'].sort(key=lambda a: (
+                a.get(sort_field) if a.get(sort_field) is not None else 9999,
+                a['account_name']))
+        return sorted(groups.values(),
+                      key=lambda g: (g['level'] if g['level'] is not None else 9999, g['name']))
+
+    pl_accounts = [a for a in accounts if a.get('account_name_of_catogory_PL')]
+    bs_accounts = [a for a in accounts
+                   if not a.get('account_name_of_catogory_PL')
+                   and a.get('account_name_of_catogory_Balace_sheet')]
+    other_accounts = [a for a in accounts
+                      if not a.get('account_name_of_catogory_PL')
+                      and not a.get('account_name_of_catogory_Balace_sheet')]
+
+    pl_groups = build_groups(pl_accounts, 'account_name_of_catogory_PL', pl_levels, 'account_pl_sort')
+    bs_groups = build_groups(bs_accounts, 'account_name_of_catogory_Balace_sheet', bs_levels, 'account_bs_sort')
+
+    return render_template('chart_of_accounts.html',
+                           pl_groups=pl_groups, bs_groups=bs_groups,
+                           other_accounts=other_accounts,
+                           total_accounts=len(accounts),
+                           pl_count=len(pl_accounts), bs_count=len(bs_accounts))
 
 # --- Add New Account ---
 @app.route('/add_new_account', methods=['GET', 'POST'])
@@ -6833,6 +6872,16 @@ def balance_sheet():
             cleaned_equity.append(e)
             total_equity += val
 
+    # Order categories by the AUTHORITATIVE holding level from balance_sheet_category
+    # (per-account level copies go stale when a category's level is edited later)
+    bs_levels = _category_levels('balance_sheet_category')
+
+    def _order_grouped(g):
+        return dict(sorted(g.items(), key=lambda kv: (bs_levels.get(kv[0], 9999), kv[0])))
+
+    grouped_assets = _order_grouped(grouped_assets)
+    grouped_liabilities = _order_grouped(grouped_liabilities)
+
     report_data = {
         'assets': grouped_assets,
         'liabilities': grouped_liabilities,
@@ -11133,12 +11182,31 @@ def pl_account_order():
         cat = r['cat'] or 'Uncategorized'
         if cat not in idx:
             idx[cat] = len(groups)
-            is_income = r['account_income'] == 1
             groups.append({'name': cat, 'pos': r['pos'],
-                           'type_label': 'INCOME' if is_income else 'EXPENSE',
-                           'color': '#107C10' if is_income else '#C42B1C',
+                           'has_income': False, 'has_expense': False,
                            'accounts': []})
-        groups[idx[cat]]['accounts'].append(r['account_name'])
+        g = groups[idx[cat]]
+        if r['account_income'] == 1:
+            g['has_income'] = True
+        else:
+            g['has_expense'] = True
+        g['accounts'].append(r['account_name'])
+
+    # Label reflects the actual contents: a category can hold both types (MIXED)
+    for g in groups:
+        if g['has_income'] and g['has_expense']:
+            g['type_label'], g['color'] = 'MIXED', '#D67E1A'
+        elif g['has_income']:
+            g['type_label'], g['color'] = 'INCOME', '#107C10'
+        else:
+            g['type_label'], g['color'] = 'EXPENSE', '#C42B1C'
+
+    # Holding level comes from the P&L Categories table (authoritative), not the
+    # stale per-account copies; categories not in the table go last with no badge
+    levels = _category_levels('`p&l_category`')
+    for g in groups:
+        g['pos'] = levels.get(g['name'])
+    groups.sort(key=lambda g: (g['pos'] if g['pos'] is not None else 9999, g['name']))
 
     return render_template('pl_account_order.html', groups=groups,
                            page_title='P&L Account Order',
@@ -11206,6 +11274,12 @@ def bs_account_order():
             groups.append({'name': cat, 'pos': r['pos'],
                            'type_label': label, 'color': color, 'accounts': []})
         groups[idx[cat]]['accounts'].append(r['account_name'])
+
+    # Authoritative holding level from the Balance Sheet Categories table
+    levels = _category_levels('balance_sheet_category')
+    for g in groups:
+        g['pos'] = levels.get(g['name'])
+    groups.sort(key=lambda g: (g['pos'] if g['pos'] is not None else 9999, g['name']))
 
     return render_template('pl_account_order.html', groups=groups,
                            page_title='Balance Sheet Account Order',

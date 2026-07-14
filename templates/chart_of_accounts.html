@@ -50,58 +50,111 @@
         </div>
     </div>
 
-    <!-- Account List Table -->
-    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
-        <div class="px-4 pt-4 pb-2">
-            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
-                <i class="fas fa-list me-1"></i> Account List
+    {% macro account_rows(groups) %}
+        {% for g in groups %}
+        <tr>
+            <td colspan="3" style="background:#f8f9fa;padding:.5rem 1.25rem;border-bottom:1px solid #e9ecef;">
+                <span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:#605E5C;color:#fff;font-size:.65rem;font-weight:700;margin-right:8px;">{{ g.level if g.level is not none else '–' }}</span>
+                <span style="font-size:.8rem;font-weight:700;color:#495057;">{{ g.name }}</span>
+                <span style="font-size:.7rem;color:#a0aec0;margin-left:6px;">{{ g.accounts|length }} account{{ 's' if g.accounts|length != 1 }}</span>
+            </td>
+        </tr>
+        {% for acc in g.accounts %}
+        <tr style="border-bottom:1px solid #f1f3f5;">
+            <td style="padding:.6rem 1.25rem .6rem 3rem;font-weight:600;color:#1a1a2e;">{{ acc.account_name }}</td>
+            <td style="padding:.6rem 1rem;">
+                {% if acc.account_basment == 'DR' %}
+                    <span class="badge" style="background:#e8f4fd;color:#0078D4;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Debit</span>
+                {% else %}
+                    <span class="badge" style="background:#e8f9e8;color:#107C10;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Credit</span>
+                {% endif %}
+            </td>
+            <td style="padding:.6rem 1rem;" class="text-center">
+                <a href="/edit_account/{{ acc.id }}" class="btn btn-sm btn-outline-primary" style="border-radius:6px;font-size:.75rem;" title="Edit">
+                    <i class="fas fa-edit"></i>
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+        {% endfor %}
+    {% endmacro %}
+
+    <!-- P&L Accounts -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-3 d-flex align-items-center" style="border-bottom:1px solid #f0f0f0;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#107C10;">
+                <i class="fas fa-chart-line me-1"></i> Profit &amp; Loss Accounts ({{ pl_count }})
             </div>
+            <a href="/pl_account_order" class="ms-auto" style="font-size:.75rem;font-weight:600;color:#107C10;text-decoration:none;">
+                <i class="fas fa-sort-amount-down me-1"></i> Arrange Order
+            </a>
         </div>
         <div class="table-responsive">
             <table class="table table-hover mb-0 align-middle">
                 <thead style="background:#f8f9fa;">
                     <tr>
-                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1.25rem;">Account Name</th>
-                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Type (P&amp;L / BS)</th>
-                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Category</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1.25rem;">Category / Account</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Basement</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;" class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for acc in accounts %}
-                    <tr style="border-bottom:1px solid #f1f3f5;">
-                        <td style="padding:.75rem 1.25rem;font-weight:600;color:#1a1a2e;">{{ acc.account_name }}</td>
-                        <td style="padding:.75rem 1rem;">
-                            {% if acc.account_name_of_catogory_PL %}
-                                <span class="badge" style="background:#e8f4fd;color:#0078D4;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Profit &amp; Loss</span>
-                            {% elif acc.account_name_of_catogory_Balace_sheet %}
-                                <span class="badge" style="background:#f0f4ff;color:#3949ab;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Balance Sheet</span>
-                            {% else %}
-                                <span class="text-muted" style="font-size:.8rem;">—</span>
-                            {% endif %}
-                        </td>
-                        <td style="padding:.75rem 1rem;color:#605E5C;font-size:.85rem;">
-                            {{ acc.account_name_of_catogory_PL if acc.account_name_of_catogory_PL else acc.account_name_of_catogory_Balace_sheet }}
-                        </td>
-                        <td style="padding:.75rem 1rem;">
-                            {% if acc.account_basment == 'DR' %}
-                                <span class="badge" style="background:#e8f4fd;color:#0078D4;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Debit</span>
-                            {% else %}
-                                <span class="badge" style="background:#e8f9e8;color:#107C10;font-size:.72rem;font-weight:600;border-radius:6px;padding:.3em .6em;">Credit</span>
-                            {% endif %}
-                        </td>
-                        <td style="padding:.75rem 1rem;" class="text-center">
-                            <a href="/edit_account/{{ acc.id }}" class="btn btn-sm btn-outline-primary" style="border-radius:6px;font-size:.75rem;" title="Edit">
-                                <i class="fas fa-edit"></i>
-                            </a>
-                        </td>
-                    </tr>
-                    {% else %}
+                    {{ account_rows(pl_groups) }}
+                    {% if not pl_groups %}
+                    <tr><td colspan="3" class="text-center text-muted py-4" style="font-size:.85rem;">No P&amp;L accounts.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Balance Sheet Accounts -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 pt-4 pb-3 d-flex align-items-center" style="border-bottom:1px solid #f0f0f0;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#0078D4;">
+                <i class="fas fa-balance-scale me-1"></i> Balance Sheet Accounts ({{ bs_count }})
+            </div>
+            <a href="/bs_account_order" class="ms-auto" style="font-size:.75rem;font-weight:600;color:#0078D4;text-decoration:none;">
+                <i class="fas fa-sort-amount-down me-1"></i> Arrange Order
+            </a>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead style="background:#f8f9fa;">
                     <tr>
-                        <td colspan="5" class="text-center text-muted py-5" style="font-size:.85rem;">
-                            <i class="fas fa-inbox fa-2x mb-2 d-block opacity-25"></i>
-                            No accounts found. <a href="/add_new_account" class="text-decoration-none">Add your first account.</a>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1.25rem;">Category / Account</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;">Basement</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;border-bottom:1px solid #e2e8f0;padding:.75rem 1rem;" class="text-center">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ account_rows(bs_groups) }}
+                    {% if not bs_groups %}
+                    <tr><td colspan="3" class="text-center text-muted py-4" style="font-size:.85rem;">No Balance Sheet accounts.</td></tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Unassigned Accounts -->
+    {% if other_accounts %}
+    <div style="border-radius:12px;border:1px solid #ffe082;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fffdf5;overflow:hidden;">
+        <div class="px-4 pt-4 pb-3" style="border-bottom:1px solid #f5ecd0;">
+            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#8a6d00;">
+                <i class="fas fa-exclamation-triangle me-1"></i> Unassigned Accounts ({{ other_accounts|length }}) — set a P&amp;L or Balance Sheet category so they appear on reports
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <tbody>
+                    {% for acc in other_accounts %}
+                    <tr style="border-bottom:1px solid #f5ecd0;">
+                        <td style="padding:.6rem 1.25rem;font-weight:600;color:#1a1a2e;">{{ acc.account_name }}</td>
+                        <td style="padding:.6rem 1rem;" class="text-end">
+                            <a href="/edit_account/{{ acc.id }}" class="btn btn-sm btn-outline-primary" style="border-radius:6px;font-size:.75rem;" title="Edit">
+                                <i class="fas fa-edit"></i> Assign Category
+                            </a>
                         </td>
                     </tr>
                     {% endfor %}
@@ -109,6 +162,7 @@
             </table>
         </div>
     </div>
+    {% endif %}
 
 </div>
 {% endblock %}
