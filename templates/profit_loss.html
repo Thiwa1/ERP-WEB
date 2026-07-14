@@ -69,6 +69,9 @@
         </div>
         {% if report_data %}
         <div class="ms-auto d-flex gap-2 no-print">
+            <a href="/pl_account_order" class="win11-btn win11-btn-secondary" style="text-decoration:none;">
+                <i class="fas fa-sort-amount-down me-1"></i> Arrange Order
+            </a>
             <a href="/profit_loss?from_date={{ default_start }}&to_date={{ default_end }}&download=csv"
                class="win11-btn win11-btn-secondary" style="text-decoration:none;">
                 <i class="fas fa-file-csv me-1"></i> Export CSV
@@ -160,16 +163,18 @@
                     </tr>
                 </thead>
                 <tbody>
-                    <!-- INCOME SECTION -->
-                    <tr class="pl-section-income">
-                        <td colspan="{{ periods|length + 1 }}"><i class="fas fa-arrow-up me-2"></i>Income</td>
-                    </tr>
-                    {% for cat in report_data.income_categories %}
-                        <tr>
-                            <td colspan="{{ periods|length + 1 }}" class="pl-category-row">{{ cat.name }}</td>
+                    <!-- CATEGORIES in statement order: the category Holding Level drives the
+                         whole layout (e.g. Manufacturing Account level 1 before Revenue level 2) -->
+                    {% set cats = report_data.all_categories or (report_data.income_categories + report_data.expense_categories) %}
+                    {% for cat in cats %}
+                        <tr class="{{ 'pl-section-income' if cat.is_income else 'pl-section-expense' }}">
+                            <td colspan="{{ periods|length + 1 }}">
+                                <i class="fas {{ 'fa-arrow-up' if cat.is_income else 'fa-arrow-down' }} me-2"></i>{{ cat.name }}
+                                <span style="font-weight:500;opacity:.65;font-size:.65rem;margin-left:6px;">{{ 'INCOME' if cat.is_income else 'EXPENSE' }}</span>
+                            </td>
                         </tr>
                         {% for acc in cat.accounts %}
-                        <tr class="pl-income-row">
+                        <tr class="{{ 'pl-income-row' if cat.is_income else 'pl-expense-row' }}">
                             <td>{{ acc.name }}</td>
                             {% for val in acc.amounts %}
                             <td class="text-end amount-cell">{{ val|currency }}</td>
@@ -183,36 +188,14 @@
                             {% endfor %}
                         </tr>
                     {% endfor %}
+
+                    <!-- SUMMARY -->
                     <tr class="pl-total-income">
                         <td class="text-end pe-3">TOTAL INCOME</td>
                         {% for val in report_data.total_income %}
                         <td class="text-end amount-cell">{{ val|currency }}</td>
                         {% endfor %}
                     </tr>
-
-                    <!-- EXPENSE SECTION -->
-                    <tr class="pl-section-expense">
-                        <td colspan="{{ periods|length + 1 }}"><i class="fas fa-arrow-down me-2"></i>Expenses</td>
-                    </tr>
-                    {% for cat in report_data.expense_categories %}
-                        <tr>
-                            <td colspan="{{ periods|length + 1 }}" class="pl-category-row">{{ cat.name }}</td>
-                        </tr>
-                        {% for acc in cat.accounts %}
-                        <tr class="pl-expense-row">
-                            <td>{{ acc.name }}</td>
-                            {% for val in acc.amounts %}
-                            <td class="text-end amount-cell">{{ val|currency }}</td>
-                            {% endfor %}
-                        </tr>
-                        {% endfor %}
-                        <tr class="pl-cat-total">
-                            <td class="text-end pe-3">{{ cat.name }} Total</td>
-                            {% for val in cat.total %}
-                            <td class="text-end amount-cell">{{ val|currency }}</td>
-                            {% endfor %}
-                        </tr>
-                    {% endfor %}
                     <tr class="pl-total-expense">
                         <td class="text-end pe-3">TOTAL EXPENSES</td>
                         {% for val in report_data.total_expense %}

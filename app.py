@@ -11045,24 +11045,26 @@ def profit_loss():
         flash(f'Error generating report: {str(e)}', 'danger')
         return redirect(url_for('index'))
 
-    # CSV export
+    # CSV export — walk the structured report explicitly (categories in statement order)
     if request.args.get('download') == 'csv':
         si = io.StringIO()
         cw = csv.writer(si)
         cw.writerow(['Profit & Loss Report'])
         cw.writerow([f'Period: {default_start} to {default_end}'])
         cw.writerow([])
-        cw.writerow(['Category', 'Account', 'Amount'])
-        for section_name, section in report_data.items():
-            if isinstance(section, dict):
-                for cat, items in section.items():
-                    if isinstance(items, list):
-                        for item in items:
-                            cw.writerow([section_name, item.get('name', cat), f"{float(item.get('amount', 0)):.2f}"])
-                    else:
-                        cw.writerow([section_name, cat, f"{float(items):.2f}"])
-            else:
-                cw.writerow([section_name, '', f"{float(section):.2f}"])
+        n_periods = max(1, len(periods))
+        cw.writerow(['Type', 'Category', 'Account'] + [f'Period {i+1}' for i in range(n_periods)])
+        cats = report_data.get('all_categories') or \
+               (report_data.get('income_categories', []) + report_data.get('expense_categories', []))
+        for cat in cats:
+            kind = 'Income' if cat.get('is_income') else 'Expense'
+            for acc in cat.get('accounts', []):
+                cw.writerow([kind, cat['name'], acc['name']] + [f"{float(v):.2f}" for v in acc['amounts']])
+            cw.writerow([kind, cat['name'], f"{cat['name']} Total"] + [f"{float(v):.2f}" for v in cat.get('total', [])])
+        cw.writerow([])
+        cw.writerow(['', '', 'TOTAL INCOME'] + [f"{float(v):.2f}" for v in report_data.get('total_income', [])])
+        cw.writerow(['', '', 'TOTAL EXPENSES'] + [f"{float(v):.2f}" for v in report_data.get('total_expense', [])])
+        cw.writerow(['', '', 'NET PROFIT / (LOSS)'] + [f"{float(v):.2f}" for v in report_data.get('net_profit', [])])
         output = make_response(si.getvalue())
         output.headers["Content-Disposition"] = f"attachment; filename=ProfitLoss_{default_start}_{default_end}.csv"
         output.headers["Content-type"] = "text/csv"
@@ -11073,6 +11075,57 @@ def profit_loss():
                            report_data=report_data,
                            default_start=default_start,
                            default_end=default_end)
+
+
+# --- P&L Account Order (friendly arrangement of accounts within categories) ---
+@app.route('/pl_account_order', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def pl_account_order():
+    if request.method == 'POST':
+        try:
+            items = json.loads(request.form.get('order_json') or '[]')
+            for it in items:
+                name = (it.get('name') or '').strip()
+                sort = it.get('sort')
+                if not name:
+                    continue
+                db.execute_query(
+                    "UPDATE new_account_table SET account_pl_sort = %s WHERE account_name = %s",
+                    (sort, name), commit=True
+                )
+            flash('P&L account order saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving order: {e}', 'danger')
+        return redirect(url_for('pl_account_order'))
+
+    try:
+        rows = db.execute_query("""
+            SELECT account_name, account_name_of_catogory_PL AS cat,
+                   account_hold_possion_PL AS pos, account_income, account_pl_sort
+            FROM new_account_table
+            WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+            ORDER BY account_hold_possion_PL, COALESCE(account_pl_sort, 9999), account_name
+        """) or []
+    except Exception:
+        rows = db.execute_query("""
+            SELECT account_name, account_name_of_catogory_PL AS cat,
+                   account_hold_possion_PL AS pos, account_income, NULL AS account_pl_sort
+            FROM new_account_table
+            WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+            ORDER BY account_hold_possion_PL, account_name
+        """) or []
+
+    groups = []
+    idx = {}
+    for r in rows:
+        cat = r['cat'] or 'Uncategorized'
+        if cat not in idx:
+            idx[cat] = len(groups)
+            groups.append({'name': cat, 'pos': r['pos'], 'is_income': r['account_income'] == 1, 'accounts': []})
+        groups[idx[cat]]['accounts'].append(r['account_name'])
+
+    return render_template('pl_account_order.html', groups=groups)
 
 @app.route('/api/dashboard/monthly_revenue')
 @login_required

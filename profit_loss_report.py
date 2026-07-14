@@ -48,12 +48,23 @@ class ProfitLossReportGenerator:
 
     def _fetch_profit_loss_accounts(self, cursor, periods):
         acc_map = {}
-        cursor.execute("""
-            SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL, account_income, account_expenses
-            FROM new_account_table
-            WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
-            ORDER BY account_hold_possion_PL, account_name
-        """)
+        try:
+            cursor.execute("""
+                SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL,
+                       account_income, account_expenses, account_pl_sort
+                FROM new_account_table
+                WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+                ORDER BY account_hold_possion_PL, COALESCE(account_pl_sort, 9999), account_name
+            """)
+        except Exception:
+            # account_pl_sort column not migrated yet — fall back to the old ordering
+            cursor.execute("""
+                SELECT account_name, account_name_of_catogory_PL, account_hold_possion_PL,
+                       account_income, account_expenses, NULL AS account_pl_sort
+                FROM new_account_table
+                WHERE (account_income = 1 OR account_expenses = 1) AND account_active = 1
+                ORDER BY account_hold_possion_PL, account_name
+            """)
         all_accounts = cursor.fetchall()
 
         for acc in all_accounts:
@@ -114,19 +125,34 @@ class ProfitLossReportGenerator:
             cat_name = data['meta']['account_name_of_catogory_PL'] or 'Uncategorized'
             is_income = data['meta']['account_income'] == 1
             sort_order = data['meta']['account_hold_possion_PL'] or 999
+            acc_sort = data['meta'].get('account_pl_sort')
 
             target_dict = income_cats_dict if is_income else expense_cats_dict
 
             if cat_name not in target_dict:
-                target_dict[cat_name] = {'name': cat_name, 'order': sort_order, 'accounts': []}
+                target_dict[cat_name] = {'name': cat_name, 'order': sort_order,
+                                         'is_income': is_income, 'accounts': []}
 
             target_dict[cat_name]['accounts'].append({
                 'name': name,
-                'amounts': data['values']
+                'amounts': data['values'],
+                'sort': acc_sort
             })
+
+        # Order accounts inside each category by their explicit position, then name
+        for d in (income_cats_dict, expense_cats_dict):
+            for cat in d.values():
+                cat['accounts'].sort(key=lambda a: (a['sort'] if a['sort'] is not None else 9999, a['name']))
 
         income_categories = sorted(income_cats_dict.values(), key=lambda x: x['order'])
         expense_categories = sorted(expense_cats_dict.values(), key=lambda x: x['order'])
+
+        # Unified statement order: the category holding level drives the WHOLE layout,
+        # so e.g. Manufacturing Account (level 1) can appear before Revenue (level 2).
+        all_categories = sorted(
+            list(income_cats_dict.values()) + list(expense_cats_dict.values()),
+            key=lambda x: (x['order'], 0 if x['is_income'] else 1, x['name'])
+        )
 
 
         total_income = [0.0] * len(periods)
@@ -150,6 +176,7 @@ class ProfitLossReportGenerator:
         return {
             'income_categories': income_categories,
             'expense_categories': expense_categories,
+            'all_categories': all_categories,
             'total_income': total_income,
             'total_expense': total_expense,
             'net_profit': net_profit

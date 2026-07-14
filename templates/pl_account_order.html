@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+
+{% block title %}P&L Account Order{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+    <!-- Page Header -->
+    <div class="d-flex align-items-center gap-3 mb-4">
+        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#107C10,#0a5c0a);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+            <i class="fas fa-sort-amount-down"></i>
+        </div>
+        <div>
+            <h5 class="mb-0 fw-bold" style="color:#1a1a2e;">P&amp;L Account Order</h5>
+            <div style="font-size:.78rem;color:#605E5C;">Arrange how accounts appear inside each category on the Profit &amp; Loss</div>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+            <a href="/profit_loss" class="btn btn-sm" style="border:1px solid #e2e8f0;border-radius:8px;color:#374151;font-weight:600;font-size:.82rem;padding:.5rem 1rem;background:#fff;text-decoration:none;">
+                <i class="fas fa-arrow-left me-1" style="font-size:.75rem;"></i> Back to P&amp;L
+            </a>
+            <button type="button" onclick="saveOrder()" id="saveOrderBtn"
+                    style="background:#107C10;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.82rem;padding:.5rem 1.4rem;cursor:pointer;">
+                <i class="fas fa-save me-1"></i> Save Order
+            </button>
+        </div>
+    </div>
+
+    <div class="alert alert-info d-flex align-items-start gap-2" style="font-size:.83rem;border-radius:10px;">
+        <i class="fas fa-info-circle mt-1"></i>
+        <div>
+            Use the <b>▲ ▼ arrows</b> to move accounts up or down inside their category, then click <b>Save Order</b>.
+            Categories themselves are ordered by their <b>Holding Level</b> (set on the P&amp;L Categories page), and that
+            level now controls the whole statement — e.g. Manufacturing Account (level 1) prints before Revenue (level 2).
+        </div>
+    </div>
+
+    <form id="orderForm" method="POST" action="/pl_account_order" style="display:none;">
+        <input type="hidden" name="order_json" id="orderJson">
+    </form>
+
+    <div class="row g-4">
+        {% for g in groups %}
+        <div class="col-lg-6">
+            <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+                <div class="px-4 py-3 d-flex align-items-center gap-2"
+                     style="background:{{ '#f0fff4' if g.is_income else '#fff5f5' }};border-bottom:1px solid #f0f0f0;">
+                    <span style="width:22px;height:22px;border-radius:50%;background:{{ '#107C10' if g.is_income else '#C42B1C' }};color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:.68rem;font-weight:700;flex-shrink:0;">{{ g.pos or '–' }}</span>
+                    <span style="font-size:.85rem;font-weight:700;color:#1a1a2e;">{{ g.name }}</span>
+                    <span class="ms-auto" style="font-size:.68rem;font-weight:700;letter-spacing:.5px;color:{{ '#107C10' if g.is_income else '#C42B1C' }};">
+                        {{ 'INCOME' if g.is_income else 'EXPENSE' }}
+                    </span>
+                </div>
+                <div class="acc-list" data-cat="{{ g.name }}">
+                    {% for acc in g.accounts %}
+                    <div class="acc-row d-flex align-items-center gap-2 px-4 py-2" data-name="{{ acc }}"
+                         style="border-bottom:1px solid #f5f5f5;">
+                        <span class="acc-no" style="font-family:monospace;font-size:.75rem;color:#a0aec0;width:22px;">{{ loop.index }}</span>
+                        <span style="font-size:.86rem;color:#374151;flex:1;">{{ acc }}</span>
+                        <button type="button" onclick="moveRow(this, -1)" title="Move up"
+                                style="width:26px;height:26px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#374151;cursor:pointer;font-size:.7rem;">▲</button>
+                        <button type="button" onclick="moveRow(this, 1)" title="Move down"
+                                style="width:26px;height:26px;border-radius:6px;border:1px solid #e2e8f0;background:#fff;color:#374151;cursor:pointer;font-size:.7rem;">▼</button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="col-12 text-center py-5" style="color:#a0aec0;">
+            <i class="fas fa-inbox fa-2x mb-3 d-block" style="opacity:.35;"></i>
+            No P&amp;L accounts found.
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<script>
+function moveRow(btn, dir) {
+    const row = btn.closest('.acc-row');
+    const list = row.parentElement;
+    if (dir < 0 && row.previousElementSibling) {
+        list.insertBefore(row, row.previousElementSibling);
+    } else if (dir > 0 && row.nextElementSibling) {
+        list.insertBefore(row.nextElementSibling, row);
+    }
+    renumber(list);
+    // Flash the moved row so the change is easy to follow
+    row.style.background = '#fffbe6';
+    setTimeout(() => { row.style.background = ''; }, 400);
+}
+
+function renumber(list) {
+    list.querySelectorAll('.acc-row').forEach((r, i) => {
+        r.querySelector('.acc-no').textContent = i + 1;
+    });
+}
+
+function saveOrder() {
+    const items = [];
+    document.querySelectorAll('.acc-list').forEach(list => {
+        list.querySelectorAll('.acc-row').forEach((row, i) => {
+            items.push({ name: row.getAttribute('data-name'), sort: i + 1 });
+        });
+    });
+    document.getElementById('orderJson').value = JSON.stringify(items);
+    const btn = document.getElementById('saveOrderBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Saving…';
+    document.getElementById('orderForm').submit();
+}
+</script>
+{% endblock %}
