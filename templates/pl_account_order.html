@@ -34,6 +34,60 @@
         </div>
     </div>
 
+    <!-- Custom Subtotal Rows -->
+    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+        <div class="px-4 py-3 d-flex align-items-center gap-2" style="background:#EEF2FF;border-bottom:1px solid #e0e7ff;">
+            <i class="fas fa-equals" style="color:#3730a3;font-size:.8rem;"></i>
+            <span style="font-size:.72rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#3730a3;">Custom Subtotal Rows</span>
+            <span style="font-size:.72rem;color:#6b7280;margin-left:6px;">e.g. "Gross Profit" — prints after the chosen category showing the running result down to that point</span>
+        </div>
+        <div class="p-4">
+            <form method="POST" action="/report_subtotals/add" class="row g-2 align-items-end mb-3">
+                <input type="hidden" name="report_type" value="{{ report_type or 'PL' }}">
+                <input type="hidden" name="next" value="{{ request.path }}">
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:.78rem;font-weight:700;color:#374151;">Subtotal Label</label>
+                    <input type="text" name="label" class="form-control form-control-sm" placeholder="e.g. Gross Profit" required style="border-radius:8px;">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" style="font-size:.78rem;font-weight:700;color:#374151;">Show After Category</label>
+                    <select name="after_category" class="form-select form-select-sm" required style="border-radius:8px;">
+                        <option value="">-- Select Category --</option>
+                        {% for g in groups %}
+                        <option value="{{ g.name }}">{{ g.pos if g.pos is not none else '–' }} · {{ g.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-sm w-100 fw-bold text-white" style="background:#3730a3;border:none;border-radius:8px;">
+                        <i class="fas fa-plus me-1"></i> Add
+                    </button>
+                </div>
+            </form>
+
+            {% if subtotal_list %}
+            <div class="d-flex flex-wrap gap-2">
+                {% for st in subtotal_list %}
+                <div class="d-flex align-items-center gap-2 px-3 py-2" style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
+                    <span style="font-size:.82rem;font-weight:700;color:#3730a3;">{{ st.label }}</span>
+                    <span style="font-size:.75rem;color:#94a3b8;">after {{ st.after_category }}</span>
+                    <form method="POST" action="/report_subtotals/delete" class="d-inline m-0">
+                        <input type="hidden" name="id" value="{{ st.id }}">
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <button type="submit" title="Remove"
+                                style="border:none;background:transparent;color:#dc2626;cursor:pointer;font-size:.78rem;padding:0 2px;">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </form>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div style="font-size:.8rem;color:#94a3b8;font-style:italic;">No custom subtotals yet.</div>
+            {% endif %}
+        </div>
+    </div>
+
     <form id="orderForm" method="POST" action="{{ save_url or '/pl_account_order' }}" style="display:none;">
         <input type="hidden" name="order_json" id="orderJson">
     </form>

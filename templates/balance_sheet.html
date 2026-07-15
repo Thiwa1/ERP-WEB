@@ -116,6 +116,12 @@
                                 <td class="num-cell">{{ acc.balance|currency }}</td>
                             </tr>
                             {% endfor %}
+                            {% for st in (bs_subtotals.assets.get(category, []) if bs_subtotals is defined else []) %}
+                            <tr>
+                                <td class="text-end pe-3" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;padding:.5rem 1rem;">{{ st.label }}</td>
+                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ st.value|currency }}</td>
+                            </tr>
+                            {% endfor %}
                         {% endfor %}
                         </tbody>
                         <tfoot>
@@ -154,6 +160,12 @@
                             <tr class="account-row">
                                 <td>{{ acc.name }}</td>
                                 <td class="num-cell">{{ acc.balance|currency }}</td>
+                            </tr>
+                            {% endfor %}
+                            {% for st in (bs_subtotals.liabilities.get(category, []) if bs_subtotals is defined else []) %}
+                            <tr>
+                                <td class="text-end pe-3" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;padding:.5rem 1rem;">{{ st.label }}</td>
+                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ st.value|currency }}</td>
                             </tr>
                             {% endfor %}
                             {% endfor %}

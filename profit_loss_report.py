@@ -16,6 +16,7 @@ class ProfitLossReportGenerator:
         try:
             acc_map = self._fetch_profit_loss_accounts(cursor, periods)
             cat_levels = self._fetch_pl_category_levels(cursor)
+            subtotal_defs = self._fetch_subtotal_defs(cursor)
             if not periods:
                 return periods, {}, '', ''
             acc_map = self._fetch_profit_loss_data(cursor, periods, acc_map)
@@ -23,7 +24,7 @@ class ProfitLossReportGenerator:
             cursor.close()
             conn.close()
 
-        report_data = self._process_profit_loss_categories(acc_map, periods, cat_levels)
+        report_data = self._process_profit_loss_categories(acc_map, periods, cat_levels, subtotal_defs)
 
         default_start = date.today().replace(day=1).strftime('%Y-%m-%d')
         default_end = date.today().strftime('%Y-%m-%d')
@@ -137,12 +138,25 @@ class ProfitLossReportGenerator:
         except Exception:
             return {}
 
-    def _process_profit_loss_categories(self, acc_map, periods, cat_levels=None):
+    def _fetch_subtotal_defs(self, cursor):
+        """Custom subtotal rows: {after_category: [labels]} for the P&L."""
+        try:
+            cursor.execute(
+                "SELECT after_category, label FROM report_subtotals WHERE report_type = 'PL' ORDER BY id")
+            out = {}
+            for r in cursor.fetchall():
+                out.setdefault(r['after_category'], []).append(r['label'])
+            return out
+        except Exception:
+            return {}
+
+    def _process_profit_loss_categories(self, acc_map, periods, cat_levels=None, subtotal_defs=None):
         # ONE block per category, exactly as defined on the P&L Categories page.
         # A category may contain both income and expense accounts (e.g. Revenue
         # holding Sales plus Opening Stock - Finished Goods as a deduction).
         cats_dict = {}
         cat_levels = cat_levels or {}
+        subtotal_defs = subtotal_defs or {}
 
         for name, data in acc_map.items():
             if all(abs(v) < 0.01 for v in data['values']):
@@ -185,6 +199,7 @@ class ProfitLossReportGenerator:
 
         total_income = [0.0] * len(periods)
         total_expense = [0.0] * len(periods)
+        running = [0.0] * len(periods)  # cumulative income - expense down the statement
 
         for cat in all_categories:
             cat['total'] = [0.0] * len(periods)
@@ -200,6 +215,13 @@ class ProfitLossReportGenerator:
                     acc['amounts'] = [-v for v in acc['amounts']]
                 for i, v in enumerate(acc['amounts']):
                     cat['total'][i] += v
+
+            # Custom subtotal rows: the running result from the top of the statement
+            # down to (and including) this category — e.g. "Gross Profit"
+            for i in range(len(periods)):
+                running[i] += cat['total'][i] if cat['is_income'] else -cat['total'][i]
+            cat['subtotal_rows'] = [{'label': lbl, 'amounts': list(running)}
+                                    for lbl in subtotal_defs.get(cat['name'], [])]
 
         net_profit = [i - e for i, e in zip(total_income, total_expense)]
 

@@ -42,6 +42,9 @@
     .pl-total-expense td { background: #ffebee; font-weight: 700;
         border-top: 2px solid #f5c6c6; padding: .6rem 1rem; }
     .pl-total-expense td:not(:first-child) { color: #C42B1C; }
+    .pl-subtotal-row td { background: #EEF2FF; font-weight: 800; color: #3730a3;
+        border-top: 2px solid #c7d2fe; border-bottom: 2px solid #c7d2fe;
+        padding: .55rem 1rem; font-size: .9rem; }
     .pl-net-profit td { background: #EFF6FF; font-weight: 800; font-size: 1rem;
         color: var(--accent-color); border-top: 3px solid #90caf9;
         border-bottom: 3px solid #90caf9; padding: .75rem 1rem; }
@@ -190,6 +193,15 @@
                             <td class="text-end amount-cell">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
+                        {# Custom subtotal rows: running result down to this category #}
+                        {% for st in cat.subtotal_rows or [] %}
+                        <tr class="pl-subtotal-row">
+                            <td class="text-end pe-3">{{ st.label }}</td>
+                            {% for val in st.amounts %}
+                            <td class="text-end amount-cell">{{ val|currency }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
                     {% endfor %}
 
                     <!-- SUMMARY -->

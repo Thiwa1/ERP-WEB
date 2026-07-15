@@ -6882,6 +6882,24 @@ def balance_sheet():
     grouped_assets = _order_grouped(grouped_assets)
     grouped_liabilities = _order_grouped(grouped_liabilities)
 
+    # Custom subtotal rows: cumulative from the top of the side (assets or
+    # liabilities) down to the chosen category
+    bs_sub_defs = _report_subtotals('BS')
+
+    def _cumulative_subtotals(grouped):
+        subs = {}
+        run = 0.0
+        for cat_name, accs in grouped.items():
+            run += sum(a['balance'] for a in accs)
+            if cat_name in bs_sub_defs:
+                subs[cat_name] = [{'label': lbl, 'value': run} for lbl in bs_sub_defs[cat_name]]
+        return subs
+
+    bs_subtotals = {
+        'assets': _cumulative_subtotals(grouped_assets),
+        'liabilities': _cumulative_subtotals(grouped_liabilities)
+    }
+
     report_data = {
         'assets': grouped_assets,
         'liabilities': grouped_liabilities,
@@ -6895,7 +6913,8 @@ def balance_sheet():
         'retained_earnings': retained_earnings
     }
 
-    return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data, totals=totals)
+    return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data,
+                           totals=totals, bs_subtotals=bs_subtotals)
 
 # --- Cash Flow ---
 
@@ -11121,6 +11140,8 @@ def profit_loss():
             for acc in cat.get('accounts', []):
                 cw.writerow([kind, cat['name'], acc['name']] + [f"{float(v):.2f}" for v in acc['amounts']])
             cw.writerow([kind, cat['name'], f"{cat['name']} Total"] + [f"{float(v):.2f}" for v in cat.get('total', [])])
+            for strow in cat.get('subtotal_rows', []):
+                cw.writerow(['Subtotal', '', strow['label']] + [f"{float(v):.2f}" for v in strow['amounts']])
         cw.writerow([])
         cw.writerow(['', '', 'TOTAL INCOME'] + [f"{float(v):.2f}" for v in report_data.get('total_income', [])])
         cw.writerow(['', '', 'TOTAL EXPENSES'] + [f"{float(v):.2f}" for v in report_data.get('total_expense', [])])
@@ -11137,6 +11158,57 @@ def profit_loss():
                            report_data=report_data,
                            default_start=default_start,
                            default_end=default_end)
+
+
+# --- Custom subtotal rows for P&L / Balance Sheet (e.g. Gross Profit) ---
+def _report_subtotals(report_type):
+    """Return {after_category: [labels]} of custom subtotal rows for a report."""
+    try:
+        rows = db.execute_query(
+            "SELECT after_category, label FROM report_subtotals WHERE report_type = %s ORDER BY id",
+            (report_type,)) or []
+    except Exception:
+        return {}
+    out = {}
+    for r in rows:
+        out.setdefault(r['after_category'], []).append(r['label'])
+    return out
+
+
+@app.route('/report_subtotals/add', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def report_subtotals_add():
+    rt = (request.form.get('report_type') or '').strip().upper()
+    label = (request.form.get('label') or '').strip()
+    after_cat = (request.form.get('after_category') or '').strip()
+    nxt = request.form.get('next') or url_for('pl_account_order')
+    if rt in ('PL', 'BS') and label and after_cat:
+        try:
+            db.execute_query(
+                "INSERT INTO report_subtotals (report_type, label, after_category) VALUES (%s, %s, %s)",
+                (rt, label, after_cat), commit=True)
+            flash(f'Subtotal "{label}" added after {after_cat}.', 'success')
+        except Exception as e:
+            flash(f'Error adding subtotal: {e}', 'danger')
+    else:
+        flash('A label and a category are required.', 'warning')
+    return redirect(nxt)
+
+
+@app.route('/report_subtotals/delete', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def report_subtotals_delete():
+    sub_id = request.form.get('id')
+    nxt = request.form.get('next') or url_for('pl_account_order')
+    if sub_id:
+        try:
+            db.execute_query("DELETE FROM report_subtotals WHERE id = %s", (sub_id,), commit=True)
+            flash('Subtotal removed.', 'success')
+        except Exception as e:
+            flash(f'Error removing subtotal: {e}', 'danger')
+    return redirect(nxt)
 
 
 # --- P&L Account Order (friendly arrangement of accounts within categories) ---
@@ -11210,12 +11282,19 @@ def pl_account_order():
         g['pos'] = levels.get(g['name'])
     groups.sort(key=lambda g: (g['pos'] if g['pos'] is not None else 9999, g['name']))
 
+    try:
+        subtotal_list = db.execute_query(
+            "SELECT id, label, after_category FROM report_subtotals WHERE report_type='PL' ORDER BY id") or []
+    except Exception:
+        subtotal_list = []
+
     return render_template('pl_account_order.html', groups=groups,
                            page_title='P&L Account Order',
                            page_subtitle='Arrange how accounts appear inside each category on the Profit & Loss',
                            back_url='/profit_loss', back_label='Back to P&L',
                            save_url='/pl_account_order',
-                           categories_page='P&L Categories')
+                           categories_page='P&L Categories',
+                           report_type='PL', subtotal_list=subtotal_list)
 
 
 @app.route('/bs_account_order', methods=['GET', 'POST'])
@@ -11283,12 +11362,19 @@ def bs_account_order():
         g['pos'] = levels.get(g['name'])
     groups.sort(key=lambda g: (g['pos'] if g['pos'] is not None else 9999, g['name']))
 
+    try:
+        subtotal_list = db.execute_query(
+            "SELECT id, label, after_category FROM report_subtotals WHERE report_type='BS' ORDER BY id") or []
+    except Exception:
+        subtotal_list = []
+
     return render_template('pl_account_order.html', groups=groups,
                            page_title='Balance Sheet Account Order',
                            page_subtitle='Arrange how accounts appear inside each category on the Balance Sheet',
                            back_url='/balance_sheet', back_label='Back to Balance Sheet',
                            save_url='/bs_account_order',
-                           categories_page='Balance Sheet Categories')
+                           categories_page='Balance Sheet Categories',
+                           report_type='BS', subtotal_list=subtotal_list)
 
 @app.route('/api/dashboard/monthly_revenue')
 @login_required
