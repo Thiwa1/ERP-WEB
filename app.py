@@ -14139,6 +14139,72 @@ def reverse_journal_entry():
         if conn:
             conn.close()
 
+@app.route('/fix_reversal_dates', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def fix_reversal_dates():
+    """One-time repair: reversal JVs used to be posted with TODAY's date instead of
+    the original JV's effective date, leaving old periods un-reversed. This tool
+    finds those reversals and re-dates them onto the original effective date."""
+    if request.method == 'POST':
+        ids = request.form.getlist('rev_ids[]')
+        lock = get_period_lock_date()
+        fixed, skipped = 0, 0
+        for rev_jv in ids:
+            row = db.execute_query("SELECT jv_user_code FROM jv_numbers WHERE jv_id = %s", (rev_jv,))
+            code = (row[0]['jv_user_code'] if row else '') or ''
+            if not code.startswith('REV-JV-'):
+                continue
+            try:
+                orig_jv = int(code[7:])
+            except (TypeError, ValueError):
+                continue
+            od = db.execute_query(
+                "SELECT MIN(entry_effective_date) AS d FROM entry_details WHERE entry_jv = %s AND entry_deleted = 0",
+                (orig_jv,))
+            orig_date = od[0]['d'] if od and od[0]['d'] else None
+            if not orig_date:
+                continue
+            if hasattr(orig_date, 'date'):
+                orig_date = orig_date.date()
+            if lock and orig_date <= lock:
+                skipped += 1
+                continue
+            db.execute_query(
+                "UPDATE entry_details SET entry_effective_date = %s WHERE entry_jv = %s",
+                (orig_date, rev_jv), commit=True)
+            fixed += 1
+        msg = f'{fixed} reversal(s) re-dated to their original effective date.'
+        if skipped:
+            msg += f' {skipped} skipped (original date falls in a closed period).'
+        flash(msg, 'success' if fixed else 'warning')
+        return redirect(url_for('fix_reversal_dates'))
+
+    # GET: list reversal JVs whose dates differ from their original JV's dates
+    try:
+        candidates = db.execute_query("""
+            SELECT j.jv_id AS rev_jv,
+                   CAST(SUBSTRING(j.jv_user_code, 8) AS UNSIGNED) AS orig_jv,
+                   DATE(MIN(re.entry_effective_date)) AS rev_date,
+                   (SELECT DATE(MIN(oe.entry_effective_date)) FROM entry_details oe
+                    WHERE oe.entry_jv = CAST(SUBSTRING(j.jv_user_code, 8) AS UNSIGNED)
+                      AND oe.entry_deleted = 0) AS orig_date,
+                   SUM(re.enty_values_DR) AS total_dr
+            FROM jv_numbers j
+            JOIN entry_details re ON re.entry_jv = j.jv_id AND re.entry_deleted = 0
+            WHERE j.jv_user_code LIKE 'REV-JV-%'
+            GROUP BY j.jv_id, j.jv_user_code
+            HAVING orig_date IS NOT NULL AND rev_date <> orig_date
+            ORDER BY j.jv_id DESC
+        """) or []
+    except Exception as e:
+        flash(f'Error scanning reversals: {e}', 'danger')
+        candidates = []
+
+    return render_template('fix_reversal_dates.html', candidates=candidates,
+                           lock_date=get_period_lock_date())
+
+
 @app.route('/journal_entry/print/<int:jv_no>')
 @login_required
 def print_journal_voucher(jv_no):
