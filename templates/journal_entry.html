@@ -483,6 +483,9 @@
                     return;
                 }
                 data.forEach(row => {
+                    const reverseCtl = row.is_reversal
+                        ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;" title="Reversal entries cannot be reversed again">Reversal</span>`
+                        : `<button class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>`;
                     tbody.innerHTML += `
                         <tr>
                             <td class="font-monospace" style="padding:.5rem 1rem;">${row.jv_no}</td>
@@ -494,7 +497,7 @@
                             <td style="padding:.5rem .75rem;">
                                 <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
                                 <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
-                                <button class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>
+                                ${reverseCtl}
                             </td>
                         </tr>
                     `;

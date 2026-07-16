@@ -14038,7 +14038,8 @@ def journal_entry_history():
     query = f"""
         SELECT
             ed.entry_jv, ed.entry_effective_date, ed.account_name,
-            ed.entry_naration, ed.enty_values_DR, ed.enty_values_CR
+            ed.entry_naration, ed.enty_values_DR, ed.enty_values_CR,
+            jv.jv_user_code
         FROM entry_details ed
         JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
         WHERE {where}
@@ -14055,7 +14056,8 @@ def journal_entry_history():
             'account': r['account_name'],
             'narration': r['entry_naration'],
             'dr': float(r['enty_values_DR'] or 0),
-            'cr': float(r['enty_values_CR'] or 0)
+            'cr': float(r['enty_values_CR'] or 0),
+            'is_reversal': str(r.get('jv_user_code') or '').startswith('REV-JV-')
         })
 
     return json.dumps(data)
@@ -14079,12 +14081,20 @@ def reverse_journal_entry():
         conn = db.get_connection()
         cursor = conn.cursor()
 
+        # Guard: a reversal JV can never itself be reversed — that re-creates the
+        # original and allows endless back-and-forth duplication
+        cursor.execute("SELECT jv_user_code FROM jv_numbers WHERE jv_id = %s", (jv_no,))
+        row = cursor.fetchone()
+        if row and str(row[0] or '').startswith('REV-JV-'):
+            return {'error': 'This is a reversal entry — it cannot be reversed again. '
+                             'Enter a new journal instead.'}, 400
+
         # Guard: check if already reversed (reversal JV exists with REV-JV- prefix)
         cursor.execute(
             "SELECT COUNT(*) FROM jv_numbers WHERE jv_user_code = %s",
             (f'REV-JV-{jv_no}',))
         if cursor.fetchone()[0] > 0:
-            return {'error': 'Already reversed'}, 400
+            return {'error': 'This JV has already been reversed.'}, 400
 
         # Also check entry_deleted flag
         cursor.execute("SELECT entry_deleted FROM entry_details WHERE entry_jv = %s LIMIT 1", (jv_no,))
@@ -14100,7 +14110,9 @@ def reverse_journal_entry():
             (f'REV-JV-{jv_no}', f'Journal Reversal of JV-{jv_no}'))
         rev_jv = cursor.lastrowid
 
-        # Reverse GL entries (swap DR ↔ CR)
+        # Reverse GL entries (swap DR ↔ CR) on the ORIGINAL effective dates so
+        # period reports (P&L / Balance Sheet) are reversed too — dating the
+        # reversal "today" left old periods still showing the original amounts
         cursor.execute("""
             INSERT INTO entry_details (
                 account_name, enty_values_DR, enty_values_CR,
@@ -14110,9 +14122,9 @@ def reverse_journal_entry():
             SELECT account_name,
                    COALESCE(enty_values_CR, 0),
                    COALESCE(enty_values_DR, 0),
-                   %s, %s, %s, %s, %s
+                   entry_effective_date, %s, %s, %s, %s
             FROM entry_details WHERE entry_jv = %s
-        """, (today, today, f'Journal Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
+        """, (today, f'Journal Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
 
         conn.commit()
         return {'success': True, 'rev_jv': rev_jv}
