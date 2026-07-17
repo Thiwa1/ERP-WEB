@@ -89,6 +89,10 @@
                         </div>
                     </div>
 
+                    <a href="{{ url_for('bank_reconciliation_report', rec_id=rec.id) }}?download=xlsx" class="d-print-none"
+                       style="width:100%;background:#107C10;border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.6rem 1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;text-decoration:none;margin-bottom:.5rem;">
+                        <i class="fas fa-file-excel"></i> Export Excel
+                    </a>
                     <button onclick="window.print()" class="d-print-none"
                             style="width:100%;background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.85rem;padding:.6rem 1rem;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:.4rem;">
                         <i class="fas fa-print"></i> Print Report

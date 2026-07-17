@@ -7946,6 +7946,61 @@ def bank_reconciliation_report(rec_id):
     except Exception as e:
         flash(f'Error loading report: {str(e)}', 'danger')
 
+    # Styled Excel export (presentation format)
+    if rec and request.args.get('download') == 'xlsx':
+        try:
+            import excel_export as xl
+        except ImportError:
+            flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+            return redirect(url_for('bank_reconciliation_report', rec_id=rec_id))
+
+        wb, ws = xl.new_workbook('Reconciliation')
+        ncols = 5
+        row = xl.title_block(ws, ncols, _company_display_name(),
+                             f'BANK RECONCILIATION REPORT #{rec_id}',
+                             f"Account {rec.get('bank_accont_no', '')} — "
+                             f"{rec.get('opene_date', '')} to {rec.get('closing_date', '')}")
+
+        row = xl.section_row(ws, row, ncols, 'BALANCES', color=xl.BLUE_DARK, bg='EFF6FF')
+        row = xl.item_row(ws, row, 'Opening Balance', [rec.get('opene_balance', 0)])
+        row = xl.item_row(ws, row, 'Closing Balance', [rec.get('closing_balance', 0)])
+        row = xl.item_row(ws, row, 'Book Balance', [rec.get('Book_Balance', 0)])
+        row = xl.item_row(ws, row, 'Bank Statement Balance', [rec.get('Bank_statment_Balance', 0)])
+        diff = float(rec.get('closing_balance', 0) or 0) - float(rec.get('Bank_statment_Balance', 0) or 0)
+        row = xl.total_row(ws, row, 'Difference', [diff],
+                           bg=('E8F5E9' if abs(diff) < 0.01 else 'FFEBEE'),
+                           color=(xl.GREEN_DARK if abs(diff) < 0.01 else xl.RED_DARK))
+        row += 1
+
+        row = xl.section_row(ws, row, ncols, 'UNCLEARED DEPOSITS', color=xl.GREEN_DARK, bg='EAF6EA')
+        row = xl.header_row(ws, row, ['ID', 'Date', 'Description', 'Cheque No', 'Amount'])
+        dep_total = 0.0
+        for d in deposits:
+            dep_total += float(d.get('Dr_Value', 0) or 0)
+            row = xl.data_row(ws, row, [d.get('Id'), str(d.get('entry_effective_date') or ''),
+                                        d.get('Text', ''), d.get('Chq_No') or '-',
+                                        d.get('Dr_Value', 0)], num_cols=(5,))
+        row = xl.total_row(ws, row, 'Total Uncleared Deposits', [0] * 3 + [dep_total])
+        for col in range(2, 5):
+            ws.cell(row=row - 1, column=col).value = None
+        row += 1
+
+        row = xl.section_row(ws, row, ncols, 'UNCLEARED PAYMENTS', color=xl.RED_DARK, bg='FDECEA')
+        row = xl.header_row(ws, row, ['ID', 'Date', 'Description', 'Cheque No', 'Amount'])
+        pay_total = 0.0
+        for p in payments:
+            pay_total += float(p.get('Cr_Value', 0) or 0)
+            row = xl.data_row(ws, row, [p.get('Id'), str(p.get('entry_effective_date') or ''),
+                                        p.get('Text', ''), p.get('Chq_No') or '-',
+                                        p.get('Cr_Value', 0)], num_cols=(5,))
+        row = xl.total_row(ws, row, 'Total Uncleared Payments', [0] * 3 + [pay_total])
+        for col in range(2, 5):
+            ws.cell(row=row - 1, column=col).value = None
+
+        xl.finish(ws, ncols, first_col_width=12, num_col_width=16)
+        ws.column_dimensions['C'].width = 46
+        return xl.workbook_response(wb, f'BankReconciliation_{rec_id}.xlsx')
+
     return render_template('bank_reconciliation_report.html', rec=rec, deposits=deposits, payments=payments)
 
 @app.route('/bank_reconciliation/reverse', methods=['POST'])
@@ -8064,11 +8119,19 @@ def get_ledger_data():
 
     if not account_name or not from_date or not to_date:
         return {'error': 'Missing parameters'}, 400
+    result = _ledger_data(account_name, from_date, to_date)
+    if 'error' in result:
+        return result, 404
+    return result
 
+
+def _ledger_data(account_name, from_date, to_date):
+    """Ledger rows + running balance for one account. Shared by the JSON API,
+    the CSV export and the styled Excel export."""
     # 1. Get Account Basement (DR/CR)
     acc_res = db.execute_query("SELECT account_basment FROM new_account_table WHERE account_name = %s", (account_name,))
     if not acc_res:
-        return {'error': 'Account not found'}, 404
+        return {'error': 'Account not found'}
     basement = acc_res[0]['account_basment'] # 'DR' or 'CR'
 
     # 2. Calculate Opening Balance
@@ -8240,21 +8303,7 @@ def ledger_export():
         flash('No account selected', 'warning')
         return redirect(url_for('ledger_view'))
 
-    # Reuse the ledger data logic via an internal request simulation
-    import flask
-    with flask.current_app.test_request_context(
-        json={'account_name': account_name, 'from_date': from_date, 'to_date': to_date}
-    ):
-        result = get_ledger_data()
-        if isinstance(result, tuple):
-            result = result[0]
-        if hasattr(result, 'get_json'):
-            result = result.get_json()
-        elif isinstance(result, dict):
-            pass
-        else:
-            result = {}
-
+    result = _ledger_data(account_name, from_date, to_date)
     rows = result.get('data', [])
     si = io.StringIO()
     cw = csv.writer(si)
@@ -8275,6 +8324,62 @@ def ledger_export():
     output.headers["Content-Disposition"] = f"attachment; filename=Ledger_{safe_name}_{from_date}.csv"
     output.headers["Content-type"] = "text/csv"
     return output
+
+
+@app.route('/ledger_view/export_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def ledger_export_xlsx():
+    """Styled Excel export of the ledger for one account (presentation format)."""
+    account_name = request.args.get('account_name', '')
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    if not account_name:
+        flash('No account selected', 'warning')
+        return redirect(url_for('ledger_view'))
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('ledger_view'))
+
+    result = _ledger_data(account_name, from_date, to_date)
+    if 'error' in result:
+        flash(f"Error: {result['error']}", 'danger')
+        return redirect(url_for('ledger_view'))
+    rows = result.get('data', [])
+
+    wb, ws = xl.new_workbook('Ledger')
+    ncols = 6
+    row = xl.title_block(ws, ncols, _company_display_name(),
+                         f'ACCOUNT LEDGER — {account_name}',
+                         f'{from_date} to {to_date}')
+    row = xl.header_row(ws, row, ['Date', 'JV No', 'Narration', 'Debit', 'Credit', 'Balance'])
+    for r in rows:
+        if r.get('is_opening'):
+            row = xl.total_row(ws, row, f"{r.get('date', '')}   Opening Balance",
+                               [], bg='FFF8E1', color='8A6D00')
+            m = ws.cell(row=row - 1, column=6, value=float(r.get('balance', 0)))
+            m.number_format = xl.NUM_FMT
+            from openpyxl.styles import Font as _F, Alignment as _A
+            m.font = _F(bold=True, size=10, color='8A6D00')
+            m.alignment = _A(horizontal='right')
+            continue
+        row = xl.data_row(ws, row,
+                          [r.get('date', ''), r.get('jv_no', ''), r.get('narration', ''),
+                           r.get('dr', 0), r.get('cr', 0), r.get('balance', 0)],
+                          num_cols=(4, 5, 6))
+    if rows:
+        row = xl.total_row(ws, row, 'CLOSING BALANCE',
+                           [0] * 4 + [rows[-1].get('balance', 0)],
+                           bg='E3F2FD', color=xl.BLUE_DARK, size=11)
+        # blank out the zero filler cells in the closing row
+        for col in range(2, 6):
+            ws.cell(row=row - 1, column=col).value = None
+    xl.finish(ws, ncols, first_col_width=14, num_col_width=18)
+    ws.column_dimensions['C'].width = 50
+    safe_name = account_name.replace(' ', '_').replace('/', '-')[:40]
+    return xl.workbook_response(wb, f'Ledger_{safe_name}_{from_date}_{to_date}.xlsx')
 
 
 # ================================================================

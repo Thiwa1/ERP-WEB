@@ -65,6 +65,13 @@
           <i class="fas fa-file-csv me-1"></i> CSV
         </button>
       </div>
+      <!-- Export Excel (presentation format) -->
+      <div class="col-md-1">
+        <button type="button" class="btn w-100 fw-bold text-white" onclick="exportLedgerXlsx()"
+          style="background:#107C10;border:none;border-radius:8px;font-weight:600;padding:.55rem 0;">
+          <i class="fas fa-file-excel me-1"></i> Excel
+        </button>
+      </div>
 
       <!-- Search Box -->
       <div class="col-md-2">
@@ -221,7 +228,14 @@
                 to_date: toDate
             })
         })
-        .then(response => response.json())
+        .then(response => {
+            const ct = response.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                // Login page / HTML came back instead of data — session expired
+                throw new Error('SESSION_EXPIRED');
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.error) {
                 tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>${data.error}</td></tr>`;
@@ -280,7 +294,14 @@
         })
         .catch(err => {
             console.error(err);
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-danger">Error loading data. See console for details.</td></tr>';
+            if (err && err.message === 'SESSION_EXPIRED') {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-danger">' +
+                    'Your session has expired — <a href="/login">log in again</a> and retry.</td></tr>';
+            } else {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-danger">' +
+                    'Error loading data (' + (err && err.message ? err.message : 'network') + '). ' +
+                    'If this keeps happening, the server may need a restart after the last update.</td></tr>';
+            }
         });
     }
 
@@ -314,6 +335,14 @@
         const to   = document.getElementById('toDate').value;
         if (!acc) { alert('Please select an account first.'); return; }
         window.location.href = `/ledger_view/export?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
+    }
+
+    function exportLedgerXlsx() {
+        const acc  = document.getElementById('accountSelect').value;
+        const from = document.getElementById('fromDate').value;
+        const to   = document.getElementById('toDate').value;
+        if (!acc) { alert('Please select an account first.'); return; }
+        window.location.href = `/ledger_view/export_xlsx?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
     }
 
     // ── Deep link: /ledger_view?account=X&from=Y&to=Z&jv=N ──

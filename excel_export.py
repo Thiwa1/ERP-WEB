@@ -86,6 +86,20 @@ def item_row(ws, row, label, amounts, indent=1, color='333333'):
     return row + 1
 
 
+def data_row(ws, row, values, num_cols=(), color='333333'):
+    """Generic table row: values in order; 1-based column indexes in num_cols are
+    formatted as amounts (right-aligned, thousand separators)."""
+    for i, v in enumerate(values, start=1):
+        if i in num_cols:
+            c = ws.cell(row=row, column=i, value=float(v or 0))
+            c.number_format = NUM_FMT
+            c.alignment = Alignment(horizontal='right')
+        else:
+            c = ws.cell(row=row, column=i, value=v)
+        c.font = Font(size=10, color=color)
+    return row + 1
+
+
 def total_row(ws, row, label, amounts, bg='F3F3F3', color='1A1A2E', size=10):
     c = ws.cell(row=row, column=1, value=label)
     c.font = Font(bold=True, size=size, color=color)
