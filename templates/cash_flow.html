@@ -129,6 +129,12 @@
                         <i class="fas fa-bolt me-1"></i> Generate
                     </button>
                 </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-sm w-100 fw-semibold text-white" onclick="exportCfXlsx()"
+                            style="background:#107C10;border:none;">
+                        <i class="fas fa-file-excel me-1"></i> Export Excel
+                    </button>
+                </div>
             </form>
         </div>
     </div>
@@ -352,6 +358,15 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+    }
+
+    // Styled Excel export (presentation format) using the selected filters
+    function exportCfXlsx() {
+        const fromDate = document.getElementById('fromDate').value;
+        const toDate = document.getElementById('toDate').value;
+        if (!fromDate || !toDate) { alert('Select a date range first.'); return; }
+        const recOnly = document.getElementById('rbRecDone').checked ? '1' : '0';
+        window.location.href = `/cash_flow/export_xlsx?from_date=${fromDate}&to_date=${toDate}&rec_only=${recOnly}`;
     }
 </script>
 {% endblock %}

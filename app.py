@@ -1808,6 +1808,15 @@ def edit_account(account_id):
                            currencies=currencies,
                            existing_accounts=existing_accounts)
 
+def _company_display_name():
+    """Company name for report headers (Excel exports etc.)."""
+    try:
+        res = db.execute_query("SELECT company_name FROM company LIMIT 1")
+        return (res[0]['company_name'] if res else '') or ''
+    except Exception:
+        return ''
+
+
 def _category_levels(table):
     """Return {category_name: holding_level} from a categories table.
     This is the AUTHORITATIVE holding level (the per-account copies in
@@ -6913,6 +6922,46 @@ def balance_sheet():
         'retained_earnings': retained_earnings
     }
 
+    # Styled Excel export (presentation format)
+    if request.args.get('download') == 'xlsx':
+        try:
+            import excel_export as xl
+        except ImportError:
+            flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+            return redirect(url_for('balance_sheet', as_at_date=as_at_date))
+
+        wb, ws = xl.new_workbook('Balance Sheet')
+        ncols = 2
+        row = xl.title_block(ws, ncols, _company_display_name(), 'BALANCE SHEET', f'As at {as_at_date}')
+
+        row = xl.section_row(ws, row, ncols, 'ASSETS', color=xl.BLUE_DARK, bg='EFF6FF')
+        for category, accounts in report_data['assets'].items():
+            row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
+            for acc in accounts:
+                row = xl.item_row(ws, row, acc['name'], [acc['balance']])
+            for st in bs_subtotals['assets'].get(category, []):
+                row = xl.total_row(ws, row, st['label'], [st['value']], bg='EEF2FF', color=xl.INDIGO)
+        row = xl.total_row(ws, row, 'TOTAL ASSETS', [totals['assets']],
+                           bg='EFF6FF', color=xl.BLUE_DARK, size=11)
+        row += 1
+
+        row = xl.section_row(ws, row, ncols, 'EQUITY AND LIABILITIES', color=xl.GREEN_DARK, bg='F0FFF0')
+        row = xl.section_row(ws, row, ncols, 'Equity', color='495057', bg='F8F9FA')
+        for acc in report_data['equity']:
+            row = xl.item_row(ws, row, acc['name'], [acc['balance']])
+        row = xl.item_row(ws, row, 'Retained Earnings', [totals['retained_earnings']])
+        for category, accounts in report_data['liabilities'].items():
+            row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
+            for acc in accounts:
+                row = xl.item_row(ws, row, acc['name'], [acc['balance']])
+            for st in bs_subtotals['liabilities'].get(category, []):
+                row = xl.total_row(ws, row, st['label'], [st['value']], bg='EEF2FF', color=xl.INDIGO)
+        row = xl.total_row(ws, row, 'TOTAL EQUITY & LIABILITIES',
+                           [totals['liabilities'] + totals['equity'] + totals['retained_earnings']],
+                           bg='F0FFF0', color=xl.GREEN_DARK, size=11)
+        xl.finish(ws, ncols)
+        return xl.workbook_response(wb, f'BalanceSheet_{as_at_date}.xlsx')
+
     return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data,
                            totals=totals, bs_subtotals=bs_subtotals)
 
@@ -6931,10 +6980,11 @@ def cash_flow_view():
 @has_permission('Access_Reports')
 def cash_flow_generate():
     data = request.json
-    from_date = data.get('from_date')
-    to_date = data.get('to_date')
-    rec_only = data.get('rec_only', False)
+    return _compute_cash_flow(data.get('from_date'), data.get('to_date'), data.get('rec_only', False))
 
+
+def _compute_cash_flow(from_date, to_date, rec_only=False):
+    """Compute the cash flow statement. Shared by the JSON API and the Excel export."""
     rec_filter = " AND ed.entry_Rec = 1 " if rec_only else ""
 
     conn = db.get_connection()
@@ -7124,6 +7174,77 @@ def cash_flow_generate():
         cursor.close()
         conn.close()
 
+
+@app.route('/cash_flow/export_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def cash_flow_export_xlsx():
+    """Styled Excel export of the cash flow statement (presentation format)."""
+    from_date = request.args.get('from_date')
+    to_date = request.args.get('to_date')
+    rec_only = request.args.get('rec_only') == '1'
+    if not from_date or not to_date:
+        flash('Select a date range first.', 'warning')
+        return redirect(url_for('cash_flow_view'))
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('cash_flow_view'))
+
+    result = _compute_cash_flow(from_date, to_date, rec_only)
+    if not result.get('success'):
+        flash(f"Error generating cash flow: {result.get('error')}", 'danger')
+        return redirect(url_for('cash_flow_view'))
+    d = result['data']
+
+    adj_total = sum(float(i['Amount'] or 0) for i in d['AdjustmentItems'])
+    wc_total = sum(float(i['Amount'] or 0) for i in d['WorkingCapitalItems'])
+    operating = float(d['NetProfit'] or 0) + adj_total + wc_total
+    inv_total = sum(float(i['Amount'] or 0) for i in d['InvestingItems'])
+    fin_total = sum(float(i['Amount'] or 0) for i in d['FinancingItems'])
+    net_change = operating + inv_total + fin_total
+
+    wb, ws = xl.new_workbook('Cash Flow')
+    ncols = 2
+    row = xl.title_block(ws, ncols, _company_display_name(), 'CASH FLOW STATEMENT',
+                         f'For the period {from_date} to {to_date}')
+
+    row = xl.section_row(ws, row, ncols, 'OPERATING ACTIVITIES', color=xl.GREEN_DARK, bg='EAF6EA')
+    row = xl.item_row(ws, row, 'Net Profit / (Loss)', [d['NetProfit']])
+    if d['AdjustmentItems']:
+        row = xl.section_row(ws, row, ncols, 'Adjustments', color='495057', bg='F8F9FA')
+        for i in d['AdjustmentItems']:
+            row = xl.item_row(ws, row, i['Description'], [i['Amount']])
+    if d['WorkingCapitalItems']:
+        row = xl.section_row(ws, row, ncols, 'Changes in Working Capital', color='495057', bg='F8F9FA')
+        for i in d['WorkingCapitalItems']:
+            row = xl.item_row(ws, row, i['Description'], [i['Amount']])
+    row = xl.total_row(ws, row, 'Net Cash from Operating Activities', [operating])
+
+    row = xl.section_row(ws, row, ncols, 'INVESTING ACTIVITIES', color=xl.BLUE_DARK, bg='EFF6FF')
+    for i in d['InvestingItems']:
+        row = xl.item_row(ws, row, i['Description'], [i['Amount']])
+    row = xl.total_row(ws, row, 'Net Cash from Investing Activities', [inv_total])
+
+    row = xl.section_row(ws, row, ncols, 'FINANCING ACTIVITIES', color=xl.RED_DARK, bg='FDECEA')
+    for i in d['FinancingItems']:
+        row = xl.item_row(ws, row, i['Description'], [i['Amount']])
+    row = xl.total_row(ws, row, 'Net Cash from Financing Activities', [fin_total])
+
+    row += 1
+    row = xl.total_row(ws, row, 'NET INCREASE / (DECREASE) IN CASH', [net_change],
+                       bg='E3F2FD', color=xl.BLUE_DARK)
+    row = xl.item_row(ws, row, 'Cash at Beginning of Period', [d['CashBeginning']])
+    row = xl.total_row(ws, row, 'CASH AT END OF PERIOD', [d['CashEnding']],
+                       bg='E3F2FD', color=xl.BLUE_DARK, size=11)
+    if d['CashAccounts']:
+        row += 1
+        row = xl.section_row(ws, row, ncols, 'Cash & Bank Balances', color='495057', bg='F8F9FA')
+        for i in d['CashAccounts']:
+            row = xl.item_row(ws, row, i['Description'], [i['Amount']])
+    xl.finish(ws, ncols)
+    return xl.workbook_response(wb, f'CashFlow_{from_date}_{to_date}.xlsx')
 
 
 @app.route('/inventory_item_save', methods=['POST'])
@@ -11152,6 +11273,42 @@ def profit_loss():
         output.headers["Content-Disposition"] = f"attachment; filename=ProfitLoss_{fname_start}_{fname_end}.csv"
         output.headers["Content-type"] = "text/csv"
         return output
+
+    # Styled Excel export (presentation format)
+    if request.args.get('download') == 'xlsx':
+        try:
+            import excel_export as xl
+        except ImportError:
+            flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+            return redirect(url_for('profit_loss'))
+
+        wb, ws = xl.new_workbook('Profit & Loss')
+        ncols = 1 + max(1, len(periods))
+        sub = ' | '.join(f"{p['start']} to {p['end']}" for p in periods)
+        row = xl.title_block(ws, ncols, _company_display_name(), 'PROFIT & LOSS STATEMENT', sub)
+        row = xl.header_row(ws, row, ['Description'] +
+                            [f"Period {i+1}\n{p['start']} to {p['end']}" for i, p in enumerate(periods)])
+        for cat in report_data.get('all_categories') or []:
+            if cat.get('is_income'):
+                row = xl.section_row(ws, row, ncols, cat['name'], color=xl.GREEN_DARK, bg='EAF6EA')
+            else:
+                row = xl.section_row(ws, row, ncols, cat['name'], color=xl.RED_DARK, bg='FDECEA')
+            for acc in cat['accounts']:
+                row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+            row = xl.total_row(ws, row, f"{cat['name']} Total", cat.get('total', []))
+            for st in cat.get('subtotal_rows', []):
+                row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
+        row += 1
+        row = xl.total_row(ws, row, 'TOTAL INCOME', report_data.get('total_income', []),
+                           bg='E8F5E9', color=xl.GREEN_DARK)
+        row = xl.total_row(ws, row, 'TOTAL EXPENSES', report_data.get('total_expense', []),
+                           bg='FFEBEE', color=xl.RED_DARK)
+        row = xl.total_row(ws, row, 'NET PROFIT / (LOSS)', report_data.get('net_profit', []),
+                           bg='E3F2FD', color=xl.BLUE_DARK, size=11)
+        xl.finish(ws, ncols)
+        fs = periods[0]['start'] if periods else default_start
+        fe = periods[-1]['end'] if periods else default_end
+        return xl.workbook_response(wb, f'ProfitLoss_{fs}_{fe}.xlsx')
 
     return render_template('profit_loss.html',
                            periods=periods,
