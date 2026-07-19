@@ -65,7 +65,7 @@
             <a href="/bs_account_order" class="win11-btn win11-btn-secondary" style="text-decoration:none;">
                 <i class="fas fa-sort-amount-down me-1"></i> Arrange Order
             </a>
-            <a href="/balance_sheet?as_at_date={{ as_at_date }}&download=xlsx"
+            <a href="/balance_sheet?download=xlsx{% for d in dates %}&as_at_date[]={{ d }}{% endfor %}"
                class="win11-btn" style="text-decoration:none;background:#107C10;color:#fff;border:none;">
                 <i class="fas fa-file-excel me-1"></i> Export Excel
             </a>
@@ -76,17 +76,33 @@
         {% endif %}
     </div>
 
-    <!-- Filter Card -->
+    <!-- Filter Card: one or more "as at" dates for a comparative balance sheet -->
     <div class="report-card mb-4 no-print">
         <div class="filter-card-header"><i class="fas fa-filter me-2"></i>Filters &amp; Date Range</div>
         <div class="card-body">
-            <form method="GET" action="/balance_sheet" class="row g-3 align-items-end">
-                <div class="col-md-4">
-                    <label class="form-label fw-semibold" style="font-size:.82rem;">As At Date</label>
-                    <input type="date" name="as_at_date" class="form-control form-control-sm" value="{{ as_at_date }}" required>
+            <form method="POST" action="/balance_sheet" id="bsForm">
+                <div id="bs-dates-container">
+                    {% for d in dates %}
+                    <div class="row g-2 mb-2 align-items-center bs-date-row">
+                        <div class="col-auto">
+                            <span class="badge bg-secondary bs-date-badge">As at {{ loop.index }}</span>
+                        </div>
+                        <div class="col-auto">
+                            <input type="date" name="as_at_date[]" class="form-control form-control-sm" value="{{ d }}" required>
+                        </div>
+                        <div class="col-auto">
+                            {% if loop.index > 1 %}
+                            <button type="button" class="btn btn-sm btn-outline-danger bs-remove-date"><i class="fas fa-times"></i></button>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
-                <div class="col-md-2">
-                    <button type="submit" class="btn btn-sm btn-primary w-100 fw-semibold">
+                <div class="mt-2 d-flex gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-success" id="bsAddDateBtn">
+                        <i class="fas fa-plus-circle me-1"></i> Add Date
+                    </button>
+                    <button type="submit" class="btn btn-sm btn-primary px-4">
                         <i class="fas fa-sync me-1"></i> Generate
                     </button>
                 </div>
@@ -100,7 +116,9 @@
         <!-- Report Title Banner -->
         <div class="text-center py-3 border-bottom" style="background:linear-gradient(135deg,#0078D4,#005FA3);">
             <div class="text-white fw-bold" style="letter-spacing:.5px;">STATEMENT OF FINANCIAL POSITION</div>
-            <div class="text-white opacity-75" style="font-size:.82rem;">As at {{ as_at_date }}</div>
+            <div class="text-white opacity-75" style="font-size:.82rem;">
+                {% for d in dates %}As at {{ d }}{% if not loop.last %} &nbsp;|&nbsp; {% endif %}{% endfor %}
+            </div>
         </div>
 
         <div class="row g-0">
@@ -112,18 +130,30 @@
                 <div class="table-responsive">
                     <table class="table report-table mb-0">
                         <tbody>
+                        {% if dates|length > 1 %}
+                        <tr>
+                            <td style="padding:.35rem 1rem;"></td>
+                            {% for d in dates %}
+                            <td class="num-cell" style="padding:.35rem 1rem;font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">As at {{ d }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endif %}
                         {% for category, accounts in report_data.assets.items() %}
-                            <tr><td colspan="2" class="category-heading">{{ category }}</td></tr>
+                            <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">{{ category }}</td></tr>
                             {% for acc in accounts %}
                             <tr class="account-row">
                                 <td>{{ acc.name }}</td>
-                                <td class="num-cell">{{ acc.balance|currency }}</td>
+                                {% for v in acc.amounts %}
+                                <td class="num-cell">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                             {% for st in (bs_subtotals.assets.get(category, []) if bs_subtotals is defined else []) %}
                             <tr>
                                 <td class="text-end pe-3" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;padding:.5rem 1rem;">{{ st.label }}</td>
-                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ st.value|currency }}</td>
+                                {% for v in st.amounts %}
+                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                         {% endfor %}
@@ -131,7 +161,9 @@
                         <tfoot>
                             <tr class="total-row section-divider">
                                 <td class="fw-bold" style="padding:.7rem 1rem;">TOTAL ASSETS</td>
-                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ totals.assets|currency }}</td>
+                                {% for v in totals.assets %}
+                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                         </tfoot>
                     </table>
@@ -146,30 +178,46 @@
                 <div class="table-responsive">
                     <table class="table report-table mb-0">
                         <tbody>
-                            <tr><td colspan="2" class="category-heading">Equity</td></tr>
+                            {% if dates|length > 1 %}
+                            <tr>
+                                <td style="padding:.35rem 1rem;"></td>
+                                {% for d in dates %}
+                                <td class="num-cell" style="padding:.35rem 1rem;font-size:.7rem;font-weight:700;color:#605E5C;text-transform:uppercase;">As at {{ d }}</td>
+                                {% endfor %}
+                            </tr>
+                            {% endif %}
+                            <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">Equity</td></tr>
                             {% for acc in report_data.equity %}
                             <tr class="account-row">
                                 <td>{{ acc.name }}</td>
-                                <td class="num-cell">{{ acc.balance|currency }}</td>
+                                {% for v in acc.amounts %}
+                                <td class="num-cell">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                             <tr class="account-row">
                                 <td>Retained Earnings</td>
-                                <td class="num-cell">{{ totals.retained_earnings|currency }}</td>
+                                {% for v in totals.retained_earnings %}
+                                <td class="num-cell">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
 
                             {% for category, accounts in report_data.liabilities.items() %}
-                            <tr><td colspan="2" class="category-heading">{{ category }}</td></tr>
+                            <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">{{ category }}</td></tr>
                             {% for acc in accounts %}
                             <tr class="account-row">
                                 <td>{{ acc.name }}</td>
-                                <td class="num-cell">{{ acc.balance|currency }}</td>
+                                {% for v in acc.amounts %}
+                                <td class="num-cell">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                             {% for st in (bs_subtotals.liabilities.get(category, []) if bs_subtotals is defined else []) %}
                             <tr>
                                 <td class="text-end pe-3" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;padding:.5rem 1rem;">{{ st.label }}</td>
-                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ st.value|currency }}</td>
+                                {% for v in st.amounts %}
+                                <td class="num-cell" style="background:#EEF2FF;font-weight:800;color:#3730a3;border-top:2px solid #c7d2fe;border-bottom:2px solid #c7d2fe;">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                             {% endfor %}
                             {% endfor %}
@@ -177,7 +225,9 @@
                         <tfoot>
                             <tr class="total-row section-divider">
                                 <td class="fw-bold" style="padding:.7rem 1rem;">TOTAL EQUITY &amp; LIABILITIES</td>
-                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ (totals.liabilities + totals.equity + totals.retained_earnings)|currency }}</td>
+                                {% for v in eq_liab_total %}
+                                <td class="num-cell grand-total-row" style="padding:.7rem 1rem;">{{ v|currency }}</td>
+                                {% endfor %}
                             </tr>
                         </tfoot>
                     </table>
@@ -188,4 +238,37 @@
     {% endif %}
 
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const container = document.getElementById('bs-dates-container');
+    const addBtn = document.getElementById('bsAddDateBtn');
+    if (!container || !addBtn) return;
+
+    function renumber() {
+        container.querySelectorAll('.bs-date-row').forEach((row, idx) => {
+            row.querySelector('.bs-date-badge').textContent = `As at ${idx + 1}`;
+        });
+    }
+
+    addBtn.addEventListener('click', function () {
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 align-items-center bs-date-row';
+        row.innerHTML = `
+            <div class="col-auto"><span class="badge bg-secondary bs-date-badge"></span></div>
+            <div class="col-auto"><input type="date" name="as_at_date[]" class="form-control form-control-sm" required></div>
+            <div class="col-auto"><button type="button" class="btn btn-sm btn-outline-danger bs-remove-date"><i class="fas fa-times"></i></button></div>
+        `;
+        container.appendChild(row);
+        renumber();
+    });
+
+    container.addEventListener('click', function (e) {
+        if (e.target.closest('.bs-remove-date')) {
+            e.target.closest('.bs-date-row').remove();
+            renumber();
+        }
+    });
+});
+</script>
 {% endblock %}

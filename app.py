@@ -6746,19 +6746,27 @@ def update_inventory_prices():
     return redirect(url_for('inventory_price_editing'))
 
 # --- Balance Sheet ---
-@app.route('/balance_sheet')
+@app.route('/balance_sheet', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Reports')
 def balance_sheet():
-    as_at_date = request.args.get('as_at_date', datetime.now().strftime('%Y-%m-%d'))
+    # Comparative balance sheet: one or more "as at" dates (columns), like P&L periods.
+    dates = []
+    src = request.form if request.method == 'POST' else request.args
+    for d in src.getlist('as_at_date[]'):
+        if d:
+            dates.append(d)
+    if not dates and request.args.get('as_at_date'):
+        dates.append(request.args.get('as_at_date'))
+    if not dates:
+        dates.append(datetime.now().strftime('%Y-%m-%d'))
+    dates = dates[:6]
+    n = len(dates)
+    as_at_date = dates[0]
 
-    # Using existing stored procedures if possible, or reproducing logic
-    # Reproducing logic from Balance_sheet.xaml.cs using queries for portablity
-
-    def _bs_section(flag_col, balance_expr):
-        """Fetch one balance-sheet section ordered by category Holding Level, then the
-        per-account order (account_bs_sort), then name. Falls back gracefully if the
-        account_bs_sort column has not been migrated yet."""
+    def _bs_section(flag_col, balance_expr, d):
+        """One balance-sheet section as at date d, ordered by category Holding Level,
+        then the per-account order (account_bs_sort), then name."""
         ordered = f"""
             SELECT
                 na.account_name_of_catogory_Balace_sheet as category,
@@ -6787,99 +6795,76 @@ def balance_sheet():
             ORDER BY COALESCE(na.account_hold_possion_Balace_Sheet, 9999) + 0, na.account_name
         """
         try:
-            return db.execute_query(ordered, (as_at_date,))
+            return db.execute_query(ordered, (d,))
         except Exception:
-            return db.execute_query(fallback, (as_at_date,))
+            return db.execute_query(fallback, (d,))
 
-    assets = _bs_section(
-        'account_assets',
-        "COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0)")
+    ASSET_EXPR = "COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0)"
+    CREDIT_EXPR = "COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0)"
 
-    liabilities = _bs_section(
-        'account_liabilities',
-        "COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0)")
+    def _retained(d):
+        """Retained Earnings (Income - Expenses) as at date d."""
+        rows = db.execute_query("""
+            SELECT na.account_income, na.account_expenses,
+                   COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
+                   COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
+            FROM new_account_table na
+            LEFT JOIN entry_details ed ON na.account_name = ed.account_name
+                AND ed.entry_effective_date <= %s
+                AND ed.entry_deleted = 0
+            WHERE (na.account_income = 1 OR na.account_expenses = 1)
+              AND na.account_active = 1
+            GROUP BY na.account_name, na.account_income, na.account_expenses
+        """, (d,)) or []
+        inc, exp = 0.0, 0.0
+        for row in rows:
+            dr = float(row['total_dr'] or 0)
+            cr = float(row['total_cr'] or 0)
+            if row['account_income']:
+                inc += cr - dr
+            elif row['account_expenses']:
+                exp += dr - cr
+        return inc - exp
 
-    equity = _bs_section(
-        'account_equity',
-        "COALESCE(SUM(ed.enty_values_CR), 0) - COALESCE(SUM(ed.enty_values_DR), 0)")
+    asset_snaps = [_bs_section('account_assets', ASSET_EXPR, d) for d in dates]
+    liab_snaps = [_bs_section('account_liabilities', CREDIT_EXPR, d) for d in dates]
+    eq_snaps = [_bs_section('account_equity', CREDIT_EXPR, d) for d in dates]
+    retained_earnings = [_retained(d) for d in dates]
 
-    # Calculate Retained Earnings (Income - Expense - COGS) matching legacy C# logic
-    retained_earnings_query = """
-        SELECT
-            na.account_name,
-            na.account_income,
-            na.account_expenses,
-            na.account_basment,
-            COALESCE(SUM(ed.enty_values_DR), 0) as total_dr,
-            COALESCE(SUM(ed.enty_values_CR), 0) as total_cr
-        FROM
-            new_account_table na
-        LEFT JOIN
-            entry_details ed ON na.account_name = ed.account_name
-            AND ed.entry_effective_date <= %s
-            AND ed.entry_deleted = 0
-        WHERE
-            (na.account_income = 1 OR na.account_expenses = 1)
-            AND na.account_active = 1
-        GROUP BY
-            na.account_name,
-            na.account_income,
-            na.account_expenses,
-            na.account_basment
-    """
-    retained_earnings_rows = db.execute_query(retained_earnings_query, (as_at_date,))
+    def _merge(snaps):
+        """Merge per-date rows into one row per account with an amounts list.
+        Rows that are zero across every date are dropped."""
+        seen, order = {}, []
+        for i, rows in enumerate(snaps):
+            for r in rows or []:
+                key = (r['category'] or 'Uncategorized', r['name'])
+                if key not in seen:
+                    seen[key] = {'category': key[0], 'name': r['name'], 'amounts': [0.0] * n}
+                    order.append(key)
+                seen[key]['amounts'][i] = float(r['balance'] or 0)
+        return [seen[k] for k in order if any(abs(v) >= 0.005 for v in seen[k]['amounts'])]
 
-    total_income = 0.0
-    total_expenses = 0.0
+    merged_assets = _merge(asset_snaps)
+    merged_liabs = _merge(liab_snaps)
+    cleaned_equity = _merge(eq_snaps)
 
-    for row in retained_earnings_rows:
-        is_income  = bool(row['account_income'])
-        is_expense = bool(row['account_expenses'])
-        debit_total  = float(row['total_dr'] or 0)
-        credit_total = float(row['total_cr'] or 0)
+    def _sum_cols(merged):
+        t = [0.0] * n
+        for r in merged:
+            for i, v in enumerate(r['amounts']):
+                t[i] += v
+        return t
 
-        if is_income:
-            # Income accounts: normal balance is CR (credit increases income)
-            total_income += credit_total - debit_total
-        elif is_expense:
-            # Expense accounts: normal balance is DR regardless of account_basment flag
-            total_expenses += debit_total - credit_total
+    total_assets = _sum_cols(merged_assets)
+    total_liabilities = _sum_cols(merged_liabs)
+    total_equity = _sum_cols(cleaned_equity)
 
-    # Net Profit/(Loss) = Income - Expenses (negative = loss)
-    retained_earnings = total_income - total_expenses
-
-    # Grouping
     grouped_assets = {}
-    total_assets = 0
-    for a in assets:
-        cat = a['category'] or 'Uncategorized'
-        if cat not in grouped_assets: grouped_assets[cat] = []
-        val = float(a['balance'])
-        if val != 0:
-            a['balance'] = val
-            grouped_assets[cat].append(a)
-            total_assets += val
-
+    for r in merged_assets:
+        grouped_assets.setdefault(r['category'], []).append(r)
     grouped_liabilities = {}
-    total_liabilities = 0
-    for l in liabilities:
-        cat = l['category'] or 'Uncategorized'
-        if cat not in grouped_liabilities: grouped_liabilities[cat] = []
-        val = float(l['balance'])
-        if val != 0:
-            l['balance'] = val
-            grouped_liabilities[cat].append(l)
-            total_liabilities += val
-
-    # Clean equity
-    cleaned_equity = []
-    total_equity = 0
-    for e in equity:
-        val = float(e['balance'])
-        if val != 0:
-            e['balance'] = val
-            cleaned_equity.append(e)
-            total_equity += val
+    for r in merged_liabs:
+        grouped_liabilities.setdefault(r['category'], []).append(r)
 
     # Order categories by the AUTHORITATIVE holding level from balance_sheet_category
     # (per-account level copies go stale when a category's level is edited later)
@@ -6897,11 +6882,13 @@ def balance_sheet():
 
     def _cumulative_subtotals(grouped):
         subs = {}
-        run = 0.0
+        run = [0.0] * n
         for cat_name, accs in grouped.items():
-            run += sum(a['balance'] for a in accs)
+            for a in accs:
+                for i, v in enumerate(a['amounts']):
+                    run[i] += v
             if cat_name in bs_sub_defs:
-                subs[cat_name] = [{'label': lbl, 'value': run} for lbl in bs_sub_defs[cat_name]]
+                subs[cat_name] = [{'label': lbl, 'amounts': list(run)} for lbl in bs_sub_defs[cat_name]]
         return subs
 
     bs_subtotals = {
@@ -6922,7 +6909,10 @@ def balance_sheet():
         'retained_earnings': retained_earnings
     }
 
-    # Styled Excel export (presentation format)
+    eq_liab_total = [totals['liabilities'][i] + totals['equity'][i] + totals['retained_earnings'][i]
+                     for i in range(n)]
+
+    # Styled Excel export (presentation format, one column per as-at date)
     if request.args.get('download') == 'xlsx':
         try:
             import excel_export as xl
@@ -6931,39 +6921,41 @@ def balance_sheet():
             return redirect(url_for('balance_sheet', as_at_date=as_at_date))
 
         wb, ws = xl.new_workbook('Balance Sheet')
-        ncols = 2
-        row = xl.title_block(ws, ncols, _company_display_name(), 'BALANCE SHEET', f'As at {as_at_date}')
+        ncols = 1 + n
+        row = xl.title_block(ws, ncols, _company_display_name(), 'BALANCE SHEET',
+                             ' | '.join(f'As at {d}' for d in dates))
+        row = xl.header_row(ws, row, ['Description'] + [f'As at {d}' for d in dates])
 
         row = xl.section_row(ws, row, ncols, 'ASSETS', color=xl.BLUE_DARK, bg='EFF6FF')
         for category, accounts in report_data['assets'].items():
             row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
             for acc in accounts:
-                row = xl.item_row(ws, row, acc['name'], [acc['balance']])
+                row = xl.item_row(ws, row, acc['name'], acc['amounts'])
             for st in bs_subtotals['assets'].get(category, []):
-                row = xl.total_row(ws, row, st['label'], [st['value']], bg='EEF2FF', color=xl.INDIGO)
-        row = xl.total_row(ws, row, 'TOTAL ASSETS', [totals['assets']],
+                row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
+        row = xl.total_row(ws, row, 'TOTAL ASSETS', totals['assets'],
                            bg='EFF6FF', color=xl.BLUE_DARK, size=11)
         row += 1
 
         row = xl.section_row(ws, row, ncols, 'EQUITY AND LIABILITIES', color=xl.GREEN_DARK, bg='F0FFF0')
         row = xl.section_row(ws, row, ncols, 'Equity', color='495057', bg='F8F9FA')
         for acc in report_data['equity']:
-            row = xl.item_row(ws, row, acc['name'], [acc['balance']])
-        row = xl.item_row(ws, row, 'Retained Earnings', [totals['retained_earnings']])
+            row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+        row = xl.item_row(ws, row, 'Retained Earnings', totals['retained_earnings'])
         for category, accounts in report_data['liabilities'].items():
             row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
             for acc in accounts:
-                row = xl.item_row(ws, row, acc['name'], [acc['balance']])
+                row = xl.item_row(ws, row, acc['name'], acc['amounts'])
             for st in bs_subtotals['liabilities'].get(category, []):
-                row = xl.total_row(ws, row, st['label'], [st['value']], bg='EEF2FF', color=xl.INDIGO)
-        row = xl.total_row(ws, row, 'TOTAL EQUITY & LIABILITIES',
-                           [totals['liabilities'] + totals['equity'] + totals['retained_earnings']],
+                row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
+        row = xl.total_row(ws, row, 'TOTAL EQUITY & LIABILITIES', eq_liab_total,
                            bg='F0FFF0', color=xl.GREEN_DARK, size=11)
         xl.finish(ws, ncols)
-        return xl.workbook_response(wb, f'BalanceSheet_{as_at_date}.xlsx')
+        return xl.workbook_response(wb, f'BalanceSheet_{dates[0]}.xlsx')
 
-    return render_template('balance_sheet.html', as_at_date=as_at_date, report_data=report_data,
-                           totals=totals, bs_subtotals=bs_subtotals)
+    return render_template('balance_sheet.html', as_at_date=as_at_date, dates=dates,
+                           report_data=report_data, totals=totals, bs_subtotals=bs_subtotals,
+                           eq_liab_total=eq_liab_total)
 
 # --- Cash Flow ---
 
