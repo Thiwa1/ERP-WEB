@@ -2229,5 +2229,63 @@
     .table-responsive { overflow: visible !important; max-height: none !important; }
   }
 </style>
+
+<!-- ── Win11-style click feedback: ripple at the pointer + subtle press compression ── -->
+<style>
+  .click-ripple {
+    position: fixed;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent-color, #0067c0);
+    opacity: .28;
+    transform: translate(-50%, -50%) scale(0);
+    pointer-events: none;
+    z-index: 300000;
+    animation: clickRipple .45s ease-out forwards;
+  }
+  @keyframes clickRipple {
+    to { transform: translate(-50%, -50%) scale(4.2); opacity: 0; }
+  }
+  /* Fluent-style press: interactive controls compress slightly while held */
+  button, .btn, .win11-btn, .cmd-btn, a.nav-link, .win11-app-icon {
+    transition: transform .08s ease;
+  }
+  button:active, .btn:active, .win11-btn:active, .cmd-btn:active,
+  a.nav-link:active, .win11-app-icon:active {
+    transform: scale(.965);
+  }
+  /* Respect the user's reduced-motion preference */
+  @media (prefers-reduced-motion: reduce) {
+    .click-ripple { display: none !important; }
+    button:active, .btn:active, .win11-btn:active, .cmd-btn:active,
+    a.nav-link:active, .win11-app-icon:active { transform: none; }
+  }
+  @media print { .click-ripple { display: none !important; } }
+</style>
+<script>
+(function () {
+  var live = 0;
+  document.addEventListener('pointerdown', function (e) {
+    // Primary mouse button, touch and pen only; safety cap on concurrent ripples
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (live > 8) return;
+    var r = document.createElement('span');
+    r.className = 'click-ripple';
+    r.style.left = e.clientX + 'px';
+    r.style.top = e.clientY + 'px';
+    document.body.appendChild(r);
+    live++;
+    var removed = false;
+    var done = function () {
+      if (removed) return;
+      removed = true;
+      if (r.parentNode) r.parentNode.removeChild(r);
+      live--;
+    };
+    r.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 700); // failsafe cleanup
+  }, { passive: true });
+})();
+</script>
 </body>
 </html>
