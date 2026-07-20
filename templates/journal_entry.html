@@ -209,7 +209,6 @@
         <i class="fas fa-pen me-1"></i> Edit This Entry (date / ref / narration)
       </button>
     </div>
-    {% include '_edit_metadata_modal.html' %}
     <div id="docPanelAnchor" style="scroll-margin-top:80px;"></div>
     {% set _doc_jv      = last_jv %}
     {% set _doc_reftype = 'journal_entry' %}
@@ -225,6 +224,10 @@
       })();
     </script>
     {% endif %}
+
+    {# Metadata edit modal — included unconditionally so the per-row history
+       Edit buttons work on every page load, not only right after saving #}
+    {% include '_edit_metadata_modal.html' %}
 </div>
 
 <!-- Hidden Datalists -->
@@ -492,6 +495,13 @@
                     const reverseCtl = row.is_reversal
                         ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;" title="Reversal entries cannot be reversed again">Reversal</span>`
                         : `<button class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>`;
+                    // Edit (date / narration) — amounts and accounts stay locked; reversals excluded
+                    const narrEsc = JSON.stringify(row.narration || '').replace(/'/g, '&#39;').replace(/</g, '\\u003c');
+                    const editCtl = row.is_reversal ? '' :
+                        `<button class="btn btn-sm btn-outline-primary py-0 me-1" title="Edit JV (date / narration)"
+                                 onclick='openMetaEdit(${row.jv_no}, "", "${row.date}", ${narrEsc})'>
+                            <i class="fas fa-pen"></i>
+                        </button>`;
                     tbody.innerHTML += `
                         <tr>
                             <td class="font-monospace" style="padding:.5rem 1rem;">${row.jv_no}</td>
@@ -503,7 +513,7 @@
                             <td style="padding:.5rem .75rem;">
                                 <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
                                 <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
-                                ${reverseCtl}
+                                ${editCtl}${reverseCtl}
                             </td>
                         </tr>
                     `;
