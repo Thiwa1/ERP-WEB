@@ -150,6 +150,47 @@
         </div>
     </div>
 
+    {% if report_data %}
+    <!-- ── P&L Charts ─────────────────────────────────────────── -->
+    {% set _plabels = [] %}
+    {% for p in periods %}{% set _ = _plabels.append('P' ~ loop.index ~ ' · ' ~ p.start ~ ' → ' ~ p.end) %}{% endfor %}
+    {% set _cats = [] %}
+    {% for c in report_data.all_categories %}{% set _ = _cats.append({'name': c.name, 'inc': c.is_income, 't': c.total}) %}{% endfor %}
+    <script id="plcData" type="application/json">{{ {'labels': _plabels, 'inc': report_data.total_income, 'exp': report_data.total_expense, 'net': report_data.net_profit, 'cats': _cats} | tojson }}</script>
+
+    <div class="report-card mb-4 no-print" id="plChartsCard">
+        <div class="filter-card-header d-flex align-items-center">
+            <span><i class="fas fa-chart-bar me-2"></i>P&amp;L Charts</span>
+            <button type="button" class="ms-auto btn btn-sm py-0" onclick="var b=document.getElementById('plChartsBody'); b.style.display=b.style.display==='none'?'':'none'; this.textContent=b.style.display==='none'?'Show':'Hide';"
+                    style="border:1px solid #d1d5db;border-radius:6px;font-size:.72rem;color:#605E5C;background:#fff;">Hide</button>
+        </div>
+        <div class="card-body" id="plChartsBody">
+            <div class="row g-4">
+                <div class="col-lg-5">
+                    <div style="font-size:.78rem;font-weight:700;color:#374151;margin-bottom:2px;">Result by Period</div>
+                    <div style="font-size:.72rem;color:#8a8886;margin-bottom:10px;">Income, expenses and net profit for each period</div>
+                    <div class="d-flex gap-3 mb-2" style="font-size:.74rem;color:#52514e;">
+                        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#2a78d6;margin-right:5px;"></span>Income</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#eb6834;margin-right:5px;"></span>Expenses</span>
+                        <span><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#1baf7a;margin-right:5px;"></span>Net Profit</span>
+                    </div>
+                    <div id="plcPeriods"></div>
+                </div>
+                <div class="col-lg-7">
+                    <div class="d-flex align-items-center" style="margin-bottom:2px;">
+                        <span style="font-size:.78rem;font-weight:700;color:#374151;">Category Breakdown</span>
+                        <span id="plcPeriodSwitch" class="ms-auto d-flex gap-1"></span>
+                    </div>
+                    <div style="font-size:.72rem;color:#8a8886;margin-bottom:10px;">Net contribution of each category, in statement order</div>
+                    <div id="plcCats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div id="plcTip" style="display:none;position:fixed;z-index:99999;background:#1a1a2e;color:#fff;font-size:.75rem;padding:6px 10px;border-radius:7px;pointer-events:none;box-shadow:0 4px 14px rgba(0,0,0,.25);"></div>
+
+    {% endif %}
+
     <!-- Report -->
     {% if report_data %}
     <div class="report-card">
@@ -277,6 +318,103 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         }
     });
+
+    // ── P&L Charts (pure HTML bars, validated palette, hover tooltips) ──
+    const dataEl = document.getElementById('plcData');
+    if (dataEl) {
+        const D = JSON.parse(dataEl.textContent);
+        const C = { inc: '#2a78d6', exp: '#eb6834', net: '#1baf7a' };
+        const tip = document.getElementById('plcTip');
+
+        const money = v => (typeof fmtNum === 'function' ? fmtNum(v) : Number(v || 0).toFixed(2));
+        const moveTip = e => {
+            tip.style.left = Math.min(e.clientX + 14, window.innerWidth - 230) + 'px';
+            tip.style.top = (e.clientY + 14) + 'px';
+        };
+        const showTip = (e, html) => { tip.innerHTML = html; tip.style.display = 'block'; moveTip(e); };
+        const hideTip = () => { tip.style.display = 'none'; };
+
+        function bar(color, pct, tipHtml, valueText) {
+            const track = document.createElement('div');
+            track.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:2px;';
+            const b = document.createElement('div');
+            b.style.cssText = `height:14px;width:${Math.max(pct, 0.5)}%;background:${color};border-radius:0 4px 4px 0;transition:width .5s ease;flex-shrink:0;`;
+            b.addEventListener('mouseenter', e => showTip(e, tipHtml));
+            b.addEventListener('mousemove', moveTip);
+            b.addEventListener('mouseleave', hideTip);
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:.72rem;color:#52514e;font-family:monospace;white-space:nowrap;';
+            lbl.textContent = valueText;
+            track.appendChild(b);
+            track.appendChild(lbl);
+            return track;
+        }
+
+        // Chart 1 — Income / Expenses / Net Profit per period (one shared scale)
+        (function () {
+            const host = document.getElementById('plcPeriods');
+            const max = Math.max.apply(null,
+                [].concat(D.inc, D.exp, D.net).map(v => Math.abs(v)).concat([1]));
+            D.labels.forEach((lab, i) => {
+                const g = document.createElement('div');
+                g.style.cssText = 'margin-bottom:14px;';
+                const t = document.createElement('div');
+                t.style.cssText = 'font-size:.72rem;font-weight:700;color:#605E5C;margin-bottom:4px;';
+                t.textContent = lab;
+                g.appendChild(t);
+                g.appendChild(bar(C.inc, Math.abs(D.inc[i]) / max * 100, `<b>Income</b><br>${lab}<br>${money(D.inc[i])}`, money(D.inc[i])));
+                g.appendChild(bar(C.exp, Math.abs(D.exp[i]) / max * 100, `<b>Expenses</b><br>${lab}<br>${money(D.exp[i])}`, money(D.exp[i])));
+                g.appendChild(bar(C.net, Math.abs(D.net[i]) / max * 100, `<b>Net Profit</b><br>${lab}<br>${money(D.net[i])}`, money(D.net[i]) + (D.net[i] < 0 ? ' (loss)' : '')));
+                host.appendChild(g);
+            });
+        })();
+
+        // Chart 2 — category net contributions (statement order), period-switchable
+        let plcPeriod = 0;
+        function renderCats() {
+            const host = document.getElementById('plcCats');
+            host.innerHTML = '';
+            const max = Math.max.apply(null,
+                D.cats.map(c => Math.abs(c.t[plcPeriod] || 0)).concat([1]));
+            D.cats.forEach(c => {
+                const v = c.t[plcPeriod] || 0;
+                if (Math.abs(v) < 0.01) return;
+                const row = document.createElement('div');
+                row.style.cssText = 'display:grid;grid-template-columns:190px 1fr;gap:8px;align-items:center;margin-bottom:2px;';
+                const name = document.createElement('div');
+                name.style.cssText = 'font-size:.74rem;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
+                name.textContent = c.name;
+                name.title = c.name;
+                row.appendChild(name);
+                const kind = c.inc ? 'Income' : 'Expense';
+                row.appendChild(bar(c.inc ? C.inc : C.exp, Math.abs(v) / max * 100,
+                    `<b>${c.name}</b><br>${kind} · ${D.labels[plcPeriod]}<br>${money(v)}`, money(v)));
+                host.appendChild(row);
+            });
+        }
+        if (D.labels.length > 1) {
+            const sw = document.getElementById('plcPeriodSwitch');
+            D.labels.forEach((lab, i) => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = 'P' + (i + 1);
+                btn.title = lab;
+                btn.style.cssText = 'border:1px solid #d1d5db;background:#fff;border-radius:6px;font-size:.7rem;padding:1px 8px;color:#52514e;cursor:pointer;';
+                btn.addEventListener('click', () => {
+                    plcPeriod = i;
+                    renderCats();
+                    sw.querySelectorAll('button').forEach((b2, j) => {
+                        b2.style.background = j === i ? '#eef2ff' : '#fff';
+                        b2.style.fontWeight = j === i ? '700' : '400';
+                    });
+                });
+                sw.appendChild(btn);
+            });
+            sw.querySelector('button').style.background = '#eef2ff';
+            sw.querySelector('button').style.fontWeight = '700';
+        }
+        renderCats();
+    }
 });
 </script>
 {% endblock %}

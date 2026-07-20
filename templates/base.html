@@ -2287,5 +2287,88 @@
   }, { passive: true });
 })();
 </script>
+
+<!-- ── Page loading overlay: Win11-style ring, shown on form submits & navigation ── -->
+<style>
+  #pageLoader {
+    position: fixed; inset: 0; z-index: 250000;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(248, 249, 251, .62);
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  #pageLoader .pl-card {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 16px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.18);
+    padding: 26px 38px; display: flex; flex-direction: column;
+    align-items: center; gap: 14px; min-width: 200px;
+  }
+  #pageLoader .pl-ring {
+    width: 46px; height: 46px; border-radius: 50%;
+    background: conic-gradient(from 0deg, var(--accent-color, #0067c0) 0 78deg, rgba(0,0,0,.06) 78deg 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+            mask: radial-gradient(farthest-side, transparent calc(100% - 5px), #000 calc(100% - 4px));
+    animation: plSpin .9s linear infinite;
+  }
+  #pageLoader .pl-ring2 {
+    position: absolute; width: 62px; height: 62px; border-radius: 50%;
+    background: conic-gradient(from 180deg, rgba(0,103,192,.25) 0 40deg, transparent 40deg 360deg);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+            mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2px));
+    animation: plSpin 1.6s linear infinite reverse;
+  }
+  #pageLoader .pl-ringwrap { position: relative; width: 62px; height: 62px; display: flex; align-items: center; justify-content: center; }
+  #pageLoader .pl-text { font-size: .85rem; font-weight: 600; color: #374151; }
+  @keyframes plSpin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) {
+    #pageLoader .pl-ring, #pageLoader .pl-ring2 { animation-duration: 2.5s; }
+  }
+</style>
+<div id="pageLoader" role="status" aria-live="polite">
+  <div class="pl-card">
+    <div class="pl-ringwrap"><div class="pl-ring2"></div><div class="pl-ring"></div></div>
+    <div class="pl-text" id="pageLoaderText">Loading…</div>
+  </div>
+</div>
+<script>
+(function () {
+  var el = document.getElementById('pageLoader');
+  var txt = document.getElementById('pageLoaderText');
+  var failsafe = null;
+
+  window.showPageLoader = function (msg) {
+    txt.textContent = msg || 'Loading…';
+    el.style.display = 'flex';
+    clearTimeout(failsafe);
+    failsafe = setTimeout(window.hidePageLoader, 12000); // never stick forever
+  };
+  window.hidePageLoader = function () {
+    el.style.display = 'none';
+    clearTimeout(failsafe);
+  };
+
+  // Real (non-AJAX) form submissions → show the loader
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;
+    var f = e.target;
+    if (!f || f.hasAttribute('data-no-loader') || f.target === '_blank') return;
+    window.showPageLoader(f.getAttribute('data-loader-text') || 'Generating…');
+  }, true);
+
+  // Same-tab link navigation → show the loader (downloads and new tabs excluded)
+  document.addEventListener('click', function (e) {
+    if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a) return;
+    var href = a.getAttribute('href') || '';
+    if (a.target === '_blank' || a.hasAttribute('download') || a.hasAttribute('data-no-loader')) return;
+    if (!href || href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) return;
+    if (href.indexOf('download=') !== -1 || href.indexOf('export') !== -1) return; // file downloads keep the page
+    window.showPageLoader('Loading…');
+  }, true);
+
+  // Coming back via bfcache, or a download that kept the page alive
+  window.addEventListener('pageshow', window.hidePageLoader);
+})();
+</script>
 </body>
 </html>
