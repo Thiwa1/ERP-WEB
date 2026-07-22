@@ -594,11 +594,22 @@ def inject_globals():
 
     # Sidebar / Function visibility + per-item menu control (Tenant specific from Master DB)
     try:
-        if 'tenant_id' in session:
+        # tenant_id is not always stored in the session, but db_name always is —
+        # resolve the tenant by whichever identifier is available.
+        if session.get('tenant_id'):
             tenant_res = master_db.execute_query(
                 "SELECT sidebar_enabled, menu_config FROM tenants WHERE id = %s",
                 (session['tenant_id'],)
             )
+        elif session.get('db_name'):
+            tenant_res = master_db.execute_query(
+                "SELECT sidebar_enabled, menu_config FROM tenants WHERE db_name = %s",
+                (session['db_name'],)
+            )
+        else:
+            tenant_res = None
+
+        if tenant_res is not None:
             if tenant_res:
                 t = tenant_res[0]
                 globals_dict['sidebar_enabled'] = t.get('sidebar_enabled', 1) == 1
@@ -653,9 +664,12 @@ def enforce_menu_disabled():
     tenant. Hiding the sidebar link alone left the page reachable by direct URL;
     this closes that gap so a disabled feature is actually disabled."""
     # Only standard logged-in tenant users are subject to menu control.
-    if 'tenant_id' not in session or 'user_id' not in session:
+    # tenant_id is not always in the session, but db_name always is.
+    if 'user_id' not in session:
         return
     if session.get('superadmin_logged_in'):
+        return
+    if not session.get('tenant_id') and not session.get('db_name'):
         return
 
     path = (request.path or '/').rstrip('/') or '/'
@@ -668,9 +682,14 @@ def enforce_menu_disabled():
         return  # not a menu-controlled route — no DB lookup needed
 
     try:
-        row = master_db.execute_query(
-            "SELECT menu_config FROM tenants WHERE id = %s", (session['tenant_id'],)
-        )
+        if session.get('tenant_id'):
+            row = master_db.execute_query(
+                "SELECT menu_config FROM tenants WHERE id = %s", (session['tenant_id'],)
+            )
+        else:
+            row = master_db.execute_query(
+                "SELECT menu_config FROM tenants WHERE db_name = %s", (session['db_name'],)
+            )
     except Exception:
         return  # fail open — never lock users out over a DB hiccup
     if not row:
