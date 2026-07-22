@@ -873,6 +873,12 @@
                     <i class="fas fa-sliders"></i> Set Limit
                   </button>
 
+                  <!-- Edit DB Name -->
+                  <button type="button" class="btn-action btn-primary-action"
+                          data-bs-toggle="modal" data-bs-target="#renameDbModal{{ tenant.id }}">
+                    <i class="fas fa-database"></i> Edit DB
+                  </button>
+
                   <!-- Toggle Sidebar -->
                   <form action="/superadmin/toggle_sidebar/{{ tenant.id }}" method="POST" class="d-inline">
                     {% if tenant.sidebar_enabled == 1 %}
@@ -914,6 +920,51 @@
                     </div>
                   </div>
                 </div>
+
+                <!-- Edit DB Name Modal -->
+                <div class="modal fade" id="renameDbModal{{ tenant.id }}" tabindex="-1" aria-hidden="true">
+                  <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                      <div class="modal-header">
+                        <h5 class="modal-title">Edit Database Name</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                      </div>
+                      <form action="/superadmin/rename_db/{{ tenant.id }}" method="POST">
+                        <div class="modal-body">
+                          <label class="form-label">Database name for {{ tenant.company_name }}</label>
+                          <input type="text" class="form-control db-rename-input" name="db_name"
+                                 value="{{ tenant.db_name }}" pattern="[a-z][a-z0-9_]*"
+                                 autocomplete="off" spellcheck="false" required
+                                 data-counter="dbRenameCount{{ tenant.id }}">
+                          <div class="form-text mt-2">
+                            <span class="db-rename-count" id="dbRenameCount{{ tenant.id }}">0</span> / 54 internal characters
+                            &nbsp;<span class="text-muted">(cPanel stores each <code>_ % \</code> as two)</span>
+                          </div>
+                          <div class="form-text mt-1 text-muted">
+                            Lowercase letters, digits and underscores only; must start with a letter.
+                          </div>
+                          {% if tenant.db_initialized == 1 %}
+                          <div class="alert alert-warning mt-3 mb-0 py-2" style="font-size:.82rem;">
+                            <i class="fas fa-triangle-exclamation me-1"></i>
+                            This tenant is already initialized. If you rename it here you must also
+                            rename the actual MySQL database in cPanel to match.
+                          </div>
+                          {% else %}
+                          <div class="alert alert-info mt-3 mb-0 py-2" style="font-size:.82rem;">
+                            <i class="fas fa-circle-info me-1"></i>
+                            Pending setup — after saving, create this database in cPanel, grant
+                            privileges, then click <strong>Init DB</strong>.
+                          </div>
+                          {% endif %}
+                        </div>
+                        <div class="modal-footer" style="display: flex; gap: 10px; justify-content: flex-end;">
+                          <button type="button" class="btn-light" data-bs-dismiss="modal">Cancel</button>
+                          <button type="submit" class="btn-update">Save Name</button>
+                        </div>
+                      </form>
+                    </div>
+                  </div>
+                </div>
               </td>
             </tr>
             {% else %}
@@ -935,5 +986,30 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // Live cPanel weighted-character counter for the Edit DB Name modals.
+    // cPanel stores '_', '%' and '\' as two internal characters (limit 54).
+    (function () {
+      function weightedLen(v) {
+        var n = 0;
+        for (var i = 0; i < v.length; i++) {
+          n += ('_%\\'.indexOf(v[i]) !== -1) ? 2 : 1;
+        }
+        return n;
+      }
+      function update(input) {
+        var counter = document.getElementById(input.getAttribute('data-counter'));
+        if (!counter) return;
+        var n = weightedLen(input.value);
+        counter.textContent = n;
+        counter.style.fontWeight = '700';
+        counter.style.color = (n > 54) ? '#c0392b' : '#107C10';
+      }
+      document.querySelectorAll('.db-rename-input').forEach(function (input) {
+        update(input);
+        input.addEventListener('input', function () { update(input); });
+      });
+    })();
+  </script>
 </body>
 </html>

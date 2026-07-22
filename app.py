@@ -4519,6 +4519,61 @@ def superadmin_set_max_users(tenant_id):
         flash(f'Error updating max users: {str(e)}', 'danger')
     return redirect(url_for('superadmin_dashboard'))
 
+
+def _cpanel_weighted_len(name):
+    """cPanel stores '_', '%' and '\\' as two characters internally (limit 54)."""
+    return sum(2 if c in "_%\\" else 1 for c in name)
+
+
+@app.route('/superadmin/rename_db/<int:tenant_id>', methods=['POST'])
+@superadmin_required
+def superadmin_rename_db(tenant_id):
+    """Edit a tenant's database name — needed when the auto-generated name has too
+    many wildcard-sensitive characters for cPanel (each '_' counts as 2, max 54)."""
+    new_name = (request.form.get('db_name') or '').strip()
+
+    if not new_name:
+        flash('Database name is required.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+    if not re.match(r'^[a-z][a-z0-9_]*$', new_name):
+        flash('Database name must start with a lowercase letter and contain only '
+              'lowercase letters, digits and underscores.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+
+    weighted = _cpanel_weighted_len(new_name)
+    if weighted > 54:
+        flash(f'Database name is still too long ({weighted}/54 internal characters). '
+              f'Remove some underscores or shorten it further.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+
+    dupe = master_db.execute_query(
+        "SELECT id FROM tenants WHERE db_name = %s AND id != %s", (new_name, tenant_id))
+    if dupe:
+        flash('Another company already uses that database name.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+
+    row = master_db.execute_query(
+        "SELECT db_name, db_initialized FROM tenants WHERE id = %s", (tenant_id,))
+    if not row:
+        flash('Tenant not found.', 'danger')
+        return redirect(url_for('superadmin_dashboard'))
+    old_name = row[0]['db_name']
+    initialized = row[0].get('db_initialized')
+
+    try:
+        master_db.execute_query(
+            "UPDATE tenants SET db_name = %s WHERE id = %s", (new_name, tenant_id), commit=True)
+        if initialized == 1:
+            flash(f'Database name changed from "{old_name}" to "{new_name}". WARNING: this '
+                  f'tenant was already initialized — you must also rename the actual MySQL '
+                  f'database in cPanel to match, or the tenant will fail to connect.', 'warning')
+        else:
+            flash(f'Database name changed to "{new_name}". Now create this database in cPanel, '
+                  f'grant privileges to the user, then click "Init DB".', 'success')
+    except Exception as e:
+        flash(f'Error renaming database: {str(e)}', 'danger')
+    return redirect(url_for('superadmin_dashboard'))
+
 @app.route('/payment_due')
 def payment_due():
     return render_template('payment_due.html')
