@@ -220,6 +220,14 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'period_close',       'label': 'Financial Period Close','url': '/financial_period_close', 'icon': 'fas fa-lock',                'category': 'Settings'},
 ]
 
+# Reverse lookup used to enforce menu control at the route level.
+# Sorted longest-URL first so a more specific path (e.g. /bank_reconciliation/history)
+# resolves to its own key instead of a shorter prefix (/bank_reconciliation).
+MENU_URL_TO_KEY = sorted(
+    ((item['url'], item['key']) for item in MENU_ITEMS_REGISTRY),
+    key=lambda pair: len(pair[0]), reverse=True
+)
+
 # Database Configuration
 # Credentials should be set in .env file or environment variables for security.
 db_suport_name = "suwixvkn"
@@ -637,6 +645,50 @@ def inject_globals():
         globals_dict['period_lock_date'] = None
 
     return globals_dict
+
+
+@app.before_request
+def enforce_menu_disabled():
+    """Block a route when the superadmin has disabled that menu item for the
+    tenant. Hiding the sidebar link alone left the page reachable by direct URL;
+    this closes that gap so a disabled feature is actually disabled."""
+    # Only standard logged-in tenant users are subject to menu control.
+    if 'tenant_id' not in session or 'user_id' not in session:
+        return
+    if session.get('superadmin_logged_in'):
+        return
+
+    path = (request.path or '/').rstrip('/') or '/'
+    matched_key = None
+    for url, key in MENU_URL_TO_KEY:
+        if path == url or path.startswith(url + '/'):
+            matched_key = key
+            break
+    if matched_key is None:
+        return  # not a menu-controlled route — no DB lookup needed
+
+    try:
+        row = master_db.execute_query(
+            "SELECT menu_config FROM tenants WHERE id = %s", (session['tenant_id'],)
+        )
+    except Exception:
+        return  # fail open — never lock users out over a DB hiccup
+    if not row:
+        return
+
+    import json as _json
+    try:
+        cfg = _json.loads(row[0].get('menu_config') or '{}')
+    except Exception:
+        cfg = {}
+
+    if cfg.get(matched_key) is False:
+        msg = 'This feature has been disabled by your administrator.'
+        if request.is_json or request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return jsonify({'error': msg}), 403
+        flash(msg, 'warning')
+        return redirect(url_for('index'))
+
 
 # Custom Filter for Currency Formatting
 @app.template_filter('currency')
