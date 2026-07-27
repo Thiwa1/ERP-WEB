@@ -334,20 +334,35 @@ document.addEventListener('DOMContentLoaded', function() {
         const showTip = (e, html) => { tip.innerHTML = html; tip.style.display = 'block'; moveTip(e); };
         const hideTip = () => { tip.style.display = 'none'; };
 
-        function bar(color, pct, tipHtml, valueText) {
+        // A single coloured bar sized as a % of its (flexible) track cell.
+        function barEl(color, pct, tipHtml) {
             const track = document.createElement('div');
-            track.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:2px;';
+            track.style.cssText = 'min-width:0;overflow:hidden;';
             const b = document.createElement('div');
-            b.style.cssText = `height:14px;width:${Math.max(pct, 0.5)}%;background:${color};border-radius:0 4px 4px 0;transition:width .5s ease;flex-shrink:0;`;
+            b.style.cssText = `height:14px;width:${Math.max(pct, 0.5)}%;max-width:100%;background:${color};border-radius:0 4px 4px 0;transition:width .5s ease;`;
             b.addEventListener('mouseenter', e => showTip(e, tipHtml));
             b.addEventListener('mousemove', moveTip);
             b.addEventListener('mouseleave', hideTip);
-            const lbl = document.createElement('span');
-            lbl.style.cssText = 'font-size:.72rem;color:#52514e;font-family:monospace;white-space:nowrap;';
-            lbl.textContent = valueText;
             track.appendChild(b);
-            track.appendChild(lbl);
             return track;
+        }
+
+        // The numeric value — lives in its own reserved column so it can never
+        // overlap the bar or the next row, no matter how long the bar is.
+        function valEl(valueText) {
+            const lbl = document.createElement('span');
+            lbl.style.cssText = 'font-size:.72rem;color:#52514e;font-family:monospace;white-space:nowrap;text-align:right;';
+            lbl.textContent = valueText;
+            return lbl;
+        }
+
+        // One bar row = [bar 1fr][value auto]  (used by the per-period chart).
+        function barRow(color, pct, tipHtml, valueText) {
+            const row = document.createElement('div');
+            row.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:2px;';
+            row.appendChild(barEl(color, pct, tipHtml));
+            row.appendChild(valEl(valueText));
+            return row;
         }
 
         // Chart 1 — Income / Expenses / Net Profit per period (one shared scale)
@@ -362,9 +377,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 t.style.cssText = 'font-size:.72rem;font-weight:700;color:#605E5C;margin-bottom:4px;';
                 t.textContent = lab;
                 g.appendChild(t);
-                g.appendChild(bar(C.inc, Math.abs(D.inc[i]) / max * 100, `<b>Income</b><br>${lab}<br>${money(D.inc[i])}`, money(D.inc[i])));
-                g.appendChild(bar(C.exp, Math.abs(D.exp[i]) / max * 100, `<b>Expenses</b><br>${lab}<br>${money(D.exp[i])}`, money(D.exp[i])));
-                g.appendChild(bar(C.net, Math.abs(D.net[i]) / max * 100, `<b>Net Profit</b><br>${lab}<br>${money(D.net[i])}`, money(D.net[i]) + (D.net[i] < 0 ? ' (loss)' : '')));
+                g.appendChild(barRow(C.inc, Math.abs(D.inc[i]) / max * 100, `<b>Income</b><br>${lab}<br>${money(D.inc[i])}`, money(D.inc[i])));
+                g.appendChild(barRow(C.exp, Math.abs(D.exp[i]) / max * 100, `<b>Expenses</b><br>${lab}<br>${money(D.exp[i])}`, money(D.exp[i])));
+                g.appendChild(barRow(C.net, Math.abs(D.net[i]) / max * 100, `<b>Net Profit</b><br>${lab}<br>${money(D.net[i])}`, money(D.net[i]) + (D.net[i] < 0 ? ' (loss)' : '')));
                 host.appendChild(g);
             });
         })();
@@ -380,15 +395,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 const v = c.t[plcPeriod] || 0;
                 if (Math.abs(v) < 0.01) return;
                 const row = document.createElement('div');
-                row.style.cssText = 'display:grid;grid-template-columns:190px 1fr;gap:8px;align-items:center;margin-bottom:2px;';
+                row.style.cssText = 'display:grid;grid-template-columns:170px 1fr auto;gap:8px;align-items:center;margin-bottom:2px;';
                 const name = document.createElement('div');
                 name.style.cssText = 'font-size:.74rem;color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;';
                 name.textContent = c.name;
                 name.title = c.name;
                 row.appendChild(name);
                 const kind = c.inc ? 'Income' : 'Expense';
-                row.appendChild(bar(c.inc ? C.inc : C.exp, Math.abs(v) / max * 100,
-                    `<b>${c.name}</b><br>${kind} · ${D.labels[plcPeriod]}<br>${money(v)}`, money(v)));
+                row.appendChild(barEl(c.inc ? C.inc : C.exp, Math.abs(v) / max * 100,
+                    `<b>${c.name}</b><br>${kind} · ${D.labels[plcPeriod]}<br>${money(v)}`));
+                row.appendChild(valEl(money(v)));
                 host.appendChild(row);
             });
         }
