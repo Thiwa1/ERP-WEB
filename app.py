@@ -11131,6 +11131,23 @@ def pl_custom_setup(format_id):
     elif request.method == 'POST':
         data = request.json
         rows = data.get('rows', [])
+
+        # Reject duplicate line numbers up front — two rows with the same line
+        # number overwrite each other at report time (wrong values and totals).
+        seen = set()
+        dupes = []
+        for r in rows:
+            ln = (r.get('PL_LIne_Number') or '').strip()
+            if not ln:
+                continue
+            if ln in seen:
+                dupes.append(ln)
+            seen.add(ln)
+        if dupes:
+            uniq = ', '.join(sorted(set(dupes)))
+            return {'success': False,
+                    'error': f'Duplicate line number(s): {uniq}. Each row must have a unique line number.'}, 400
+
         conn = db.get_connection()
         cursor = conn.cursor()
         try:
@@ -11261,7 +11278,24 @@ def pl_custom_generate():
                 'size': r.get('PL_Text_Size')
             })
 
-        return {'success': True, 'results': results}
+        # Detect duplicate line numbers — two rows sharing a line number overwrite
+        # each other's value (one row shows the other's figure and totals go wrong).
+        line_map = {}
+        for r in rows:
+            ln = (r.get('PL_LIne_Number') or '').strip()
+            if not ln:
+                continue
+            label = (r.get('PL_Text_Description') or r.get('PL_Text_Colom') or '(unnamed)').strip()
+            line_map.setdefault(ln, []).append(label or '(unnamed)')
+        dupes = {ln: labels for ln, labels in line_map.items() if len(labels) > 1}
+        warning = None
+        if dupes:
+            parts = ["line '{}' shared by {}".format(ln, ' & '.join(labels)) for ln, labels in dupes.items()]
+            warning = ("Duplicate line numbers detected — these rows overwrite each other so "
+                       "one shows the other's value and totals are wrong: " + "; ".join(parts) +
+                       ". Give each row a unique line number in the Setup tab.")
+
+        return {'success': True, 'results': results, 'warning': warning}
     except Exception as e:
         import traceback
         traceback.print_exc()

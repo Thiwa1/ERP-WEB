@@ -160,6 +160,7 @@
                         <span>Curr: <span id="lblCurr"></span></span>
                     </div>
                 </div>
+                <div id="plcWarn" class="alert alert-warning d-none mb-0" style="border-radius:0;font-size:.82rem;"></div>
                 <div class="table-responsive">
                     <table class="table table-hover mb-0" id="reportTable">
                         <thead>
@@ -347,6 +348,15 @@
             body: JSON.stringify(payload)
         }).then(r=>r.json()).then(data => {
             if(!data.success) return alert("Error generating report.");
+
+            const warnBox = document.getElementById('plcWarn');
+            if (data.warning) {
+                warnBox.textContent = '⚠ ' + data.warning;
+                warnBox.classList.remove('d-none');
+            } else {
+                warnBox.classList.add('d-none');
+                warnBox.textContent = '';
+            }
 
             const tbody = document.getElementById('reportTbody');
             tbody.innerHTML = '';
