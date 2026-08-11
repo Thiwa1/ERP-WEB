@@ -897,6 +897,12 @@
                 {% if 'pos_system' not in menu_disabled %}<a href="/pos" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">POS System</span></a>{% endif %}
                 {% endif %}
 
+                <!-- Restaurant -->
+                {% if 'food_costing' not in menu_disabled %}
+                <div class="menu-category">Restaurant</div>
+                <a href="/food_costing" class="nav-link"><i class="fas fa-utensils"></i> <span class="nav-text">Food Costing</span></a>
+                {% endif %}
+
                 <!-- HR & Payroll -->
                 <div class="menu-category">HR &amp; Payroll</div>
                 {% if 'employees' not in menu_disabled %}<a href="/employees" class="nav-link"><i class="fas fa-users"></i> <span class="nav-text">Employees</span></a>{% endif %}
