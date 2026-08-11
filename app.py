@@ -17943,6 +17943,23 @@ def _fc_ensure_schema():
             INDEX idx_fc_recipe_item (menu_item_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
     """, commit=True)
+    db.execute_query("""
+        CREATE TABLE IF NOT EXISTS fc_sale (
+            id           INT AUTO_INCREMENT PRIMARY KEY,
+            sale_date    DATE NOT NULL,
+            outlet       VARCHAR(50)  DEFAULT NULL,
+            menu_item_id INT          DEFAULT NULL,
+            item_code    VARCHAR(50)  DEFAULT NULL,
+            item_name    VARCHAR(200) DEFAULT NULL,
+            qty          DOUBLE       DEFAULT 0,
+            unit_price   DOUBLE       DEFAULT 0,
+            plate_cost   DOUBLE       DEFAULT 0,
+            cost_method  VARCHAR(20)  DEFAULT NULL,
+            depleted     TINYINT(1)   DEFAULT 0,
+            created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_fc_sale_date (sale_date)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """, commit=True)
 
 
 FC_COSTING_METHODS = ('weighted_avg', 'fifo', 'lifo', 'latest')
@@ -18166,6 +18183,248 @@ def food_costing_set_method():
     if method not in FC_COSTING_METHODS:
         return jsonify({'success': False, 'error': 'Invalid method.'}), 400
     _fc_save_setting('fc_costing_method', method)
+    return jsonify({'success': True})
+
+
+def _fc_kitchen_location():
+    row = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'fc_kitchen_location'")
+    return (row[0]['setting_value'] if row else '') or ''
+
+
+def _fc_deplete_kitchen(sale_id, menu_item_id, sale_qty, sale_date, kitchen, cost_map=None):
+    """Write OUT movements at the kitchen location for one sale, tagged 'FCS-<id>'
+    so they can be reversed on edit/delete. Mirrors the inventory-transfer OUT."""
+    if not kitchen or not menu_item_id or float(sale_qty or 0) <= 0:
+        return
+    if cost_map is None:
+        cost_map = _fc_ingredient_costs()
+    lines = db.execute_query("""
+        SELECT rl.inventory_item_name AS name, rl.portion_qty AS pq, rl.stock_factor AS sf,
+               ii.inventoy_code AS code, ii.inventoy_items_messurment_unit AS unit
+        FROM fc_recipe_line rl
+        LEFT JOIN inventoy_items ii ON ii.id = rl.inventory_item_id
+        WHERE rl.menu_item_id = %s
+    """, (menu_item_id,)) or []
+    uid = get_current_user_id()
+    ref = f"FCS-{sale_id}"
+    today = datetime.now().date()
+    for ln in lines:
+        consumed = float(sale_qty) * float(ln['pq'] or 0) * float(ln['sf'] or 1)
+        if consumed <= 0:
+            continue
+        unit_cost = cost_map.get(ln['name'], 0.0)
+        db.execute_query("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                inventory_recod_user_recod_date, inventory_recod_location,
+                inventory_recod_action_date, inventory_recodcol_memo
+            ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (ln['name'], ln['code'], ln['unit'], unit_cost, 0, consumed,
+              ref, uid, today, kitchen, sale_date, 'Food costing sale'), commit=True)
+
+
+def _fc_reverse_depletion(sale_id):
+    db.execute_query("DELETE FROM inventory_recod WHERE inventory_recod_suplier_iv_no = %s",
+                     (f"FCS-{sale_id}",), commit=True)
+
+
+def _fc_parse_sales_file(fs):
+    """Parse an uploaded CSV/XLSX export: Item Code / Item Name / Quantity."""
+    fname = (fs.filename or '').lower()
+    if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
+        from openpyxl import load_workbook
+        wb = load_workbook(fs, read_only=True, data_only=True)
+        ws = wb.active
+        data = [list(r) for r in ws.iter_rows(values_only=True)]
+    else:
+        import csv, io
+        text = fs.read().decode('utf-8-sig', errors='ignore')
+        data = list(csv.reader(io.StringIO(text)))
+
+    data = [r for r in data if r and any(c not in (None, '') for c in r)]
+    if not data:
+        return []
+
+    header = [str(c).strip().lower() if c is not None else '' for c in data[0]]
+
+    def find(keys):
+        for i, h in enumerate(header):
+            if any(k in h for k in keys):
+                return i
+        return None
+
+    ci, ni, qi = find(['code']), find(['name', 'item', 'description']), find(['qty', 'quantity', 'sold'])
+    start = 1
+    if ci is None and ni is None and qi is None:
+        ci, ni, qi, start = 0, 1, 2, 0  # no header -> positional
+
+    out = []
+    for r in data[start:]:
+        def cell(idx):
+            if idx is None or idx >= len(r) or r[idx] is None:
+                return ''
+            return str(r[idx]).strip()
+        code, nm, qraw = cell(ci), cell(ni), cell(qi)
+        if not code and not nm:
+            continue
+        try:
+            q = float(str(qraw).replace(',', '')) if qraw else 0.0
+        except ValueError:
+            q = 0.0
+        out.append({'code': code, 'name': nm, 'qty': q})
+    return out
+
+
+@app.route('/api/food_costing/import', methods=['POST'])
+@login_required
+def food_costing_import():
+    _fc_ensure_schema()
+    sale_date = (request.form.get('sale_date') or '').strip()
+    if not sale_date:
+        return jsonify({'success': False, 'error': 'Please choose the sale date.'}), 400
+    fs = request.files.get('file')
+    if not fs or not fs.filename:
+        return jsonify({'success': False, 'error': 'Please choose a file.'}), 400
+    try:
+        parsed = _fc_parse_sales_file(fs)
+    except Exception as e:
+        return jsonify({'success': False, 'error': f'Could not read file: {e}'}), 400
+    if not parsed:
+        return jsonify({'success': False, 'error': 'No rows found in the file.'}), 400
+
+    cards = db.execute_query(
+        "SELECT id, outlet, item_code, item_name, selling_price FROM fc_menu_item") or []
+    by_code, by_name = {}, {}
+    for c in cards:
+        if c.get('item_code'):
+            by_code[str(c['item_code']).strip().lower()] = c
+        by_name[str(c['item_name']).strip().lower()] = c
+
+    kitchen = _fc_kitchen_location()
+    method = _fc_costing_method()
+    cost_map = _fc_ingredient_costs()
+
+    mapped, unmapped, total_sales, total_cost, plate_cache = 0, [], 0.0, 0.0, {}
+    for row in parsed:
+        card = by_code.get(row['code'].lower()) if row['code'] else None
+        if not card and row['name']:
+            card = by_name.get(row['name'].lower())
+        qty = row['qty']
+        if card:
+            mid = card['id']
+            if mid not in plate_cache:
+                plate_cache[mid] = _fc_plate_cost(mid, cost_map)
+            plate = plate_cache[mid]
+            price = float(card.get('selling_price') or 0)
+            sale_id = db.execute_query("""INSERT INTO fc_sale
+                (sale_date, outlet, menu_item_id, item_code, item_name, qty, unit_price, plate_cost, cost_method, depleted)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (sale_date, card.get('outlet'), mid, row['code'] or card.get('item_code'),
+                 card.get('item_name'), qty, price, plate, method, 1 if kitchen else 0), commit=True)
+            if kitchen:
+                _fc_deplete_kitchen(sale_id, mid, qty, sale_date, kitchen, cost_map)
+            mapped += 1
+            total_sales += qty * price
+            total_cost += qty * plate
+        else:
+            db.execute_query("""INSERT INTO fc_sale
+                (sale_date, outlet, menu_item_id, item_code, item_name, qty, unit_price, plate_cost, cost_method, depleted)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (sale_date, None, None, row['code'], row['name'], qty, 0, 0, method, 0), commit=True)
+            unmapped.append(row['name'] or row['code'])
+
+    return jsonify({'success': True, 'mapped': mapped, 'unmapped': unmapped,
+                    'total_sales': total_sales, 'total_cost': total_cost, 'kitchen_set': bool(kitchen)})
+
+
+@app.route('/food_costing/sales')
+@login_required
+@has_permission('Access_Reports')
+def food_costing_sales():
+    _fc_ensure_schema()
+    from_date = (request.args.get('from') or '').strip()
+    to_date = (request.args.get('to') or '').strip()
+    q = "SELECT * FROM fc_sale WHERE 1=1"
+    params = []
+    if from_date:
+        q += " AND sale_date >= %s"; params.append(from_date)
+    if to_date:
+        q += " AND sale_date <= %s"; params.append(to_date)
+    q += " ORDER BY sale_date DESC, id DESC"
+    sales = db.execute_query(q, tuple(params)) or []
+    rows, tot_sales, tot_cost = [], 0.0, 0.0
+    for s in sales:
+        rev = float(s['qty'] or 0) * float(s['unit_price'] or 0)
+        cost = float(s['qty'] or 0) * float(s['plate_cost'] or 0)
+        tot_sales += rev; tot_cost += cost
+        rows.append({**s, 'revenue': rev, 'cost': cost, 'gp': rev - cost,
+                     'fc_pct': (cost / rev * 100) if rev > 0 else 0})
+    return render_template('food_costing_sales.html', sales=rows, from_date=from_date, to_date=to_date,
+                           tot_sales=tot_sales, tot_cost=tot_cost, tot_gp=tot_sales - tot_cost)
+
+
+@app.route('/api/food_costing/sale/<int:sale_id>', methods=['POST'])
+@login_required
+def food_costing_edit_sale(sale_id):
+    _fc_ensure_schema()
+    data = request.json or {}
+    s = db.execute_query("SELECT * FROM fc_sale WHERE id = %s", (sale_id,))
+    if not s:
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    s = s[0]
+    new_qty = float(data.get('qty', s['qty']) or 0)
+    new_date = data.get('sale_date') or s['sale_date']
+    if hasattr(new_date, 'strftime'):
+        new_date = new_date.strftime('%Y-%m-%d')
+    db.execute_query("UPDATE fc_sale SET qty=%s, sale_date=%s WHERE id=%s",
+                     (new_qty, new_date, sale_id), commit=True)
+    if s.get('menu_item_id') and s.get('depleted'):
+        _fc_reverse_depletion(sale_id)
+        kitchen = _fc_kitchen_location()
+        if kitchen:
+            _fc_deplete_kitchen(sale_id, s['menu_item_id'], new_qty, new_date, kitchen)
+    return jsonify({'success': True})
+
+
+@app.route('/api/food_costing/sale/<int:sale_id>/delete', methods=['POST'])
+@login_required
+def food_costing_delete_sale(sale_id):
+    _fc_ensure_schema()
+    _fc_reverse_depletion(sale_id)
+    db.execute_query("DELETE FROM fc_sale WHERE id = %s", (sale_id,), commit=True)
+    return jsonify({'success': True})
+
+
+@app.route('/api/food_costing/opening_stock', methods=['POST'])
+@login_required
+def food_costing_opening_stock():
+    data = request.json or {}
+    item_id = data.get('item_id')
+    location = (data.get('location') or '').strip()
+    qty = float(data.get('qty') or 0)
+    unit_cost = float(data.get('unit_cost') or 0)
+    as_date = (data.get('date') or datetime.now().date().strftime('%Y-%m-%d'))
+    if not item_id or not location or qty <= 0:
+        return jsonify({'success': False, 'error': 'Item, location and quantity are required.'}), 400
+    it = db.execute_query("""SELECT inventoy_name AS name, inventoy_code AS code,
+                             inventoy_items_messurment_unit AS unit FROM inventoy_items WHERE id = %s""",
+                          (item_id,))
+    if not it:
+        return jsonify({'success': False, 'error': 'Item not found.'}), 404
+    it = it[0]
+    db.execute_query("""
+        INSERT INTO inventory_recod (
+            inventoy_name, inventoy_code, inventory_recod_mesrmet,
+            inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+            inventory_recod_total_value, inventory_recod_suplier_iv_no, inventory_recod_user_id,
+            inventory_recod_user_recod_date, inventory_recod_location, inventory_recod_action_date,
+            inventory_recodcol_memo
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (it['name'], it['code'], it['unit'], unit_cost, qty, 0, qty * unit_cost,
+          'FC-OPEN', get_current_user_id(), datetime.now().date(), location, as_date, 'Opening stock'),
+        commit=True)
     return jsonify({'success': True})
 
 

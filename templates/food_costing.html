@@ -28,9 +28,12 @@
       <h5 class="mb-0 fw-bold">Food Costing</h5>
       <small class="text-muted">Cost cards &amp; cost of sale for menu items</small>
     </div>
-    <button class="btn btn-primary ms-auto" onclick="fcOpenEditor()">
-      <i class="fas fa-plus me-1"></i> New Cost Card
-    </button>
+    <div class="ms-auto d-flex gap-2 flex-wrap">
+      <a href="/food_costing/sales" class="btn btn-outline-secondary"><i class="fas fa-clock-rotate-left me-1"></i> Sales History</a>
+      <button class="btn btn-outline-success" onclick="fcOpenOpening()"><i class="fas fa-boxes-stacked me-1"></i> Opening Stock</button>
+      <button class="btn btn-outline-primary" onclick="fcOpenImport()"><i class="fas fa-file-import me-1"></i> Import POS Sales</button>
+      <button class="btn btn-primary" onclick="fcOpenEditor()"><i class="fas fa-plus me-1"></i> New Cost Card</button>
+    </div>
   </div>
 
   <!-- Settings: costing method + kitchen location -->
@@ -204,18 +207,160 @@
   </div>
 </div>
 
+<!-- Import POS Sales Modal -->
+<div class="modal fade" id="fcImport" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Import POS Sales</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-info py-2" style="font-size:.82rem;">
+          File columns: <strong>Item Code</strong>, <strong>Item Name</strong>, <strong>Quantity</strong> (CSV or Excel).
+          Rows are matched to cost cards by code, then by name.
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Sale Date</label>
+          <input type="date" id="fcImpDate" class="form-control form-control-sm" style="max-width:220px;">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-bold">POS Export File</label>
+          <input type="file" id="fcImpFile" class="form-control form-control-sm" accept=".csv,.xlsx,.xlsm">
+        </div>
+        <div id="fcImpResult"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-bs-dismiss="modal">Close</button>
+        <button class="btn btn-primary" id="fcImpBtn" onclick="fcDoImport()"><i class="fas fa-upload me-1"></i>Import</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Opening Stock Modal -->
+<div class="modal fade" id="fcOpening" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add Opening Stock</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted" style="font-size:.82rem;">Sets a starting stock balance for an inventory item at a location (a stock-in movement).</p>
+        <div class="row g-2">
+          <div class="col-12">
+            <label class="form-label small fw-bold">Inventory Item</label>
+            <select id="fcOpItem" class="form-select form-select-sm" onchange="fcOpItemChanged()"></select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">Location</label>
+            <select id="fcOpLoc" class="form-select form-select-sm">
+              <option value="">— select —</option>
+              {% for loc in locations %}
+              <option value="{{ loc.inventory_locations_name }}" {% if loc.inventory_locations_name == kitchen_location %}selected{% endif %}>{{ loc.inventory_locations_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">As at Date</label>
+            <input type="date" id="fcOpDate" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">Quantity <span id="fcOpUnit" class="text-muted"></span></label>
+            <input type="number" step="0.001" id="fcOpQty" class="form-control form-control-sm num">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small fw-bold">Unit Cost</label>
+            <input type="number" step="0.01" id="fcOpCost" class="form-control form-control-sm num">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-success" onclick="fcSaveOpening()"><i class="fas fa-save me-1"></i>Save Opening Stock</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let FC_ING = [];          // inventory ingredients [{id,name,code,unit,cost}]
 let FC_ING_BY_ID = {};
-let fcModal = null;
+let fcModal = null, fcImportModal = null, fcOpeningModal = null;
 
 document.addEventListener('DOMContentLoaded', () => {
   fcModal = new bootstrap.Modal(document.getElementById('fcEditor'));
+  fcImportModal = new bootstrap.Modal(document.getElementById('fcImport'));
+  fcOpeningModal = new bootstrap.Modal(document.getElementById('fcOpening'));
+  const today = new Date().toISOString().split('T')[0];
+  document.getElementById('fcImpDate').value = today;
+  document.getElementById('fcOpDate').value = today;
   fetch('/api/food_costing/ingredients').then(r=>r.json()).then(d => {
     FC_ING = d;
     FC_ING.forEach(x => FC_ING_BY_ID[x.id] = x);
+    // populate opening-stock item picker
+    const sel = document.getElementById('fcOpItem');
+    sel.innerHTML = '<option value="">— select item —</option>' +
+      FC_ING.map(x => `<option value="${x.id}">${x.name}${x.code?' ('+x.code+')':''}</option>`).join('');
   });
 });
+
+// ── Import POS sales ──────────────────────────────────────────
+function fcOpenImport(){ document.getElementById('fcImpResult').innerHTML=''; fcImportModal.show(); }
+
+function fcDoImport(){
+  const date = document.getElementById('fcImpDate').value;
+  const file = document.getElementById('fcImpFile').files[0];
+  if(!date){ alert('Please choose the sale date.'); return; }
+  if(!file){ alert('Please choose a file.'); return; }
+  const fd = new FormData();
+  fd.append('sale_date', date);
+  fd.append('file', file);
+  const btn = document.getElementById('fcImpBtn');
+  btn.disabled = true; btn.innerHTML = 'Importing…';
+  fetch('/api/food_costing/import', { method:'POST', body:fd })
+    .then(r=>r.json()).then(d => {
+      btn.disabled = false; btn.innerHTML = '<i class="fas fa-upload me-1"></i>Import';
+      const box = document.getElementById('fcImpResult');
+      if(!d.success){ box.innerHTML = `<div class="alert alert-danger py-2 mb-0" style="font-size:.82rem;">${d.error||'Import failed'}</div>`; return; }
+      let html = `<div class="alert alert-success py-2" style="font-size:.82rem;">
+        Imported <strong>${d.mapped}</strong> sale line(s). Revenue ${fcMoney(d.total_sales)}, cost of sale ${fcMoney(d.total_cost)}.
+        ${d.kitchen_set ? '' : '<br><em>No kitchen location set — stock was not depleted.</em>'}</div>`;
+      if(d.unmapped && d.unmapped.length){
+        html += `<div class="alert alert-warning py-2 mb-0" style="font-size:.8rem;">
+          ${d.unmapped.length} line(s) had no matching cost card (saved, but no cost/depletion):<br>
+          ${d.unmapped.slice(0,15).map(x=>'• '+x).join('<br>')}${d.unmapped.length>15?'<br>…':''}</div>`;
+      }
+      box.innerHTML = html;
+      document.getElementById('fcImpFile').value = '';
+    }).catch(() => { btn.disabled=false; btn.innerHTML='<i class="fas fa-upload me-1"></i>Import'; alert('Import failed.'); });
+}
+
+// ── Opening stock ─────────────────────────────────────────────
+function fcOpenOpening(){ fcOpeningModal.show(); }
+
+function fcOpItemChanged(){
+  const ing = FC_ING_BY_ID[document.getElementById('fcOpItem').value];
+  document.getElementById('fcOpUnit').textContent = ing && ing.unit ? '('+ing.unit+')' : '';
+  if(ing && !document.getElementById('fcOpCost').value) document.getElementById('fcOpCost').value = ing.cost || '';
+}
+
+function fcSaveOpening(){
+  const item_id = document.getElementById('fcOpItem').value;
+  const location = document.getElementById('fcOpLoc').value;
+  const qty = parseFloat(document.getElementById('fcOpQty').value) || 0;
+  const unit_cost = parseFloat(document.getElementById('fcOpCost').value) || 0;
+  const date = document.getElementById('fcOpDate').value;
+  if(!item_id || !location || qty <= 0){ alert('Item, location and quantity are required.'); return; }
+  fetch('/api/food_costing/opening_stock', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({item_id, location, qty, unit_cost, date})
+  }).then(r=>r.json()).then(d => {
+    if(d.success){ fcOpeningModal.hide(); alert('Opening stock saved.'); }
+    else alert('Error: ' + (d.error||'save failed'));
+  });
+}
 
 function fcMoney(v){ return (Number(v)||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 

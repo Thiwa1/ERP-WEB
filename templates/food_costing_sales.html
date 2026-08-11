@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .fc-card { border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);background:#fff; }
+  .fc-table thead th { background:#f8f9fa;font-size:.7rem;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:#605E5C;border-bottom:2px solid #e2e8f0; }
+  .fc-table td { vertical-align:middle;font-size:.84rem; }
+  .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
+  .pill { font-size:.72rem;font-weight:700;padding:.15rem .5rem;border-radius:20px; }
+  .pill-good { background:#e7f7ee;color:#0a7d3f; } .pill-warn { background:#fff4e0;color:#b25e00; }
+  .pill-bad { background:#fdecec;color:#c0392b; }
+  .stat { border:1px solid #e2e8f0;border-radius:12px;padding:.9rem 1.1rem;background:#fff; }
+  .stat .lbl { font-size:.68rem;text-transform:uppercase;letter-spacing:.5px;color:#8a8886;font-weight:700; }
+  .stat .val { font-size:1.25rem;font-weight:800;font-family:'JetBrains Mono',monospace; }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div>
+      <h5 class="mb-0 fw-bold">Food Sales History</h5>
+      <small class="text-muted">Imported menu-item sales &amp; cost of sale</small>
+    </div>
+    <a href="/food_costing" class="btn btn-outline-secondary ms-auto"><i class="fas fa-arrow-left me-1"></i> Back to Cost Cards</a>
+  </div>
+
+  <!-- Filters -->
+  <form class="fc-card p-3 mb-4 d-flex align-items-end gap-2 flex-wrap" method="get">
+    <div>
+      <label class="form-label small fw-bold mb-1">From</label>
+      <input type="date" name="from" value="{{ from_date }}" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label small fw-bold mb-1">To</label>
+      <input type="date" name="to" value="{{ to_date }}" class="form-control form-control-sm">
+    </div>
+    <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Filter</button>
+    <a href="/food_costing/sales" class="btn btn-sm btn-outline-secondary">Clear</a>
+  </form>
+
+  <!-- Totals -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="stat"><div class="lbl">Revenue</div><div class="val">{{ "%.2f"|format(tot_sales) }}</div></div></div>
+    <div class="col-md-3"><div class="stat"><div class="lbl">Cost of Sale</div><div class="val" style="color:#c0392b;">{{ "%.2f"|format(tot_cost) }}</div></div></div>
+    <div class="col-md-3"><div class="stat"><div class="lbl">Gross Profit</div><div class="val" style="color:#0a7d3f;">{{ "%.2f"|format(tot_gp) }}</div></div></div>
+    <div class="col-md-3"><div class="stat"><div class="lbl">Food Cost %</div><div class="val">{% if tot_sales > 0 %}{{ "%.1f"|format(tot_cost / tot_sales * 100) }}%{% else %}—{% endif %}</div></div></div>
+  </div>
+
+  <div class="fc-card">
+    <div class="table-responsive">
+      <table class="table fc-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Date</th>
+            <th>Outlet</th>
+            <th>Item</th>
+            <th class="text-end">Qty</th>
+            <th class="text-end">Unit Price</th>
+            <th class="text-end">Revenue</th>
+            <th class="text-end">Cost of Sale</th>
+            <th class="text-end">GP</th>
+            <th class="text-center">FC %</th>
+            <th class="text-end pe-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sales %}
+          <tr>
+            <td class="ps-3">{{ s.sale_date }}</td>
+            <td class="text-muted" style="font-size:.8rem;">{{ s.outlet or '—' }}</td>
+            <td>
+              <div class="fw-semibold">{{ s.item_name }}</div>
+              {% if not s.menu_item_id %}<span class="badge bg-warning text-dark" style="font-size:.62rem;">no cost card</span>{% endif %}
+              {% if s.item_code %}<span class="text-muted" style="font-size:.7rem;"> {{ s.item_code }}</span>{% endif %}
+            </td>
+            <td class="num">{{ "%.0f"|format(s.qty) }}</td>
+            <td class="num">{{ "%.2f"|format(s.unit_price) }}</td>
+            <td class="num">{{ "%.2f"|format(s.revenue) }}</td>
+            <td class="num">{{ "%.2f"|format(s.cost) }}</td>
+            <td class="num {% if s.gp < 0 %}text-danger{% endif %}">{{ "%.2f"|format(s.gp) }}</td>
+            <td class="text-center">
+              {% if s.revenue > 0 %}
+              <span class="pill {% if s.fc_pct <= 35 %}pill-good{% elif s.fc_pct <= 45 %}pill-warn{% else %}pill-bad{% endif %}">{{ "%.0f"|format(s.fc_pct) }}%</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-end pe-3">
+              <button class="btn btn-sm btn-outline-primary" onclick="fcEditSale({{ s.id }}, '{{ s.sale_date }}', {{ s.qty }})"><i class="fas fa-pen"></i></button>
+              <button class="btn btn-sm btn-outline-danger" onclick="fcDelSale({{ s.id }})"><i class="fas fa-trash"></i></button>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="10" class="text-center text-muted py-5">
+            <i class="fas fa-receipt d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+            No sales in this range. Import a POS export from the Food Costing page.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Sale Modal -->
+<div class="modal fade" id="fcEditSale" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Edit Sale</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="hidden" id="esId">
+        <label class="form-label small fw-bold">Sale Date</label>
+        <input type="date" id="esDate" class="form-control form-control-sm mb-3">
+        <label class="form-label small fw-bold">Quantity</label>
+        <input type="number" step="0.001" id="esQty" class="form-control form-control-sm num">
+        <div class="form-text">Changing these re-values cost of sale and re-adjusts kitchen stock.</div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-light" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="fcSaveSale()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let esModal = null;
+document.addEventListener('DOMContentLoaded', () => { esModal = new bootstrap.Modal(document.getElementById('fcEditSale')); });
+
+function fcEditSale(id, date, qty){
+  document.getElementById('esId').value = id;
+  document.getElementById('esDate').value = date;
+  document.getElementById('esQty').value = qty;
+  esModal.show();
+}
+function fcSaveSale(){
+  const id = document.getElementById('esId').value;
+  const payload = { sale_date: document.getElementById('esDate').value, qty: parseFloat(document.getElementById('esQty').value)||0 };
+  fetch('/api/food_costing/sale/'+id, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) })
+    .then(r=>r.json()).then(d => { if(d.success) location.reload(); else alert('Error: '+(d.error||'failed')); });
+}
+function fcDelSale(id){
+  if(!confirm('Delete this sale line? Kitchen stock will be restored.')) return;
+  fetch('/api/food_costing/sale/'+id+'/delete', { method:'POST' })
+    .then(r=>r.json()).then(d => { if(d.success) location.reload(); });
+}
+</script>
+{% endblock %}
