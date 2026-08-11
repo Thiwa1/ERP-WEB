@@ -141,10 +141,11 @@
         <div class="row g-2 mb-3">
           <div class="col-md-3">
             <label class="form-label small fw-bold">Outlet</label>
-            <select id="fcOutlet" class="form-select form-select-sm">
-              <option>Restaurant</option>
-              <option>Bar</option>
-            </select>
+            <input id="fcOutlet" class="form-control form-control-sm" list="fcOutletList"
+                   placeholder="Pick or type new…" autocomplete="off">
+            <datalist id="fcOutletList">
+              {% for o in outlets %}<option value="{{ o }}">{% endfor %}
+            </datalist>
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-bold">Section</label>

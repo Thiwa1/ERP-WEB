@@ -18052,6 +18052,37 @@ def _fc_plate_cost(menu_item_id, cost_map=None):
     return total
 
 
+def _fc_error_page(title, e):
+    """Render a readable error instead of a blank 500 so the cause is visible
+    (e.g. a missing template after a partial deploy)."""
+    import traceback
+    traceback.print_exc()
+    from markupsafe import escape
+    hint = ""
+    if type(e).__name__ == 'TemplateNotFound':
+        hint = ("<p style='color:#b25e00'>A template file is missing on the server. "
+                "Deploy the latest <code>templates/</code> folder and restart.</p>")
+    return (f"<div style='font-family:sans-serif;max-width:760px;margin:40px auto;padding:24px;"
+            f"border:1px solid #e2e8f0;border-radius:12px'>"
+            f"<h3 style='color:#c0392b;margin-top:0'>{escape(title)} — could not load</h3>{hint}"
+            f"<pre style='background:#f8f9fa;padding:14px;border-radius:8px;white-space:pre-wrap'>"
+            f"{escape(type(e).__name__)}: {escape(str(e))}</pre>"
+            f"<p><a href='/food_costing'>← Back to Food Costing</a></p></div>"), 500
+
+
+def _fc_safe(title):
+    """Decorator: turn an unhandled view error into a readable diagnostic page."""
+    def deco(f):
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            try:
+                return f(*args, **kwargs)
+            except Exception as e:
+                return _fc_error_page(title, e)
+        return wrapper
+    return deco
+
+
 @app.route('/food_costing')
 @login_required
 @has_permission('Access_Reports')
@@ -18073,9 +18104,14 @@ def food_costing():
         "SELECT setting_value FROM system_settings WHERE setting_key = 'fc_kitchen_location'")
     kitchen_location = kitchen_row[0]['setting_value'] if kitchen_row else ''
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations") or []
+    # Existing outlets (defaults + any already used) for the New Cost Card picker.
+    outlets = ['Restaurant', 'Bar']
+    for r in (db.execute_query("SELECT DISTINCT outlet FROM fc_menu_item WHERE outlet IS NOT NULL AND outlet <> ''") or []):
+        if r['outlet'] not in outlets:
+            outlets.append(r['outlet'])
     return render_template('food_costing.html', cards=cards,
                            kitchen_location=kitchen_location, locations=locations,
-                           costing_method=_fc_costing_method())
+                           outlets=outlets, costing_method=_fc_costing_method())
 
 
 @app.route('/api/food_costing/ingredients')
@@ -18343,26 +18379,29 @@ def food_costing_import():
 @login_required
 @has_permission('Access_Reports')
 def food_costing_sales():
-    _fc_ensure_schema()
-    from_date = (request.args.get('from') or '').strip()
-    to_date = (request.args.get('to') or '').strip()
-    q = "SELECT * FROM fc_sale WHERE 1=1"
-    params = []
-    if from_date:
-        q += " AND sale_date >= %s"; params.append(from_date)
-    if to_date:
-        q += " AND sale_date <= %s"; params.append(to_date)
-    q += " ORDER BY sale_date DESC, id DESC"
-    sales = db.execute_query(q, tuple(params)) or []
-    rows, tot_sales, tot_cost = [], 0.0, 0.0
-    for s in sales:
-        rev = float(s['qty'] or 0) * float(s['unit_price'] or 0)
-        cost = float(s['qty'] or 0) * float(s['plate_cost'] or 0)
-        tot_sales += rev; tot_cost += cost
-        rows.append({**s, 'revenue': rev, 'cost': cost, 'gp': rev - cost,
-                     'fc_pct': (cost / rev * 100) if rev > 0 else 0})
-    return render_template('food_costing_sales.html', sales=rows, from_date=from_date, to_date=to_date,
-                           tot_sales=tot_sales, tot_cost=tot_cost, tot_gp=tot_sales - tot_cost)
+    try:
+        _fc_ensure_schema()
+        from_date = (request.args.get('from') or '').strip()
+        to_date = (request.args.get('to') or '').strip()
+        q = "SELECT * FROM fc_sale WHERE 1=1"
+        params = []
+        if from_date:
+            q += " AND sale_date >= %s"; params.append(from_date)
+        if to_date:
+            q += " AND sale_date <= %s"; params.append(to_date)
+        q += " ORDER BY sale_date DESC, id DESC"
+        sales = db.execute_query(q, tuple(params)) or []
+        rows, tot_sales, tot_cost = [], 0.0, 0.0
+        for s in sales:
+            rev = float(s['qty'] or 0) * float(s['unit_price'] or 0)
+            cost = float(s['qty'] or 0) * float(s['plate_cost'] or 0)
+            tot_sales += rev; tot_cost += cost
+            rows.append({**s, 'revenue': rev, 'cost': cost, 'gp': rev - cost,
+                         'fc_pct': (cost / rev * 100) if rev > 0 else 0})
+        return render_template('food_costing_sales.html', sales=rows, from_date=from_date, to_date=to_date,
+                               tot_sales=tot_sales, tot_cost=tot_cost, tot_gp=tot_sales - tot_cost)
+    except Exception as e:
+        return _fc_error_page('Food Sales History', e)
 
 
 @app.route('/api/food_costing/sale/<int:sale_id>', methods=['POST'])
@@ -18431,6 +18470,7 @@ def food_costing_opening_stock():
 @app.route('/food_costing/report')
 @login_required
 @has_permission('Access_Reports')
+@_fc_safe('Food Costing Report')
 def food_costing_report():
     """Phase 3 reports: menu-item profitability, outlet summary and theoretical
     ingredient consumption over a date range."""
