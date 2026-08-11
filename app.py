@@ -17945,18 +17945,80 @@ def _fc_ensure_schema():
     """, commit=True)
 
 
-def _fc_ingredient_costs():
-    """Map inventory_item_id -> latest purchase (cost) price per stocking unit."""
-    rows = db.execute_query("""
-        SELECT ii.id AS id,
-               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
-                  FROM inventory_price_recod p
-                 WHERE p.inventory_price_link = ii.id
-                 ORDER BY p.id DESC LIMIT 1) AS cost
-        FROM inventoy_items ii
-        WHERE ii.active = 1
-    """)
-    return {r['id']: float(r['cost'] or 0) for r in (rows or [])}
+FC_COSTING_METHODS = ('weighted_avg', 'fifo', 'lifo', 'latest')
+
+
+def _fc_costing_method():
+    row = db.execute_query(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'fc_costing_method'")
+    m = (row[0]['setting_value'] if row else '') or 'weighted_avg'
+    return m if m in FC_COSTING_METHODS else 'weighted_avg'
+
+
+def _fc_ingredient_costs(method=None, location=None):
+    """Map inventory item NAME -> unit cost, using the chosen inventory costing
+    method computed from inventory_recod cost layers (date + qty in/out + unit
+    price). weighted_avg / fifo / lifo / latest are all supported because each
+    stock-in movement is a cost layer."""
+    method = (method or _fc_costing_method()).lower()
+    params = []
+    loc_clause = ""
+    if location:
+        loc_clause = " AND inventory_recod_location = %s"
+        params.append(location)
+    rows = db.execute_query(f"""
+        SELECT inventoy_name AS name,
+               COALESCE(inventory_recod_action_date, '1900-01-01') AS dt,
+               COALESCE(inventory_recod_moument_in, 0)  AS qin,
+               COALESCE(inventory_recod_movment_out, 0) AS qout,
+               COALESCE(inventory_recod_unit_price, 0)  AS price,
+               id AS mid
+        FROM inventory_recod
+        WHERE inventoy_name IS NOT NULL {loc_clause}
+        ORDER BY inventoy_name, dt, id
+    """, tuple(params)) or []
+
+    ins = {}          # name -> [[dt, qty, price], ...] in date order (cost layers)
+    out_qty = {}      # name -> total quantity consumed
+    for r in rows:
+        name = r['name']
+        qin = float(r['qin'] or 0)
+        qout = float(r['qout'] or 0)
+        price = float(r['price'] or 0)
+        if qin > 0:
+            ins.setdefault(name, []).append([r['dt'], qin, price])
+        if qout > 0:
+            out_qty[name] = out_qty.get(name, 0.0) + qout
+
+    costs = {}
+    for name, layers in ins.items():
+        if not layers:
+            costs[name] = 0.0
+            continue
+        if method == 'weighted_avg':
+            tot_qty = sum(l[1] for l in layers)
+            tot_val = sum(l[1] * l[2] for l in layers)
+            costs[name] = (tot_val / tot_qty) if tot_qty else 0.0
+        elif method == 'latest':
+            costs[name] = layers[-1][2]
+        elif method in ('fifo', 'lifo'):
+            # Walk the layers in consumption order and find the unit cost of the
+            # next layer still holding stock after total consumption is applied.
+            seq = layers if method == 'fifo' else list(reversed(layers))
+            remaining = out_qty.get(name, 0.0)
+            nxt = None
+            for _dt, qty, price in seq:
+                if remaining >= qty:
+                    remaining -= qty
+                    continue
+                nxt = price
+                break
+            if nxt is None:  # everything consumed -> fall back to a sensible layer
+                nxt = layers[-1][2] if method == 'fifo' else layers[0][2]
+            costs[name] = nxt
+        else:
+            costs[name] = layers[-1][2]
+    return costs
 
 
 def _fc_plate_cost(menu_item_id, cost_map=None):
@@ -17964,11 +18026,11 @@ def _fc_plate_cost(menu_item_id, cost_map=None):
     if cost_map is None:
         cost_map = _fc_ingredient_costs()
     lines = db.execute_query(
-        "SELECT inventory_item_id, portion_qty, stock_factor FROM fc_recipe_line WHERE menu_item_id = %s",
+        "SELECT inventory_item_name, portion_qty, stock_factor FROM fc_recipe_line WHERE menu_item_id = %s",
         (menu_item_id,))
     total = 0.0
     for ln in (lines or []):
-        unit_cost = cost_map.get(ln['inventory_item_id'], 0.0)
+        unit_cost = cost_map.get(ln['inventory_item_name'], 0.0)
         total += float(ln['portion_qty'] or 0) * float(ln['stock_factor'] or 1) * unit_cost
     return total
 
@@ -17995,26 +18057,25 @@ def food_costing():
     kitchen_location = kitchen_row[0]['setting_value'] if kitchen_row else ''
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations") or []
     return render_template('food_costing.html', cards=cards,
-                           kitchen_location=kitchen_location, locations=locations)
+                           kitchen_location=kitchen_location, locations=locations,
+                           costing_method=_fc_costing_method())
 
 
 @app.route('/api/food_costing/ingredients')
 @login_required
 def food_costing_ingredients():
-    """Inventory items for the recipe picker: id, name, code, unit, unit cost."""
+    """Inventory items for the recipe picker: id, name, code, unit, unit cost
+    (costed with the tenant's selected inventory costing method)."""
+    cost_map = _fc_ingredient_costs()
     rows = db.execute_query("""
         SELECT ii.id AS id, ii.inventoy_name AS name, ii.inventoy_code AS code,
-               ii.inventoy_items_messurment_unit AS unit,
-               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
-                  FROM inventory_price_recod p
-                 WHERE p.inventory_price_link = ii.id
-                 ORDER BY p.id DESC LIMIT 1) AS cost
+               ii.inventoy_items_messurment_unit AS unit
         FROM inventoy_items ii
         WHERE ii.active = 1
         ORDER BY ii.inventoy_name
     """) or []
     return jsonify([{'id': r['id'], 'name': r['name'], 'code': r['code'],
-                     'unit': r['unit'] or '', 'cost': float(r['cost'] or 0)} for r in rows])
+                     'unit': r['unit'] or '', 'cost': float(cost_map.get(r['name'], 0.0))} for r in rows])
 
 
 @app.route('/api/food_costing/item/<int:item_id>')
@@ -18080,18 +18141,31 @@ def food_costing_delete_item(item_id):
     return jsonify({'success': True})
 
 
+def _fc_save_setting(key, value):
+    existing = db.execute_query("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
+    if existing:
+        db.execute_query("UPDATE system_settings SET setting_value=%s WHERE setting_key=%s",
+                         (value, key), commit=True)
+    else:
+        db.execute_query("INSERT INTO system_settings (setting_key, setting_value) VALUES (%s, %s)",
+                         (key, value), commit=True)
+
+
 @app.route('/api/food_costing/kitchen_location', methods=['POST'])
 @login_required
 def food_costing_set_kitchen():
     loc = (request.json or {}).get('location', '').strip()
-    existing = db.execute_query(
-        "SELECT id FROM system_settings WHERE setting_key = 'fc_kitchen_location'")
-    if existing:
-        db.execute_query("UPDATE system_settings SET setting_value=%s WHERE setting_key='fc_kitchen_location'",
-                         (loc,), commit=True)
-    else:
-        db.execute_query("INSERT INTO system_settings (setting_key, setting_value) VALUES ('fc_kitchen_location', %s)",
-                         (loc,), commit=True)
+    _fc_save_setting('fc_kitchen_location', loc)
+    return jsonify({'success': True})
+
+
+@app.route('/api/food_costing/costing_method', methods=['POST'])
+@login_required
+def food_costing_set_method():
+    method = (request.json or {}).get('method', '').strip().lower()
+    if method not in FC_COSTING_METHODS:
+        return jsonify({'success': False, 'error': 'Invalid method.'}), 400
+    _fc_save_setting('fc_costing_method', method)
     return jsonify({'success': True})
 
 

@@ -33,22 +33,38 @@
     </button>
   </div>
 
-  <!-- Kitchen location setting -->
+  <!-- Settings: costing method + kitchen location -->
   <div class="fc-card mb-4">
-    <div class="fc-card-head"><i class="fas fa-warehouse me-2"></i>Kitchen Location</div>
-    <div class="p-3 d-flex align-items-center gap-2 flex-wrap">
-      <span class="text-muted" style="font-size:.85rem;">Menu-item sales will deplete stock from:</span>
-      <select id="fcKitchen" class="form-select form-select-sm" style="width:auto;">
-        <option value="">— select location —</option>
-        {% for loc in locations %}
-        <option value="{{ loc.inventory_locations_name }}" {% if loc.inventory_locations_name == kitchen_location %}selected{% endif %}>{{ loc.inventory_locations_name }}</option>
-        {% endfor %}
-      </select>
-      <button class="btn btn-sm btn-outline-secondary" onclick="fcSaveKitchen()">Save</button>
-      <span id="fcKitchenMsg" class="text-success" style="font-size:.8rem;"></span>
-      <span class="text-muted ms-auto" style="font-size:.78rem;">
-        <i class="fas fa-circle-info me-1"></i>Used when you import POS sales (next phase).
-      </span>
+    <div class="fc-card-head"><i class="fas fa-sliders me-2"></i>Costing Settings</div>
+    <div class="p-3">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+        <span class="text-muted" style="font-size:.85rem;min-width:150px;">Inventory costing method:</span>
+        <select id="fcMethod" class="form-select form-select-sm" style="width:auto;">
+          <option value="weighted_avg" {% if costing_method == 'weighted_avg' %}selected{% endif %}>Weighted Average</option>
+          <option value="fifo" {% if costing_method == 'fifo' %}selected{% endif %}>FIFO (First In, First Out)</option>
+          <option value="lifo" {% if costing_method == 'lifo' %}selected{% endif %}>LIFO (Last In, First Out)</option>
+          <option value="latest" {% if costing_method == 'latest' %}selected{% endif %}>Latest Purchase Cost</option>
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="fcSaveMethod()">Save</button>
+        <span id="fcMethodMsg" class="text-success" style="font-size:.8rem;"></span>
+        <span class="text-muted ms-auto" style="font-size:.78rem;">
+          <i class="fas fa-circle-info me-1"></i>Drives ingredient cost from your stock-in layers.
+        </span>
+      </div>
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="text-muted" style="font-size:.85rem;min-width:150px;">Kitchen location:</span>
+        <select id="fcKitchen" class="form-select form-select-sm" style="width:auto;">
+          <option value="">— select location —</option>
+          {% for loc in locations %}
+          <option value="{{ loc.inventory_locations_name }}" {% if loc.inventory_locations_name == kitchen_location %}selected{% endif %}>{{ loc.inventory_locations_name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" onclick="fcSaveKitchen()">Save</button>
+        <span id="fcKitchenMsg" class="text-success" style="font-size:.8rem;"></span>
+        <span class="text-muted ms-auto" style="font-size:.78rem;">
+          <i class="fas fa-circle-info me-1"></i>Menu sales deplete this location (next phase).
+        </span>
+      </div>
     </div>
   </div>
 
@@ -337,6 +353,20 @@ function fcSaveKitchen(){
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({location: loc})
   }).then(r=>r.json()).then(d => {
     if(d.success){ const m = document.getElementById('fcKitchenMsg'); m.textContent = 'Saved'; setTimeout(()=>m.textContent='', 2000); }
+  });
+}
+
+function fcSaveMethod(){
+  const method = document.getElementById('fcMethod').value;
+  fetch('/api/food_costing/costing_method', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({method: method})
+  }).then(r=>r.json()).then(d => {
+    if(d.success){
+      const m = document.getElementById('fcMethodMsg');
+      m.textContent = 'Saved — reloading…';
+      // reload so ingredient costs + plate costs reflect the new method
+      setTimeout(()=>location.reload(), 700);
+    } else alert('Error: ' + (d.error||'save failed'));
   });
 }
 </script>
