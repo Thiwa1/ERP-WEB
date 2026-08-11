@@ -192,6 +192,8 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'trend_analysis',     'label': 'Trend Analysis',       'url': '/inventory_trend_analysis','icon': 'fas fa-chart-line',         'category': 'Inventory'},
     # POS
     {'key': 'pos_system',         'label': 'POS System',           'url': '/pos',                    'icon': 'fas fa-cash-register',       'category': 'POS'},
+    # Restaurant / Food & Beverage
+    {'key': 'food_costing',       'label': 'Food Costing',         'url': '/food_costing',           'icon': 'fas fa-utensils',            'category': 'Restaurant'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -17906,6 +17908,191 @@ def api_send_invoice_email():
     if ok:
         return jsonify({'success': True, 'message': f'Invoice emailed to {to_email}'})
     return jsonify({'success': False, 'error': err})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Food Costing module (Phase 1: cost cards / recipe costing)
+# Isolated feature — new tables, gated by the 'food_costing' menu key. Reuses the
+# existing inventory items, per-item purchase cost and per-location stock.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fc_ensure_schema():
+    """Create the food-costing tables on demand (idempotent)."""
+    db.execute_query("""
+        CREATE TABLE IF NOT EXISTS fc_menu_item (
+            id            INT AUTO_INCREMENT PRIMARY KEY,
+            outlet        VARCHAR(50)  NOT NULL DEFAULT 'Restaurant',
+            section       VARCHAR(100) DEFAULT 'A la carte',
+            item_code     VARCHAR(50)  DEFAULT NULL,
+            item_name     VARCHAR(200) NOT NULL,
+            selling_price DOUBLE       DEFAULT 0,
+            active        TINYINT(1)   DEFAULT 1,
+            created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_fc_item_name (item_name)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """, commit=True)
+    db.execute_query("""
+        CREATE TABLE IF NOT EXISTS fc_recipe_line (
+            id                  INT AUTO_INCREMENT PRIMARY KEY,
+            menu_item_id        INT NOT NULL,
+            inventory_item_id   INT NOT NULL,
+            inventory_item_name VARCHAR(200),
+            portion_qty         DOUBLE NOT NULL DEFAULT 0,
+            portion_unit        VARCHAR(45) DEFAULT NULL,
+            stock_factor        DOUBLE DEFAULT 1,
+            INDEX idx_fc_recipe_item (menu_item_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+    """, commit=True)
+
+
+def _fc_ingredient_costs():
+    """Map inventory_item_id -> latest purchase (cost) price per stocking unit."""
+    rows = db.execute_query("""
+        SELECT ii.id AS id,
+               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
+                  FROM inventory_price_recod p
+                 WHERE p.inventory_price_link = ii.id
+                 ORDER BY p.id DESC LIMIT 1) AS cost
+        FROM inventoy_items ii
+        WHERE ii.active = 1
+    """)
+    return {r['id']: float(r['cost'] or 0) for r in (rows or [])}
+
+
+def _fc_plate_cost(menu_item_id, cost_map=None):
+    """Plate cost = sum(portion_qty * stock_factor * ingredient_unit_cost)."""
+    if cost_map is None:
+        cost_map = _fc_ingredient_costs()
+    lines = db.execute_query(
+        "SELECT inventory_item_id, portion_qty, stock_factor FROM fc_recipe_line WHERE menu_item_id = %s",
+        (menu_item_id,))
+    total = 0.0
+    for ln in (lines or []):
+        unit_cost = cost_map.get(ln['inventory_item_id'], 0.0)
+        total += float(ln['portion_qty'] or 0) * float(ln['stock_factor'] or 1) * unit_cost
+    return total
+
+
+@app.route('/food_costing')
+@login_required
+@has_permission('Access_Reports')
+def food_costing():
+    _fc_ensure_schema()
+    items = db.execute_query("SELECT * FROM fc_menu_item ORDER BY outlet, section, item_name") or []
+    cost_map = _fc_ingredient_costs()
+    cards = []
+    for it in items:
+        plate = _fc_plate_cost(it['id'], cost_map)
+        sp = float(it.get('selling_price') or 0)
+        cards.append({
+            **it,
+            'plate_cost': plate,
+            'gross_profit': sp - plate,
+            'food_cost_pct': (plate / sp * 100) if sp > 0 else 0,
+        })
+    kitchen_row = db.execute_query(
+        "SELECT setting_value FROM system_settings WHERE setting_key = 'fc_kitchen_location'")
+    kitchen_location = kitchen_row[0]['setting_value'] if kitchen_row else ''
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations") or []
+    return render_template('food_costing.html', cards=cards,
+                           kitchen_location=kitchen_location, locations=locations)
+
+
+@app.route('/api/food_costing/ingredients')
+@login_required
+def food_costing_ingredients():
+    """Inventory items for the recipe picker: id, name, code, unit, unit cost."""
+    rows = db.execute_query("""
+        SELECT ii.id AS id, ii.inventoy_name AS name, ii.inventoy_code AS code,
+               ii.inventoy_items_messurment_unit AS unit,
+               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
+                  FROM inventory_price_recod p
+                 WHERE p.inventory_price_link = ii.id
+                 ORDER BY p.id DESC LIMIT 1) AS cost
+        FROM inventoy_items ii
+        WHERE ii.active = 1
+        ORDER BY ii.inventoy_name
+    """) or []
+    return jsonify([{'id': r['id'], 'name': r['name'], 'code': r['code'],
+                     'unit': r['unit'] or '', 'cost': float(r['cost'] or 0)} for r in rows])
+
+
+@app.route('/api/food_costing/item/<int:item_id>')
+@login_required
+def food_costing_get_item(item_id):
+    _fc_ensure_schema()
+    it = db.execute_query("SELECT * FROM fc_menu_item WHERE id = %s", (item_id,))
+    if not it:
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    lines = db.execute_query(
+        "SELECT * FROM fc_recipe_line WHERE menu_item_id = %s ORDER BY id", (item_id,)) or []
+    return jsonify({'success': True, 'item': it[0], 'lines': lines})
+
+
+@app.route('/api/food_costing/item', methods=['POST'])
+@login_required
+def food_costing_save_item():
+    _fc_ensure_schema()
+    data = request.json or {}
+    item_id = data.get('id')
+    outlet = (data.get('outlet') or 'Restaurant').strip()
+    section = (data.get('section') or '').strip()
+    item_code = (data.get('item_code') or '').strip()
+    item_name = (data.get('item_name') or '').strip()
+    selling_price = float(data.get('selling_price') or 0)
+    lines = data.get('lines') or []
+
+    if not item_name:
+        return jsonify({'success': False, 'error': 'Item name is required.'}), 400
+
+    if item_id:
+        db.execute_query("""UPDATE fc_menu_item SET outlet=%s, section=%s, item_code=%s,
+                            item_name=%s, selling_price=%s WHERE id=%s""",
+                         (outlet, section, item_code, item_name, selling_price, item_id), commit=True)
+    else:
+        item_id = db.execute_query("""INSERT INTO fc_menu_item
+                            (outlet, section, item_code, item_name, selling_price)
+                            VALUES (%s,%s,%s,%s,%s)""",
+                         (outlet, section, item_code, item_name, selling_price), commit=True)
+
+    db.execute_query("DELETE FROM fc_recipe_line WHERE menu_item_id = %s", (item_id,), commit=True)
+    for ln in lines:
+        inv_id = ln.get('inventory_item_id')
+        if not inv_id:
+            continue
+        db.execute_query("""INSERT INTO fc_recipe_line
+                            (menu_item_id, inventory_item_id, inventory_item_name,
+                             portion_qty, portion_unit, stock_factor)
+                            VALUES (%s,%s,%s,%s,%s,%s)""",
+                         (item_id, inv_id, (ln.get('inventory_item_name') or '').strip(),
+                          float(ln.get('portion_qty') or 0), (ln.get('portion_unit') or '').strip(),
+                          float(ln.get('stock_factor') or 1)), commit=True)
+
+    return jsonify({'success': True, 'id': item_id, 'plate_cost': _fc_plate_cost(item_id)})
+
+
+@app.route('/api/food_costing/item/<int:item_id>/delete', methods=['POST'])
+@login_required
+def food_costing_delete_item(item_id):
+    _fc_ensure_schema()
+    db.execute_query("DELETE FROM fc_recipe_line WHERE menu_item_id = %s", (item_id,), commit=True)
+    db.execute_query("DELETE FROM fc_menu_item WHERE id = %s", (item_id,), commit=True)
+    return jsonify({'success': True})
+
+
+@app.route('/api/food_costing/kitchen_location', methods=['POST'])
+@login_required
+def food_costing_set_kitchen():
+    loc = (request.json or {}).get('location', '').strip()
+    existing = db.execute_query(
+        "SELECT id FROM system_settings WHERE setting_key = 'fc_kitchen_location'")
+    if existing:
+        db.execute_query("UPDATE system_settings SET setting_value=%s WHERE setting_key='fc_kitchen_location'",
+                         (loc,), commit=True)
+    else:
+        db.execute_query("INSERT INTO system_settings (setting_key, setting_value) VALUES ('fc_kitchen_location', %s)",
+                         (loc,), commit=True)
+    return jsonify({'success': True})
 
 
 if __name__ == '__main__':
