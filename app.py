@@ -17968,8 +17968,8 @@ FC_COSTING_METHODS = ('weighted_avg', 'fifo', 'lifo', 'latest')
 def _fc_costing_method():
     row = db.execute_query(
         "SELECT setting_value FROM system_settings WHERE setting_key = 'fc_costing_method'")
-    m = (row[0]['setting_value'] if row else '') or 'weighted_avg'
-    return m if m in FC_COSTING_METHODS else 'weighted_avg'
+    m = (row[0]['setting_value'] if row else '') or 'fifo'
+    return m if m in FC_COSTING_METHODS else 'fifo'
 
 
 def _fc_ingredient_costs(method=None, location=None):
@@ -18426,6 +18426,87 @@ def food_costing_opening_stock():
           'FC-OPEN', get_current_user_id(), datetime.now().date(), location, as_date, 'Opening stock'),
         commit=True)
     return jsonify({'success': True})
+
+
+@app.route('/food_costing/report')
+@login_required
+@has_permission('Access_Reports')
+def food_costing_report():
+    """Phase 3 reports: menu-item profitability, outlet summary and theoretical
+    ingredient consumption over a date range."""
+    _fc_ensure_schema()
+    from_date = (request.args.get('from') or '').strip()
+    to_date = (request.args.get('to') or '').strip()
+
+    def date_filter(col):
+        clause, params = "", []
+        if from_date:
+            clause += f" AND {col} >= %s"; params.append(from_date)
+        if to_date:
+            clause += f" AND {col} <= %s"; params.append(to_date)
+        return clause, params
+
+    # 1. Menu item profitability
+    f, p = date_filter('sale_date')
+    items = db.execute_query(f"""
+        SELECT COALESCE(item_name, '(unmapped)') AS item_name,
+               MAX(outlet) AS outlet, MAX(item_code) AS item_code,
+               MAX(menu_item_id) AS menu_item_id,
+               SUM(qty) AS qty,
+               SUM(qty * unit_price) AS revenue,
+               SUM(qty * plate_cost) AS cost
+        FROM fc_sale WHERE 1=1 {f}
+        GROUP BY item_name
+        ORDER BY revenue DESC
+    """, tuple(p)) or []
+    for it in items:
+        it['qty'] = float(it['qty'] or 0)
+        it['revenue'] = float(it['revenue'] or 0)
+        it['cost'] = float(it['cost'] or 0)
+        it['gp'] = it['revenue'] - it['cost']
+        it['fc_pct'] = (it['cost'] / it['revenue'] * 100) if it['revenue'] > 0 else 0
+
+    # 2. Outlet summary
+    outlets = db.execute_query(f"""
+        SELECT COALESCE(outlet, 'Unassigned') AS outlet,
+               SUM(qty * unit_price) AS revenue, SUM(qty * plate_cost) AS cost
+        FROM fc_sale WHERE 1=1 {f}
+        GROUP BY outlet ORDER BY revenue DESC
+    """, tuple(p)) or []
+    for o in outlets:
+        o['revenue'] = float(o['revenue'] or 0)
+        o['cost'] = float(o['cost'] or 0)
+        o['gp'] = o['revenue'] - o['cost']
+        o['fc_pct'] = (o['cost'] / o['revenue'] * 100) if o['revenue'] > 0 else 0
+
+    # 3. Ingredient consumption (theoretical: sales x recipe portions)
+    f2, p2 = date_filter('s.sale_date')
+    ingredients = db.execute_query(f"""
+        SELECT rl.inventory_item_name AS name,
+               MAX(rl.portion_unit) AS unit,
+               SUM(s.qty * rl.stock_factor * rl.portion_qty) AS stock_qty
+        FROM fc_sale s
+        JOIN fc_recipe_line rl ON rl.menu_item_id = s.menu_item_id
+        WHERE s.menu_item_id IS NOT NULL {f2}
+        GROUP BY rl.inventory_item_name
+        ORDER BY stock_qty DESC
+    """, tuple(p2)) or []
+    cost_map = _fc_ingredient_costs()
+    for ing in ingredients:
+        ing['stock_qty'] = float(ing['stock_qty'] or 0)
+        ing['unit_cost'] = cost_map.get(ing['name'], 0.0)
+        ing['value'] = ing['stock_qty'] * ing['unit_cost']
+
+    totals = {'revenue': sum(i['revenue'] for i in items),
+              'cost': sum(i['cost'] for i in items)}
+    totals['gp'] = totals['revenue'] - totals['cost']
+    totals['fc_pct'] = (totals['cost'] / totals['revenue'] * 100) if totals['revenue'] > 0 else 0
+    totals['ingredient_value'] = sum(i['value'] for i in ingredients)
+
+    return render_template('food_costing_report.html', items=items, outlets=outlets,
+                           ingredients=ingredients, totals=totals,
+                           from_date=from_date, to_date=to_date,
+                           method=_fc_costing_method())
 
 
 if __name__ == '__main__':
