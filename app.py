@@ -17917,8 +17917,12 @@ def api_send_invoice_email():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _fc_ensure_schema():
-    """Create the food-costing tables on demand (idempotent)."""
-    db.execute_query("""
+    """Create the food-costing tables on demand (idempotent). Each CREATE is
+    guarded like the rest of the app's runtime DDL: on shared hosting a no-op
+    CREATE (table already exists) or a DDL privilege quirk must not 500 the
+    page — if the tables exist the reads/writes still work."""
+    for ddl in (
+        """
         CREATE TABLE IF NOT EXISTS fc_menu_item (
             id            INT AUTO_INCREMENT PRIMARY KEY,
             outlet        VARCHAR(50)  NOT NULL DEFAULT 'Restaurant',
@@ -17930,8 +17934,8 @@ def _fc_ensure_schema():
             created_at    DATETIME     DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_fc_item_name (item_name)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """, commit=True)
-    db.execute_query("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS fc_recipe_line (
             id                  INT AUTO_INCREMENT PRIMARY KEY,
             menu_item_id        INT NOT NULL,
@@ -17942,8 +17946,8 @@ def _fc_ensure_schema():
             stock_factor        DOUBLE DEFAULT 1,
             INDEX idx_fc_recipe_item (menu_item_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """, commit=True)
-    db.execute_query("""
+        """,
+        """
         CREATE TABLE IF NOT EXISTS fc_sale (
             id           INT AUTO_INCREMENT PRIMARY KEY,
             sale_date    DATE NOT NULL,
@@ -17959,7 +17963,12 @@ def _fc_ensure_schema():
             created_at   DATETIME     DEFAULT CURRENT_TIMESTAMP,
             INDEX idx_fc_sale_date (sale_date)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-    """, commit=True)
+        """,
+    ):
+        try:
+            db.execute_query(ddl, commit=True)
+        except Exception as e:
+            logging.warning(f"food_costing schema DDL skipped: {e}")
 
 
 FC_COSTING_METHODS = ('weighted_avg', 'fifo', 'lifo', 'latest')
@@ -18086,6 +18095,7 @@ def _fc_safe(title):
 @app.route('/food_costing')
 @login_required
 @has_permission('Access_Reports')
+@_fc_safe('Food Costing')
 def food_costing():
     _fc_ensure_schema()
     items = db.execute_query("SELECT * FROM fc_menu_item ORDER BY outlet, section, item_name") or []
@@ -18453,15 +18463,16 @@ def food_costing_opening_stock():
     if not it:
         return jsonify({'success': False, 'error': 'Item not found.'}), 404
     it = it[0]
+    # NB: inventory_recod_total_value is a GENERATED column — never insert it.
     db.execute_query("""
         INSERT INTO inventory_recod (
             inventoy_name, inventoy_code, inventory_recod_mesrmet,
             inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
-            inventory_recod_total_value, inventory_recod_suplier_iv_no, inventory_recod_user_id,
+            inventory_recod_suplier_iv_no, inventory_recod_user_id,
             inventory_recod_user_recod_date, inventory_recod_location, inventory_recod_action_date,
             inventory_recodcol_memo
-        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """, (it['name'], it['code'], it['unit'], unit_cost, qty, 0, qty * unit_cost,
+        ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (it['name'], it['code'], it['unit'], unit_cost, qty, 0,
           'FC-OPEN', get_current_user_id(), datetime.now().date(), location, as_date, 'Opening stock'),
         commit=True)
     return jsonify({'success': True})
