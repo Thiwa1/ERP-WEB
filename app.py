@@ -12217,14 +12217,27 @@ def vat_report():
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
 
-    generator = VATReportGenerator(db, from_date, to_date)
+    try:
+        generator = VATReportGenerator(db, from_date, to_date)
 
-    if not generator.check_vat_registered():
-        flash("Company is not VAT Registered. Please enable VAT in Company Profile to view reports.", "warning")
-        return render_template('vat_report.html', vat_enabled=False)
+        if not generator.check_vat_registered():
+            flash("Company is not VAT Registered. Please enable VAT in Company Profile to view reports.", "warning")
+            return render_template('vat_report.html', vat_enabled=False)
 
-    report_data = generator.generate()
-    return render_template('vat_report.html', **report_data)
+        report_data = generator.generate()
+        return render_template('vat_report.html', **report_data)
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        from markupsafe import escape
+        return (f"<div style='font-family:sans-serif;max-width:840px;margin:40px auto;padding:24px;"
+                f"border:1px solid #e2e8f0;border-radius:12px'>"
+                f"<h3 style='color:#c0392b;margin-top:0'>VAT Report — could not load</h3>"
+                f"<pre style='background:#f8f9fa;padding:14px;border-radius:8px;white-space:pre-wrap'>"
+                f"{escape(type(e).__name__)}: {escape(str(e))}</pre>"
+                f"<p style='color:#605E5C;font-size:.85rem'>If this names a missing table/column, that "
+                f"object isn't set up in this company's database, or a table-name case differs on the server.</p>"
+                f"<p><a href='/'>← Home</a></p></div>"), 500
 
 
 # --- Cash Handover ---

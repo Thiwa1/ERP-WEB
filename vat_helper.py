@@ -56,8 +56,8 @@ class VATReportGenerator:
                 ed.entry_effective_date as date,
                 ed.entry_naration as narration,
                 ed.enty_values_CR as vat_amount,
-                (SELECT SUM(Total_Value) FROM pos_sales_invoice_01 WHERE jv = ed.entry_jv) as gross_total,
-                (SELECT Invoice_No FROM pos_sales_invoice_01 WHERE jv = ed.entry_jv LIMIT 1) as invoice_no
+                (SELECT SUM(Total_Value) FROM POS_Sales_Invoice_01 WHERE jv = ed.entry_jv) as gross_total,
+                (SELECT Invoice_No FROM POS_Sales_Invoice_01 WHERE jv = ed.entry_jv LIMIT 1) as invoice_no
             FROM entry_details ed
             WHERE ed.account_name = 'VAT Control'
             AND ed.enty_values_CR > 0
@@ -234,7 +234,7 @@ class VATReportGenerator:
                 p.Total_Value as total,
                 p.jv,
                 (SELECT rate FROM tax_rates WHERE tax_name LIKE '%VAT%' AND active=1 LIMIT 1) as rate
-            FROM pos_sales_invoice_01 p
+            FROM POS_Sales_Invoice_01 p
             WHERE p.Revers = 1
             AND p.AcctionDate BETWEEN %s AND %s
         """
