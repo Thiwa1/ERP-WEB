@@ -320,7 +320,7 @@
     <div class="no-print-bar no-print">
         <span class="bar-label">Purchase Order Preview</span>
         <button class="btn-print" onclick="window.print()">&#128438; Print Purchase Order</button>
-        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
+        <button class="btn-close-win" onclick="window.close();setTimeout(function(){window.closed||(history.length>1?history.back():location.assign('/'))},150)">&#10005; Close</button>
     </div>
 
     <div class="print-box">

@@ -420,7 +420,7 @@
            href="/download/vat_invoice_format_2026">
             &#128229; Download Gazette Format
         </a>
-        <button class="btn-close-win" onclick="window.close()">
+        <button class="btn-close-win" onclick="window.close();setTimeout(function(){window.closed||(history.length>1?history.back():location.assign('/'))},150)">
             &#10005; Close
         </button>
         <button class="btn-close-win" style="background:#1e3a5f;border:1px solid #2d5986;"

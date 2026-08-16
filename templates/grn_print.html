@@ -286,7 +286,7 @@
     <div class="no-print-bar no-print">
         <span class="bar-label">GRN Preview</span>
         <button class="btn-print" onclick="window.print()">&#128438; Print GRN</button>
-        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
+        <button class="btn-close-win" onclick="window.close();setTimeout(function(){window.closed||(history.length>1?history.back():location.assign('/'))},150)">&#10005; Close</button>
         <button class="btn-close-win" style="background:#1e3a5f;border:1px solid #2d5986;" onclick="document.getElementById('grnAttachPanel').style.display=document.getElementById('grnAttachPanel').style.display?'':'block'">
             &#128206; Attachments
         </button>

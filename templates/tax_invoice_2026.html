@@ -64,7 +64,7 @@
         <span class="bar-label">Tax Invoice (VAT Format 2026)</span>
         <button class="btn btn-print" onclick="window.print()">&#128438; Print</button>
         <a class="btn btn-dl" href="/download/vat_invoice_format_2026">&#128229; Download Official Gazette Format</a>
-        <button class="btn btn-grey" onclick="window.close()">&#10005; Close</button>
+        <button class="btn btn-grey" onclick="window.close();setTimeout(function(){window.closed||(history.length>1?history.back():location.assign('/'))},150)">&#10005; Close</button>
     </div>
 
     <div class="sheet">

@@ -151,7 +151,7 @@
         <span class="bar-label">Cheque Preview</span>
         <span class="bar-size">{{ settings.paper_width_mm }}mm &times; {{ settings.paper_height_mm }}mm</span>
         <button class="btn-print" onclick="window.print()">&#128438; Print Cheque</button>
-        <button class="btn-close-win" onclick="window.close()">&#10005; Close</button>
+        <button class="btn-close-win" onclick="window.close();setTimeout(function(){window.closed||(history.length>1?history.back():location.assign('/'))},150)">&#10005; Close</button>
     </div>
 
     <!-- Cheque — exact positioning preserved from settings variables -->
