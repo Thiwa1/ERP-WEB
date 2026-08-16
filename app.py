@@ -188,6 +188,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'quotation_eval',     'label': 'Quotation Eval',       'url': '/quotation_evaluation',   'icon': 'fas fa-balance-scale-right', 'category': 'Inventory'},
     {'key': 'proforma_invoice',   'label': 'Proforma Invoice',     'url': '/proforma_invoice',       'icon': 'fas fa-file-contract',       'category': 'Inventory'},
     {'key': 'inventory_transfer', 'label': 'Inventory Transfer',   'url': '/inventory_transfer',     'icon': 'fas fa-exchange-alt',        'category': 'Inventory'},
+    {'key': 'inventory_issue',    'label': 'Inventory Issue',      'url': '/inventory_issue',        'icon': 'fas fa-dolly',               'category': 'Inventory'},
     {'key': 'manufacturing',      'label': 'Manufacturing',        'url': '/inventory_production',   'icon': 'fas fa-industry',            'category': 'Inventory'},
     {'key': 'trend_analysis',     'label': 'Trend Analysis',       'url': '/inventory_trend_analysis','icon': 'fas fa-chart-line',         'category': 'Inventory'},
     # POS
@@ -17968,6 +17969,174 @@ def api_send_invoice_email():
     if ok:
         return jsonify({'success': True, 'message': f'Invoice emailed to {to_email}'})
     return jsonify({'success': False, 'error': err})
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Inventory Issue — issue stock to a cost account (Dr cost account, Cr Inventory),
+# deduct stock, with an issue report. Mirrors the production-issue GL pattern.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/inventory_issue')
+@login_required
+@has_permission('Access_Inventory')
+def inventory_issue():
+    items = db.execute_query("""
+        SELECT i.id, i.inventoy_name AS name, i.inventoy_code AS code,
+               i.inventoy_items_messurment_unit AS unit,
+               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
+                  FROM inventory_price_recod p
+                 WHERE p.inventory_price_link = i.id
+                 ORDER BY p.id DESC LIMIT 1) AS cost
+        FROM inventoy_items i
+        WHERE i.active = 1
+        ORDER BY i.inventoy_name
+    """) or []
+    locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations") or []
+    accounts = db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE (account_expenses = 1 OR account_assets = 1) AND account_active = 1
+        ORDER BY account_name
+    """) or []
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit") or []
+    return render_template('inventory_issue.html', items=items, locations=locations,
+                           accounts=accounts, jobs=jobs,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+
+@app.route('/inventory_issue/submit', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def inventory_issue_submit():
+    """Stock OUT + Dr selected cost account, Cr Inventory control account."""
+    try:
+        date_val = request.form.get('issue_date') or date.today().strftime('%Y-%m-%d')
+        job_no = request.form.get('job_no')
+        source_loc = request.form.get('source_location')
+        dr_account = request.form.get('cost_account')
+        narration = request.form.get('narration') or 'Inventory Issue'
+
+        item_names = request.form.getlist('item_name[]')
+        item_codes = request.form.getlist('item_code[]')
+        item_units = request.form.getlist('item_unit[]')
+        item_costs = request.form.getlist('unit_cost[]')
+        qtys = request.form.getlist('qty[]')
+
+        if not item_names:
+            flash('No items to issue.', 'danger')
+            return redirect(url_for('inventory_issue'))
+        if not dr_account:
+            flash('Please select a cost account to charge.', 'danger')
+            return redirect(url_for('inventory_issue'))
+        if not source_loc:
+            flash('Please select the source location.', 'danger')
+            return redirect(url_for('inventory_issue'))
+
+        current_user_pk = get_current_user_pk()
+
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        try:
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                           ('JV FROM INVENTORY ISSUE', f"Inventory Issue: {narration}"))
+            jv_no = cursor.lastrowid
+
+            total_value = 0.0
+            for i in range(len(item_names)):
+                qty = float(qtys[i] or 0)
+                cost = float(item_costs[i] or 0)
+                if qty <= 0:
+                    continue
+                total_value += qty * cost
+                cursor.execute("""
+                    INSERT INTO inventory_recod (
+                        inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                        inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                        inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                        inventory_recod_user_recod_date, inventory_recod_location,
+                        inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (item_names[i], item_codes[i], item_units[i], cost, 0, qty,
+                      f"ISS-{jv_no}", current_user_pk, datetime.now().date(), source_loc,
+                      date_val, narration, jv_no))
+
+            if total_value <= 0:
+                conn.rollback()
+                flash('Nothing to issue — check quantities.', 'warning')
+                return redirect(url_for('inventory_issue'))
+
+            # GL: Dr selected cost account, Cr Inventory control account
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (dr_account, total_value, date_val, datetime.now().date(), narration,
+                  current_user_pk, jv_no, job_no if job_no else None))
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, ('Inventory', total_value, date_val, datetime.now().date(), narration,
+                  current_user_pk, jv_no, job_no if job_no else None))
+
+            conn.commit()
+            flash(f'Inventory issued successfully. JV: {jv_no}. Dr {dr_account} / Cr Inventory {total_value:,.2f}.', 'success')
+        except Exception as e:
+            conn.rollback()
+            flash(f'Error processing issue: {str(e)}', 'danger')
+        finally:
+            cursor.close()
+            conn.close()
+    except Exception as e:
+        flash(f'System Error: {str(e)}', 'danger')
+    return redirect(url_for('inventory_issue'))
+
+
+@app.route('/inventory_issue/report')
+@login_required
+@has_permission('Access_Reports')
+def inventory_issue_report():
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+
+    lines = db.execute_query("""
+        SELECT inventory_recod_action_date AS date, JV_No AS jv,
+               inventoy_name AS name, inventoy_code AS code,
+               inventory_recod_mesrmet AS unit,
+               inventory_recod_movment_out AS qty,
+               inventory_recod_unit_price AS cost,
+               inventory_recod_location AS location,
+               inventory_recodcol_memo AS narration
+        FROM inventory_recod
+        WHERE inventory_recod_suplier_iv_no LIKE 'ISS-%%'
+          AND inventory_recod_action_date BETWEEN %s AND %s
+        ORDER BY inventory_recod_action_date DESC, JV_No DESC, id DESC
+    """, (from_date, to_date)) or []
+
+    # cost account (DR side) per JV
+    jv_account = {}
+    jvs = list({l['jv'] for l in lines if l['jv'] is not None})
+    if jvs:
+        ph = ','.join(['%s'] * len(jvs))
+        accs = db.execute_query(
+            f"SELECT entry_jv, account_name FROM entry_details WHERE enty_values_DR > 0 AND entry_jv IN ({ph})",
+            tuple(jvs)) or []
+        for a in accs:
+            jv_account.setdefault(a['entry_jv'], a['account_name'])
+
+    rows, total_value = [], 0.0
+    for l in lines:
+        qty = float(l['qty'] or 0)
+        cost = float(l['cost'] or 0)
+        val = qty * cost
+        total_value += val
+        rows.append({**l, 'qty': qty, 'cost': cost, 'value': val,
+                     'cost_account': jv_account.get(l['jv'], '-')})
+
+    return render_template('inventory_issue_report.html', rows=rows,
+                           from_date=from_date, to_date=to_date, total_value=total_value)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .ii-card { border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);background:#fff; }
+  .ii-table thead th { background:#f8f9fa;font-size:.7rem;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:#605E5C;border-bottom:2px solid #e2e8f0; }
+  .ii-table td { vertical-align:middle;font-size:.84rem; }
+  .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
+  @media print { .no-print { display:none !important; } .ii-card { box-shadow:none;border:none; } }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div>
+      <h5 class="mb-0 fw-bold">Inventory Issue Report</h5>
+      <small class="text-muted">Stock issued to cost accounts</small>
+    </div>
+    <div class="ms-auto d-flex gap-2 no-print">
+      <a href="/inventory_issue" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i> New Issue</a>
+      <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    </div>
+  </div>
+
+  <form class="ii-card p-3 mb-4 d-flex align-items-end gap-2 flex-wrap no-print" method="get">
+    <div><label class="form-label small fw-bold mb-1">From</label>
+      <input type="date" name="from" value="{{ from_date }}" class="form-control form-control-sm"></div>
+    <div><label class="form-label small fw-bold mb-1">To</label>
+      <input type="date" name="to" value="{{ to_date }}" class="form-control form-control-sm"></div>
+    <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
+    <span class="text-muted ms-auto" style="font-size:.82rem;">Total issued value:
+      <strong class="num" style="color:#0078D4;">{{ "{:,.2f}".format(total_value) }}</strong></span>
+  </form>
+
+  <div class="ii-card">
+    <div class="table-responsive">
+      <table class="table ii-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Date</th>
+            <th>JV</th>
+            <th>Item</th>
+            <th>Location</th>
+            <th class="text-end">Qty</th>
+            <th class="text-end">Unit Cost</th>
+            <th class="text-end">Value</th>
+            <th>Cost Account (Dr)</th>
+            <th>Narration</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="ps-3">{{ r.date }}</td>
+            <td class="text-muted" style="font-size:.8rem;">JV-{{ r.jv }}</td>
+            <td>
+              <span class="fw-semibold">{{ r.name }}</span>
+              {% if r.code %}<span class="text-muted" style="font-size:.72rem;"> {{ r.code }}</span>{% endif %}
+            </td>
+            <td class="text-muted" style="font-size:.82rem;">{{ r.location or '-' }}</td>
+            <td class="num">{{ "{:,.3f}".format(r.qty) }} {{ r.unit or '' }}</td>
+            <td class="num">{{ "{:,.2f}".format(r.cost) }}</td>
+            <td class="num fw-semibold">{{ "{:,.2f}".format(r.value) }}</td>
+            <td style="font-size:.82rem;">{{ r.cost_account }}</td>
+            <td class="text-muted" style="font-size:.8rem;">{{ r.narration or '' }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9" class="text-center text-muted py-5">
+            <i class="fas fa-dolly d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+            No issues in this date range.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+        {% if rows %}
+        <tfoot>
+          <tr style="font-weight:700;background:#f8f9fa;border-top:2px solid #e2e8f0;">
+            <td colspan="6" class="text-end ps-3">Total Issued Value</td>
+            <td class="num">{{ "{:,.2f}".format(total_value) }}</td>
+            <td colspan="2"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
