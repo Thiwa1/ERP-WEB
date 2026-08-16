@@ -8935,6 +8935,37 @@ def tb_correction():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# Party-wise aging matrix with finer 15-day buckets (used by both aging reports)
+FINE_AGING_BUCKETS = ['Current', '1-15', '16-30', '31-45', '46-60', '61-90', 'Over 90']
+
+
+def _fine_aging_bucket(age_days):
+    if age_days <= 0:  return 'Current'
+    if age_days <= 15: return '1-15'
+    if age_days <= 30: return '16-30'
+    if age_days <= 45: return '31-45'
+    if age_days <= 60: return '46-60'
+    if age_days <= 90: return '61-90'
+    return 'Over 90'
+
+
+def _aging_matrix(rows, name_key):
+    """Aggregate detailed invoice-level aging rows into one row per party with
+    a column per fine bucket. Returns (matrix_rows, column_totals, grand_total)."""
+    parties = {}
+    for r in rows:
+        name = r.get(name_key) or '(Unknown)'
+        b = parties.setdefault(name, {bk: 0.0 for bk in FINE_AGING_BUCKETS})
+        b[_fine_aging_bucket(r['AgeDays'])] += r['Outstanding']
+    matrix_rows = []
+    for n in sorted(parties, key=lambda x: str(x).lower()):
+        b = parties[n]
+        matrix_rows.append({'name': n, 'buckets': b, 'total': sum(b.values())})
+    col_totals = {bk: sum(parties[n][bk] for n in parties) for bk in FINE_AGING_BUCKETS}
+    grand_total = sum(col_totals.values())
+    return matrix_rows, col_totals, grand_total
+
+
 # --- Supplier Aging Report ---
 @app.route('/supplier_aging')
 @login_required
@@ -9043,11 +9074,19 @@ def supplier_aging():
         output.headers["Content-type"] = "text/csv"
         return output
 
+    matrix_rows, matrix_totals, matrix_grand = _aging_matrix(aging_data, 'SupplierName')
+    view = request.args.get('view', 'detail')
+
     return render_template('supplier_aging.html',
                            suppliers=suppliers,
                            selected_supplier=int(selected_supplier) if selected_supplier else None,
                            rows=aging_data,
                            buckets=buckets,
+                           view=view,
+                           fine_buckets=FINE_AGING_BUCKETS,
+                           matrix_rows=matrix_rows,
+                           matrix_totals=matrix_totals,
+                           matrix_grand=matrix_grand,
                            summary={
                                'total_outstanding': total_outstanding,
                                'total_invoices': total_invoices,
@@ -9156,11 +9195,19 @@ def customer_aging():
         output.headers["Content-type"] = "text/csv"
         return output
 
+    matrix_rows, matrix_totals, matrix_grand = _aging_matrix(aging_data, 'CustomerName')
+    view = request.args.get('view', 'detail')
+
     return render_template('customer_aging.html',
                            customers=customers,
                            selected_customer=int(selected_customer) if selected_customer else None,
                            rows=aging_data,
                            buckets=buckets,
+                           view=view,
+                           fine_buckets=FINE_AGING_BUCKETS,
+                           matrix_rows=matrix_rows,
+                           matrix_totals=matrix_totals,
+                           matrix_grand=matrix_grand,
                            summary={
                                'total_outstanding': total_outstanding,
                                'total_invoices': total_invoices,

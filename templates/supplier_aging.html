@@ -132,6 +132,60 @@
         </div>
     </div>
 
+    <!-- View toggle: detailed (invoice-wise) vs summary (supplier-wise matrix) -->
+    {% set _sup = ('&supplier_id=' ~ selected_supplier) if selected_supplier else '' %}
+    <div class="d-flex gap-2 mb-3">
+        <a href="?view=detail{{ _sup }}" class="btn btn-sm {% if view != 'summary' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+            <i class="fas fa-list me-1"></i> Detailed (invoice-wise)
+        </a>
+        <a href="?view=summary{{ _sup }}" class="btn btn-sm {% if view == 'summary' %}btn-primary{% else %}btn-outline-secondary{% endif %}">
+            <i class="fas fa-table-cells me-1"></i> Summary (supplier-wise)
+        </a>
+    </div>
+
+    {% if view == 'summary' %}
+    <!-- Supplier-wise Aging Matrix -->
+    <div class="report-card">
+        <div class="table-responsive">
+            <table class="table table-hover report-table mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>Supplier</th>
+                        {% for b in fine_buckets %}<th class="text-end">{{ b }}</th>{% endfor %}
+                        <th class="text-end">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in matrix_rows %}
+                    <tr>
+                        <td class="fw-semibold">{{ r.name }}</td>
+                        {% for b in fine_buckets %}
+                        <td class="num-cell {% if r.buckets[b] == 0 %}text-muted{% elif b == 'Over 90' %}text-danger fw-semibold{% endif %}">{{ "{:,.2f}".format(r.buckets[b]) }}</td>
+                        {% endfor %}
+                        <td class="num-cell fw-bold">{{ "{:,.2f}".format(r.total) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="{{ fine_buckets|length + 2 }}" class="text-center py-5 text-muted fst-italic">No outstanding records found.</td></tr>
+                    {% endfor %}
+                </tbody>
+                {% if matrix_rows %}
+                <tfoot>
+                    <tr class="total-row fw-bold" style="border-top:2px solid #e2e8f0;">
+                        <td style="text-transform:uppercase;letter-spacing:.5px;font-size:.78rem;">Total</td>
+                        {% for b in fine_buckets %}<td class="num-cell">{{ "{:,.2f}".format(matrix_totals[b]) }}</td>{% endfor %}
+                        <td class="num-cell grand-total-cell">{{ "{:,.2f}".format(matrix_grand) }}</td>
+                    </tr>
+                </tfoot>
+                {% endif %}
+            </table>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-between align-items-center" style="background:#fafafa; font-size:.78rem; color:#605E5C;">
+            <span><i class="fas fa-truck me-1"></i> <strong>{{ matrix_rows|length }}</strong> Suppliers</span>
+            <span>Buckets are days overdue from the due date.</span>
+            <span><i class="fas fa-calendar me-1"></i> Report Date: <strong>{{ summary.report_date }}</strong></span>
+        </div>
+    </div>
+    {% else %}
     <!-- Data Table -->
     <div class="report-card">
         <div class="table-responsive">
@@ -204,6 +258,7 @@
             <span><i class="fas fa-calendar me-1"></i> Report Date: <strong>{{ summary.report_date }}</strong></span>
         </div>
     </div>
+    {% endif %}
 
 </div>
 {% endblock %}
