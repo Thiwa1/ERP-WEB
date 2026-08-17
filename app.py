@@ -1711,6 +1711,17 @@ def grn():
                            locations=locations,
                            today_date=date.today().strftime('%Y-%m-%d'))
 
+
+@app.route('/api/inventory_items')
+@login_required
+def api_inventory_items():
+    """Live inventory item list so a newly created item shows up in an open
+    window (e.g. GRN) without a full page refresh."""
+    items = db.execute_query(
+        "SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit AS unit FROM inventoy_items") or []
+    return jsonify([{'name': i['inventoy_name'], 'code': i['inventoy_code'] or '',
+                     'unit': i['unit'] or ''} for i in items])
+
 # --- Inventory Locations ---
 @app.route('/inventory_locations', methods=['GET', 'POST'])
 @login_required

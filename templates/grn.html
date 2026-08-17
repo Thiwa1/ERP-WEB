@@ -125,8 +125,15 @@
                     <div class="card-body px-4 py-4">
                         <span class="section-label">Item Entry</span>
                         <div class="mb-3">
-                            <label class="form-label">Item Name</label>
-                            <select class="form-select select2" id="itemSelect">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <label class="form-label mb-0">Item Name</label>
+                                <button type="button" id="refreshItemsBtn" onclick="refreshItems(true)"
+                                        class="btn btn-sm p-0 px-2" title="Reload items after creating a new one (no page refresh)"
+                                        style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;background:#f8f9fa;font-size:.72rem;">
+                                    <i class="fas fa-rotate"></i> Refresh Items
+                                </button>
+                            </div>
+                            <select class="form-select select2 mt-1" id="itemSelect">
                                 <option value="">Select Item</option>
                                 {% for item in items %}
                                 <option value="{{ item.inventoy_name }}"
@@ -271,6 +278,32 @@
 
 <script>
     let items = [];
+
+    // Rebuild the item dropdown from the server so a newly created inventory
+    // item appears without reloading the whole GRN window.
+    function refreshItems(showFeedback) {
+        const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        return fetch('/api/inventory_items')
+            .then(r => r.json())
+            .then(list => {
+                const sel = document.getElementById('itemSelect');
+                if (!sel) return;
+                const keep = sel.value;
+                sel.innerHTML = '<option value="">Select Item</option>' + list.map(it =>
+                    `<option value="${esc(it.name)}" data-code="${esc(it.code)}" data-unit="${esc(it.unit)}">${esc(it.name)}</option>`).join('');
+                if (keep && list.some(it => it.name === keep)) sel.value = keep;
+                if (typeof $ !== 'undefined') { $('#itemSelect').trigger('change.select2'); }
+                if (showFeedback) {
+                    const btn = document.getElementById('refreshItemsBtn');
+                    if (btn) { const o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check"></i> Updated (' + list.length + ')'; setTimeout(() => btn.innerHTML = o, 1600); }
+                }
+            }).catch(() => {});
+    }
+
+    // Auto-refresh items when returning to this tab (after creating one elsewhere).
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshItems(false);
+    });
 
     // Calculate Item Total dynamically
     const qtyInput = document.getElementById('itemQty');
