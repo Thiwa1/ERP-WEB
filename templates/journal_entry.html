@@ -50,13 +50,20 @@
                 <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
                     <i class="fas fa-list-ol me-1"></i> Journal Entries &mdash; Base Currency: {{ base_currency }}
                 </div>
-                <button type="button" class="btn btn-sm fw-600" onclick="addRow()"
-                        style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.8rem;padding:.3rem .85rem;">
-                    <i class="fas fa-plus me-1"></i> Add Row
-                </button>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-sm" id="refreshAccountsBtn" onclick="refreshAccounts(true)"
+                            title="Reload the account list (after creating a new account) without losing this entry"
+                            style="border:1px solid #e2e8f0;border-radius:8px;color:#605E5C;background:#f8f9fa;font-weight:600;font-size:.8rem;padding:.3rem .85rem;">
+                        <i class="fas fa-rotate me-1"></i> Refresh Accounts
+                    </button>
+                    <button type="button" class="btn btn-sm fw-600" onclick="addRow()"
+                            style="background:var(--accent-color);border:none;border-radius:8px;color:#fff;font-weight:600;font-size:.8rem;padding:.3rem .85rem;">
+                        <i class="fas fa-plus me-1"></i> Add Row
+                    </button>
+                </div>
             </div>
             <div class="table-responsive" style="border-top:1px solid #f0f2f5;">
-                <table class="table table-hover mb-0" id="journalTable" style="min-width:1200px;">
+                <table class="table table-hover mb-0" id="journalTable" style="min-width:1360px;">
                     <thead>
                         <tr style="background:#f8f9fa;">
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;padding:.75rem 1rem;">Account</th>
@@ -65,8 +72,8 @@
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:6%;">Currency</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">FC Amount</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:6%;">Rate</th>
-                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Debit ({{ base_currency }})</th>
-                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:10%;">Credit ({{ base_currency }})</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:13%;">Debit ({{ base_currency }})</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:13%;">Credit ({{ base_currency }})</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:15%;">Narration</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:5%;">Action</th>
                         </tr>
@@ -247,6 +254,29 @@
     let rowCount = 0;
     const baseCurrency = "{{ base_currency }}";
 
+    // Rebuild the account datalist from the server so a newly created account
+    // shows up without reloading the page (and losing the entry in progress).
+    function refreshAccounts(showFeedback) {
+        const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+        return fetch('/api/journal_accounts')
+            .then(r => r.json())
+            .then(list => {
+                const dl = document.getElementById('accountList');
+                if (dl) dl.innerHTML = list.map(a =>
+                    `<option value="${esc(a.name)}" label="${esc(a.type)}" data-curr="${esc(a.currency)}">`).join('');
+                if (showFeedback) {
+                    const btn = document.getElementById('refreshAccountsBtn');
+                    if (btn) { const o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check me-1"></i> Updated (' + list.length + ')'; setTimeout(() => btn.innerHTML = o, 1600); }
+                }
+            }).catch(() => {});
+    }
+
+    // When this tab regains focus (e.g. after creating an account elsewhere),
+    // pull the latest accounts automatically.
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') refreshAccounts(false);
+    });
+
     function addRow() {
         rowCount++;
         const tbody = document.querySelector('#journalTable tbody');
@@ -274,10 +304,10 @@
                 <input type="number" class="form-control form-control-sm text-end rate-input font-monospace" name="rate_${rowCount}" step="0.0001" value="1.0000" disabled oninput="calcBaseAmount(this)" style="border-radius:6px;font-size:.82rem;">
             </td>
             <td style="padding:.4rem .6rem;">
-                <input type="number" class="form-control form-control-sm text-end dr-input font-monospace" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;">
+                <input type="number" class="form-control form-control-sm text-end dr-input font-monospace" name="dr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;min-width:130px;">
             </td>
             <td style="padding:.4rem .6rem;">
-                <input type="number" class="form-control form-control-sm text-end cr-input font-monospace" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;">
+                <input type="number" class="form-control form-control-sm text-end cr-input font-monospace" name="cr_${rowCount}" step="0.01" value="0.00" oninput="calculateTotals()" style="border-radius:6px;font-size:.82rem;min-width:130px;">
             </td>
             <td style="padding:.4rem .6rem;">
                 <input spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences" type="text" class="form-control form-control-sm" name="narration_${rowCount}" placeholder="Line Narration" style="border-radius:6px;font-size:.82rem;">

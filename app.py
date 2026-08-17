@@ -14369,6 +14369,26 @@ def journal_entry():
                            today_date=date.today().strftime('%Y-%m-%d'),
                            last_jv=request.args.get('last_jv'))
 
+
+@app.route('/api/journal_accounts')
+@login_required
+def api_journal_accounts():
+    """Live account list for the journal-entry datalist so a newly created
+    account appears without a full page refresh."""
+    accounts = db.execute_query("""
+        SELECT account_name, currency_code,
+               CASE
+                   WHEN account_income = 1 OR account_expenses = 1 THEN 'P&L Account'
+                   WHEN account_assets = 1 OR account_liabilities = 1 OR account_equity = 1 THEN 'BS Account'
+                   ELSE 'Other'
+               END as account_type
+        FROM new_account_table
+        WHERE account_active = 1
+        ORDER BY account_name
+    """) or []
+    return jsonify([{'name': a['account_name'], 'type': a['account_type'],
+                     'currency': a['currency_code'] or ''} for a in accounts])
+
 @app.route('/journal_entry/save', methods=['POST'])
 @login_required
 @has_permission('Access_Accounting')
