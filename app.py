@@ -3847,11 +3847,15 @@ def cash_payment_submit():
         current_user = get_current_user_id()
         current_user_pk = get_current_user_pk()
 
-        # 1. Generate Voucher Number
-        cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
-        res = cursor.fetchone()
-        max_voucher = res[0] if res and res[0] else 0
-        new_voucher = max_voucher + 1
+        # 1. Voucher Number — manual override if provided, else auto
+        manual_voucher = (request.form.get('manual_voucher') or '').strip()
+        if manual_voucher:
+            new_voucher = manual_voucher
+        else:
+            cursor.execute("SELECT MAX(cash_voucher_number) FROM cash_voucher_no WHERE cash_voucher_link = %s", (cash_account,))
+            res = cursor.fetchone()
+            max_voucher = res[0] if res and res[0] else 0
+            new_voucher = max_voucher + 1
 
         cursor.execute("INSERT INTO cash_voucher_no (id, cash_voucher_link, cash_voucher_number) VALUES (0, %s, %s)",
                        (cash_account, new_voucher))
