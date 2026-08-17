@@ -3921,17 +3921,13 @@ def cash_payment_submit():
                     p['id'], new_voucher, current_user_pk, payment_date
                 ))
 
-            # Update supplier outstanding (in base currency) — settle by the base amount
-            settle_params = [
-                (max(0, outstanding_map.get(str(p['id']), 0.0) - p['base']),
-                 p['base'],
-                 p['id'])
-                for p in payments
-            ]
+            # Update supplier outstanding (in base currency) — settle by the base amount.
+            # suppliers_invoice_oustanding is a GENERATED column (total_oustanding -
+            # total_payment); only bump the payment and it recomputes itself.
+            settle_params = [(p['base'], p['id']) for p in payments]
             cursor.executemany("""
                 UPDATE suppliers_invoice_data
-                SET suppliers_invoice_oustanding = GREATEST(0, %s),
-                    suppliers_invoice_total_payment = suppliers_invoice_total_payment + %s
+                SET suppliers_invoice_total_payment = COALESCE(suppliers_invoice_total_payment, 0) + %s
                 WHERE s_i_id = %s
             """, settle_params)
 
@@ -10026,10 +10022,7 @@ def bank_payment_reversal_process():
                AND bbr.bank_book__recode_cr > 0
             SET
                 sid.suppliers_invoice_total_payment = GREATEST(0,
-                    sid.suppliers_invoice_total_payment - bbr.bank_book__recode_cr),
-                sid.suppliers_invoice_oustanding = GREATEST(0,
-                    sid.suppliers_invoice_total_oustanding -
-                    GREATEST(0, sid.suppliers_invoice_total_payment - bbr.bank_book__recode_cr))
+                    COALESCE(sid.suppliers_invoice_total_payment, 0) - bbr.bank_book__recode_cr)
             WHERE bbr.jv_numbers_jv_id = %s
         """, (jv, jv))
 
@@ -10152,10 +10145,7 @@ def cash_payment_reversal_process():
                AND cbr.cash_book_recode_cr > 0
             SET
                 sid.suppliers_invoice_total_payment = GREATEST(0,
-                    sid.suppliers_invoice_total_payment - cbr.cash_book_recode_cr),
-                sid.suppliers_invoice_oustanding = GREATEST(0,
-                    sid.suppliers_invoice_total_oustanding -
-                    GREATEST(0, sid.suppliers_invoice_total_payment - cbr.cash_book_recode_cr))
+                    COALESCE(sid.suppliers_invoice_total_payment, 0) - cbr.cash_book_recode_cr)
             WHERE cbr.jv_numbers_jv_id = %s
         """, (jv, jv))
 
