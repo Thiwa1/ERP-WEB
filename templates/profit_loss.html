@@ -225,12 +225,30 @@
                         </tr>
                         {% for acc in cat.accounts %}
                         {% set row_income = acc.is_income if acc.is_income is defined else cat.is_income %}
+                        {% set has_subs = acc.sub_accounts and acc.sub_accounts|length > 0 %}
                         <tr class="{{ 'pl-income-row' if row_income else 'pl-expense-row' }}">
-                            <td>{{ acc.name }}</td>
+                            <td>
+                                {% if has_subs %}
+                                <button type="button" class="pl-sub-toggle" onclick="plToggleSubs(this)" data-open="0"
+                                        style="border:1px solid #cbd5e1;background:#f1f5f9;color:#334155;width:18px;height:18px;line-height:1;border-radius:4px;font-weight:700;font-size:.8rem;margin-right:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;"
+                                        title="Show sub-accounts"><span class="pl-sub-sign">+</span></button>
+                                {% endif %}
+                                {{ acc.name }}
+                            </td>
                             {% for val in acc.amounts %}
                             <td class="text-end amount-cell">{{ val|currency }}</td>
                             {% endfor %}
                         </tr>
+                        {% if has_subs %}
+                        {% for sub in acc.sub_accounts %}
+                        <tr class="pl-subaccount-row" style="display:none;background:#fbfcfe;">
+                            <td style="padding-left:2.5rem;font-size:.82rem;color:#605E5C;">&#8627; {{ sub.name }}</td>
+                            {% for val in sub.amounts %}
+                            <td class="text-end amount-cell" style="font-size:.82rem;color:#605E5C;">{{ val|currency }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                        {% endif %}
                         {% endfor %}
                         <tr class="pl-cat-total">
                             <td class="text-end pe-3">{{ cat.name }} Total</td>
@@ -278,6 +296,20 @@
 
 </div>
 
+<script>
+// Expand/collapse the sub-account rows that follow a main account row.
+function plToggleSubs(btn) {
+    const open = btn.getAttribute('data-open') === '1';
+    let tr = btn.closest('tr').nextElementSibling;
+    while (tr && tr.classList.contains('pl-subaccount-row')) {
+        tr.style.display = open ? 'none' : '';
+        tr = tr.nextElementSibling;
+    }
+    btn.setAttribute('data-open', open ? '0' : '1');
+    const sign = btn.querySelector('.pl-sub-sign');
+    if (sign) sign.textContent = open ? '+' : '−';
+}
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const container = document.getElementById('periods-container');

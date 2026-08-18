@@ -20,6 +20,7 @@ class ProfitLossReportGenerator:
             if not periods:
                 return periods, {}, '', ''
             acc_map = self._fetch_profit_loss_data(cursor, periods, acc_map)
+            acc_map = self._fetch_sub_account_data(cursor, periods, acc_map)
         finally:
             cursor.close()
             conn.close()
@@ -122,6 +123,65 @@ class ProfitLossReportGenerator:
 
         return acc_map
 
+    def _fetch_sub_account_data(self, cursor, periods, acc_map):
+        """Per-sub-account values for each account, so the P&L can show a
+        breakdown under a main account that has sub-accounts."""
+        if not periods:
+            return acc_map
+
+        try:
+            cursor.execute("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account")
+            sub_names = {str(r['sub_account_code']): r['sub_sub_accaount_name'] for r in cursor.fetchall()}
+        except Exception:
+            sub_names = {}
+
+        select_clause = ["account_name", "entry_sub_account_code"]
+        params = []
+        overall_start = min(p['start'] for p in periods)
+        overall_end = max(p['end'] for p in periods)
+        for i, p in enumerate(periods):
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_DR ELSE 0 END) as dr_{i}")
+            select_clause.append(f"SUM(CASE WHEN entry_effective_date BETWEEN %s AND %s THEN enty_values_CR ELSE 0 END) as cr_{i}")
+            params.extend([p['start'], p['end'], p['start'], p['end']])
+        params.extend([overall_start, overall_end])
+
+        query = f"""
+            SELECT {', '.join(select_clause)}
+            FROM entry_details
+            WHERE entry_effective_date BETWEEN %s AND %s
+            AND entry_deleted = 0
+            AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code != 0
+            GROUP BY account_name, entry_sub_account_code
+        """
+        try:
+            cursor.execute(query, tuple(params))
+            rows = cursor.fetchall()
+        except Exception:
+            return acc_map
+
+        for r in rows:
+            name = r['account_name']
+            if name not in acc_map:
+                continue
+            code = str(r['entry_sub_account_code'])
+            is_income = acc_map[name]['meta']['account_income'] == 1
+            vals = []
+            for i in range(len(periods)):
+                dr = float(r.get(f'dr_{i}', 0) or 0)
+                cr = float(r.get(f'cr_{i}', 0) or 0)
+                vals.append((cr - dr) if is_income else (dr - cr))
+            if all(abs(v) < 0.01 for v in vals):
+                continue
+            acc_map[name].setdefault('sub_accounts', []).append({
+                'name': sub_names.get(code) or f'Sub {code}',
+                'values': vals
+            })
+
+        for name in acc_map:
+            if 'sub_accounts' in acc_map[name]:
+                acc_map[name]['sub_accounts'].sort(key=lambda s: str(s['name']).lower())
+        return acc_map
+
     def _fetch_pl_category_levels(self, cursor):
         """Authoritative {category: holding_level} from the P&L Categories table.
         The per-account copies in new_account_table go stale when a category's
@@ -182,6 +242,8 @@ class ProfitLossReportGenerator:
             cat['accounts'].append({
                 'name': name,
                 'amounts': data['values'],
+                'sub_accounts': [{'name': s['name'], 'amounts': list(s['values'])}
+                                 for s in data.get('sub_accounts', [])],
                 'sort': acc_sort,
                 'is_income': is_income
             })
@@ -213,6 +275,8 @@ class ProfitLossReportGenerator:
                 # Display: inside an income-style block, expense accounts are deductions
                 if cat['is_income'] and not acc['is_income']:
                     acc['amounts'] = [-v for v in acc['amounts']]
+                    for s in acc.get('sub_accounts', []):
+                        s['amounts'] = [-v for v in s['amounts']]
                 for i, v in enumerate(acc['amounts']):
                     cat['total'][i] += v
 
@@ -241,6 +305,11 @@ class Customer_ProfitLossReportGenerator(ProfitLossReportGenerator):
     def __init__(self, db, customer_sub_account_code):
         super().__init__(db)
         self.customer_sub_account_code = customer_sub_account_code
+
+    def _fetch_sub_account_data(self, cursor, periods, acc_map):
+        # This report is already filtered to one customer's sub-account, so a
+        # further sub-account breakdown does not apply here.
+        return acc_map
 
     def _fetch_profit_loss_data(self, cursor, periods, acc_map):
         if not periods:

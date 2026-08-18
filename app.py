@@ -11644,6 +11644,8 @@ def profit_loss():
             kind = 'Income' if cat.get('is_income') else 'Expense'
             for acc in cat.get('accounts', []):
                 cw.writerow([kind, cat['name'], acc['name']] + [f"{float(v):.2f}" for v in acc['amounts']])
+                for sub in acc.get('sub_accounts', []):
+                    cw.writerow([kind, cat['name'], '    - ' + sub['name']] + [f"{float(v):.2f}" for v in sub['amounts']])
             cw.writerow([kind, cat['name'], f"{cat['name']} Total"] + [f"{float(v):.2f}" for v in cat.get('total', [])])
             for strow in cat.get('subtotal_rows', []):
                 cw.writerow(['Subtotal', '', strow['label']] + [f"{float(v):.2f}" for v in strow['amounts']])
@@ -11679,6 +11681,8 @@ def profit_loss():
                 row = xl.section_row(ws, row, ncols, cat['name'], color=xl.RED_DARK, bg='FDECEA')
             for acc in cat['accounts']:
                 row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+                for sub in acc.get('sub_accounts', []):
+                    row = xl.item_row(ws, row, '        ↳ ' + sub['name'], sub['amounts'])
             row = xl.total_row(ws, row, f"{cat['name']} Total", cat.get('total', []))
             for st in cat.get('subtotal_rows', []):
                 row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
