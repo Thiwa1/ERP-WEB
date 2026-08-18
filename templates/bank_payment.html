@@ -56,8 +56,15 @@
 
                         <!-- Supplier Select -->
                         <div class="mb-4">
-                            <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Select Supplier</label>
-                            <div class="input-group">
+                            <div class="d-flex align-items-center justify-content-between">
+                                <label class="form-label mb-0" style="font-size:.8rem;font-weight:600;color:#323130;">Select Supplier</label>
+                                <button type="button" id="refreshSuppliersBtn" onclick="refreshSuppliers(true)"
+                                        class="btn btn-sm p-0 px-2" title="Reload suppliers after creating a new one (no page refresh)"
+                                        style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;background:#f8f9fa;font-size:.72rem;">
+                                    <i class="fas fa-rotate"></i> Refresh Suppliers
+                                </button>
+                            </div>
+                            <div class="input-group mt-1">
                                 <select class="form-select select2" name="supplier" id="supplierSelect" onchange="loadSupplierData()" required
                                         style="border-radius:8px 0 0 8px;border-color:#e2e8f0;font-size:.875rem;">
                                     <option value="">-- Search Supplier --</option>
@@ -246,6 +253,29 @@
 {% endif %}
 
 <script>
+// Live-refresh the supplier list (after creating a new supplier) in place.
+function refreshSuppliers(showFeedback) {
+    const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    return fetch('/api/suppliers_list')
+        .then(r => r.json())
+        .then(list => {
+            const sel = document.getElementById('supplierSelect');
+            if (!sel) return;
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">-- Search Supplier --</option>' +
+                list.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
+            if (keep && list.indexOf(keep) !== -1) sel.value = keep;
+            if (typeof $ !== 'undefined') { $('#supplierSelect').trigger('change.select2'); }
+            if (showFeedback) {
+                const btn = document.getElementById('refreshSuppliersBtn');
+                if (btn) { const o = btn.innerHTML; btn.innerHTML = '<i class="fas fa-check"></i> Updated (' + list.length + ')'; setTimeout(() => btn.innerHTML = o, 1600); }
+            }
+        }).catch(() => {});
+}
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') refreshSuppliers(false);
+});
+
 function loadSupplierData() {
     const supplier = document.getElementById('supplierSelect').value;
     if (!supplier) return;

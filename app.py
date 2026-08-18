@@ -3716,6 +3716,46 @@ def cash_payment():
                            today_date=date.today().strftime('%Y-%m-%d'), last_jv=last_jv,
                            base_currency=base_currency, currencies=currencies)
 
+
+@app.route('/api/suppliers_list')
+@login_required
+def api_suppliers_list():
+    """Live supplier list so a newly created supplier shows up in an open
+    cash/bank payment window without a full page refresh."""
+    rows = db.execute_query(
+        "SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 AND supplier_name != 'Direct Payment' ORDER BY supplier_name") or []
+    return jsonify([r['supplier_name'] for r in rows])
+
+
+@app.route('/api/customers_list')
+@login_required
+def api_customers_list():
+    """Live customer list so a newly created customer shows up in an open
+    invoice window without a full page refresh."""
+    rows = db.execute_query(
+        "SELECT supplier_name AS customer_name FROM suppliers WHERE Is_Customer = 1 ORDER BY supplier_name") or []
+    return jsonify([r['customer_name'] for r in rows])
+
+
+@app.route('/api/invoice_items')
+@login_required
+def api_invoice_items():
+    """Live item list (id, name, code, unit, cost) for the invoice window so a
+    newly created item shows up without a full page refresh."""
+    rows = db.execute_query("""
+        SELECT i.id, i.inventoy_name AS name, i.inventoy_code AS code,
+               i.inventoy_items_messurment_unit AS unit,
+               (SELECT COALESCE(p.inventory_price_purcharsing, 0)
+                  FROM inventory_price_recod p
+                 WHERE p.inventory_price_link = i.id
+                 ORDER BY p.id DESC LIMIT 1) AS cost
+        FROM inventoy_items i
+        WHERE i.active = 1
+        ORDER BY i.inventoy_name
+    """) or []
+    return jsonify([{'id': r['id'], 'name': r['name'], 'code': r['code'] or '',
+                     'unit': r['unit'] or '', 'cost': float(r['cost'] or 0)} for r in rows])
+
 def _get_supplier_history_data(supplier_name, payment_type):
     """Helper to fetch common supplier details, outstanding invoices, and payment history."""
     details, inv_list, sup_id = _get_supplier_base_data(supplier_name)

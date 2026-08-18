@@ -476,8 +476,15 @@
                     <div class="p-4">
 
                         <div class="mb-3">
-                            <label class="field-label" for="customerSelect">Customer</label>
-                            <select class="form-select form-select-sm select2" name="customer"
+                            <div class="d-flex align-items-center justify-content-between">
+                                <label class="field-label mb-0" for="customerSelect">Customer</label>
+                                <button type="button" id="refreshCustomersBtn" onclick="refreshCustomers(true)"
+                                        class="btn btn-sm p-0 px-2" title="Reload customers after creating a new one (no page refresh)"
+                                        style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;background:#f8f9fa;font-size:.7rem;">
+                                    <i class="fas fa-rotate"></i> Refresh
+                                </button>
+                            </div>
+                            <select class="form-select form-select-sm select2 mt-1" name="customer"
                                     id="customerSelect" required>
                                 <option value="">Select Customer</option>
                                 {% for cust in customers %}
@@ -584,8 +591,15 @@
                         <div class="tab-pane fade show active" id="invPanel" role="tabpanel">
 
                             <div class="mb-3">
-                                <label class="field-label">Select Item</label>
-                                <select class="form-select form-select-sm" id="invItemSelect"
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <label class="field-label mb-0">Select Item</label>
+                                    <button type="button" id="refreshInvItemsBtn" onclick="refreshInvItems(true)"
+                                            class="btn btn-sm p-0 px-2" title="Reload items after creating a new one (no page refresh)"
+                                            style="border:1px solid #e2e8f0;border-radius:6px;color:#605E5C;background:#f8f9fa;font-size:.7rem;">
+                                        <i class="fas fa-rotate"></i> Refresh
+                                    </button>
+                                </div>
+                                <select class="form-select form-select-sm mt-1" id="invItemSelect"
                                         onchange="loadItemDetails()">
                                     <option value="">-- Choose Item --</option>
                                     {% for item in inventory_items %}
@@ -743,6 +757,38 @@
 
     let inventoryItems = [];
     let nonInventoryItems = [];
+
+    // --- Live refresh: customers & items appear without a page reload ---
+    function _escAttr(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+    function refreshCustomers(showFeedback) {
+        return fetch('/api/customers_list').then(r => r.json()).then(list => {
+            const sel = document.getElementById('customerSelect');
+            if (!sel) return;
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">Select Customer</option>' +
+                list.map(n => `<option value="${_escAttr(n)}">${_escAttr(n)}</option>`).join('');
+            if (keep && list.indexOf(keep) !== -1) sel.value = keep;
+            if (typeof $ !== 'undefined') { $('#customerSelect').trigger('change.select2'); }
+            if (showFeedback) { const b = document.getElementById('refreshCustomersBtn'); if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fas fa-check"></i> Updated'; setTimeout(() => b.innerHTML = o, 1500); } }
+        }).catch(() => {});
+    }
+
+    function refreshInvItems(showFeedback) {
+        return fetch('/api/invoice_items').then(r => r.json()).then(list => {
+            const sel = document.getElementById('invItemSelect');
+            if (!sel) return;
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">-- Choose Item --</option>' + list.map(it =>
+                `<option value="${it.id}" data-name="${_escAttr(it.name)}" data-code="${_escAttr(it.code)}" data-unit="${_escAttr(it.unit)}" data-cost="${it.cost}">${_escAttr(it.name)} (${_escAttr(it.code)})</option>`).join('');
+            if (keep && list.some(it => String(it.id) === String(keep))) sel.value = keep;
+            if (showFeedback) { const b = document.getElementById('refreshInvItemsBtn'); if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fas fa-check"></i> Updated'; setTimeout(() => b.innerHTML = o, 1500); } }
+        }).catch(() => {});
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') { refreshCustomers(false); refreshInvItems(false); }
+    });
 
     // --- Inventory Item Logic ---
     function loadItemDetails() {
