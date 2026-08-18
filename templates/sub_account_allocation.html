@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .sa-card { border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);background:#fff; }
+  .sa-head { background:#f8f9fa;border-bottom:1px solid #e2e8f0;padding:.6rem 1.1rem;font-size:.72rem;
+    font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#605E5C; }
+  .sa-table thead th { background:#f8f9fa;font-size:.7rem;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:#605E5C;border-bottom:2px solid #e2e8f0; }
+  .sa-table td { vertical-align:middle;font-size:.84rem; }
+  .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#6d28d9,#4c1d95);display:flex;align-items:center;justify-content:center;color:#fff;">
+      <i class="fas fa-tags"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold">Sub-Account Allocation</h5>
+      <small class="text-muted">Tag existing transactions with a sub-account (moves them out of "Unallocated")</small>
+    </div>
+  </div>
+
+  <!-- Filter -->
+  <form class="sa-card p-3 mb-4 d-flex align-items-end gap-2 flex-wrap" method="get">
+    <div style="min-width:260px;">
+      <label class="form-label small fw-bold mb-1">Account (with sub-accounts)</label>
+      <select name="account" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="">— select account —</option>
+        {% for a in accounts %}
+        <option value="{{ a.account_name }}" {% if a.account_name == selected %}selected{% endif %}>{{ a.account_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><label class="form-label small fw-bold mb-1">From</label>
+      <input type="date" name="from" value="{{ from_date }}" class="form-control form-control-sm"></div>
+    <div><label class="form-label small fw-bold mb-1">To</label>
+      <input type="date" name="to" value="{{ to_date }}" class="form-control form-control-sm"></div>
+    <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Filter</button>
+  </form>
+
+  {% if selected %}
+  <div class="sa-card">
+    <div class="sa-head d-flex align-items-center flex-wrap gap-2">
+      <span><i class="fas fa-list me-2"></i>{{ selected }} — {{ txns|length }} transaction(s)</span>
+      <div class="ms-auto d-flex align-items-center gap-2" style="text-transform:none;letter-spacing:0;">
+        <span class="text-muted" style="font-size:.72rem;">Set all shown to:</span>
+        <select id="bulkSub" class="form-select form-select-sm" style="width:auto;">
+          <option value="">— sub —</option>
+          {% for s in subs %}<option value="{{ s.code }}">{{ s.name }}</option>{% endfor %}
+        </select>
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="saApplyAll()">Apply to all</button>
+        <button type="button" class="btn btn-sm btn-success" onclick="saSave()"><i class="fas fa-save me-1"></i>Save</button>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table sa-table mb-0" id="saTable">
+        <thead>
+          <tr>
+            <th class="ps-3">Date</th><th>JV</th><th>Narration</th>
+            <th class="text-end">Debit</th><th class="text-end">Credit</th>
+            <th style="width:220px;">Sub Account</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in txns %}
+          <tr data-id="{{ t.id }}">
+            <td class="ps-3">{{ t.date }}</td>
+            <td class="text-muted" style="font-size:.8rem;">JV-{{ t.jv }}</td>
+            <td style="font-size:.82rem;">{{ t.narration }}</td>
+            <td class="num">{{ "{:,.2f}".format(t.dr) if t.dr else '' }}</td>
+            <td class="num">{{ "{:,.2f}".format(t.cr) if t.cr else '' }}</td>
+            <td>
+              <select class="form-select form-select-sm sa-sub">
+                <option value="">— Unallocated —</option>
+                {% for s in subs %}<option value="{{ s.code }}" {% if s.code|string == t.sub_code %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+              </select>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-5">No transactions for this account in the range.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="p-3 border-top text-muted" style="font-size:.8rem;">
+      Pick a sub-account per row (or use “Set all shown”), then <strong>Save</strong>. The P&amp;L / Balance Sheet updates immediately.
+    </div>
+  </div>
+  {% else %}
+  <div class="sa-card p-5 text-center text-muted">
+    <i class="fas fa-tags d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+    Select an account above to allocate its transactions to sub-accounts.
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function saApplyAll(){
+  const v = document.getElementById('bulkSub').value;
+  document.querySelectorAll('#saTable tbody .sa-sub').forEach(s => { s.value = v; });
+}
+function saSave(){
+  const allocations = [];
+  document.querySelectorAll('#saTable tbody tr[data-id]').forEach(tr => {
+    allocations.push({ id: parseInt(tr.getAttribute('data-id')), sub_code: tr.querySelector('.sa-sub').value });
+  });
+  if(!allocations.length){ alert('Nothing to save.'); return; }
+  fetch('/sub_account_allocation/save', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({allocations})
+  }).then(r=>r.json()).then(d => {
+    if(d.success){ alert('Saved ' + d.updated + ' transaction(s). Reloading…'); location.reload(); }
+    else alert('Error saving.');
+  }).catch(()=>alert('Error saving.'));
+}
+</script>
+{% endblock %}

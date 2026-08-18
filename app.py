@@ -167,6 +167,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bank_reconciliation','label': 'Bank Reconciliation',  'url': '/bank_reconciliation',    'icon': 'fas fa-check-double',        'category': 'Core Accounting'},
     {'key': 'cheque_print_setup', 'label': 'Cheque Print Setup',   'url': '/cheque_print_setup',     'icon': 'fas fa-print',               'category': 'Core Accounting'},
     {'key': 'journal_entry',      'label': 'Journal Entry',        'url': '/journal_entry',          'icon': 'fas fa-book',                'category': 'Core Accounting'},
+    {'key': 'sub_allocation',     'label': 'Sub-Account Allocation','url': '/sub_account_allocation', 'icon': 'fas fa-tags',                'category': 'Core Accounting'},
     {'key': 'opening_balances',   'label': 'Opening Balances',     'url': '/opening_balances',       'icon': 'fas fa-scale-balanced',      'category': 'Core Accounting'},
     {'key': 'service_entry',      'label': 'Service Entry (SRN)',  'url': '/service_entry',          'icon': 'fas fa-file-invoice',        'category': 'Core Accounting'},
     {'key': 'credit_note',        'label': 'Credit Note',          'url': '/credit_note',            'icon': 'fas fa-file-medical',        'category': 'Core Accounting'},
@@ -5492,6 +5493,74 @@ def api_get_sub_accounts():
     """
     rows = db.execute_query(query, (account_name,))
     return json.dumps(rows)
+
+
+@app.route('/sub_account_allocation', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def sub_account_allocation():
+    """Tag existing transactions of an account with a sub-account, so historical
+    amounts move out of '(Unallocated)' into the right sub on the P&L / BS."""
+    accounts = db.execute_query("""
+        SELECT DISTINCT s.sub_new_account AS account_name
+        FROM sub_accont_for_new_account s
+        JOIN new_account_table na ON na.account_name = s.sub_new_account
+        WHERE s.active = 1 AND na.account_active = 1
+        ORDER BY s.sub_new_account
+    """) or []
+
+    selected = (request.args.get('account') or '').strip()
+    from_date = (request.args.get('from') or '').strip()
+    to_date = (request.args.get('to') or '').strip()
+    subs, txns = [], []
+    if selected:
+        subs = db.execute_query("""
+            SELECT sub_account_code AS code, sub_sub_accaount_name AS name
+            FROM sub_accont_for_new_account
+            WHERE sub_new_account = %s AND active = 1
+            ORDER BY sub_sub_accaount_name
+        """, (selected,)) or []
+        sub_name_by_code = {str(s['code']): s['name'] for s in subs}
+
+        q = """
+            SELECT id, entry_effective_date AS date, entry_naration AS narration,
+                   COALESCE(enty_values_DR, 0) AS dr, COALESCE(enty_values_CR, 0) AS cr,
+                   entry_jv AS jv, COALESCE(entry_sub_account_code, 0) AS sub_code
+            FROM entry_details
+            WHERE account_name = %s AND COALESCE(entry_deleted, 0) = 0
+        """
+        params = [selected]
+        if from_date:
+            q += " AND entry_effective_date >= %s"; params.append(from_date)
+        if to_date:
+            q += " AND entry_effective_date <= %s"; params.append(to_date)
+        q += " ORDER BY entry_effective_date DESC, id DESC"
+        for r in (db.execute_query(q, tuple(params)) or []):
+            code = str(r['sub_code'])
+            txns.append({'id': r['id'], 'date': r['date'], 'narration': r['narration'],
+                         'dr': float(r['dr'] or 0), 'cr': float(r['cr'] or 0), 'jv': r['jv'],
+                         'sub_code': '' if code == '0' else code})
+
+    return render_template('sub_account_allocation.html', accounts=accounts, subs=subs,
+                           txns=txns, selected=selected, from_date=from_date, to_date=to_date)
+
+
+@app.route('/sub_account_allocation/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def sub_account_allocation_save():
+    data = request.json or {}
+    updated = 0
+    for a in (data.get('allocations') or []):
+        eid = a.get('id')
+        if not eid:
+            continue
+        code = a.get('sub_code') or 0
+        db.execute_query("UPDATE entry_details SET entry_sub_account_code = %s WHERE id = %s",
+                         (code, eid), commit=True)
+        updated += 1
+    return jsonify({'success': True, 'updated': updated})
+
 
 @app.route('/get_supplier_data')
 @login_required
