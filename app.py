@@ -3756,6 +3756,27 @@ def api_invoice_items():
     return jsonify([{'id': r['id'], 'name': r['name'], 'code': r['code'] or '',
                      'unit': r['unit'] or '', 'cost': float(r['cost'] or 0)} for r in rows])
 
+
+@app.route('/api/srn_suppliers')
+@login_required
+def api_srn_suppliers():
+    """Live supplier list (id, name, code) for the Service Entry window."""
+    rows = db.execute_query(
+        "SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    return jsonify([{'id': r['sup_id'], 'name': r['supplier_name'], 'code': r['supplier_code'] or ''} for r in rows])
+
+
+@app.route('/api/srn_accounts')
+@login_required
+def api_srn_accounts():
+    """Live P&L (income/expense) account list for the Service Entry line rows."""
+    rows = db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+        ORDER BY account_name
+    """) or []
+    return jsonify([r['account_name'] for r in rows])
+
 def _get_supplier_history_data(supplier_name, payment_type):
     """Helper to fetch common supplier details, outstanding invoices, and payment history."""
     details, inv_list, sup_id = _get_supplier_base_data(supplier_name)

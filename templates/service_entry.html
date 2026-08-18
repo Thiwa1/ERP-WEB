@@ -309,7 +309,13 @@
           <div class="win-card-body">
             <div class="form-row cols-2">
               <div class="form-group" style="grid-column: 1 / -1;">
-                <label class="win-label">Supplier</label>
+                <div style="display:flex;align-items:center;justify-content:space-between;">
+                  <label class="win-label" style="margin-bottom:0;">Supplier</label>
+                  <button type="button" id="seRefreshSuppliersBtn" onclick="seRefreshSuppliers(true)"
+                          class="cmd-btn" style="padding:2px 8px;font-size:11px;" title="Reload suppliers after creating a new one (no page refresh)">
+                    <i class="fas fa-rotate"></i> Refresh
+                  </button>
+                </div>
                 <select class="win-select" name="supplier_id" id="supplierSelect" required>
                   <option value="">Select a supplier…</option>
                   {% for sup in suppliers %}
@@ -374,7 +380,10 @@
           <div class="win-card-header">
             <div class="win-card-title-icon icon-orange"><i class="fas fa-list-ol"></i></div>
             <span class="win-card-title">Journal Entries</span>
-            <button type="button" class="cmd-btn" style="margin-left:auto; padding:4px 10px; font-size:12px;" onclick="addRow()">
+            <button type="button" class="cmd-btn" id="seRefreshAccountsBtn" style="margin-left:auto; padding:4px 10px; font-size:12px;" onclick="seRefreshAccounts(true)" title="Reload accounts after creating a new one (no page refresh)">
+              <i class="fas fa-rotate"></i> Refresh Accounts
+            </button>
+            <button type="button" class="cmd-btn" style="margin-left:8px; padding:4px 10px; font-size:12px;" onclick="addRow()">
               <i class="fas fa-plus"></i> Add Row
             </button>
           </div>
@@ -766,12 +775,46 @@ function seDvDelete(docId) {
 
 <script>
     // Make variables available to JS
-    const accountsOptions = `
+    let accountsOptions = `
         <option value="">Select Account</option>
         {% for acc in accounts %}
         <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
         {% endfor %}
     `;
+
+    function _seEsc(s){ return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
+
+    // Live-refresh the line-row account list (rebuilds the template + existing rows).
+    function seRefreshAccounts(showFeedback) {
+        return fetch('/api/srn_accounts').then(r => r.json()).then(list => {
+            accountsOptions = '<option value="">Select Account</option>' +
+                list.map(n => `<option value="${_seEsc(n)}">${_seEsc(n)}</option>`).join('');
+            document.querySelectorAll('.account-select').forEach(sel => {
+                const keep = sel.value;
+                sel.innerHTML = accountsOptions;
+                if (keep && list.indexOf(keep) !== -1) sel.value = keep;
+            });
+            if (showFeedback) { const b = document.getElementById('seRefreshAccountsBtn'); if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fas fa-check"></i> Updated (' + list.length + ')'; setTimeout(() => b.innerHTML = o, 1600); } }
+        }).catch(() => {});
+    }
+
+    // Live-refresh the supplier dropdown (id/name/code) in place.
+    function seRefreshSuppliers(showFeedback) {
+        return fetch('/api/srn_suppliers').then(r => r.json()).then(list => {
+            const sel = document.getElementById('supplierSelect');
+            if (!sel) return;
+            const keep = sel.value;
+            sel.innerHTML = '<option value="">Select a supplier…</option>' + list.map(s =>
+                `<option value="${s.id}">${_seEsc(s.name)} - ${_seEsc(s.code)}</option>`).join('');
+            if (keep && list.some(s => String(s.id) === String(keep))) sel.value = keep;
+            if (showFeedback) { const b = document.getElementById('seRefreshSuppliersBtn'); if (b) { const o = b.innerHTML; b.innerHTML = '<i class="fas fa-check"></i> Updated'; setTimeout(() => b.innerHTML = o, 1600); } }
+        }).catch(() => {});
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') { seRefreshAccounts(false); seRefreshSuppliers(false); }
+    });
+
     const jobsOptions = `
         <option value="">None</option>
         {% for job in jobs %}
