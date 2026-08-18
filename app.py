@@ -5788,6 +5788,17 @@ def direct_purchasing():
                            base_currency=base_currency,
                            currencies=currencies)
 
+
+@app.route('/api/cost_accounts')
+@login_required
+def api_cost_accounts():
+    """Live cost/asset account list so a newly created account shows up in an
+    open window (e.g. direct purchasing) without a full page refresh."""
+    accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1 ORDER BY account_name") or []
+    return jsonify([a['account_name'] for a in accounts])
+
+
 @app.route('/direct_purchasing/add_item', methods=['POST'])
 @login_required
 def direct_purchasing_add_item():
