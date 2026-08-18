@@ -7143,6 +7143,14 @@ def balance_sheet():
     for r in cleaned_equity:
         r['sub_accounts'] = _equity_subs.get((r['name'] or '').strip(), [])
 
+    # "(Unallocated)" sub-row so the sub-accounts reconcile to the account total
+    for r in (merged_assets + merged_liabs + cleaned_equity):
+        if r.get('sub_accounts'):
+            unalloc = [r['amounts'][i] - sum(s['amounts'][i] for s in r['sub_accounts'])
+                       for i in range(n)]
+            if any(abs(v) >= 0.005 for v in unalloc):
+                r['sub_accounts'].append({'name': '(Unallocated)', 'amounts': unalloc})
+
     def _sum_cols(merged):
         t = [0.0] * n
         for r in merged:

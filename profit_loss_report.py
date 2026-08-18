@@ -286,6 +286,13 @@ class ProfitLossReportGenerator:
                     acc['amounts'] = [-v for v in acc['amounts']]
                     for s in acc.get('sub_accounts', []):
                         s['amounts'] = [-v for v in s['amounts']]
+                # "(Unallocated)" sub-row = the part of the account not tagged to
+                # any sub-account, so the sub rows reconcile to the account total.
+                if acc.get('sub_accounts'):
+                    unalloc = [acc['amounts'][i] - sum(s['amounts'][i] for s in acc['sub_accounts'])
+                               for i in range(len(periods))]
+                    if any(abs(v) >= 0.01 for v in unalloc):
+                        acc['sub_accounts'].append({'name': '(Unallocated)', 'amounts': unalloc})
                 for i, v in enumerate(acc['amounts']):
                     cat['total'][i] += v
 
