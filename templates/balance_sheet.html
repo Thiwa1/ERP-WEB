@@ -1,6 +1,23 @@
 {% extends "base.html" %}
 
 {% block content %}
+{% macro bs_acc_row(acc) %}
+<tr class="account-row">
+    <td>
+        {% if acc.sub_accounts and acc.sub_accounts|length > 0 %}
+        <button type="button" class="bs-sub-toggle" onclick="bsToggleSubs(this)" data-open="0" title="Show sub-accounts"
+                style="border:1px solid #cbd5e1;background:#f1f5f9;color:#334155;width:18px;height:18px;line-height:1;border-radius:4px;font-weight:700;font-size:.8rem;margin-right:6px;cursor:pointer;padding:0;display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;"><span class="bs-sub-sign">+</span></button>
+        {% endif %}{{ acc.name }}
+    </td>
+    {% for v in acc.amounts %}<td class="num-cell">{{ v|currency }}</td>{% endfor %}
+</tr>
+{% for sub in acc.sub_accounts or [] %}
+<tr class="bs-subaccount-row" style="display:none;background:#fbfcfe;">
+    <td style="padding-left:2.6rem;font-size:.8rem;color:#605E5C;">&#8627; {{ sub.name }}</td>
+    {% for v in sub.amounts %}<td class="num-cell" style="font-size:.8rem;color:#605E5C;">{{ v|currency }}</td>{% endfor %}
+</tr>
+{% endfor %}
+{% endmacro %}
 <style>
     .report-page-icon {
         width: 42px; height: 42px; border-radius: 10px;
@@ -141,12 +158,7 @@
                         {% for category, accounts in report_data.assets.items() %}
                             <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">{{ category }}</td></tr>
                             {% for acc in accounts %}
-                            <tr class="account-row">
-                                <td>{{ acc.name }}</td>
-                                {% for v in acc.amounts %}
-                                <td class="num-cell">{{ v|currency }}</td>
-                                {% endfor %}
-                            </tr>
+                            {{ bs_acc_row(acc) }}
                             {% endfor %}
                             {% for st in (bs_subtotals.assets.get(category, []) if bs_subtotals is defined else []) %}
                             <tr>
@@ -188,12 +200,7 @@
                             {% endif %}
                             <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">Equity</td></tr>
                             {% for acc in report_data.equity %}
-                            <tr class="account-row">
-                                <td>{{ acc.name }}</td>
-                                {% for v in acc.amounts %}
-                                <td class="num-cell">{{ v|currency }}</td>
-                                {% endfor %}
-                            </tr>
+                            {{ bs_acc_row(acc) }}
                             {% endfor %}
                             <tr class="account-row">
                                 <td>Retained Earnings</td>
@@ -205,12 +212,7 @@
                             {% for category, accounts in report_data.liabilities.items() %}
                             <tr><td colspan="{{ dates|length + 1 }}" class="category-heading">{{ category }}</td></tr>
                             {% for acc in accounts %}
-                            <tr class="account-row">
-                                <td>{{ acc.name }}</td>
-                                {% for v in acc.amounts %}
-                                <td class="num-cell">{{ v|currency }}</td>
-                                {% endfor %}
-                            </tr>
+                            {{ bs_acc_row(acc) }}
                             {% endfor %}
                             {% for st in (bs_subtotals.liabilities.get(category, []) if bs_subtotals is defined else []) %}
                             <tr>
@@ -239,6 +241,20 @@
 
 </div>
 
+<script>
+// Expand/collapse the sub-account rows following a main account row.
+function bsToggleSubs(btn) {
+    const open = btn.getAttribute('data-open') === '1';
+    let tr = btn.closest('tr').nextElementSibling;
+    while (tr && tr.classList.contains('bs-subaccount-row')) {
+        tr.style.display = open ? 'none' : '';
+        tr = tr.nextElementSibling;
+    }
+    btn.setAttribute('data-open', open ? '0' : '1');
+    const sign = btn.querySelector('.bs-sub-sign');
+    if (sign) sign.textContent = open ? '+' : '−';
+}
+</script>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
     const container = document.getElementById('bs-dates-container');

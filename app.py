@@ -7060,6 +7060,55 @@ def balance_sheet():
     merged_liabs = _merge(liab_snaps)
     cleaned_equity = _merge(eq_snaps)
 
+    # ── Sub-account breakdown per account (drives the expandable + rows) ──
+    try:
+        _sub_names = {str(r['sub_account_code']): r['sub_sub_accaount_name']
+                      for r in (db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or [])}
+    except Exception:
+        _sub_names = {}
+
+    def _bs_sub_breakdown(flag_col, balance_expr):
+        """{account_name: [{name, amounts[]}]} of sub-account balances per date."""
+        seen, order = {}, {}
+        for i, d in enumerate(dates):
+            q = f"""
+                SELECT ed.account_name AS acc, ed.entry_sub_account_code AS code, {balance_expr} AS balance
+                FROM entry_details ed
+                JOIN new_account_table na ON na.account_name = ed.account_name
+                WHERE na.{flag_col} = 1 AND ed.entry_deleted = 0
+                  AND ed.entry_effective_date <= %s
+                  AND ed.entry_sub_account_code IS NOT NULL AND ed.entry_sub_account_code != 0
+                GROUP BY ed.account_name, ed.entry_sub_account_code
+            """
+            try:
+                rows = db.execute_query(q, (d,)) or []
+            except Exception:
+                rows = []
+            for r in rows:
+                acc = r['acc']
+                key = (acc, str(r['code']))
+                if key not in seen:
+                    seen[key] = {'name': _sub_names.get(str(r['code'])) or f"Sub {r['code']}", 'amounts': [0.0] * n}
+                    order.setdefault(acc, []).append(key)
+                seen[key]['amounts'][i] = float(r['balance'] or 0)
+        out = {}
+        for acc, keys in order.items():
+            subs = [seen[k] for k in keys if any(abs(v) >= 0.005 for v in seen[k]['amounts'])]
+            subs.sort(key=lambda s: str(s['name']).lower())
+            if subs:
+                out[acc] = subs
+        return out
+
+    _asset_subs = _bs_sub_breakdown('account_assets', ASSET_EXPR)
+    _liab_subs = _bs_sub_breakdown('account_liabilities', CREDIT_EXPR)
+    _equity_subs = _bs_sub_breakdown('account_equity', CREDIT_EXPR)
+    for r in merged_assets:
+        r['sub_accounts'] = _asset_subs.get(r['name'], [])
+    for r in merged_liabs:
+        r['sub_accounts'] = _liab_subs.get(r['name'], [])
+    for r in cleaned_equity:
+        r['sub_accounts'] = _equity_subs.get(r['name'], [])
+
     def _sum_cols(merged):
         t = [0.0] * n
         for r in merged:
@@ -7143,6 +7192,8 @@ def balance_sheet():
             row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
             for acc in accounts:
                 row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+                for sub in acc.get('sub_accounts', []):
+                    row = xl.item_row(ws, row, '        ↳ ' + sub['name'], sub['amounts'])
             for st in bs_subtotals['assets'].get(category, []):
                 row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
         row = xl.total_row(ws, row, 'TOTAL ASSETS', totals['assets'],
@@ -7153,11 +7204,15 @@ def balance_sheet():
         row = xl.section_row(ws, row, ncols, 'Equity', color='495057', bg='F8F9FA')
         for acc in report_data['equity']:
             row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+            for sub in acc.get('sub_accounts', []):
+                row = xl.item_row(ws, row, '        ↳ ' + sub['name'], sub['amounts'])
         row = xl.item_row(ws, row, 'Retained Earnings', totals['retained_earnings'])
         for category, accounts in report_data['liabilities'].items():
             row = xl.section_row(ws, row, ncols, category, color='495057', bg='F8F9FA')
             for acc in accounts:
                 row = xl.item_row(ws, row, acc['name'], acc['amounts'])
+                for sub in acc.get('sub_accounts', []):
+                    row = xl.item_row(ws, row, '        ↳ ' + sub['name'], sub['amounts'])
             for st in bs_subtotals['liabilities'].get(category, []):
                 row = xl.total_row(ws, row, st['label'], st['amounts'], bg='EEF2FF', color=xl.INDIGO)
         row = xl.total_row(ws, row, 'TOTAL EQUITY & LIABILITIES', eq_liab_total,
