@@ -140,7 +140,7 @@ class ProfitLossReportGenerator:
                 FROM sub_accont_for_new_account WHERE active = 1
             """)
             for r in cursor.fetchall():
-                defined.setdefault(r['sub_new_account'], []).append(
+                defined.setdefault((r['sub_new_account'] or '').strip(), []).append(
                     {'code': str(r['sub_account_code']), 'name': r['sub_sub_accaount_name']})
         except Exception:
             defined = {}
@@ -176,16 +176,16 @@ class ProfitLossReportGenerator:
                     dr = float(r.get(f'dr_{i}', 0) or 0)
                     cr = float(r.get(f'cr_{i}', 0) or 0)
                     vals.append((cr - dr) if is_income else (dr - cr))
-                values_by[(name, str(r['entry_sub_account_code']))] = vals
+                values_by[((name or '').strip(), str(r['entry_sub_account_code']))] = vals
         except Exception:
             pass
 
         # 3. Attach the defined subs (with values, 0 if no coded postings)
         for name in acc_map:
-            subs_def = defined.get(name)
+            subs_def = defined.get((name or '').strip())
             if not subs_def:
                 continue
-            subs = [{'name': s['name'], 'values': values_by.get((name, s['code']), [0.0] * n)}
+            subs = [{'name': s['name'], 'values': values_by.get(((name or '').strip(), s['code']), [0.0] * n)}
                     for s in subs_def]
             subs.sort(key=lambda s: str(s['name']).lower())
             acc_map[name]['sub_accounts'] = subs

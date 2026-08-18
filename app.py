@@ -7074,7 +7074,7 @@ def balance_sheet():
     try:
         _bs_defined = {}   # main account -> [{code, name}]
         for r in (db.execute_query("SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1") or []):
-            _bs_defined.setdefault(r['sub_new_account'], []).append(
+            _bs_defined.setdefault((r['sub_new_account'] or '').strip(), []).append(
                 {'code': str(r['sub_account_code']), 'name': r['sub_sub_accaount_name']})
     except Exception:
         _bs_defined = {}
@@ -7097,7 +7097,7 @@ def balance_sheet():
             except Exception:
                 rows = []
             for r in rows:
-                key = (r['acc'], str(r['code']))
+                key = ((r['acc'] or '').strip(), str(r['code']))
                 vals_by.setdefault(key, [0.0] * n)[i] = float(r['balance'] or 0)
         out = {}
         for acc, subs_def in _bs_defined.items():
@@ -7111,11 +7111,11 @@ def balance_sheet():
     _liab_subs = _bs_sub_breakdown('account_liabilities', CREDIT_EXPR)
     _equity_subs = _bs_sub_breakdown('account_equity', CREDIT_EXPR)
     for r in merged_assets:
-        r['sub_accounts'] = _asset_subs.get(r['name'], [])
+        r['sub_accounts'] = _asset_subs.get((r['name'] or '').strip(), [])
     for r in merged_liabs:
-        r['sub_accounts'] = _liab_subs.get(r['name'], [])
+        r['sub_accounts'] = _liab_subs.get((r['name'] or '').strip(), [])
     for r in cleaned_equity:
-        r['sub_accounts'] = _equity_subs.get(r['name'], [])
+        r['sub_accounts'] = _equity_subs.get((r['name'] or '').strip(), [])
 
     def _sum_cols(merged):
         t = [0.0] * n
