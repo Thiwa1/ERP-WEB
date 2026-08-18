@@ -2048,7 +2048,13 @@ def add_new_account():
                 ) VALUES (%s, %s, %s, %s, 1, 0)
             """
             try:
-                db.execute_query(query, (sub_name, main_account, current_user, date.today()), commit=True)
+                new_id = db.execute_query(query, (sub_name, main_account, current_user, date.today()), commit=True)
+                # Assign a unique code (same scheme as supplier/customer subs) so that
+                # postings to this sub can be attributed and shown under its main account.
+                if new_id:
+                    db.execute_query(
+                        "UPDATE sub_accont_for_new_account SET sub_account_code = %s WHERE id_sub = %s",
+                        (int(new_id) + 10001, new_id), commit=True)
                 flash('Sub account created successfully', 'success')
             except Exception as e:
                 flash(f'Error creating sub account: {str(e)}', 'danger')
@@ -6963,6 +6969,7 @@ def update_inventory_prices():
 @has_permission('Access_Reports')
 def balance_sheet():
     # Comparative balance sheet: one or more "as at" dates (columns), like P&L periods.
+    _ensure_sub_account_codes()
     dates = []
     src = request.form if request.method == 'POST' else request.args
     for d in src.getlist('as_at_date[]'):
@@ -11671,12 +11678,26 @@ def calculate_retained_earnings(cursor, as_at_date, customer_sub_account_code=No
 
     return total_retained_earnings
 
+
+def _ensure_sub_account_codes():
+    """Give every sub-account a unique code (id_sub + 10001). Sub-accounts made
+    via the Add Sub Account page were saved with code 0, so postings to them
+    couldn't be attributed to a specific sub. Idempotent (a no-op once coded)."""
+    try:
+        db.execute_query(
+            "UPDATE sub_accont_for_new_account SET sub_account_code = id_sub + 10001 "
+            "WHERE sub_account_code IS NULL OR sub_account_code = 0", commit=True)
+    except Exception:
+        pass
+
+
 @app.route('/profit_loss', methods=['GET', 'POST'])
 @login_required
 @has_permission('Access_Reports')
 def profit_loss():
     from profit_loss_report import ProfitLossReportGenerator
 
+    _ensure_sub_account_codes()
     try:
         generator = ProfitLossReportGenerator(db)
         periods, report_data, default_start, default_end = generator.generate(request)
