@@ -7045,9 +7045,32 @@ def balance_sheet():
                 exp += dr - cr
         return inc - exp
 
+    def _bs_unclassified(d):
+        """Accounts with NO classification (not asset/liability/equity/income/
+        expense). Their balance would otherwise be dropped from both sides and
+        the sheet wouldn't tally, so surface them under 'Unclassified' on the
+        assets side with the natural DR-CR balance."""
+        q = """
+            SELECT 'Unclassified' as category, na.account_name as name,
+                   COALESCE(SUM(ed.enty_values_DR), 0) - COALESCE(SUM(ed.enty_values_CR), 0) as balance
+            FROM new_account_table na
+            LEFT JOIN entry_details ed ON na.account_name = ed.account_name
+                AND ed.entry_effective_date <= %s AND ed.entry_deleted = 0
+            WHERE na.account_active = 1
+              AND COALESCE(na.account_assets, 0) = 0 AND COALESCE(na.account_liabilities, 0) = 0
+              AND COALESCE(na.account_equity, 0) = 0 AND COALESCE(na.account_income, 0) = 0
+              AND COALESCE(na.account_expenses, 0) = 0
+            GROUP BY na.account_name
+        """
+        try:
+            return db.execute_query(q, (d,)) or []
+        except Exception:
+            return []
+
     asset_snaps = [_bs_section('account_assets', ASSET_EXPR, d) for d in dates]
     liab_snaps = [_bs_section('account_liabilities', CREDIT_EXPR, d) for d in dates]
     eq_snaps = [_bs_section('account_equity', CREDIT_EXPR, d) for d in dates]
+    unclassified_snaps = [_bs_unclassified(d) for d in dates]
     retained_earnings = [_retained(d) for d in dates]
 
     def _merge(snaps):
@@ -7066,6 +7089,9 @@ def balance_sheet():
     merged_assets = _merge(asset_snaps)
     merged_liabs = _merge(liab_snaps)
     cleaned_equity = _merge(eq_snaps)
+    # Fold unclassified accounts into the assets side so the sheet balances and
+    # the user can see which accounts still need a proper classification.
+    merged_assets.extend(_merge(unclassified_snaps))
 
     # ── Sub-account breakdown per account (drives the expandable + rows) ──
     # Show every DEFINED sub-account (linked by sub_new_account) under its main
