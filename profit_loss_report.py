@@ -124,17 +124,31 @@ class ProfitLossReportGenerator:
         return acc_map
 
     def _fetch_sub_account_data(self, cursor, periods, acc_map):
-        """Per-sub-account values for each account, so the P&L can show a
-        breakdown under a main account that has sub-accounts."""
+        """Attach every DEFINED sub-account (from sub_accont_for_new_account,
+        linked by sub_new_account) to its main account, with the value from any
+        sub-coded postings. Showing defined subs (even at 0) makes the + expander
+        appear whenever a main account has sub-accounts, which is what's wanted."""
         if not periods:
             return acc_map
+        n = len(periods)
 
+        # 1. Defined active sub-accounts grouped by their main account
+        defined = {}   # main_account_name -> [{code, name}]
         try:
-            cursor.execute("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account")
-            sub_names = {str(r['sub_account_code']): r['sub_sub_accaount_name'] for r in cursor.fetchall()}
+            cursor.execute("""
+                SELECT sub_new_account, sub_account_code, sub_sub_accaount_name
+                FROM sub_accont_for_new_account WHERE active = 1
+            """)
+            for r in cursor.fetchall():
+                defined.setdefault(r['sub_new_account'], []).append(
+                    {'code': str(r['sub_account_code']), 'name': r['sub_sub_accaount_name']})
         except Exception:
-            sub_names = {}
+            defined = {}
 
+        if not defined:
+            return acc_map
+
+        # 2. Values per (account, sub-code) from sub-coded entries
         select_clause = ["account_name", "entry_sub_account_code"]
         params = []
         overall_start = min(p['start'] for p in periods)
@@ -145,41 +159,36 @@ class ProfitLossReportGenerator:
             params.extend([p['start'], p['end'], p['start'], p['end']])
         params.extend([overall_start, overall_end])
 
-        query = f"""
-            SELECT {', '.join(select_clause)}
-            FROM entry_details
-            WHERE entry_effective_date BETWEEN %s AND %s
-            AND entry_deleted = 0
-            AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code != 0
-            GROUP BY account_name, entry_sub_account_code
-        """
+        values_by = {}   # (account_name, code) -> [vals]
         try:
-            cursor.execute(query, tuple(params))
-            rows = cursor.fetchall()
+            cursor.execute(f"""
+                SELECT {', '.join(select_clause)}
+                FROM entry_details
+                WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+                  AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code != 0
+                GROUP BY account_name, entry_sub_account_code
+            """, tuple(params))
+            for r in cursor.fetchall():
+                name = r['account_name']
+                is_income = acc_map.get(name, {}).get('meta', {}).get('account_income') == 1
+                vals = []
+                for i in range(n):
+                    dr = float(r.get(f'dr_{i}', 0) or 0)
+                    cr = float(r.get(f'cr_{i}', 0) or 0)
+                    vals.append((cr - dr) if is_income else (dr - cr))
+                values_by[(name, str(r['entry_sub_account_code']))] = vals
         except Exception:
-            return acc_map
+            pass
 
-        for r in rows:
-            name = r['account_name']
-            if name not in acc_map:
-                continue
-            code = str(r['entry_sub_account_code'])
-            is_income = acc_map[name]['meta']['account_income'] == 1
-            vals = []
-            for i in range(len(periods)):
-                dr = float(r.get(f'dr_{i}', 0) or 0)
-                cr = float(r.get(f'cr_{i}', 0) or 0)
-                vals.append((cr - dr) if is_income else (dr - cr))
-            if all(abs(v) < 0.01 for v in vals):
-                continue
-            acc_map[name].setdefault('sub_accounts', []).append({
-                'name': sub_names.get(code) or f'Sub {code}',
-                'values': vals
-            })
-
+        # 3. Attach the defined subs (with values, 0 if no coded postings)
         for name in acc_map:
-            if 'sub_accounts' in acc_map[name]:
-                acc_map[name]['sub_accounts'].sort(key=lambda s: str(s['name']).lower())
+            subs_def = defined.get(name)
+            if not subs_def:
+                continue
+            subs = [{'name': s['name'], 'values': values_by.get((name, s['code']), [0.0] * n)}
+                    for s in subs_def]
+            subs.sort(key=lambda s: str(s['name']).lower())
+            acc_map[name]['sub_accounts'] = subs
         return acc_map
 
     def _fetch_pl_category_levels(self, cursor):

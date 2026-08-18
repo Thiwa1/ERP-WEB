@@ -7068,15 +7068,20 @@ def balance_sheet():
     cleaned_equity = _merge(eq_snaps)
 
     # ── Sub-account breakdown per account (drives the expandable + rows) ──
+    # Show every DEFINED sub-account (linked by sub_new_account) under its main
+    # account, with the value from any sub-coded postings (0 if none) — so the +
+    # appears whenever a main account has sub-accounts defined.
     try:
-        _sub_names = {str(r['sub_account_code']): r['sub_sub_accaount_name']
-                      for r in (db.execute_query("SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or [])}
+        _bs_defined = {}   # main account -> [{code, name}]
+        for r in (db.execute_query("SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1") or []):
+            _bs_defined.setdefault(r['sub_new_account'], []).append(
+                {'code': str(r['sub_account_code']), 'name': r['sub_sub_accaount_name']})
     except Exception:
-        _sub_names = {}
+        _bs_defined = {}
 
     def _bs_sub_breakdown(flag_col, balance_expr):
-        """{account_name: [{name, amounts[]}]} of sub-account balances per date."""
-        seen, order = {}, {}
+        """{account_name: [{name, amounts[]}]} — all defined subs, valued per date."""
+        vals_by = {}   # (acc, code) -> [amounts]
         for i, d in enumerate(dates):
             q = f"""
                 SELECT ed.account_name AS acc, ed.entry_sub_account_code AS code, {balance_expr} AS balance
@@ -7092,18 +7097,14 @@ def balance_sheet():
             except Exception:
                 rows = []
             for r in rows:
-                acc = r['acc']
-                key = (acc, str(r['code']))
-                if key not in seen:
-                    seen[key] = {'name': _sub_names.get(str(r['code'])) or f"Sub {r['code']}", 'amounts': [0.0] * n}
-                    order.setdefault(acc, []).append(key)
-                seen[key]['amounts'][i] = float(r['balance'] or 0)
+                key = (r['acc'], str(r['code']))
+                vals_by.setdefault(key, [0.0] * n)[i] = float(r['balance'] or 0)
         out = {}
-        for acc, keys in order.items():
-            subs = [seen[k] for k in keys if any(abs(v) >= 0.005 for v in seen[k]['amounts'])]
+        for acc, subs_def in _bs_defined.items():
+            subs = [{'name': s['name'], 'amounts': vals_by.get((acc, s['code']), [0.0] * n)}
+                    for s in subs_def]
             subs.sort(key=lambda s: str(s['name']).lower())
-            if subs:
-                out[acc] = subs
+            out[acc] = subs
         return out
 
     _asset_subs = _bs_sub_breakdown('account_assets', ASSET_EXPR)
