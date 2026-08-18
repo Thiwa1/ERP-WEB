@@ -5761,7 +5761,7 @@ def customer_loyalty():
 @has_permission('Access_Accounting')
 def direct_purchasing():
     cash_accounts = db.execute_query("SELECT cash_book_account_name FROM cash_book")
-    cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1")
+    cost_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name")
     items = db.execute_query("SELECT inventoy_name FROM inventoy_items")
     try:
         jobs = db.execute_query("SELECT job_number, job_description FROM jobs_unit ORDER BY job_number")
@@ -5853,10 +5853,10 @@ def direct_purchasing():
 @app.route('/api/cost_accounts')
 @login_required
 def api_cost_accounts():
-    """Live cost/asset account list so a newly created account shows up in an
-    open window (e.g. direct purchasing) without a full page refresh."""
+    """Live account list so a newly created account shows up in an open window
+    (e.g. direct purchasing) without a full page refresh — all active accounts."""
     accounts = db.execute_query(
-        "SELECT account_name FROM new_account_table WHERE account_expenses = 1 OR account_assets = 1 ORDER BY account_name") or []
+        "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
     return jsonify([a['account_name'] for a in accounts])
 
 
