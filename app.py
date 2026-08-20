@@ -212,6 +212,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'trial_balance',      'label': 'Trial Balance',        'url': '/trial_balance',          'icon': 'fas fa-balance-scale-left',  'category': 'Reports'},
     {'key': 'bank_rec_history',   'label': 'Bank Rec. History',    'url': '/bank_reconciliation/history', 'icon': 'fas fa-clipboard-check',  'category': 'Reports'},
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
+    {'key': 'supplier_payments',  'label': 'Supplier Payments',    'url': '/supplier_payments_report','icon': 'fas fa-money-check-dollar', 'category': 'Reports'},
     {'key': 'customer_aging',     'label': 'Customer Aging',       'url': '/customer_aging',         'icon': 'fas fa-user-clock',          'category': 'Reports'},
     {'key': 'balance_sheet',      'label': 'Balance Sheet',        'url': '/balance_sheet',          'icon': 'fas fa-balance-scale',       'category': 'Reports'},
     {'key': 'custom_balance_sheet','label': 'Custom Balance Sheet','url': '/balance_sheet_custom',   'icon': 'fas fa-balance-scale',       'category': 'Reports'},
@@ -5560,6 +5561,91 @@ def sub_account_allocation_save():
                          (code, eid), commit=True)
         updated += 1
     return jsonify({'success': True, 'updated': updated})
+
+
+@app.route('/supplier_payments_report')
+@login_required
+@has_permission('Access_Reports')
+def supplier_payments_report():
+    """Payments made to suppliers: supplier, amount, method (Cash/Bank) and which
+    bank/cash account. Combines cash_book_recode and bank_book_recod."""
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()  # '', 'Cash', 'Bank'
+    download = request.args.get('download')
+
+    rows = []
+
+    if method in ('', 'Cash'):
+        q = """
+            SELECT cash_book_recode_suplier_name AS supplier, cash_book_recode_cr AS amount,
+                   cash_book_recode_accont_name AS account, cash_book_recod_voucher_no AS voucher,
+                   Payment_Date AS pdate, jv_numbers_jv_id AS jv
+            FROM cash_book_recode
+            WHERE COALESCE(cash_book_recode_cr, 0) > 0
+              AND cash_book_recode_suplier_name IS NOT NULL AND cash_book_recode_suplier_name <> ''
+              AND Payment_Date BETWEEN %s AND %s
+        """
+        params = [from_date, to_date]
+        if supplier:
+            q += " AND cash_book_recode_suplier_name = %s"; params.append(supplier)
+        try:
+            cash = db.execute_query(q + " AND (User_Revers IS NULL OR User_Revers = '' OR User_Revers = '0')",
+                                    tuple(params))
+        except Exception:
+            cash = db.execute_query(q, tuple(params))
+        for r in (cash or []):
+            rows.append({'supplier': r['supplier'], 'amount': float(r['amount'] or 0),
+                         'method': 'Cash', 'account': r['account'] or '', 'cheque': '',
+                         'voucher': r['voucher'], 'date': r['pdate'], 'jv': r['jv']})
+
+    if method in ('', 'Bank'):
+        q = """
+            SELECT bank_book__suplier_name AS supplier, bank_book__recode_cr AS amount,
+                   bank_book__accont_name AS account, bank_book_recod_voucher_no AS voucher,
+                   bank_book_chque_no AS cheque, Bank_Payment_Date AS pdate, jv_numbers_jv_id AS jv
+            FROM bank_book_recod
+            WHERE COALESCE(bank_book__recode_cr, 0) > 0
+              AND bank_book__suplier_name IS NOT NULL AND bank_book__suplier_name <> ''
+              AND Bank_Payment_Date BETWEEN %s AND %s
+              AND COALESCE(bank_book_book_recode_dr, 0) = 0
+        """
+        params = [from_date, to_date]
+        if supplier:
+            q += " AND bank_book__suplier_name = %s"; params.append(supplier)
+        bank = db.execute_query(q, tuple(params))
+        for r in (bank or []):
+            rows.append({'supplier': r['supplier'], 'amount': float(r['amount'] or 0),
+                         'method': 'Bank', 'account': r['account'] or '', 'cheque': r['cheque'] or '',
+                         'voucher': r['voucher'], 'date': r['pdate'], 'jv': r['jv']})
+
+    rows.sort(key=lambda x: str(x['date'] or ''), reverse=True)
+    total = sum(r['amount'] for r in rows)
+    total_cash = sum(r['amount'] for r in rows if r['method'] == 'Cash')
+    total_bank = sum(r['amount'] for r in rows if r['method'] == 'Bank')
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Supplier Payments', f'{from_date} to {to_date}'])
+        cw.writerow(['Date', 'Supplier', 'Method', 'Bank/Cash Account', 'Cheque No', 'Voucher', 'JV', 'Amount'])
+        for r in rows:
+            cw.writerow([r['date'], r['supplier'], r['method'], r['account'], r['cheque'],
+                         r['voucher'], r['jv'], f"{r['amount']:.2f}"])
+        cw.writerow([])
+        cw.writerow(['', '', '', '', '', '', 'Cash Total', f"{total_cash:.2f}"])
+        cw.writerow(['', '', '', '', '', '', 'Bank Total', f"{total_bank:.2f}"])
+        cw.writerow(['', '', '', '', '', '', 'Grand Total', f"{total:.2f}"])
+        out = make_response(si.getvalue())
+        out.headers["Content-Disposition"] = f"attachment; filename=Supplier_Payments_{from_date}_{to_date}.csv"
+        out.headers["Content-type"] = "text/csv"
+        return out
+
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    return render_template('supplier_payments_report.html', rows=rows, total=total,
+                           total_cash=total_cash, total_bank=total_bank, from_date=from_date,
+                           to_date=to_date, supplier=supplier, method=method, suppliers=suppliers)
 
 
 @app.route('/get_supplier_data')
