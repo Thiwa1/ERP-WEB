@@ -180,6 +180,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bank_pay_reversal',  'label': 'Bank Pay Reversal',    'url': '/bank_payment_reversal',  'icon': 'fas fa-history',             'category': 'Reversals & Adjustments'},
     {'key': 'direct_pay_reversal','label': 'Direct Pay Reversal',  'url': '/direct_payment_reversal','icon': 'fas fa-sync',                'category': 'Reversals & Adjustments'},
     {'key': 'srn_reversal',       'label': 'SRN Reversal',         'url': '/service_entry_reversal', 'icon': 'fas fa-file-invoice',        'category': 'Reversals & Adjustments'},
+    {'key': 'grn_reversal',       'label': 'GRN Reversal',         'url': '/grn_reversal',           'icon': 'fas fa-truck-loading',       'category': 'Reversals & Adjustments'},
     {'key': 'reversal_category',  'label': 'Reversal Category',    'url': '/reversal_category',      'icon': 'fas fa-tags',                'category': 'Reversals & Adjustments'},
     # Inventory
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
@@ -1712,6 +1713,139 @@ def grn():
                            jobs=jobs,
                            locations=locations,
                            today_date=date.today().strftime('%Y-%m-%d'))
+
+
+@app.route('/grn_reversal')
+@login_required
+@has_permission('Access_Reversals')
+def grn_reversal():
+    """List recent GRNs (Goods Received Notes) available for deletion/reversal."""
+    query = """
+        SELECT
+            s.suppliers_invoice_JV as jv,
+            j.jv_naration,
+            sup.supplier_name as SupplierName,
+            s.suppliers_invoice_number as InvoiceNo,
+            s.suppliers_invoice_date as Date,
+            s.suppliers_invoice_total_oustanding as Amount
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE s.suppliers_oustanding_delete = 0
+          AND j.jv_user_code = 'JV FROM GRN'
+        ORDER BY s.s_i_id DESC
+        LIMIT 50
+    """
+    rows = db.execute_query(query)
+    return render_template('grn_reversal.html', rows=rows)
+
+
+@app.route('/grn_reversal/process', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def grn_reversal_process():
+    """Delete/reverse a GRN: reverses the GL postings, undoes the stock-in
+    movement, and marks the supplier invoice as deleted. Blocked if any
+    payment has already been made against the GRN's supplier invoice, if the
+    GRN has been bank reconciled, or if it falls in a closed accounting
+    period — mirrors the guard rails used by service_entry_reversal."""
+    jv = request.form.get('jv')
+    if not jv:
+        flash('No GRN selected', 'danger')
+        return redirect(url_for('grn_reversal'))
+
+    if jv_in_closed_period(jv):
+        flash(f'Cannot delete: this GRN is in a closed period (locked through {get_period_lock_date()}).', 'danger')
+        return redirect(url_for('grn_reversal'))
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+
+        # 1. Security Check: Bank Reconciled?
+        cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv,))
+        if cursor.fetchone()[0] > 0:
+            flash('Cannot delete: Transaction has been Bank Reconciled.', 'danger')
+            return redirect(url_for('grn_reversal'))
+
+        # 2. Security Check: Payments Made?
+        cursor.execute(
+            "SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data "
+            "WHERE suppliers_invoice_JV = %s AND suppliers_oustanding_delete = 0", (jv,))
+        inv_res = cursor.fetchone()
+        if not inv_res:
+            flash('GRN not found or already deleted.', 'danger')
+            return redirect(url_for('grn_reversal'))
+
+        if inv_res[0] and float(inv_res[0]) > 0:
+            flash('Cannot delete: Payments have been made against this GRN. Reverse those payments first.', 'danger')
+            return redirect(url_for('grn_reversal'))
+
+        conn.start_transaction()
+        current_user_pk = get_current_user_pk()
+        today = date.today()
+
+        # 3. Create reversal JV
+        cursor.execute(
+            "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+            (f'REV-GRN-{jv}', f'GRN Deletion Reversal of JV-{jv}'))
+        rev_jv = cursor.lastrowid
+
+        # 4. Reverse GL entries (swap DR <-> CR): undoes the Inventory DR /
+        #    VAT Control DR / Account Payable CR posted when the GRN was created.
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_DR, enty_values_CR,
+                entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            )
+            SELECT account_name,
+                   COALESCE(enty_values_CR, 0),
+                   COALESCE(enty_values_DR, 0),
+                   %s, %s, %s, %s, %s
+            FROM entry_details WHERE entry_jv = %s
+        """, (today, today, f'GRN Deletion Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
+
+        # 5. Reverse the stock-in movement (matching OUT movements)
+        cursor.execute("""
+            INSERT INTO inventory_recod (
+                inventoy_name, inventoy_code,
+                inventory_recod_action_date,
+                inventory_recod_moument_in, inventory_recod_movment_out,
+                inventory_recod_mesrmet, inventory_recod_unit_price,
+                inventory_recod_account, inventory_recod_user_id,
+                JV_No, inventory_recod_location
+            )
+            SELECT inventoy_name, inventoy_code, %s,
+                   0, inventory_recod_moument_in,
+                   inventory_recod_mesrmet, inventory_recod_unit_price,
+                   'GRN Deletion Reversal', %s,
+                   %s, inventory_recod_location
+            FROM inventory_recod
+            WHERE JV_No = %s AND inventory_recod_moument_in > 0
+        """, (today, current_user_pk, jv, jv))
+
+        # 6. Mark the supplier invoice as deleted
+        cursor.execute(
+            "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
+            (jv,))
+
+        conn.commit()
+        flash(f'GRN (JV: {jv}) deleted successfully. Reversal JV: {rev_jv}', 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error deleting GRN: {str(e)}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('grn_reversal'))
 
 
 @app.route('/api/inventory_items')

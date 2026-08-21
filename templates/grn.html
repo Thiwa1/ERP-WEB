@@ -47,14 +47,20 @@
 <div class="container-fluid">
 
     <!-- Page Header -->
-    <div class="d-flex align-items-center gap-3 mb-4">
-        <div class="page-icon-tile" style="background: linear-gradient(135deg,#018574,#005E52);">
-            <i class="fas fa-truck-loading"></i>
+    <div class="d-flex align-items-center justify-content-between gap-3 mb-4">
+        <div class="d-flex align-items-center gap-3">
+            <div class="page-icon-tile" style="background: linear-gradient(135deg,#018574,#005E52);">
+                <i class="fas fa-truck-loading"></i>
+            </div>
+            <div>
+                <h5 class="mb-0 fw-bold" style="color:#201f1e;">Goods Received Note</h5>
+                <small style="color:#605E5C; font-size:.78rem;">Inventory — Receiving</small>
+            </div>
         </div>
-        <div>
-            <h5 class="mb-0 fw-bold" style="color:#201f1e;">Goods Received Note</h5>
-            <small style="color:#605E5C; font-size:.78rem;">Inventory — Receiving</small>
-        </div>
+        <a href="{{ url_for('grn_reversal') }}" class="btn btn-sm"
+           style="border-radius:6px;font-size:.8rem;font-weight:600;background:#fce8e6;color:#C42B1C;border:1px solid #f5c6c2;white-space:nowrap;">
+            <i class="fas fa-undo-alt me-1"></i> Delete / Reverse a GRN
+        </a>
     </div>
 
     <form method="POST" action="{{ url_for('grn') }}" id="grnForm">
