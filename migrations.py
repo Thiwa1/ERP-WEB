@@ -50,6 +50,7 @@ def run_migrations(conn):
         _migrate_invoice_currency(cursor)
         _migrate_pl_account_sort(cursor)
         _migrate_report_subtotals(cursor)
+        _migrate_postdated_cheques(cursor)
 
         conn.commit()
         cursor.close()
@@ -342,6 +343,38 @@ def _migrate_report_subtotals(cursor):
             logging.error(f"Schema Migration Error: {e}")
     except Exception:
         pass
+
+def _migrate_postdated_cheques(cursor):
+    """Postdated Cheque (PDC) register: cheques recorded now (Bank Payment or
+    Customer Receipt) that only post to the GL/bank book on their post date,
+    instead of immediately. `payload` holds everything needed to post it
+    later (payments list, WHT, currency, etc.) as JSON."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS postdated_cheques (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                pdc_type VARCHAR(10) NOT NULL,
+                party_name VARCHAR(255),
+                account_name VARCHAR(150),
+                cheque_no VARCHAR(255),
+                post_date DATE NOT NULL,
+                issue_date DATE,
+                amount DECIMAL(18,2) NOT NULL DEFAULT 0,
+                narration TEXT,
+                payload LONGTEXT,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
+                created_by INT,
+                created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                cleared_jv INT NULL,
+                cleared_date DATE NULL
+            )
+        """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
 
 def _migrate_pl_account_sort(cursor):
     """Add per-account display order within its P&L / Balance Sheet category."""

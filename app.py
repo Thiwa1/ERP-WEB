@@ -182,6 +182,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'srn_reversal',       'label': 'SRN Reversal',         'url': '/service_entry_reversal', 'icon': 'fas fa-file-invoice',        'category': 'Reversals & Adjustments'},
     {'key': 'grn_reversal',       'label': 'GRN Reversal',         'url': '/grn_reversal',           'icon': 'fas fa-truck-loading',       'category': 'Reversals & Adjustments'},
     {'key': 'reversal_category',  'label': 'Reversal Category',    'url': '/reversal_category',      'icon': 'fas fa-tags',                'category': 'Reversals & Adjustments'},
+    {'key': 'postdated_cheques',  'label': 'Postdated Cheques',    'url': '/postdated_cheques',      'icon': 'fas fa-calendar-check',      'category': 'Reversals & Adjustments'},
     # Inventory
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
     {'key': 'new_inventory_item', 'label': 'New Inventory Item',   'url': '/add_inventory_item',     'icon': 'fas fa-plus-square',         'category': 'Inventory'},
@@ -5818,6 +5819,155 @@ def get_supplier_data():
 
     return _get_supplier_history_data(supplier_name, 'bank')
 
+def _post_bank_payment_entries(cursor, current_user, supplier_name, bank_account,
+                                payment_date, narration, cheque_no, payments, wht_base=0.0,
+                                manual_voucher=None):
+    """Executes the actual GL/bank posting for a bank payment: settle
+    invoices, allocate voucher numbers, create the JV + GL entries, and
+    record the bank book rows. Shared by the immediate (same-day) flow and
+    by clearing a postdated cheque — the caller owns the DB transaction
+    (start_transaction / commit / rollback / close) and current_user is the
+    numeric user id (get_current_user_id()), used for entry_create_user."""
+    total_payment_base = round(sum(p['base'] for p in payments), 2)
+
+    # 1. Update Invoices (Vendor Settle Logic)
+    if payments:
+        inv_ids = tuple(p['id'] for p in payments)
+        format_strings = ','.join(['%s'] * len(inv_ids))
+        cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", inv_ids)
+        res = cursor.fetchall()
+
+        # Using list for invoice_data to allow updates to current_paid
+        invoice_data = {str(r[0]): [float(r[1] or 0), float(r[2] or 0)] for r in res}
+
+        update_args = []
+        for p in payments:
+            inv_d = invoice_data.get(str(p['id']))
+            if not inv_d: continue
+
+            current_outstanding = inv_d[0]
+            current_paid = inv_d[1]
+
+            if p['base'] > current_outstanding + 0.01:
+                raise Exception(f"Payment amount {p['base']} (base) exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
+
+            new_total_paid = current_paid + p['base']
+
+            # Update the cached data so subsequent duplicate payments use the new total
+            inv_d[0] = current_outstanding - p['base'] # Reduce outstanding conceptually, although not checked directly here it is safer
+            inv_d[1] = new_total_paid
+
+            update_args.append((new_total_paid, p['id']))
+
+        if update_args:
+            # If there are duplicates, executemany might execute them sequentially or fail depending on the db driver and isolation.
+            # It's better to aggregate updates per invoice ID.
+            # Since update_args contains all sequential updates, the last one per ID is the one that matters.
+            # Let's aggregate to ensure executemany works correctly if the driver batches them.
+            final_updates = {}
+            for paid, inv_id in update_args:
+                final_updates[inv_id] = paid
+
+            final_update_args = [(paid, inv_id) for inv_id, paid in final_updates.items()]
+            cursor.executemany("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", final_update_args)
+
+    # Check Workflow
+    cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+    res_set = cursor.fetchone()
+    workflow_enabled = res_set and res_set[0] == '1'
+    status = 0 if workflow_enabled else 1
+
+    # 2. Voucher Number — manual override if provided, else auto
+    if manual_voucher:
+        new_voucher = manual_voucher
+    else:
+        cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
+        res = cursor.fetchone()
+        max_voucher = res[0] if res and res[0] else 0
+        new_voucher = max_voucher + 1
+
+    cursor.execute("INSERT INTO bank_book_voucher_no (bank_book_voucher_link, bank_book_voucher_no, bank_book_chq_no) VALUES (%s, %s, %s)",
+                   (bank_account, new_voucher, cheque_no))
+
+    # 2a. Generate Master Voucher Number (Global Sequence)
+    cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
+
+    try:
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS recent_activity (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            dot_color VARCHAR(20) DEFAULT 'blue',
+            text_content TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception as e:
+        logging.error(f"Schema Migration Error: {e}")
+
+    master_voucher_no = cursor.lastrowid
+
+    # 3. Create Journal Voucher (JV)
+    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                   ('JV FROM PAYMENT', narration, status))
+    jv_no = cursor.lastrowid
+
+    # Get Sub Account Code for Supplier
+    cursor.execute("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (supplier_name,))
+    res = cursor.fetchone()
+    sub_ac_code = res[0] if res else 0
+
+    # Debit AP (Full amount settled) — in base currency
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, ('Account Payable', total_payment_base, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
+
+    # Credit Bank (Net amount = Total - WHT) — in base currency
+    net_payment = total_payment_base - wht_base
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_CR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
+
+    # Credit WHT Payable (If any) — in base currency
+    if wht_base > 0:
+        cursor.execute("""
+            INSERT INTO entry_details (
+                account_name, enty_values_CR, entry_effective_date, entry_create_date,
+                entry_naration, entry_create_user, entry_jv
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """, ('WHT Payable', wht_base, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
+
+    # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
+    # Bank Book typically matches bank statement, so record NET payment.
+
+    sup_id_res = db.execute_query("SELECT sup_id FROM suppliers WHERE supplier_name = %s", (supplier_name,))
+    sup_id = sup_id_res[0]['sup_id'] if sup_id_res else 0
+
+    for p in payments:
+        net_item_amount = p['base']
+        if total_payment_base > 0:
+            net_item_amount = p['base'] * (net_payment / total_payment_base)
+
+        cursor.execute("""
+            INSERT INTO bank_book_recod (
+                bank_book__accont_name, bank_book__recode_cr, bank_book__naration,
+                bank_book__suplier_oustanding_id, bank_book__suplier_name, jv_numbers_jv_id,
+                bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date,
+                master_voucher_no
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (bank_account, net_item_amount, narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date, master_voucher_no))
+
+    return jv_no, new_voucher, master_voucher_no, total_payment_base
+
+
 @app.route('/bank_payment_submit', methods=['POST'])
 @login_required
 def bank_payment_submit():
@@ -5826,6 +5976,7 @@ def bank_payment_submit():
     payment_date = request.form.get('payment_date')
     narration = request.form.get('narration')
     cheque_no = request.form.get('cheque_no')
+    post_date = (request.form.get('post_date') or '').strip()
     wht_amount = float(request.form.get('wht_amount', 0))
 
     # Multi-currency: amounts are entered in this currency; rate converts to base (LKR)
@@ -5859,147 +6010,46 @@ def bank_payment_submit():
     if payment_currency and exchange_rate != 1.0:
         narration = (narration or '') + f" [{payment_currency} {total_payment:,.2f} @ {exchange_rate:.4f}]"
 
+    manual_voucher = (request.form.get('manual_voucher') or '').strip()
+    current_user = get_current_user_id()
+
+    # Postdated cheque: a cheque dated for a future date is held in the PDC
+    # register instead of posting to the books now — it only posts (invoice
+    # settlement + JV + bank book) when cleared from the Postdated Cheques
+    # page, on or after that post date.
+    is_postdated = bool(cheque_no) and bool(post_date) and post_date > date.today().isoformat()
+
+    if is_postdated:
+        try:
+            payload = json.dumps({
+                'supplier_name': supplier_name, 'bank_account': bank_account,
+                'payment_date': payment_date, 'narration': narration, 'cheque_no': cheque_no,
+                'payments': payments, 'wht_base': wht_base, 'manual_voucher': manual_voucher,
+            })
+            db.execute_query("""
+                INSERT INTO postdated_cheques (
+                    pdc_type, party_name, account_name, cheque_no, post_date, issue_date,
+                    amount, narration, payload, status, created_by
+                ) VALUES ('payment', %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s)
+            """, (supplier_name, bank_account, cheque_no, post_date, date.today(),
+                  total_payment_base, narration, payload, get_current_user_pk()), commit=True)
+            flash(f'Postdated cheque #{cheque_no} recorded for {supplier_name} — it will post to the books on '
+                  f'{post_date}. Manage it from Postdated Cheques.', 'success')
+        except Exception as e:
+            flash(f'Error recording postdated cheque: {str(e)}', 'danger')
+        return redirect(url_for('bank_payment'))
+
+    conn = None
+    cursor = None
+    _last_jv = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
         conn.start_transaction()
-        current_user = get_current_user_id()
 
-        # 1. Update Invoices (Vender Settle Logic)
-        if payments:
-            inv_ids = tuple(p['id'] for p in payments)
-            format_strings = ','.join(['%s'] * len(inv_ids))
-            cursor.execute(f"SELECT s_i_id, suppliers_invoice_oustanding, suppliers_invoice_total_payment FROM suppliers_invoice_data WHERE s_i_id IN ({format_strings})", inv_ids)
-            res = cursor.fetchall()
-
-            # Using list for invoice_data to allow updates to current_paid
-            invoice_data = {str(r[0]): [float(r[1] or 0), float(r[2] or 0)] for r in res}
-
-            update_args = []
-            for p in payments:
-                inv_d = invoice_data.get(str(p['id']))
-                if not inv_d: continue
-
-                current_outstanding = inv_d[0]
-                current_paid = inv_d[1]
-
-                if p['base'] > current_outstanding + 0.01:
-                    raise Exception(f"Payment amount {p['base']} (base) exceeds outstanding {current_outstanding} for invoice ID {p['id']}")
-
-                new_total_paid = current_paid + p['base']
-
-                # Update the cached data so subsequent duplicate payments use the new total
-                inv_d[0] = current_outstanding - p['base'] # Reduce outstanding conceptually, although not checked directly here it is safer
-                inv_d[1] = new_total_paid
-
-                update_args.append((new_total_paid, p['id']))
-
-            if update_args:
-                # If there are duplicates, executemany might execute them sequentially or fail depending on the db driver and isolation.
-                # It's better to aggregate updates per invoice ID.
-                # Since update_args contains all sequential updates, the last one per ID is the one that matters.
-                # Let's aggregate to ensure executemany works correctly if the driver batches them.
-                final_updates = {}
-                for paid, inv_id in update_args:
-                    final_updates[inv_id] = paid
-
-                final_update_args = [(paid, inv_id) for inv_id, paid in final_updates.items()]
-                cursor.executemany("UPDATE suppliers_invoice_data SET suppliers_invoice_total_payment = %s WHERE s_i_id = %s", final_update_args)
-
-        # Check Workflow
-        cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
-        res_set = cursor.fetchone()
-        workflow_enabled = res_set and res_set[0] == '1'
-        status = 0 if workflow_enabled else 1
-
-        # 2. Voucher Number — manual override if provided, else auto
-        manual_voucher = (request.form.get('manual_voucher') or '').strip()
-        if manual_voucher:
-            new_voucher = manual_voucher
-        else:
-            cursor.execute("SELECT MAX(bank_book_voucher_no) FROM bank_book_voucher_no WHERE bank_book_voucher_link = %s", (bank_account,))
-            res = cursor.fetchone()
-            max_voucher = res[0] if res and res[0] else 0
-            new_voucher = max_voucher + 1
-
-        cursor.execute("INSERT INTO bank_book_voucher_no (bank_book_voucher_link, bank_book_voucher_no, bank_book_chq_no) VALUES (%s, %s, %s)",
-                       (bank_account, new_voucher, cheque_no))
-
-        # 2a. Generate Master Voucher Number (Global Sequence)
-        cursor.execute("INSERT INTO master_payment_voucher_no (voucher_no, create_date) VALUES (0, %s)", (date.today(),))
-
-        try:
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS recent_activity (
-                id INT AUTO_INCREMENT PRIMARY KEY,
-                dot_color VARCHAR(20) DEFAULT 'blue',
-                text_content TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-            ''')
-        except mysql.connector.Error as e:
-            if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054):
-                logging.error(f"Schema Migration Error: {e}")
-        except Exception as e:
-            logging.error(f"Schema Migration Error: {e}")
-
-        master_voucher_no = cursor.lastrowid
-
-        # 3. Create Journal Voucher (JV)
-        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
-                       ('JV FROM PAYMENT', narration, status))
-        jv_no = cursor.lastrowid
-
-        # Get Sub Account Code for Supplier
-        cursor.execute("SELECT sub_account_code FROM sub_accont_for_new_account WHERE sub_sub_accaount_name = %s", (supplier_name,))
-        res = cursor.fetchone()
-        sub_ac_code = res[0] if res else 0
-
-        # Debit AP (Full amount settled) — in base currency
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv, entry_sub_account_code
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Payable', total_payment_base, payment_date, date.today(), narration, current_user, jv_no, sub_ac_code))
-
-        # Credit Bank (Net amount = Total - WHT) — in base currency
-        net_payment = total_payment_base - wht_base
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (bank_account, net_payment, payment_date, date.today(), narration, current_user, jv_no))
-
-        # Credit WHT Payable (If any) — in base currency
-        if wht_base > 0:
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                    entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, ('WHT Payable', wht_base, payment_date, date.today(), f"WHT on {narration}", current_user, jv_no))
-
-        # 4. Record Bank Transactions (Split proportionately if needed, or record full/net?)
-        # Bank Book typically matches bank statement, so record NET payment.
-
-        sup_id_res = db.execute_query("SELECT sup_id FROM suppliers WHERE supplier_name = %s", (supplier_name,))
-        sup_id = sup_id_res[0]['sup_id'] if sup_id_res else 0
-
-        for p in payments:
-            net_item_amount = p['base']
-            if total_payment_base > 0:
-                net_item_amount = p['base'] * (net_payment / total_payment_base)
-
-            cursor.execute("""
-                INSERT INTO bank_book_recod (
-                    bank_book__accont_name, bank_book__recode_cr, bank_book__naration,
-                    bank_book__suplier_oustanding_id, bank_book__suplier_name, jv_numbers_jv_id,
-                    bank_book_recod_voucher_no, bank_book_chque_no, Bank_Sup_Code, Bank_User_Id, Bank_Payment_Date,
-                    master_voucher_no
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (bank_account, net_item_amount, narration, p['id'], supplier_name, jv_no, new_voucher, cheque_no, sup_id, current_user, payment_date, master_voucher_no))
+        jv_no, new_voucher, master_voucher_no, _ = _post_bank_payment_entries(
+            cursor, current_user, supplier_name, bank_account, payment_date,
+            narration, cheque_no, payments, wht_base, manual_voucher)
 
         conn.commit()
         flash(f'Payment processed successfully. Voucher No: {new_voucher}, Master Voucher: {master_voucher_no}', 'success')
@@ -6007,17 +6057,177 @@ def bank_payment_submit():
         _last_jv = jv_no  # capture before finally block
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Transaction failed: {str(e)}', 'danger')
         logging.error(f"Cash Payment Error: {e}")
         _last_jv = None
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     if _last_jv:
         return redirect(url_for('bank_payment', last_jv=_last_jv))
     return redirect(url_for('bank_payment'))
+
+# --- Postdated Cheques (PDC) ---
+@app.route('/postdated_cheques')
+@login_required
+@has_permission('Access_Reversals')
+def postdated_cheques():
+    """List postdated cheques (Bank Payment + Customer Receipt) — pending,
+    cleared or cancelled — with optional status/type filters."""
+    status_filter = (request.args.get('status') or 'pending').strip()
+    type_filter = (request.args.get('type') or '').strip()
+
+    filters = []
+    params = []
+    if status_filter and status_filter != 'all':
+        filters.append("status = %s")
+        params.append(status_filter)
+    if type_filter in ('payment', 'receipt'):
+        filters.append("pdc_type = %s")
+        params.append(type_filter)
+
+    where_clause = (" WHERE " + " AND ".join(filters)) if filters else ""
+    query = f"""
+        SELECT id, pdc_type, party_name, account_name, cheque_no, post_date, issue_date,
+               amount, narration, status, cleared_jv, cleared_date
+        FROM postdated_cheques
+        {where_clause}
+        ORDER BY post_date ASC, id DESC
+        LIMIT 200
+    """
+    rows = db.execute_query(query, tuple(params)) if params else db.execute_query(query)
+    return render_template('postdated_cheques.html', rows=rows, status_filter=status_filter,
+                           type_filter=type_filter, today_str=date.today().strftime('%Y-%m-%d'))
+
+
+@app.route('/postdated_cheques/clear', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def postdated_cheques_clear():
+    """Post a pending postdated cheque to the books now — runs the same
+    invoice-settlement + JV + bank/cash book logic as an immediate payment
+    or receipt, effective as of the cheque's post date."""
+    pdc_id = request.form.get('id')
+    if not pdc_id:
+        flash('No postdated cheque selected', 'danger')
+        return redirect(url_for('postdated_cheques'))
+
+    conn = None
+    cursor = None
+    cursor2 = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+
+        cursor.execute("SELECT * FROM postdated_cheques WHERE id = %s AND status = 'pending' FOR UPDATE", (pdc_id,))
+        pdc = cursor.fetchone()
+        if not pdc:
+            conn.rollback()
+            flash('Postdated cheque not found or already processed.', 'danger')
+            return redirect(url_for('postdated_cheques'))
+
+        payload = json.loads(pdc['payload'] or '{}')
+        effective_date = str(pdc['post_date'])
+        current_user = get_current_user_id()
+        cursor2 = conn.cursor()
+
+        if pdc['pdc_type'] == 'payment':
+            jv_no, new_voucher, master_voucher_no, _ = _post_bank_payment_entries(
+                cursor2, current_user, payload['supplier_name'], payload['bank_account'],
+                effective_date, payload['narration'], payload.get('cheque_no'),
+                payload['payments'], payload.get('wht_base', 0.0), payload.get('manual_voucher'))
+        else:
+            jv_no, receipt_no, _ = _post_customer_receipt_entries(
+                cursor2, current_user, payload['customer_id'], payload['account_type'],
+                payload['account_name'], effective_date, payload['narration'], payload['payments'],
+                payload.get('manual_receipt_no'), payload.get('online_payment_received', False),
+                payload.get('transaction_code'), payload.get('card_last_digits'),
+                payload.get('bank_transfer_confirmed', False), payload.get('transfer_id'),
+                payload.get('cheque_no'))
+
+        cursor2.execute(
+            "UPDATE postdated_cheques SET status = 'cleared', cleared_jv = %s, cleared_date = %s WHERE id = %s",
+            (jv_no, date.today(), pdc_id))
+
+        conn.commit()
+        flash(f"Postdated cheque #{pdc['cheque_no']} cleared and posted to the books (JV: {jv_no}).", 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error clearing postdated cheque: {str(e)}', 'danger')
+        logging.error(f"PDC Clear Error: {e}")
+    finally:
+        if cursor2:
+            cursor2.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return redirect(url_for('postdated_cheques'))
+
+
+@app.route('/postdated_cheques/reschedule', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def postdated_cheques_reschedule():
+    """Change the post date on a pending postdated cheque — e.g. it bounced
+    and a new date was agreed, or the party asked to push it out."""
+    pdc_id = request.form.get('id')
+    new_date = (request.form.get('new_post_date') or '').strip()
+    if not pdc_id or not new_date:
+        flash('A new post date is required', 'danger')
+        return redirect(url_for('postdated_cheques'))
+
+    try:
+        res = db.execute_query("SELECT status FROM postdated_cheques WHERE id = %s", (pdc_id,))
+        if not res:
+            flash('Postdated cheque not found.', 'danger')
+        elif res[0]['status'] != 'pending':
+            flash('Only pending postdated cheques can be rescheduled.', 'warning')
+        else:
+            db.execute_query("UPDATE postdated_cheques SET post_date = %s WHERE id = %s",
+                             (new_date, pdc_id), commit=True)
+            flash(f'Post date updated to {new_date}.', 'success')
+    except Exception as e:
+        flash(f'Error rescheduling: {str(e)}', 'danger')
+
+    return redirect(url_for('postdated_cheques'))
+
+
+@app.route('/postdated_cheques/cancel', methods=['POST'])
+@login_required
+@has_permission('Access_Reversals')
+def postdated_cheques_cancel():
+    """Cancel a pending postdated cheque (e.g. returned/voided) — it was
+    never posted to the books, so there is nothing to reverse."""
+    pdc_id = request.form.get('id')
+    if not pdc_id:
+        flash('No postdated cheque selected', 'danger')
+        return redirect(url_for('postdated_cheques'))
+
+    try:
+        res = db.execute_query("SELECT status FROM postdated_cheques WHERE id = %s", (pdc_id,))
+        if not res:
+            flash('Postdated cheque not found.', 'danger')
+        elif res[0]['status'] != 'pending':
+            flash('Only pending postdated cheques can be cancelled.', 'warning')
+        else:
+            db.execute_query("UPDATE postdated_cheques SET status = 'cancelled' WHERE id = %s",
+                             (pdc_id,), commit=True)
+            flash('Postdated cheque cancelled.', 'success')
+    except Exception as e:
+        flash(f'Error cancelling: {str(e)}', 'danger')
+
+    return redirect(url_for('postdated_cheques'))
+
 
 # --- Customer Loyalty ---
 @app.route('/customer_loyalty', methods=['GET', 'POST'])
@@ -11201,6 +11411,136 @@ def print_receipt(jv_no):
                            company=company,
                            jv_no=jv_no)
 
+def _post_customer_receipt_entries(cursor, current_user, customer_id, account_type, account_name,
+                                    payment_date, narration, payments, manual_receipt_no=None,
+                                    online_payment_received=False, transaction_code=None,
+                                    card_last_digits=None, bank_transfer_confirmed=False,
+                                    transfer_id=None, cheque_no=None):
+    """Executes the actual GL/cash-or-bank posting for a customer receipt:
+    settle outstanding invoices, allocate a receipt number, create the JV +
+    GL entries, and record the cash/bank book rows. Shared by the immediate
+    (same-day) flow and by clearing a postdated cheque — the caller owns the
+    DB transaction (start_transaction / commit / rollback / close)."""
+    total_receipt_base = round(sum(p['base'] for p in payments), 2)
+
+    # 1. Update Invoice Outstanding (Settle)
+    if payments:
+        # Fetch all outstanding balances in a single query
+        payment_ids = [p['id'] for p in payments]
+        format_strings = ','.join(['%s'] * len(payment_ids))
+        cursor.execute(f"SELECT Id, invoice_oustanding_Patment FROM Invoice_Oustanding WHERE Id IN ({format_strings})", tuple(payment_ids))
+
+        # Map fetched balances to IDs
+        res = cursor.fetchall()
+        current_balances = {str(row[0]): float(row[1]) for row in res}
+
+        # Aggregate BASE amounts per invoice (outstanding is stored in base currency)
+        payment_totals = {}
+        for p in payments:
+            pid = str(p['id'])
+            payment_totals[pid] = payment_totals.get(pid, 0.0) + p['base']
+
+        # Prepare batch update data
+        update_data = []
+        for pid, total_amount in payment_totals.items():
+            current_paid = current_balances.get(pid)
+            if current_paid is not None:
+                new_paid = current_paid + total_amount
+                update_data.append((new_paid, pid))
+
+        # Execute batch update
+        if update_data:
+            cursor.executemany("UPDATE Invoice_Oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", update_data)
+
+    # 2. Generate Receipt No
+    if account_type == 'cash':
+        cursor.execute("SELECT MAX(reciept_no) FROM cash_recipt WHERE likn = %s", (account_name,))
+        res = cursor.fetchone()
+        receipt_no = (res[0] if res and res[0] else 0) + 1
+        cursor.execute("INSERT INTO cash_recipt (likn, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
+    else:
+        # Bank Receipt logic
+        cursor.execute("SELECT MAX(reciept_no) FROM bank_ecipt WHERE link = %s", (account_name,))
+        res = cursor.fetchone()
+        receipt_no = (res[0] if res and res[0] else 0) + 1
+        cursor.execute("INSERT INTO bank_ecipt (link, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
+
+    # 3. Create JV
+    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM RECEIPT', narration))
+    jv_no = cursor.lastrowid
+
+    # 4. GL Entries (posted in base currency)
+    # Debit Cash/Bank
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_DR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, (account_name, total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
+
+    # Credit Accounts Receivable
+    # Need sub account code for customer if possible, usually stored in `sub_accont_for_new_account`
+    # But simple version: just credit AR control account
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_CR, entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, ('Account Receivable', total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
+
+    # 5. Record Transaction (Cash/Bank Book)
+    # Using `cash_book_recode` for cash receipts or `bank_book_recod` ??
+    # The schema has `cash_book_recode` with `cash_book_recode_dr` (receipt)
+
+    # Get customer name (customers stored in suppliers table with Is_Customer=1)
+    cursor.execute("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (customer_id,))
+    row = cursor.fetchone()
+    cust_name = row[0] if row else str(customer_id)
+
+    if account_type == 'cash':
+        # Create a record per invoice payment or summary?
+        # `Recipt.xaml.cs` does foreach item in Accont_collections
+        for p in payments:
+             cursor.execute("""
+                INSERT INTO cash_book_recode (
+                    cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
+                    cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
+                    cash_book_recode_suplier_name, jv_numbers_jv_id,
+                    cash_book_recod_voucher_no, User_Enter, Payment_Date
+                ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
+    else:
+        # Insert into cash_bank_payment_type first (mirroring WPF)
+        cursor.execute("""
+            INSERT INTO cash_bank_payment_type (
+                manua_recipt_number, onlie_payment_recived, online_transaction_code,
+                credit_card_no, bank_transfer, bank_transfer_id, bank_cheque, JV
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            manual_receipt_no,
+            1 if online_payment_received else 0,
+            transaction_code,
+            card_last_digits,
+            1 if bank_transfer_confirmed else 0,
+            transfer_id,
+            cheque_no,
+            jv_no
+        ))
+
+        # Bank Recode
+        for p in payments:
+            cursor.execute("""
+                INSERT INTO bank_book_recod (
+                    bank_book_book_recode_dr, bank_book__recode_cr, bank_book__accont_name,
+                    bank_book__naration, bank_book__suplier_oustanding_id,
+                    bank_book__suplier_name, jv_numbers_jv_id,
+                    bank_book_recod_voucher_no, bank_book_chque_no, Bank_User_Id, Bank_Payment_Date
+                ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
+
+    return jv_no, receipt_no, total_receipt_base
+
+
 @app.route('/customer_receipt/submit', methods=['POST'])
 @login_required
 def submit_customer_receipt():
@@ -11230,6 +11570,7 @@ def submit_customer_receipt():
     bank_transfer_confirmed = request.form.get('bank_transfer_confirmed') == 'on'
     transfer_id = request.form.get('transfer_id')
     cheque_no = request.form.get('cheque_no')
+    post_date = (request.form.get('post_date') or '').strip()
 
     if not customer_id or not account_name:
         flash('Missing required fields', 'danger')
@@ -11262,138 +11603,66 @@ def submit_customer_receipt():
 
     current_user = get_current_user_id()
 
+    # Postdated cheque: a cheque dated for a future date is held in the PDC
+    # register instead of posting to the books now — it only posts (invoice
+    # settlement + JV + cash/bank book) when cleared from the Postdated
+    # Cheques page, on or after that post date.
+    is_postdated = (account_type == 'bank' and payment_method == 'cheque'
+                     and bool(cheque_no) and bool(post_date) and post_date > date.today().isoformat())
+
+    if is_postdated:
+        try:
+            row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (customer_id,))
+            cust_name = row[0]['supplier_name'] if row else str(customer_id)
+            payload = json.dumps({
+                'customer_id': customer_id, 'account_type': account_type, 'account_name': account_name,
+                'payment_date': payment_date, 'narration': narration, 'payments': payments,
+                'manual_receipt_no': manual_receipt_no, 'online_payment_received': online_payment_received,
+                'transaction_code': transaction_code, 'card_last_digits': card_last_digits,
+                'bank_transfer_confirmed': bank_transfer_confirmed, 'transfer_id': transfer_id,
+                'cheque_no': cheque_no,
+            })
+            db.execute_query("""
+                INSERT INTO postdated_cheques (
+                    pdc_type, party_name, account_name, cheque_no, post_date, issue_date,
+                    amount, narration, payload, status, created_by
+                ) VALUES ('receipt', %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s)
+            """, (cust_name, account_name, cheque_no, post_date, date.today(),
+                  total_receipt_base, narration, payload, get_current_user_pk()), commit=True)
+            flash(f'Postdated cheque #{cheque_no} recorded from {cust_name} — it will post to the books on '
+                  f'{post_date}. Manage it from Postdated Cheques.', 'success')
+        except Exception as e:
+            flash(f'Error recording postdated cheque: {str(e)}', 'danger')
+        return redirect(url_for('customer_receipt'))
+
+    conn = None
+    cursor = None
+    _rcpt_jv = None
     try:
         conn = db.get_connection()
         cursor = conn.cursor()
         conn.start_transaction()
 
-        # 1. Update Invoice Outstanding (Settle)
-        if payments:
-            # Fetch all outstanding balances in a single query
-            payment_ids = [p['id'] for p in payments]
-            format_strings = ','.join(['%s'] * len(payment_ids))
-            cursor.execute(f"SELECT Id, invoice_oustanding_Patment FROM Invoice_Oustanding WHERE Id IN ({format_strings})", tuple(payment_ids))
-
-            # Map fetched balances to IDs
-            res = cursor.fetchall()
-            current_balances = {str(row[0]): float(row[1]) for row in res}
-
-            # Aggregate BASE amounts per invoice (outstanding is stored in base currency)
-            payment_totals = {}
-            for p in payments:
-                pid = str(p['id'])
-                payment_totals[pid] = payment_totals.get(pid, 0.0) + p['base']
-
-            # Prepare batch update data
-            update_data = []
-            for pid, total_amount in payment_totals.items():
-                current_paid = current_balances.get(pid)
-                if current_paid is not None:
-                    new_paid = current_paid + total_amount
-                    update_data.append((new_paid, pid))
-
-            # Execute batch update
-            if update_data:
-                cursor.executemany("UPDATE Invoice_Oustanding SET invoice_oustanding_Patment = %s WHERE Id = %s", update_data)
-
-        # 2. Generate Receipt No
-        if account_type == 'cash':
-            cursor.execute("SELECT MAX(reciept_no) FROM cash_recipt WHERE likn = %s", (account_name,))
-            res = cursor.fetchone()
-            receipt_no = (res[0] if res and res[0] else 0) + 1
-            cursor.execute("INSERT INTO cash_recipt (likn, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
-        else:
-            # Bank Receipt logic
-            cursor.execute("SELECT MAX(reciept_no) FROM bank_ecipt WHERE link = %s", (account_name,))
-            res = cursor.fetchone()
-            receipt_no = (res[0] if res and res[0] else 0) + 1
-            cursor.execute("INSERT INTO bank_ecipt (link, reciept_no) VALUES (%s, %s)", (account_name, receipt_no))
-
-        # 3. Create JV
-        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)", ('JV FROM RECEIPT', narration))
-        jv_no = cursor.lastrowid
-
-        # 4. GL Entries (posted in base currency)
-        # Debit Cash/Bank
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_DR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (account_name, total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
-
-        # Credit Accounts Receivable
-        # Need sub account code for customer if possible, usually stored in `sub_accont_for_new_account`
-        # But simple version: just credit AR control account
-        cursor.execute("""
-            INSERT INTO entry_details (
-                account_name, enty_values_CR, entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, ('Account Receivable', total_receipt_base, payment_date, date.today(), narration, current_user, jv_no))
-
-        # 5. Record Transaction (Cash/Bank Book)
-        # Using `cash_book_recode` for cash receipts or `bank_book_recod` ??
-        # The schema has `cash_book_recode` with `cash_book_recode_dr` (receipt)
-
-        # Get customer name (customers stored in suppliers table with Is_Customer=1)
-        cursor.execute("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (customer_id,))
-        row = cursor.fetchone()
-        cust_name = row[0] if row else str(customer_id)
-
-        if account_type == 'cash':
-            # Create a record per invoice payment or summary?
-            # `Recipt.xaml.cs` does foreach item in Accont_collections
-            for p in payments:
-                 cursor.execute("""
-                    INSERT INTO cash_book_recode (
-                        cash_book_recode_dr, cash_book_recode_cr, cash_book_recode_accont_name,
-                        cash_book_recode_naration, cash_book_recode_suplier_oustanding_id,
-                        cash_book_recode_suplier_name, jv_numbers_jv_id,
-                        cash_book_recod_voucher_no, User_Enter, Payment_Date
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, current_user, payment_date))
-        else:
-            # Insert into cash_bank_payment_type first (mirroring WPF)
-            cursor.execute("""
-                INSERT INTO cash_bank_payment_type (
-                    manua_recipt_number, onlie_payment_recived, online_transaction_code,
-                    credit_card_no, bank_transfer, bank_transfer_id, bank_cheque, JV
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                manual_receipt_no,
-                1 if online_payment_received else 0,
-                transaction_code,
-                card_last_digits,
-                1 if bank_transfer_confirmed else 0,
-                transfer_id,
-                cheque_no,
-                jv_no
-            ))
-
-            # Bank Recode
-            for p in payments:
-                cursor.execute("""
-                    INSERT INTO bank_book_recod (
-                        bank_book_book_recode_dr, bank_book__recode_cr, bank_book__accont_name,
-                        bank_book__naration, bank_book__suplier_oustanding_id,
-                        bank_book__suplier_name, jv_numbers_jv_id,
-                        bank_book_recod_voucher_no, bank_book_chque_no, Bank_User_Id, Bank_Payment_Date
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (p['base'], account_name, narration, p['id'], cust_name, jv_no, manual_receipt_no or receipt_no, cheque_no, current_user, payment_date))
+        jv_no, receipt_no, _ = _post_customer_receipt_entries(
+            cursor, current_user, customer_id, account_type, account_name, payment_date, narration,
+            payments, manual_receipt_no, online_payment_received, transaction_code, card_last_digits,
+            bank_transfer_confirmed, transfer_id, cheque_no)
 
         conn.commit()
         flash(f'Receipt processed successfully. Receipt No: {receipt_no}', 'success')
         _rcpt_jv = jv_no
 
     except Exception as e:
-        conn.rollback()
+        if conn:
+            conn.rollback()
         flash(f'Error processing receipt: {str(e)}', 'danger')
         logging.error(f"Receipt Error: {e}")
         _rcpt_jv = None
     finally:
-        cursor.close()
-        conn.close()
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
     if _rcpt_jv:
         return redirect(url_for('customer_receipt', last_jv=_rcpt_jv))
