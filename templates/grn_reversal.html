@@ -3,6 +3,25 @@
 {% block title %}GRN Reversal{% endblock %}
 
 {% block content %}
+<style>
+    .grn-view-btn {
+        border-radius:6px;font-size:.82rem;font-weight:600;
+        background:#fff;color:#605E5C;border:1px solid #e2e8f0;
+        padding:.35rem .6rem;line-height:1;
+    }
+    .grn-view-btn.active-view {
+        background:#eef2ff;color:#4361ee;border-color:#c7d2fc;
+    }
+    .grn-filter-label {
+        font-size:.7rem;font-weight:700;letter-spacing:.5px;text-transform:uppercase;
+        color:#605E5C;margin-bottom:.25rem;display:block;
+    }
+    .grn-card {
+        border:1px solid #e2e8f0;border-radius:10px;padding:1rem 1.1rem;background:#fff;
+        box-shadow:0 1px 4px rgba(0,0,0,.05);height:100%;display:flex;flex-direction:column;gap:.5rem;
+    }
+</style>
+
 <div class="container-fluid py-4">
 
     <!-- Page Header -->
@@ -23,18 +42,71 @@
         <span>Deleting a GRN reverses the stock-in movement and the GL entries (Inventory / VAT Control / Account Payable) it created, and cancels the supplier invoice. This action cannot be undone. GRNs with payments already made against them, or that fall in a closed period, cannot be deleted here.</span>
     </div>
 
-    <!-- Table Card -->
+    <!-- Table / Card Card -->
     <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+
+        <!-- Filter Bar -->
+        <form method="GET" action="{{ url_for('grn_reversal') }}"
+              class="d-flex flex-wrap align-items-end gap-3 px-4 py-3"
+              style="border-bottom:1px solid #e2e8f0;background:#fafbfc;">
+
+            <div>
+                <span class="grn-filter-label">Supplier</span>
+                <select name="supplier_id" class="form-select form-select-sm" style="min-width:180px;">
+                    <option value="">All Suppliers</option>
+                    {% for s in suppliers %}
+                    <option value="{{ s.sup_id }}" {% if f_supplier_id and f_supplier_id == s.sup_id|string %}selected{% endif %}>{{ s.supplier_name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div>
+                <span class="grn-filter-label">Invoice No</span>
+                <input type="text" name="invoice_no" value="{{ f_invoice_no }}"
+                       class="form-control form-control-sm" placeholder="Search invoice no" style="min-width:150px;">
+            </div>
+
+            <div>
+                <span class="grn-filter-label">From</span>
+                <input type="date" name="date_from" value="{{ f_date_from }}" class="form-control form-control-sm">
+            </div>
+
+            <div>
+                <span class="grn-filter-label">To</span>
+                <input type="date" name="date_to" value="{{ f_date_to }}" class="form-control form-control-sm">
+            </div>
+
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-sm"
+                        style="border-radius:6px;font-size:.8rem;font-weight:600;background:#eef2ff;color:#4361ee;border:1px solid #c7d2fc;">
+                    <i class="fas fa-filter me-1"></i> Filter
+                </button>
+                <a href="{{ url_for('grn_reversal') }}" class="btn btn-sm"
+                   style="border-radius:6px;font-size:.8rem;font-weight:600;background:#f8f9fa;color:#605E5C;border:1px solid #e2e8f0;">
+                    Clear
+                </a>
+            </div>
+
+            <!-- View toggle -->
+            <div class="ms-auto d-flex gap-1">
+                <button type="button" id="viewTableBtn" class="grn-view-btn" title="Table view">
+                    <i class="fas fa-table"></i>
+                </button>
+                <button type="button" id="viewCardBtn" class="grn-view-btn" title="Card view">
+                    <i class="fas fa-th-large"></i>
+                </button>
+            </div>
+        </form>
 
         <!-- Card Header -->
         <div class="d-flex align-items-center px-4 py-3" style="border-bottom:1px solid #e2e8f0;">
             <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
-                <i class="fas fa-list me-1"></i> Recent GRNs
+                <i class="fas fa-list me-1"></i> GRNs {% if rows %}({{ rows|length }}){% endif %}
             </span>
         </div>
 
-        <!-- Table -->
-        <div class="table-responsive">
+        <!-- Table View -->
+        <div id="grnTableView" class="table-responsive">
             <table class="table table-hover mb-0" id="grnReversalTable">
                 <thead style="background:#f8f9fa;">
                     <tr>
@@ -77,14 +149,85 @@
                         <tr>
                             <td colspan="6" class="text-center py-5" style="color:#605E5C;font-size:.9rem;">
                                 <i class="fas fa-inbox mb-2 d-block" style="font-size:1.8rem;opacity:.4;"></i>
-                                No recent GRNs found.
+                                No GRNs found{% if f_supplier_id or f_invoice_no or f_date_from or f_date_to %} for these filters{% endif %}.
                             </td>
                         </tr>
                     {% endif %}
                 </tbody>
             </table>
         </div>
+
+        <!-- Card View -->
+        <div id="grnCardView" class="p-4" style="display:none;">
+            <div class="row g-3">
+                {% if rows %}
+                    {% for row in rows %}
+                    <div class="col-12 col-sm-6 col-lg-4">
+                        <div class="grn-card">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <span class="fw-bold" style="font-family:monospace;color:#1a1a2e;">JV-{{ row.jv }}</span>
+                                <span style="font-size:.72rem;color:#605E5C;">{{ row.Date }}</span>
+                            </div>
+                            <div style="font-size:.92rem;color:#323130;font-weight:600;">{{ row.SupplierName or '—' }}</div>
+                            <div style="font-size:.8rem;color:#605E5C;">
+                                Invoice: <span style="font-family:monospace;">{{ row.InvoiceNo }}</span>
+                            </div>
+                            <div style="font-family:monospace;font-weight:700;color:#C42B1C;font-size:1.1rem;">
+                                {{ "{:,.2f}".format(row.Amount or 0) }}
+                            </div>
+                            <form method="POST" action="{{ url_for('grn_reversal_process') }}" class="mt-auto"
+                                  onsubmit="return confirm('Are you sure you want to delete this GRN? This will reverse the stock and GL entries and cannot be undone.');">
+                                <input type="hidden" name="jv" value="{{ row.jv }}">
+                                <button type="submit" class="btn btn-sm w-100"
+                                        style="border-radius:6px;font-size:.78rem;font-weight:600;background:#fce8e6;color:#C42B1C;border:1px solid #f5c6c2;">
+                                    <i class="fas fa-trash-alt me-1"></i> Delete
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="col-12 text-center py-5" style="color:#605E5C;font-size:.9rem;">
+                        <i class="fas fa-inbox mb-2 d-block" style="font-size:1.8rem;opacity:.4;"></i>
+                        No GRNs found{% if f_supplier_id or f_invoice_no or f_date_from or f_date_to %} for these filters{% endif %}.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
     </div>
 
 </div>
+
+<script>
+(function () {
+    var tableBtn = document.getElementById('viewTableBtn');
+    var cardBtn = document.getElementById('viewCardBtn');
+    var tableView = document.getElementById('grnTableView');
+    var cardView = document.getElementById('grnCardView');
+
+    function setView(view) {
+        if (view === 'card') {
+            tableView.style.display = 'none';
+            cardView.style.display = 'block';
+            cardBtn.classList.add('active-view');
+            tableBtn.classList.remove('active-view');
+        } else {
+            view = 'table';
+            tableView.style.display = 'block';
+            cardView.style.display = 'none';
+            tableBtn.classList.add('active-view');
+            cardBtn.classList.remove('active-view');
+        }
+        try { localStorage.setItem('grn_reversal_view', view); } catch (e) {}
+    }
+
+    tableBtn.addEventListener('click', function () { setView('table'); });
+    cardBtn.addEventListener('click', function () { setView('card'); });
+
+    var saved = 'table';
+    try { saved = localStorage.getItem('grn_reversal_view') || 'table'; } catch (e) {}
+    setView(saved);
+})();
+</script>
 {% endblock %}

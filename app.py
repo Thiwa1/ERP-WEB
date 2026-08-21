@@ -1719,8 +1719,30 @@ def grn():
 @login_required
 @has_permission('Access_Reversals')
 def grn_reversal():
-    """List recent GRNs (Goods Received Notes) available for deletion/reversal."""
-    query = """
+    """List recent GRNs (Goods Received Notes) available for deletion/reversal,
+    with optional filters by supplier, invoice number and date range."""
+    supplier_id = (request.args.get('supplier_id') or '').strip()
+    invoice_no = (request.args.get('invoice_no') or '').strip()
+    date_from = (request.args.get('date_from') or '').strip()
+    date_to = (request.args.get('date_to') or '').strip()
+
+    filters = ["s.suppliers_oustanding_delete = 0", "j.jv_user_code = 'JV FROM GRN'"]
+    params = []
+    if supplier_id:
+        filters.append("sup.sup_id = %s")
+        params.append(supplier_id)
+    if invoice_no:
+        filters.append("s.suppliers_invoice_number LIKE %s")
+        params.append(f"%{invoice_no}%")
+    if date_from:
+        filters.append("s.suppliers_invoice_date >= %s")
+        params.append(date_from)
+    if date_to:
+        filters.append("s.suppliers_invoice_date <= %s")
+        params.append(date_to)
+
+    where_clause = " AND ".join(filters)
+    query = f"""
         SELECT
             s.suppliers_invoice_JV as jv,
             j.jv_naration,
@@ -1731,13 +1753,18 @@ def grn_reversal():
         FROM suppliers_invoice_data s
         JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
-        WHERE s.suppliers_oustanding_delete = 0
-          AND j.jv_user_code = 'JV FROM GRN'
+        WHERE {where_clause}
         ORDER BY s.s_i_id DESC
-        LIMIT 50
+        LIMIT 200
     """
-    rows = db.execute_query(query)
-    return render_template('grn_reversal.html', rows=rows)
+    rows = db.execute_query(query, tuple(params)) if params else db.execute_query(query)
+
+    suppliers = db.execute_query(
+        "SELECT sup_id, supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+
+    return render_template('grn_reversal.html', rows=rows, suppliers=suppliers,
+                           f_supplier_id=supplier_id, f_invoice_no=invoice_no,
+                           f_date_from=date_from, f_date_to=date_to)
 
 
 @app.route('/grn_reversal/process', methods=['POST'])
