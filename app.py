@@ -1876,6 +1876,60 @@ def grn_reversal_process():
     return redirect(url_for('grn_reversal'))
 
 
+@app.route('/grn/view/<int:jv_no>')
+@login_required
+def grn_view(jv_no):
+    """Read-only view of a previously-created GRN, reconstructed from the
+    stored supplier invoice, JV and inventory movement records. Used by the
+    'View GRN' link on Cash/Bank Payment's outstanding invoices list, so
+    users can see what a GRN invoice actually contained before paying it."""
+    jvrow = db.execute_query("SELECT jv_naration, jv_user_code FROM jv_numbers WHERE jv_id = %s", (jv_no,))
+    if not jvrow or jvrow[0]['jv_user_code'] != 'JV FROM GRN':
+        flash('No GRN found for this invoice.', 'danger')
+        return redirect(request.referrer or url_for('grn'))
+
+    inv = db.execute_query("""
+        SELECT suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_total_oustanding,
+               suppliers_invoice_buinding_supplier
+        FROM suppliers_invoice_data WHERE suppliers_invoice_JV = %s
+    """, (jv_no,))
+    if not inv:
+        flash('GRN invoice record not found.', 'danger')
+        return redirect(request.referrer or url_for('grn'))
+    inv = inv[0]
+
+    sup = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s",
+                           (inv['suppliers_invoice_buinding_supplier'],))
+    supplier_name = sup[0]['supplier_name'] if sup else ''
+
+    # Item lines from the inventory movement records tagged to this GRN
+    item_rows = db.execute_query("""
+        SELECT inventoy_name, inventoy_code, inventory_recod_mesrmet, inventory_recod_unit_price,
+               inventory_recod_moument_in, inventory_recod_location
+        FROM inventory_recod WHERE JV_No = %s AND inventory_recod_moument_in > 0
+    """, (jv_no,)) or []
+    items = [{
+        'name': r['inventoy_name'], 'code': r['inventoy_code'] or '',
+        'unit': r['inventory_recod_mesrmet'] or '',
+        'cost': float(r['inventory_recod_unit_price'] or 0),
+        'qty': float(r['inventory_recod_moument_in'] or 0),
+        'total': float(r['inventory_recod_unit_price'] or 0) * float(r['inventory_recod_moument_in'] or 0),
+    } for r in item_rows]
+    location = item_rows[0]['inventory_recod_location'] if item_rows else ''
+    total_value = sum(i['total'] for i in items)
+
+    vat_row = db.execute_query(
+        "SELECT enty_values_DR AS amt FROM entry_details WHERE entry_jv = %s AND account_name = 'VAT Control'",
+        (jv_no,))
+    vat_amount = float(vat_row[0]['amt']) if vat_row else 0.0
+    grand_total = float(inv['suppliers_invoice_total_oustanding'] or 0) or round(total_value + vat_amount, 2)
+
+    return render_template('grn_print.html', grn_no=jv_no, supplier=supplier_name,
+                           date=str(inv['suppliers_invoice_date']), invoice_no=inv['suppliers_invoice_number'],
+                           location=location, items=items, total_value=round(total_value, 2),
+                           vat_amount=round(vat_amount, 2), grand_total=grand_total, read_only=True)
+
+
 @app.route('/api/inventory_items')
 @login_required
 def api_inventory_items():
@@ -4006,10 +4060,12 @@ def _get_supplier_base_data(supplier_name):
     sup_id = s['sup_id']
 
     invoices = db.execute_query("""
-        SELECT s_i_id, suppliers_invoice_number, suppliers_invoice_date, suppliers_invoice_final_date,
-               suppliers_invoice_total_oustanding, suppliers_invoice_total_payment, suppliers_invoice_oustanding
-        FROM suppliers_invoice_data
-        WHERE suppliers_invoice_buinding_supplier = %s AND suppliers_invoice_oustanding > 0 AND suppliers_oustanding_delete = 0
+        SELECT s.s_i_id, s.suppliers_invoice_number, s.suppliers_invoice_date, s.suppliers_invoice_final_date,
+               s.suppliers_invoice_total_oustanding, s.suppliers_invoice_total_payment, s.suppliers_invoice_oustanding,
+               s.suppliers_invoice_JV, j.jv_user_code
+        FROM suppliers_invoice_data s
+        LEFT JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+        WHERE s.suppliers_invoice_buinding_supplier = %s AND s.suppliers_invoice_oustanding > 0 AND s.suppliers_oustanding_delete = 0
     """, (sup_id,))
 
     inv_list = []
@@ -4021,7 +4077,11 @@ def _get_supplier_base_data(supplier_name):
             'due_date': str(inv['suppliers_invoice_final_date']),
             'total': float(inv['suppliers_invoice_total_oustanding']),
             'paid': float(inv['suppliers_invoice_total_payment']),
-            'balance': float(inv['suppliers_invoice_oustanding'])
+            'balance': float(inv['suppliers_invoice_oustanding']),
+            'jv': inv['suppliers_invoice_JV'],
+            # 'View GRN' only makes sense when this invoice was created by a
+            # GRN — Direct Purchase / Service Entry invoices have no GRN.
+            'is_grn': inv.get('jv_user_code') == 'JV FROM GRN'
         })
 
     return details, inv_list, sup_id
