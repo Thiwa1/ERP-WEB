@@ -4011,7 +4011,8 @@ def _get_supplier_history_data(supplier_name, payment_type):
         history = db.execute_query("""
             SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
                    cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
-                   User_Enter as extra, jv_numbers_jv_id as extra2
+                   User_Enter as extra, jv_numbers_jv_id as extra2,
+                   cash_book_recode_suplier_oustanding_id as inv_id
             FROM cash_book_recode
             WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
             ORDER BY chash_book_recod_id DESC
@@ -4020,20 +4021,45 @@ def _get_supplier_history_data(supplier_name, payment_type):
         history = db.execute_query("""
             SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
                    bank_book__accont_name as account, bank_book__recode_cr as amount,
-                   bank_book__naration as extra, jv_numbers_jv_id as extra2
+                   bank_book__naration as extra, jv_numbers_jv_id as extra2,
+                   bank_book__suplier_oustanding_id as inv_id
             FROM bank_book_recod
             WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
             ORDER BY id DESC
         """, (supplier_name,))
 
+    # Look up the original invoice (and its GRN, if any) each payment history row settled,
+    # so a "View" link can still be shown after the invoice is fully paid off and has
+    # dropped out of the Outstanding Invoices list above.
+    inv_ids = sorted({h['inv_id'] for h in history if h.get('inv_id')})
+    inv_map = {}
+    if inv_ids:
+        placeholders = ','.join(['%s'] * len(inv_ids))
+        inv_rows = db.execute_query(f"""
+            SELECT s.s_i_id, s.suppliers_invoice_number, s.suppliers_invoice_JV, j.jv_user_code
+            FROM suppliers_invoice_data s
+            LEFT JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+            WHERE s.s_i_id IN ({placeholders})
+        """, tuple(inv_ids)) or []
+        for r in inv_rows:
+            inv_map[r['s_i_id']] = {
+                'invoice_no': r['suppliers_invoice_number'],
+                'inv_jv': r['suppliers_invoice_JV'],
+                'is_grn': r.get('jv_user_code') == 'JV FROM GRN'
+            }
+
     hist_list = []
     for h in history:
+        inv_info = inv_map.get(h.get('inv_id')) or {}
         item = {
             'voucher': h['voucher'],
             'date': str(h['date']),
             'account': h['account'],
             'amount': float(h['amount'] or 0),
-            'jv_no': h['extra2']
+            'jv_no': h['extra2'],
+            'invoice_no': inv_info.get('invoice_no'),
+            'inv_jv': inv_info.get('inv_jv'),
+            'is_grn': inv_info.get('is_grn', False)
         }
         if payment_type == 'cash':
             item['user_id'] = h['extra']

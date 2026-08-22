@@ -229,6 +229,7 @@
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Paid Amount</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Action</th>
                         </tr>
@@ -335,12 +336,18 @@ function loadSupplierData() {
             const hbody = document.getElementById('historyBody');
             hbody.innerHTML = '';
             data.history.forEach(hist => {
+                const histInvCell = hist.invoice_no
+                    ? (hist.is_grn
+                        ? `<a href="/grn/view/${hist.inv_jv}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">${hist.invoice_no} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i></a>`
+                        : hist.invoice_no)
+                    : '-';
                 const row = `
                     <tr>
                         <td class="font-monospace" style="padding:.5rem 1rem;">${hist.voucher || '-'}</td>
                         <td style="padding:.5rem .75rem;">${hist.date}</td>
                         <td style="padding:.5rem .75rem;">${hist.account}</td>
                         <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(hist.amount)}</td>
+                        <td class="font-monospace" style="padding:.5rem .75rem;">${histInvCell}</td>
                         <td style="padding:.5rem .75rem;">${hist.narration}</td>
                         <td style="padding:.35rem .75rem;">
                             <div class="btn-group btn-group-sm">

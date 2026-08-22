@@ -241,12 +241,13 @@
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <div class="form-check mb-0" style="min-width:110px;">
                                     <input class="form-check-input" type="checkbox" id="vatCheck"
-                                           name="vat_liable" onchange="calculateTotals()">
+                                           name="vat_liable" onchange="suggestVatFromRate()">
                                     <label class="form-check-label t-label" for="vatCheck">VAT Liable</label>
                                 </div>
                                 <div class="input-group" style="width:120px;">
                                     <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                           id="vatRate" name="vat_rate" value="0" onchange="calculateTotals()">
+                                           id="vatRate" name="vat_rate" value="0" onchange="suggestVatFromRate()"
+                                           title="Optional — used only to suggest a starting VAT Amount below">
                                     <span class="input-group-text">%</span>
                                 </div>
                             </div>
@@ -255,8 +256,13 @@
                                 <div class="input-group" style="width:220px;">
                                     <span class="input-group-text">{{ company_currency }}</span>
                                     <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                           id="vatAmount" name="vat_amount" readonly>
+                                           id="vatAmount" name="vat_amount" step="0.01" value="0.00"
+                                           oninput="calculateTotals()"
+                                           title="Enter the exact VAT amount from the supplier's invoice">
                                 </div>
+                            </div>
+                            <div class="text-end mb-2" style="margin-top:-.35rem;">
+                                <small style="color:#a0aec0;font-size:.7rem;">Type the VAT amount straight off the supplier's invoice — Grand Total updates automatically.</small>
                             </div>
                             <hr class="my-2" style="border-color:#c6e9e4;">
                             <div class="d-flex justify-content-between align-items-center grand">
@@ -388,20 +394,28 @@
         document.getElementById('itemsJson').value = JSON.stringify(items);
     }
 
+    // VAT Amount is a field you type into directly (from the supplier's invoice) —
+    // it is NOT recalculated from the % rate, since the two sometimes don't match
+    // exactly. Grand Total always follows whatever is currently in the VAT Amount box.
     function calculateTotals() {
         const totalValue = items.reduce((sum, item) => sum + item.total, 0);
         document.getElementById('totalValue').value = totalValue.toFixed(2);
 
+        const vatAmount = parseFloat(document.getElementById('vatAmount').value) || 0;
+        document.getElementById('grandTotal').value = (totalValue + vatAmount).toFixed(2);
+    }
+
+    // Convenience only: when "VAT Liable" or the % rate changes, pre-fill the VAT
+    // Amount box with a rate-based estimate so there's less to type. The user can
+    // still overwrite it with the exact figure from the paper invoice.
+    function suggestVatFromRate() {
+        const totalValue = items.reduce((sum, item) => sum + item.total, 0);
         const isVat = document.getElementById('vatCheck').checked;
         const vatRate = parseFloat(document.getElementById('vatRate').value) || 0;
 
-        let vatAmount = 0;
-        if (isVat) {
-            vatAmount = (totalValue * vatRate) / 100;
-        }
-
-        document.getElementById('vatAmount').value = vatAmount.toFixed(2);
-        document.getElementById('grandTotal').value = (totalValue + vatAmount).toFixed(2);
+        const suggested = isVat ? (totalValue * vatRate) / 100 : 0;
+        document.getElementById('vatAmount').value = suggested.toFixed(2);
+        calculateTotals();
     }
 
     // Load PO List on Startup
