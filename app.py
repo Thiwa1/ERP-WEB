@@ -1855,10 +1855,16 @@ def grn_reversal_process():
             WHERE JV_No = %s AND inventory_recod_moument_in > 0
         """, (today, current_user_pk, jv, jv))
 
-        # 6. Mark the supplier invoice as deleted
+        # 6. Mark the supplier invoice as deleted. Also rename the invoice number
+        # (it's UNIQUE at the DB level) so a future GRN can reuse the same
+        # invoice number without hitting a duplicate-key error — the deleted
+        # row is kept for audit purposes, just under a distinguishable number.
         cursor.execute(
-            "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
-            (jv,))
+            """UPDATE suppliers_invoice_data
+               SET suppliers_oustanding_delete = 1,
+                   suppliers_invoice_number = LEFT(CONCAT(COALESCE(suppliers_invoice_number, ''), '-REV', %s), 200)
+               WHERE suppliers_invoice_JV = %s""",
+            (rev_jv, jv))
 
         conn.commit()
         flash(f'GRN (JV: {jv}) deleted successfully. Reversal JV: {rev_jv}', 'success')
@@ -2015,9 +2021,16 @@ def grn_edit(jv_no):
                 WHERE JV_No = %s AND inventory_recod_moument_in > 0
             """, (today, current_user_pk, jv_no, jv_no))
 
+            # Same rename as grn_reversal_process: free up the invoice number
+            # (UNIQUE at the DB level) so the corrected GRN below can reuse it
+            # — which is the normal case for an edit that isn't renumbering
+            # the invoice, and is exactly what caused the duplicate-key error.
             cursor.execute(
-                "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
-                (jv_no,))
+                """UPDATE suppliers_invoice_data
+                   SET suppliers_oustanding_delete = 1,
+                       suppliers_invoice_number = LEFT(CONCAT(COALESCE(suppliers_invoice_number, ''), '-REV', %s), 200)
+                   WHERE suppliers_invoice_JV = %s""",
+                (rev_jv, jv_no))
 
             # 2. Create the corrected GRN (mirrors services.create_grn step-for-step)
             cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
