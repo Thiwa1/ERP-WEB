@@ -53,7 +53,9 @@
                 <i class="fas fa-truck-loading"></i>
             </div>
             <div>
-                <h5 class="mb-0 fw-bold" style="color:#201f1e;">Goods Received Note</h5>
+                <h5 class="mb-0 fw-bold" style="color:#201f1e;">
+                    {% if edit_mode %}Edit GRN — JV-{{ edit_jv }}{% else %}Goods Received Note{% endif %}
+                </h5>
                 <small style="color:#605E5C; font-size:.78rem;">Inventory — Receiving</small>
             </div>
         </div>
@@ -63,7 +65,15 @@
         </a>
     </div>
 
-    <form method="POST" action="{{ url_for('grn') }}" id="grnForm">
+    {% if edit_mode %}
+    <div class="d-flex align-items-center gap-2 mb-4 px-3 py-2"
+         style="background:#fff8e1;border:1px solid #f5dfa0;border-radius:8px;font-size:.83rem;color:#8a6d1c;">
+        <i class="fas fa-info-circle"></i>
+        <span>Saving will reverse the original GRN (JV-{{ edit_jv }}) — undoing its stock-in and GL entries — and create a new, corrected GRN in its place. This keeps a full audit trail. It cannot be saved if payments have already been made against it.</span>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('grn_edit', jv_no=edit_jv) if edit_mode else url_for('grn') }}" id="grnForm">
         <div class="row g-4">
 
             <!-- LEFT: Item List Table -->
@@ -112,7 +122,7 @@
                             <select class="form-select select2" name="supplier" id="supplierSelect" required>
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
-                                <option value="{{ sup.supplier_name }}">{{ sup.supplier_name }}</option>
+                                <option value="{{ sup.supplier_name }}" {% if edit_mode and prefill_supplier == sup.supplier_name %}selected{% endif %}>{{ sup.supplier_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -181,7 +191,7 @@
                                 <select class="form-select" name="job_no">
                                     <option value="">Select Job</option>
                                     {% for job in jobs %}
-                                    <option value="{{ job.job_number }}">{{ job.job_number }}</option>
+                                    <option value="{{ job.job_number }}" {% if edit_mode and prefill_job_no == job.job_number %}selected{% endif %}>{{ job.job_number }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -190,7 +200,7 @@
                                 <select class="form-select" name="location" required>
                                     <option value="">Select Location</option>
                                     {% for loc in locations %}
-                                    <option value="{{ loc.inventory_locations_name }}">{{ loc.inventory_locations_name }}</option>
+                                    <option value="{{ loc.inventory_locations_name }}" {% if edit_mode and prefill_location == loc.inventory_locations_name %}selected{% endif %}>{{ loc.inventory_locations_name }}</option>
                                     {% endfor %}
                                 </select>
                             </div>
@@ -205,21 +215,25 @@
                         <div class="row g-3 mb-3">
                             <div class="col-6">
                                 <label class="form-label">Invoice No</label>
-                                <input type="text" class="form-control" name="invoice_no" required placeholder="INV-0001">
+                                <input type="text" class="form-control" name="invoice_no" required placeholder="INV-0001"
+                                       value="{{ prefill_invoice_no if edit_mode else '' }}">
                             </div>
                             <div class="col-6">
                                 <label class="form-label">Date</label>
-                                <input type="date" class="form-control" name="invoice_date" value="{{ today_date }}" required>
+                                <input type="date" class="form-control" name="invoice_date"
+                                       value="{{ prefill_invoice_date if edit_mode else today_date }}" required>
                             </div>
                         </div>
                         <div class="row g-3">
                             <div class="col-6">
                                 <label class="form-label">Due Date</label>
-                                <input type="date" class="form-control" name="due_date" value="{{ today_date }}" required>
+                                <input type="date" class="form-control" name="due_date"
+                                       value="{{ prefill_due_date if edit_mode else today_date }}" required>
                             </div>
                             <div class="col-6">
                                 <label class="form-label">J/V Narration</label>
-                                <input type="text" class="form-control" name="narration" required placeholder="GRN note…" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences">
+                                <input type="text" class="form-control" name="narration" required placeholder="GRN note…" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences"
+                                       value="{{ prefill_narration if edit_mode else '' }}">
                             </div>
                         </div>
                     </div>
@@ -241,12 +255,13 @@
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <div class="form-check mb-0" style="min-width:110px;">
                                     <input class="form-check-input" type="checkbox" id="vatCheck"
-                                           name="vat_liable" onchange="suggestVatFromRate()">
+                                           name="vat_liable" onchange="suggestVatFromRate()"
+                                           {% if edit_mode and prefill_vat_amount and prefill_vat_amount > 0 %}checked{% endif %}>
                                     <label class="form-check-label t-label" for="vatCheck">VAT Liable</label>
                                 </div>
                                 <div class="input-group" style="width:120px;">
                                     <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                           id="vatRate" name="vat_rate" value="0" onchange="suggestVatFromRate()"
+                                           id="vatRate" name="vat_rate" value="{{ prefill_vat_rate if edit_mode else 0 }}" onchange="suggestVatFromRate()"
                                            title="Optional — used only to suggest a starting VAT Amount below">
                                     <span class="input-group-text">%</span>
                                 </div>
@@ -256,7 +271,8 @@
                                 <div class="input-group" style="width:220px;">
                                     <span class="input-group-text">{{ company_currency }}</span>
                                     <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                           id="vatAmount" name="vat_amount" step="0.01" value="0.00"
+                                           id="vatAmount" name="vat_amount" step="0.01"
+                                           value="{{ '%.2f'|format(prefill_vat_amount) if edit_mode else '0.00' }}"
                                            oninput="calculateTotals()"
                                            title="Enter the exact VAT amount from the supplier's invoice">
                                 </div>
@@ -278,7 +294,7 @@
 
                         <button type="submit" class="btn w-100 py-2"
                                 style="background:linear-gradient(135deg,#018574,#005E52);border:none;border-radius:8px;font-weight:600;color:#fff;">
-                            <i class="fas fa-save me-2"></i>PROCEED
+                            <i class="fas fa-save me-2"></i>{% if edit_mode %}SAVE CHANGES{% else %}PROCEED{% endif %}
                         </button>
                     </div>
                 </div>
@@ -289,7 +305,15 @@
 </div>
 
 <script>
-    let items = [];
+    let items = {% if edit_mode %}{{ prefill_items|tojson }}{% else %}[]{% endif %};
+    {% if edit_mode %}
+    // Pre-fill the item rows with the existing GRN's items so they show up
+    // straight away in edit mode (renderTable/calculateTotals are hoisted
+    // function declarations, so calling them here before their definition
+    // further down the script is safe).
+    renderTable();
+    calculateTotals();
+    {% endif %}
 
     // Rebuild the item dropdown from the server so a newly created inventory
     // item appears without reloading the whole GRN window.
