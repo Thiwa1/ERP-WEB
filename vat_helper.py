@@ -108,6 +108,7 @@ class VATReportGenerator:
             FROM suppliers_invoice_data sid
             JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
             WHERE sid.suppliers_invoice_date BETWEEN %s AND %s AND sid.suppliers_VAT_rate > 0
+            AND sid.suppliers_oustanding_delete = 0
         """
         credit_purchases = self.db.execute_query(query_purchases, (self.from_date, self.to_date))
 
@@ -292,6 +293,7 @@ class VATReportGenerator:
             JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
             WHERE sid.suppliers_invoice_date BETWEEN %s AND %s
             AND (s.suppliers_vat_regidter_no IS NULL OR s.suppliers_vat_regidter_no = '')
+            AND sid.suppliers_oustanding_delete = 0
         """
         deemed_purchases = self.db.execute_query(query_deemed, (self.from_date, self.to_date))
 
