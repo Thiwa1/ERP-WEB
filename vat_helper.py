@@ -95,7 +95,13 @@ class VATReportGenerator:
         total_input_value = 0
         total_input_vat = 0
 
-        # Credit Purchases
+        # Credit Purchases — use the VAT amount actually POSTED to the VAT
+        # Control account for each invoice's JV, rather than recomputing it
+        # from the invoice's stored VAT % rate. Since GRN's VAT Amount became
+        # a field you type directly (independent of the % rate), an invoice
+        # can carry real posted VAT while suppliers_VAT_rate is still 0 — the
+        # old rate-only filter dropped those into "Other/Direct" below with no
+        # supplier/TIN/invoice-number, which is the bug being fixed here.
         query_purchases = """
             SELECT
                 sid.suppliers_invoice_date as date,
@@ -104,21 +110,38 @@ class VATReportGenerator:
                 s.suppliers_TIN as tin,
                 sid.suppliers_invoice_total_oustanding as total,
                 sid.suppliers_VAT_rate as rate,
-                sid.suppliers_invoice_JV
+                sid.suppliers_invoice_JV,
+                COALESCE(vc.posted_vat, 0) as posted_vat,
+                (j.jv_user_code = 'JV FROM GRN') as is_grn
             FROM suppliers_invoice_data sid
             JOIN suppliers s ON sid.suppliers_invoice_buinding_supplier = s.sup_id
-            WHERE sid.suppliers_invoice_date BETWEEN %s AND %s AND sid.suppliers_VAT_rate > 0
+            LEFT JOIN jv_numbers j ON sid.suppliers_invoice_JV = j.jv_id
+            LEFT JOIN (
+                SELECT entry_jv, SUM(enty_values_DR) as posted_vat
+                FROM entry_details
+                WHERE account_name = 'VAT Control' AND enty_values_DR > 0
+                GROUP BY entry_jv
+            ) vc ON vc.entry_jv = sid.suppliers_invoice_JV
+            WHERE sid.suppliers_invoice_date BETWEEN %s AND %s
             AND sid.suppliers_oustanding_delete = 0
+            AND (sid.suppliers_VAT_rate > 0 OR COALESCE(vc.posted_vat, 0) > 0)
         """
         credit_purchases = self.db.execute_query(query_purchases, (self.from_date, self.to_date))
 
         covered_jvs = []
 
         for r in credit_purchases:
-            rate = float(r['rate'] or 0)
             total = float(r['total'] or 0)
-            net = total / (1 + (rate / 100))
-            vat = total - net
+            posted_vat = float(r['posted_vat'] or 0)
+            if posted_vat > 0:
+                vat = posted_vat
+            else:
+                # Fallback for older rows with no VAT Control entry_details row
+                # to sum (shouldn't normally happen), computed from the rate.
+                rate = float(r['rate'] or 0)
+                net = total / (1 + (rate / 100))
+                vat = total - net
+            net = total - vat
 
             if r['suppliers_invoice_JV']:
                 covered_jvs.append(str(r['suppliers_invoice_JV']))
@@ -131,7 +154,9 @@ class VATReportGenerator:
                 'description': 'Purchase',
                 'value': net,
                 'vat': vat,
-                'disallowed_vat': 0.0
+                'disallowed_vat': 0.0,
+                'jv': r['suppliers_invoice_JV'],
+                'is_grn': bool(r['is_grn'])
             })
             total_input_value += net
             total_input_vat += vat
@@ -169,7 +194,9 @@ class VATReportGenerator:
                 'description': r['narration'],
                 'value': 0,
                 'vat': vat,
-                'disallowed_vat': 0.0
+                'disallowed_vat': 0.0,
+                'jv': None,
+                'is_grn': False
             })
             total_input_vat += vat
 

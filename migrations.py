@@ -51,6 +51,7 @@ def run_migrations(conn):
         _migrate_pl_account_sort(cursor)
         _migrate_report_subtotals(cursor)
         _migrate_postdated_cheques(cursor)
+        _migrate_report_period_prefs(cursor)
 
         conn.commit()
         cursor.close()
@@ -375,6 +376,27 @@ def _migrate_postdated_cheques(cursor):
     except Exception:
         pass
 
+
+def _migrate_report_period_prefs(cursor):
+    """Remembers each user's last-used Period 1/2/3 date ranges per report
+    (e.g. Profit & Loss), so the report opens pre-filled with what they last
+    generated instead of always resetting to the current month."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS report_period_prefs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                report_type VARCHAR(20) NOT NULL,
+                periods_json TEXT,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_report_period_prefs_user_report (user_id, report_type)
+            )
+        """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
 
 def _migrate_pl_account_sort(cursor):
     """Add per-account display order within its P&L / Balance Sheet category."""

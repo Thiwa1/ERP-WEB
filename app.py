@@ -12673,12 +12673,39 @@ def profit_loss():
     from profit_loss_report import ProfitLossReportGenerator
 
     _ensure_sub_account_codes()
+    current_user_pk = get_current_user_pk()
+
+    # Remember each user's last-used Period 1/2/3 ranges: on a fresh page
+    # load with no periods submitted, fall back to whatever they last
+    # generated instead of always resetting to "this month".
+    saved_periods = None
+    try:
+        pref_row = db.execute_query(
+            "SELECT periods_json FROM report_period_prefs WHERE user_id = %s AND report_type = 'PL'",
+            (current_user_pk,))
+        if pref_row and pref_row[0].get('periods_json'):
+            saved_periods = json.loads(pref_row[0]['periods_json'])
+    except Exception:
+        saved_periods = None
+
     try:
         generator = ProfitLossReportGenerator(db)
-        periods, report_data, default_start, default_end = generator.generate(request)
+        periods, report_data, default_start, default_end = generator.generate(request, fallback_periods=saved_periods)
     except Exception as e:
         flash(f'Error generating report: {str(e)}', 'danger')
         return redirect(url_for('index'))
+
+    # Save the periods the user just generated with (only on an explicit
+    # "Generate Report" submit, not on a GET like the CSV/Excel export links).
+    if request.method == 'POST' and periods:
+        try:
+            db.execute_query("""
+                INSERT INTO report_period_prefs (user_id, report_type, periods_json)
+                VALUES (%s, 'PL', %s)
+                ON DUPLICATE KEY UPDATE periods_json = VALUES(periods_json)
+            """, (current_user_pk, json.dumps(periods)), commit=True)
+        except Exception:
+            pass
 
     # CSV export — walk the structured report explicitly (categories in statement order)
     if request.args.get('download') == 'csv':

@@ -4,8 +4,8 @@ class ProfitLossReportGenerator:
     def __init__(self, db):
         self.db = db
 
-    def generate(self, request):
-        periods = self._get_profit_loss_periods(request)
+    def generate(self, request, fallback_periods=None):
+        periods = self._get_profit_loss_periods(request, fallback_periods)
 
         conn = self.db.get_connection()
         if not conn:
@@ -32,7 +32,7 @@ class ProfitLossReportGenerator:
 
         return periods, report_data, default_start, default_end
 
-    def _get_profit_loss_periods(self, req):
+    def _get_profit_loss_periods(self, req, fallback_periods=None):
         periods = []
         # Accept periods from the form (Generate button, POST) or from query
         # parameters (CSV export link, GET) so the export matches the screen.
@@ -46,6 +46,11 @@ class ProfitLossReportGenerator:
         # Legacy single-range GET params
         if not periods and req.args.get('from_date') and req.args.get('to_date'):
             periods.append({'start': req.args.get('from_date'), 'end': req.args.get('to_date')})
+
+        # Nothing submitted at all (a fresh page load) — fall back to this
+        # user's last-saved period set, if any, before defaulting to "this month".
+        if not periods and fallback_periods:
+            periods = [{'start': p['start'], 'end': p['end']} for p in fallback_periods if p.get('start') and p.get('end')]
 
         if not periods:
             today = date.today()

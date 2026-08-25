@@ -324,7 +324,15 @@
                                 <tr>
                                     <td class="text-center text-muted" style="font-size:.78rem;">{{ loop.index }}</td>
                                     <td>{{ row.date }}</td>
-                                    <td>{{ row.invoice_no }}</td>
+                                    <td>
+                                        {% if row.is_grn and row.jv %}
+                                        <a href="{{ url_for('grn_view', jv_no=row.jv) }}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">
+                                            {{ row.invoice_no }} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i>
+                                        </a>
+                                        {% else %}
+                                        {{ row.invoice_no }}
+                                        {% endif %}
+                                    </td>
                                     <td>{{ row.tin or '-' }}</td>
                                     <td>{{ row.supplier }}</td>
                                     <td>{{ row.description }}</td>
