@@ -4381,11 +4381,10 @@ def _get_supplier_base_data(supplier_name):
 
     # An invoice already covered by a not-yet-cleared postdated cheque is
     # tracked from the Postdated Cheques page instead — remove it from this
-    # Outstanding list entirely once a pending cheque covers its full
-    # remaining balance, so it doesn't clutter the list or get paid twice.
-    # It automatically reappears here the moment that cheque is Cancelled
-    # (status stops being 'pending'), or immediately if it only partially
-    # covers the balance — the leftover still needs to be collected.
+    # Outstanding list entirely as soon as ANY pending cheque references it
+    # (regardless of the amount), so it doesn't clutter the list or get paid
+    # twice. It automatically reappears here the moment that cheque is
+    # Cancelled (status stops being 'pending').
     try:
         pdc_rows = db.execute_query(
             "SELECT id, cheque_no, post_date, payload FROM postdated_cheques "
@@ -4394,30 +4393,16 @@ def _get_supplier_base_data(supplier_name):
     except Exception:
         pdc_rows = []
 
-    pending_by_inv = {}
+    covered_ids = set()
     for pdc in pdc_rows:
         try:
             payload = json.loads(pdc['payload'] or '{}')
         except Exception:
             continue
         for p in payload.get('payments', []):
-            pid = str(p.get('id'))
-            pending_by_inv.setdefault(pid, []).append({
-                'pdc_id': pdc['id'],
-                'cheque_no': pdc['cheque_no'],
-                'post_date': str(pdc['post_date']),
-                'amount': float(p.get('base', p.get('amount', 0)) or 0)
-            })
+            covered_ids.add(str(p.get('id')))
 
-    filtered_inv_list = []
-    for item in inv_list:
-        pending = pending_by_inv.get(str(item['id']), [])
-        pending_total = sum(p['amount'] for p in pending)
-        if pending and pending_total >= item['balance'] - 0.01:
-            continue  # fully covered by a pending cheque — hide it here
-        item['pending_cheques'] = pending
-        filtered_inv_list.append(item)
-    inv_list = filtered_inv_list
+    inv_list = [item for item in inv_list if str(item['id']) not in covered_ids]
 
     return details, inv_list, sup_id
 
@@ -10115,20 +10100,17 @@ def supplier_aging():
             "SELECT payload FROM postdated_cheques WHERE pdc_type = 'payment' AND status = 'pending'") or []
     except Exception:
         pdc_rows = []
-    pending_totals = {}
+    covered_ids = set()
     for pdc in pdc_rows:
         try:
             payload = json.loads(pdc['payload'] or '{}')
         except Exception:
             continue
         for p in payload.get('payments', []):
-            pid = str(p.get('id'))
-            pending_totals[pid] = pending_totals.get(pid, 0) + float(p.get('base', p.get('amount', 0)) or 0)
+            covered_ids.add(str(p.get('id')))
 
-    if pending_totals:
-        rows = [r for r in rows
-                if not (str(r['InvoiceId']) in pending_totals
-                        and pending_totals[str(r['InvoiceId'])] >= float(r['Outstanding']) - 0.01)]
+    if covered_ids:
+        rows = [r for r in rows if str(r['InvoiceId']) not in covered_ids]
 
     # Process Aging
     aging_data = []

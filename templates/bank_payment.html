@@ -310,21 +310,12 @@ function loadSupplierData() {
                     const ivLabel = inv.is_grn
                         ? '<a href="/grn/view/' + inv.jv + '" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">' + inv.invoice_no + ' <i class="fas fa-truck-loading" style="font-size:.68rem;"></i></a>'
                         : inv.invoice_no;
-                    // Already covered by a postdated cheque that hasn't cleared yet —
-                    // Balance deliberately isn't reduced until it clears (it isn't real
-                    // money yet, and could bounce), but flag it so this doesn't get paid twice.
-                    const pending = inv.pending_cheques || [];
-                    const pdcBadge = pending.length
-                        ? '<div class="mt-1">' + pending.map(p =>
-                            '<span title="Pending cheque #' + p.cheque_no + ', posts ' + p.post_date + '" ' +
-                            'style="display:inline-block;font-size:.68rem;font-weight:600;background:#fff4e5;color:#8a5a00;' +
-                            'border:1px solid #f5dfa0;border-radius:4px;padding:.05rem .4rem;margin-right:.2rem;">' +
-                            '<i class="fas fa-clock me-1"></i>Cheque #' + p.cheque_no + ' pending (' + p.post_date + ')</span>'
-                          ).join('') + '</div>'
-                        : '';
+                    // Note: an invoice already covered by a pending postdated cheque is
+                    // excluded server-side (see _get_supplier_base_data) — it won't appear
+                    // in data.invoices at all until that cheque clears or is cancelled.
                     const row = `
                         <tr>
-                            <td style="padding:.5rem .85rem;" class="font-monospace">${ivLabel}${pdcBadge} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
+                            <td style="padding:.5rem .85rem;" class="font-monospace">${ivLabel} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
                             <td style="padding:.5rem .75rem;">${inv.date}</td>
                             <td style="padding:.5rem .75rem;">${inv.due_date}</td>
                             <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.total)}</td>
