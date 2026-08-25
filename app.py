@@ -4379,11 +4379,13 @@ def _get_supplier_base_data(supplier_name):
             'is_grn': inv.get('jv_user_code') == 'JV FROM GRN'
         })
 
-    # Flag invoices already covered by a not-yet-cleared postdated cheque.
-    # The Balance shown here deliberately doesn't change until the cheque is
-    # actually cleared (it isn't real money yet, and could bounce) — but
-    # without this flag it's easy to accidentally pay an invoice a second
-    # time that already has a pending cheque written against it.
+    # An invoice already covered by a not-yet-cleared postdated cheque is
+    # tracked from the Postdated Cheques page instead — remove it from this
+    # Outstanding list entirely once a pending cheque covers its full
+    # remaining balance, so it doesn't clutter the list or get paid twice.
+    # It automatically reappears here the moment that cheque is Cancelled
+    # (status stops being 'pending'), or immediately if it only partially
+    # covers the balance — the leftover still needs to be collected.
     try:
         pdc_rows = db.execute_query(
             "SELECT id, cheque_no, post_date, payload FROM postdated_cheques "
@@ -4407,8 +4409,15 @@ def _get_supplier_base_data(supplier_name):
                 'amount': float(p.get('base', p.get('amount', 0)) or 0)
             })
 
+    filtered_inv_list = []
     for item in inv_list:
-        item['pending_cheques'] = pending_by_inv.get(str(item['id']), [])
+        pending = pending_by_inv.get(str(item['id']), [])
+        pending_total = sum(p['amount'] for p in pending)
+        if pending and pending_total >= item['balance'] - 0.01:
+            continue  # fully covered by a pending cheque — hide it here
+        item['pending_cheques'] = pending
+        filtered_inv_list.append(item)
+    inv_list = filtered_inv_list
 
     return details, inv_list, sup_id
 
@@ -10073,6 +10082,7 @@ def supplier_aging():
     # Aging Query
     query = """
         SELECT
+            sid.s_i_id as InvoiceId,
             s.sup_id as SupplierId,
             s.supplier_name as SupplierName,
             sid.suppliers_invoice_number as InvoiceNumber,
@@ -10096,6 +10106,29 @@ def supplier_aging():
     query += " ORDER BY s.supplier_name, sid.suppliers_invoice_final_date"
 
     rows = db.execute_query(query, tuple(params))
+
+    # Drop invoices fully covered by a not-yet-cleared postdated cheque —
+    # they're tracked from the Postdated Cheques page instead, and reappear
+    # here automatically the moment that cheque is Cancelled.
+    try:
+        pdc_rows = db.execute_query(
+            "SELECT payload FROM postdated_cheques WHERE pdc_type = 'payment' AND status = 'pending'") or []
+    except Exception:
+        pdc_rows = []
+    pending_totals = {}
+    for pdc in pdc_rows:
+        try:
+            payload = json.loads(pdc['payload'] or '{}')
+        except Exception:
+            continue
+        for p in payload.get('payments', []):
+            pid = str(p.get('id'))
+            pending_totals[pid] = pending_totals.get(pid, 0) + float(p.get('base', p.get('amount', 0)) or 0)
+
+    if pending_totals:
+        rows = [r for r in rows
+                if not (str(r['InvoiceId']) in pending_totals
+                        and pending_totals[str(r['InvoiceId'])] >= float(r['Outstanding']) - 0.01)]
 
     # Process Aging
     aging_data = []
