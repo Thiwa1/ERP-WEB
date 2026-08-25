@@ -4379,6 +4379,37 @@ def _get_supplier_base_data(supplier_name):
             'is_grn': inv.get('jv_user_code') == 'JV FROM GRN'
         })
 
+    # Flag invoices already covered by a not-yet-cleared postdated cheque.
+    # The Balance shown here deliberately doesn't change until the cheque is
+    # actually cleared (it isn't real money yet, and could bounce) — but
+    # without this flag it's easy to accidentally pay an invoice a second
+    # time that already has a pending cheque written against it.
+    try:
+        pdc_rows = db.execute_query(
+            "SELECT id, cheque_no, post_date, payload FROM postdated_cheques "
+            "WHERE pdc_type = 'payment' AND status = 'pending' AND party_name = %s",
+            (supplier_name,)) or []
+    except Exception:
+        pdc_rows = []
+
+    pending_by_inv = {}
+    for pdc in pdc_rows:
+        try:
+            payload = json.loads(pdc['payload'] or '{}')
+        except Exception:
+            continue
+        for p in payload.get('payments', []):
+            pid = str(p.get('id'))
+            pending_by_inv.setdefault(pid, []).append({
+                'pdc_id': pdc['id'],
+                'cheque_no': pdc['cheque_no'],
+                'post_date': str(pdc['post_date']),
+                'amount': float(p.get('base', p.get('amount', 0)) or 0)
+            })
+
+    for item in inv_list:
+        item['pending_cheques'] = pending_by_inv.get(str(item['id']), [])
+
     return details, inv_list, sup_id
 
 
