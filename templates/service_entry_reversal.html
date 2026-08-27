@@ -59,24 +59,29 @@
                                 {{ "{:,.2f}".format(row.Amount) }}
                             </td>
                             <td style="padding:.75rem 1rem;text-align:center;">
-                                <form method="POST"
-                                      action="/service_entry_reversal/process"
-                                      onsubmit="return confirm('Are you sure you want to reverse this Service Entry? This action cannot be undone.');">
-                                    <input type="hidden" name="jv" value="{{ row.jv }}">
-                                    <div class="d-flex justify-content-center gap-1">
-                                        <a href="/service_entry/print/{{ row.jv }}"
-                                           class="btn btn-sm"
-                                           target="_blank"
-                                           style="border-radius:6px;font-size:.78rem;font-weight:600;background:#f0f4ff;color:#4361ee;border:1px solid #c7d2fc;">
-                                            <i class="fas fa-print me-1"></i> Print
-                                        </a>
+                                <div class="d-flex justify-content-center gap-1">
+                                    <a href="/service_entry/print/{{ row.jv }}"
+                                       class="btn btn-sm"
+                                       target="_blank"
+                                       style="border-radius:6px;font-size:.78rem;font-weight:600;background:#f0f4ff;color:#4361ee;border:1px solid #c7d2fc;">
+                                        <i class="fas fa-print me-1"></i> Print
+                                    </a>
+                                    <a href="{{ url_for('service_entry_edit', jv_no=row.jv) }}"
+                                       class="btn btn-sm"
+                                       style="border-radius:6px;font-size:.78rem;font-weight:600;background:#eef2ff;color:#4361ee;border:1px solid #c7d2fc;">
+                                        <i class="fas fa-pen me-1"></i> Edit
+                                    </a>
+                                    <form method="POST"
+                                          action="/service_entry_reversal/process"
+                                          onsubmit="return confirm('Are you sure you want to reverse this Service Entry? This action cannot be undone.');">
+                                        <input type="hidden" name="jv" value="{{ row.jv }}">
                                         <button type="submit"
                                                 class="btn btn-sm"
                                                 style="border-radius:6px;font-size:.78rem;font-weight:600;background:#fce8e6;color:#C42B1C;border:1px solid #f5c6c2;">
                                             <i class="fas fa-undo-alt me-1"></i> Reverse
                                         </button>
-                                    </div>
-                                </form>
+                                    </form>
+                                </div>
                             </td>
                         </tr>
                         {% endfor %}

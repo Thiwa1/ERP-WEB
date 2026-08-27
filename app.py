@@ -18583,10 +18583,16 @@ def service_entry_reversal_process():
             FROM entry_details WHERE entry_jv = %s
         """, (today, today, f'Service Entry Reversal of JV-{jv}', current_user_pk, rev_jv, jv))
 
-        # 5. Reverse Supplier Liability (Mark outstanding as deleted)
+        # 5. Reverse Supplier Liability (Mark outstanding as deleted). Also
+        # rename the invoice number with a -REV suffix — suppliers_invoice_number
+        # is UNIQUE at the DB level, so leaving it unchanged would block any
+        # future entry (e.g. a Service Entry Edit) that reuses the same number.
         cursor.execute(
-            "UPDATE suppliers_invoice_data SET suppliers_oustanding_delete = 1 WHERE suppliers_invoice_JV = %s",
-            (jv,))
+            """UPDATE suppliers_invoice_data
+               SET suppliers_oustanding_delete = 1,
+                   suppliers_invoice_number = LEFT(CONCAT(COALESCE(suppliers_invoice_number, ''), '-REV', %s), 200)
+               WHERE suppliers_invoice_JV = %s""",
+            (rev_jv, jv))
 
         conn.commit()
         flash(f'Service Entry (JV: {jv}) reversed successfully. Reversal JV: {rev_jv}', 'success')
@@ -18602,6 +18608,313 @@ def service_entry_reversal_process():
             conn.close()
 
     return redirect(url_for('service_entry_reversal'))
+
+
+@app.route('/service_entry/edit/<int:jv_no>', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def service_entry_edit(jv_no):
+    """Edit a previously-created Service Entry (SRN). Since a Service Entry is
+    already posted to the GL and creates a supplier liability, 'editing' is
+    done the same audit-safe way as everywhere else in this app (see
+    service_entry_reversal_process): the original entry is reversed (GL
+    entries + supplier liability) and a brand new, corrected entry is created
+    in its place — both inside one DB transaction, so it's all-or-nothing.
+    Blocked by the same guard rails as reversal: payments already made
+    against it, bank reconciliation, or a closed accounting period."""
+    jvrow = db.execute_query("SELECT jv_naration, jv_user_code FROM jv_numbers WHERE jv_id = %s", (jv_no,))
+    if not jvrow or not (jvrow[0]['jv_user_code'] or '').startswith('JV FORM SEN INVOICE'):
+        flash('No Service Entry found to edit.', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    inv_row = db.execute_query("""
+        SELECT s.suppliers_invoice_number, s.suppliers_invoice_date, s.suppliers_invoice_final_date,
+               s.suppliers_invoice_total_payment, s.suppliers_invoice_buinding_supplier,
+               s.suppliers_VAT_rate, s.suppliers_oustanding_delete, sup.supplier_name
+        FROM suppliers_invoice_data s
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE s.suppliers_invoice_JV = %s
+    """, (jv_no,))
+    if not inv_row:
+        flash('Service Entry invoice record not found.', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+    inv_row = inv_row[0]
+
+    if inv_row['suppliers_oustanding_delete']:
+        flash('This Service Entry has already been deleted.', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    if inv_row['suppliers_invoice_total_payment'] and float(inv_row['suppliers_invoice_total_payment']) > 0:
+        flash('Cannot edit: Payments have been made against this Service Entry. Reverse those payments first.', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    if jv_in_closed_period(jv_no):
+        flash(f'Cannot edit: this Service Entry is in a closed period (locked through {get_period_lock_date()}).', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    bank_rec = db.execute_query("SELECT COUNT(*) as c FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
+    if bank_rec and bank_rec[0]['c'] > 0:
+        flash('Cannot edit: Transaction has been Bank Reconciled.', 'danger')
+        return redirect(url_for('service_entry_reversal'))
+
+    if request.method == 'POST':
+        supplier_id = request.form.get('supplier_id')
+        effective_date = request.form.get('effective_date')
+        invoice_number = request.form.get('invoice_number')
+        invoice_date = request.form.get('invoice_date')
+        due_date = request.form.get('due_date')
+        main_narration = request.form.get('main_narration')
+        header_job = request.form.get('header_job_number') or None
+        include_vat = request.form.get('include_vat') == '1'
+        vat_rate = parse_float(request.form.get('vat_rate')) if include_vat else 0.0
+        entries_json = request.form.get('entries_json')
+        total_amount = parse_float(request.form.get('total_amount'))
+
+        entries = json.loads(entries_json) if entries_json else []
+        if not entries:
+            flash('No entries provided', 'warning')
+            return redirect(url_for('service_entry_edit', jv_no=jv_no))
+
+        if not supplier_id or not invoice_number:
+            flash('Supplier and Invoice Number are required', 'danger')
+            return redirect(url_for('service_entry_edit', jv_no=jv_no))
+
+        sup_res = db.execute_query("SELECT supplier_code FROM suppliers WHERE sup_id = %s", (supplier_id,))
+        if not sup_res:
+            flash('Invalid Supplier', 'danger')
+            return redirect(url_for('service_entry_edit', jv_no=jv_no))
+        supplier_code = sup_res[0]['supplier_code']
+
+        conn = None
+        cursor = None
+        try:
+            conn = db.get_connection()
+            cursor = conn.cursor()
+
+            # Re-check guards inside the transaction (state may have changed
+            # between loading the edit form and submitting it).
+            cursor.execute("SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND entry_Rec = 1", (jv_no,))
+            if cursor.fetchone()[0] > 0:
+                flash('Cannot edit: Transaction has been Bank Reconciled.', 'danger')
+                return redirect(url_for('service_entry_reversal'))
+
+            cursor.execute(
+                "SELECT suppliers_invoice_total_payment FROM suppliers_invoice_data "
+                "WHERE suppliers_invoice_JV = %s AND suppliers_oustanding_delete = 0", (jv_no,))
+            chk = cursor.fetchone()
+            if not chk:
+                flash('Service Entry not found or already deleted.', 'danger')
+                return redirect(url_for('service_entry_reversal'))
+            if chk[0] and float(chk[0]) > 0:
+                flash('Cannot edit: Payments have been made against this Service Entry. Reverse those payments first.', 'danger')
+                return redirect(url_for('service_entry_reversal'))
+
+            conn.start_transaction()
+            current_user = get_current_user_id()
+            current_user_pk = get_current_user_pk()
+            today = date.today()
+
+            # 1. Reverse the original Service Entry (mirrors service_entry_reversal_process step-for-step)
+            cursor.execute(
+                "INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                (f'REV-SEN-{jv_no}', f'Service Entry Edit Reversal of JV-{jv_no}'))
+            rev_jv = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, enty_values_CR,
+                    entry_effective_date, entry_create_date,
+                    entry_naration, entry_create_user, entry_jv
+                )
+                SELECT account_name,
+                       COALESCE(enty_values_CR, 0),
+                       COALESCE(enty_values_DR, 0),
+                       %s, %s, %s, %s, %s
+                FROM entry_details WHERE entry_jv = %s
+            """, (today, today, f'Service Entry Edit Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
+
+            # Same rename as service_entry_reversal_process: free up the invoice
+            # number (UNIQUE at the DB level) so the corrected entry below can
+            # reuse it — this is exactly what caused the duplicate-key error
+            # when this fix was missing on the GRN side.
+            cursor.execute(
+                """UPDATE suppliers_invoice_data
+                   SET suppliers_oustanding_delete = 1,
+                       suppliers_invoice_number = LEFT(CONCAT(COALESCE(suppliers_invoice_number, ''), '-REV', %s), 200)
+                   WHERE suppliers_invoice_JV = %s""",
+                (rev_jv, jv_no))
+
+            # 2. Create the corrected Service Entry (mirrors save_service_entry() step-for-step).
+            # Amounts here are always in base currency — the edit form only offers
+            # base-currency entry, avoiding any ambiguity about re-converting
+            # already-converted historical figures.
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                           ("JV FORM SEN INVOICE", main_narration, 1))
+            new_jv = cursor.lastrowid
+
+            cursor.execute("""
+                INSERT INTO suppliers_invoice_data (
+                    suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
+                    suppliers_invoice_total_oustanding, suppliers_invoice_total_payment,
+                    suppliers_invoice_final_date, suppliers_invoice_buinding_supplier,
+                    suppliers_invoice_JV, suppliers_VAT_rate
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                supplier_code, invoice_number, invoice_date,
+                total_amount, 0,
+                due_date, supplier_id,
+                new_jv, vat_rate
+            ))
+
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, account_code, enty_values_DR, enty_values_CR,
+                    entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                    entry_job_number, entry_sub_account_code, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                'Account Payable', 0, 0, total_amount,
+                effective_date, today, main_narration, current_user_pk,
+                header_job, 0, new_jv
+            ))
+
+            total_dr = sum(parse_float(e['dr']) for e in entries)
+            if include_vat and vat_rate > 0:
+                vat_amount = total_dr * (vat_rate / 100.0)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                        entry_job_number, entry_sub_account_code, entry_jv, entry_VAT
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    'VAT Control', 0, vat_amount, 0,
+                    effective_date, today, main_narration, current_user_pk,
+                    header_job, 0, new_jv, vat_rate
+                ))
+
+            for e in entries:
+                sub_code = 0
+                if e.get('sub_account'):
+                    parts = e['sub_account'].split(' - ')
+                    if parts: sub_code = parts[0]
+
+                job_no = e.get('job_no') if e.get('job_no') else None
+
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, account_code, enty_values_DR, enty_values_CR,
+                        entry_effective_date, entry_create_date, entry_naration, entry_create_user,
+                        entry_job_number, entry_sub_account_code, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    e['account'], 0, round(parse_float(e['dr']), 2), 0,
+                    effective_date, today, e['memo'], current_user_pk,
+                    job_no, sub_code, new_jv
+                ))
+
+            conn.commit()
+            flash(f'Service Entry updated. Old JV-{jv_no} reversed; corrected entry created as JV-{new_jv}.', 'success')
+            return redirect(url_for('service_entry_reversal'))
+
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            flash(f'Error updating Service Entry: {str(e)}', 'danger')
+            return redirect(url_for('service_entry_edit', jv_no=jv_no))
+        finally:
+            if cursor:
+                cursor.close()
+            if conn:
+                conn.close()
+
+    # GET: Load form data + prefill values from the existing Service Entry
+    suppliers = db.execute_query("SELECT sup_id, supplier_name, supplier_code FROM suppliers WHERE Is_Suplier = 1")
+    accounts = db.execute_query("""
+        SELECT account_name
+        FROM new_account_table
+        WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+    """)
+    jobs = db.execute_query("SELECT job_number FROM jobs_unit WHERE job_finsh = 0 AND job_cancell = 0")
+
+    line_rows = db.execute_query("""
+        SELECT account_name, enty_values_DR, entry_naration, entry_job_number, entry_sub_account_code
+        FROM entry_details
+        WHERE entry_jv = %s AND account_name NOT IN ('Account Payable', 'VAT Control')
+    """, (jv_no,)) or []
+
+    sub_code_names = {}
+    codes = [r['entry_sub_account_code'] for r in line_rows if r.get('entry_sub_account_code')]
+    if codes:
+        placeholders = ','.join(['%s'] * len(codes))
+        name_rows = db.execute_query(
+            f"SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE sub_account_code IN ({placeholders})",
+            tuple(codes)) or []
+        sub_code_names = {str(r['sub_account_code']): r['sub_sub_accaount_name'] for r in name_rows}
+
+    prefill_entries = [{
+        'account': r['account_name'],
+        'sub_account_code': str(r['entry_sub_account_code']) if r.get('entry_sub_account_code') else '',
+        'sub_account_name': sub_code_names.get(str(r['entry_sub_account_code']), '') if r.get('entry_sub_account_code') else '',
+        'job_no': r['entry_job_number'] or '',
+        'memo': r['entry_naration'] or '',
+        'dr': float(r['enty_values_DR'] or 0),
+    } for r in line_rows]
+
+    vat_row = db.execute_query(
+        "SELECT enty_values_DR AS amt FROM entry_details WHERE entry_jv = %s AND account_name = 'VAT Control'",
+        (jv_no,))
+    prefill_include_vat = bool(vat_row)
+    prefill_vat_rate = float(inv_row['suppliers_VAT_rate'] or 0)
+
+    ap_row = db.execute_query(
+        "SELECT entry_effective_date, entry_job_number FROM entry_details WHERE entry_jv = %s AND account_name = 'Account Payable' LIMIT 1",
+        (jv_no,))
+    prefill_effective_date = str(ap_row[0]['entry_effective_date']) if ap_row and ap_row[0]['entry_effective_date'] else str(inv_row['suppliers_invoice_date'])
+    prefill_header_job = (ap_row[0]['entry_job_number'] if ap_row else '') or ''
+
+    hf = {'search': '', 'date_from': date.today().replace(day=1).strftime('%Y-%m-%d'),
+          'date_to': date.today().strftime('%Y-%m-%d'), 'amount_min': '', 'amount_max': '', 'status': ''}
+    history = db.execute_query("""
+        SELECT
+            s.suppliers_invoice_JV               AS jv,
+            s.suppliers_invoice_number           AS invoice_no,
+            s.suppliers_invoice_date             AS date,
+            sup.supplier_name                    AS supplier,
+            s.suppliers_invoice_total_oustanding AS amount,
+            s.suppliers_oustanding_delete        AS is_reversed,
+            j.jv_naration                        AS narration
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE j.jv_user_code LIKE %s AND s.suppliers_invoice_date >= %s AND s.suppliers_invoice_date <= %s
+        ORDER BY s.s_i_id DESC
+        LIMIT 200
+    """, ('JV FORM SEN INVOICE%', hf['date_from'], hf['date_to'])) or []
+
+    base_currency, currencies = _base_currency_and_list()
+    return render_template('service_entry.html',
+                           suppliers=suppliers,
+                           accounts=accounts,
+                           jobs=jobs,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           last_jv=None,
+                           history=history,
+                           hf=hf,
+                           base_currency=base_currency,
+                           currencies=currencies,
+                           edit_mode=True,
+                           edit_jv=jv_no,
+                           prefill_supplier_id=inv_row['suppliers_invoice_buinding_supplier'],
+                           prefill_invoice_no=inv_row['suppliers_invoice_number'],
+                           prefill_invoice_date=str(inv_row['suppliers_invoice_date']),
+                           prefill_due_date=str(inv_row['suppliers_invoice_final_date']),
+                           prefill_effective_date=prefill_effective_date,
+                           prefill_narration=jvrow[0]['jv_naration'],
+                           prefill_header_job=prefill_header_job,
+                           prefill_include_vat=prefill_include_vat,
+                           prefill_vat_rate=prefill_vat_rate,
+                           prefill_entries=prefill_entries)
 
 
 # ================================================================
