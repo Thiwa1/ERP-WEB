@@ -1736,8 +1736,20 @@ def grn_reversal():
     filters = ["s.suppliers_oustanding_delete = 0", "j.jv_user_code = 'JV FROM GRN'"]
     params = []
     if supplier_id:
-        filters.append("sup.sup_id = %s")
-        params.append(supplier_id)
+        # Filter by the supplier's NAME rather than sup_id: if this supplier
+        # has more than one row in `suppliers` (e.g. a duplicate/renumbered
+        # entry), a GRN's stored supplier link may point at a different
+        # sup_id than the one the dropdown offers for that same name — an
+        # ID match would then wrongly come up empty. Matching by name (the
+        # same approach the Supplier Payment Method / Ready List reports
+        # use) finds the GRN regardless of which duplicate row it's linked to.
+        sup_name_row = db.execute_query("SELECT supplier_name FROM suppliers WHERE sup_id = %s", (supplier_id,))
+        if sup_name_row:
+            filters.append("sup.supplier_name = %s")
+            params.append(sup_name_row[0]['supplier_name'])
+        else:
+            filters.append("sup.sup_id = %s")
+            params.append(supplier_id)
     if invoice_no:
         filters.append("s.suppliers_invoice_number LIKE %s")
         params.append(f"%{invoice_no}%")
