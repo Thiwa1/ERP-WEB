@@ -119,10 +119,10 @@
                         <span class="section-label">Supplier Selection</span>
                         <div class="mb-3">
                             <label class="form-label">Supplier</label>
-                            <select class="form-select select2" name="supplier" id="supplierSelect" required>
+                            <select class="form-select select2" name="supplier" id="supplierSelect" required onchange="applySupplierDefaultPaymentMethod()">
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
-                                <option value="{{ sup.supplier_name }}" {% if edit_mode and prefill_supplier == sup.supplier_name %}selected{% endif %}>{{ sup.supplier_name }}</option>
+                                <option value="{{ sup.supplier_name }}" data-default-payment-method="{{ sup.suppliers_default_payment_method or '' }}" {% if edit_mode and prefill_supplier == sup.supplier_name %}selected{% endif %}>{{ sup.supplier_name }}</option>
                                 {% endfor %}
                             </select>
                         </div>
@@ -224,7 +224,7 @@
                                        value="{{ prefill_invoice_date if edit_mode else today_date }}" required>
                             </div>
                         </div>
-                        <div class="row g-3">
+                        <div class="row g-3 mb-3">
                             <div class="col-6">
                                 <label class="form-label">Due Date</label>
                                 <input type="date" class="form-control" name="due_date"
@@ -234,6 +234,16 @@
                                 <label class="form-label">J/V Narration</label>
                                 <input type="text" class="form-control" name="narration" required placeholder="GRN note…" spellcheck="true" lang="en" autocorrect="on" autocapitalize="sentences"
                                        value="{{ prefill_narration if edit_mode else '' }}">
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6">
+                                <label class="form-label">Payment Method</label>
+                                <select class="form-select" name="payment_method" id="paymentMethodSelect">
+                                    <option value="">Not Set</option>
+                                    <option value="Cash" {% if edit_mode and prefill_payment_method == 'Cash' %}selected{% endif %}>Cash</option>
+                                    <option value="Cheque" {% if edit_mode and prefill_payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -456,6 +466,22 @@
                 }
             });
         });
+
+    // Auto-fill the Payment Method dropdown from the selected supplier's
+    // default (if one is set) — only when the field hasn't already been
+    // set by the user (or, in edit mode, pre-filled from the existing GRN).
+    function applySupplierDefaultPaymentMethod() {
+        const supSelect = document.getElementById('supplierSelect');
+        const pmSelect = document.getElementById('paymentMethodSelect');
+        if (!supSelect || !pmSelect) return;
+        {% if edit_mode %}return;{% endif %}
+        if (pmSelect.value) return; // don't override a value the user already picked
+        const opt = supSelect.options[supSelect.selectedIndex];
+        const def = opt ? opt.getAttribute('data-default-payment-method') : '';
+        if (def && (def === 'Cash' || def === 'Cheque')) {
+            pmSelect.value = def;
+        }
+    }
 
     function loadPoDetails() {
         const poId = document.getElementById("poSelect").value;

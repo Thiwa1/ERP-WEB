@@ -29,8 +29,9 @@ def create_grn(db, current_user, supplier_info, invoice_info, items):
             INSERT INTO suppliers_invoice_data (
                 suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
                 suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
-                suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
+                suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate,
+                suppliers_invoice_payment_method, suppliers_invoice_total_payment
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
         """
         cursor.execute(query_inv, (
             supplier_info['code'],
@@ -40,7 +41,8 @@ def create_grn(db, current_user, supplier_info, invoice_info, items):
             invoice_info['due_date'],
             supplier_info['id'],
             jv_no,
-            invoice_info['vat_rate']
+            invoice_info['vat_rate'],
+            invoice_info.get('payment_method') or None
         ))
 
         # C. Journal Entries

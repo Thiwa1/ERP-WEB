@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .gp-card { border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);background:#fff; }
+  .gp-table thead th { background:#f8f9fa;font-size:.7rem;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:#605E5C;border-bottom:2px solid #e2e8f0; }
+  .gp-table td { vertical-align:middle;font-size:.84rem; }
+  .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
+  .stat { border:1px solid #e2e8f0;border-radius:12px;padding:.9rem 1.1rem;background:#fff; }
+  .stat .lbl { font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:#8a8886;font-weight:700; }
+  .stat .val { font-size:1.2rem;font-weight:800;font-family:'JetBrains Mono',monospace; }
+  .pill { font-size:.7rem;font-weight:700;padding:.14rem .55rem;border-radius:20px; }
+  .pill-cash { background:#e7f7ee;color:#0a7d3f; }
+  .pill-cheque { background:#e6f0fd;color:#1b5fb8; }
+  .pill-unset { background:#f1f1f1;color:#8a8886; }
+  .ready-row-yes { background:#f4fbf6; }
+  /* Simple checkbox-driven toggle switch */
+  .rswitch { position:relative;display:inline-block;width:40px;height:22px;vertical-align:middle; }
+  .rswitch input { opacity:0;width:0;height:0; }
+  .rslider { position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#d1d5db;
+    transition:.2s;border-radius:22px; }
+  .rslider:before { position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;
+    background:#fff;transition:.2s;border-radius:50%;box-shadow:0 1px 2px rgba(0,0,0,.25); }
+  .rswitch input:checked + .rslider { background:#0a7d3f; }
+  .rswitch input:checked + .rslider:before { transform:translateX(18px); }
+  .rswitch input:disabled + .rslider { opacity:.5;cursor:not-allowed; }
+  @media print { .no-print { display:none !important; } .gp-card { box-shadow:none;border:none; } }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#0f766e,#115e59);display:flex;align-items:center;justify-content:center;color:#fff;">
+      <i class="fas fa-check-circle"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold">Payment Ready List</h5>
+      <small class="text-muted">Outstanding supplier invoices (Cash/Cheque) &mdash; check off once the cheque/cash for it is prepared</small>
+    </div>
+    <div class="ms-auto d-flex gap-2 no-print">
+      <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form class="gp-card p-3 mb-4 d-flex align-items-end gap-2 flex-wrap no-print" method="get">
+    <div style="min-width:200px;"><label class="form-label small fw-bold mb-1">Supplier</label>
+      <select name="supplier" class="form-select form-select-sm">
+        <option value="">All suppliers</option>
+        {% for s in suppliers %}<option value="{{ s.supplier_name }}" {% if s.supplier_name == supplier %}selected{% endif %}>{{ s.supplier_name }}</option>{% endfor %}
+      </select></div>
+    <div><label class="form-label small fw-bold mb-1">Method</label>
+      <select name="method" class="form-select form-select-sm">
+        <option value="" {% if not method %}selected{% endif %}>All</option>
+        <option value="Cash" {% if method == 'Cash' %}selected{% endif %}>Cash</option>
+        <option value="Cheque" {% if method == 'Cheque' %}selected{% endif %}>Cheque</option>
+      </select></div>
+    <div><label class="form-label small fw-bold mb-1">Ready Status</label>
+      <select name="ready" class="form-select form-select-sm">
+        <option value="" {% if not ready %}selected{% endif %}>All</option>
+        <option value="yes" {% if ready == 'yes' %}selected{% endif %}>Ready</option>
+        <option value="no" {% if ready == 'no' %}selected{% endif %}>Not Ready</option>
+      </select></div>
+    <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
+  </form>
+
+  <!-- Totals -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="stat"><div class="lbl">Outstanding Amount</div><div class="val" style="color:#0f766e;">{{ "{:,.2f}".format(total) }}</div></div></div>
+    <div class="col-md-4"><div class="stat"><div class="lbl">Invoices Listed</div><div class="val" style="color:#374151;">{{ rows|length }}</div></div></div>
+    <div class="col-md-4"><div class="stat"><div class="lbl">Marked Ready</div><div class="val" style="color:#0a7d3f;">{{ ready_count }}</div></div></div>
+  </div>
+
+  <div class="gp-card">
+    <div class="table-responsive">
+      <table class="table gp-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Invoice Date</th>
+            <th>Supplier</th>
+            <th>Invoice No</th>
+            <th>Payment Method</th>
+            <th class="text-end">Outstanding</th>
+            <th class="text-center pe-3">Ready</th>
+          </tr>
+        </thead>
+        <tbody id="readyTbody">
+          {% for r in rows %}
+          <tr id="row-{{ r.id }}" class="{{ 'ready-row-yes' if r.ready else '' }}">
+            <td class="ps-3">{{ r.inv_date }}</td>
+            <td class="fw-semibold">{{ r.supplier or '-' }}</td>
+            <td>
+              <a href="/grn/view/{{ r.jv }}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">
+                {{ r.invoice_no }} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i>
+              </a>
+            </td>
+            <td>
+              <span class="pill {% if r.method == 'Cash' %}pill-cash{% elif r.method == 'Cheque' %}pill-cheque{% else %}pill-unset{% endif %}">{{ r.method }}</span>
+            </td>
+            <td class="num">{{ "{:,.2f}".format(r.amount) }}</td>
+            <td class="text-center pe-3">
+              <label class="rswitch no-print">
+                <input type="checkbox" onchange="toggleReady({{ r.id }}, this)" {% if r.ready %}checked{% endif %}>
+                <span class="rslider"></span>
+              </label>
+              <span class="d-none d-print-inline">{{ 'Ready' if r.ready else 'Not Ready' }}</span>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-5">
+            <i class="fas fa-check-circle d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+            No outstanding GRN invoices match this filter.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleReady(invId, checkbox) {
+    const row = document.getElementById('row-' + invId);
+    checkbox.disabled = true;
+    fetch('/grn_payment_ready_list/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: invId, ready: checkbox.checked ? 1 : 0 })
+    })
+    .then(r => r.json())
+    .then(data => {
+        checkbox.disabled = false;
+        if (data.success) {
+            if (row) row.classList.toggle('ready-row-yes', !!data.ready);
+        } else {
+            checkbox.checked = !checkbox.checked;
+            alert('Could not update: ' + (data.error || 'unknown error'));
+        }
+    })
+    .catch(err => {
+        checkbox.disabled = false;
+        checkbox.checked = !checkbox.checked;
+        alert('Could not update: ' + err);
+    });
+}
+</script>
+{% endblock %}

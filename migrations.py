@@ -52,6 +52,8 @@ def run_migrations(conn):
         _migrate_report_subtotals(cursor)
         _migrate_postdated_cheques(cursor)
         _migrate_report_period_prefs(cursor)
+        _migrate_grn_payment_method(cursor)
+        _migrate_grn_payment_ready(cursor)
 
         conn.commit()
         cursor.close()
@@ -392,6 +394,47 @@ def _migrate_report_period_prefs(cursor):
                 UNIQUE KEY uq_report_period_prefs_user_report (user_id, report_type)
             )
         """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_grn_payment_method(cursor):
+    """Add a Payment Method tag (Cash / Cheque / etc) to GRN-created supplier
+    invoices, and an optional default payment method per supplier that
+    pre-fills it on the GRN screen."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM suppliers_invoice_data LIKE 'suppliers_invoice_payment_method'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE suppliers_invoice_data ADD COLUMN suppliers_invoice_payment_method VARCHAR(20) NULL")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+    try:
+        cursor.execute("SHOW COLUMNS FROM suppliers LIKE 'suppliers_default_payment_method'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_default_payment_method VARCHAR(20) NULL")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_grn_payment_ready(cursor):
+    """A manual 'Ready' flag on a GRN supplier invoice: some cheques/cash for
+    supplier payments are physically prepared by another division (working
+    off their own paper/offline document, not connected to this system) and
+    the user gets a list from them — this flag lets the user check off which
+    outstanding invoices already have their cheque/cash ready, without
+    changing anything about the actual payment posting."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM suppliers_invoice_data LIKE 'suppliers_invoice_payment_ready'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE suppliers_invoice_data ADD COLUMN suppliers_invoice_payment_ready TINYINT(1) NOT NULL DEFAULT 0")
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")

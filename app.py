@@ -215,6 +215,8 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bank_rec_history',   'label': 'Bank Rec. History',    'url': '/bank_reconciliation/history', 'icon': 'fas fa-clipboard-check',  'category': 'Reports'},
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
     {'key': 'supplier_payments',  'label': 'Supplier Payments',    'url': '/supplier_payments_report','icon': 'fas fa-money-check-dollar', 'category': 'Reports'},
+    {'key': 'grn_payment_method', 'label': 'GRN Payment Method',   'url': '/grn_payment_method_report','icon': 'fas fa-money-check',       'category': 'Reports'},
+    {'key': 'grn_payment_ready',  'label': 'Payment Ready List',   'url': '/grn_payment_ready_list',   'icon': 'fas fa-check-circle',       'category': 'Reports'},
     {'key': 'customer_aging',     'label': 'Customer Aging',       'url': '/customer_aging',         'icon': 'fas fa-user-clock',          'category': 'Reports'},
     {'key': 'balance_sheet',      'label': 'Balance Sheet',        'url': '/balance_sheet',          'icon': 'fas fa-balance-scale',       'category': 'Reports'},
     {'key': 'custom_balance_sheet','label': 'Custom Balance Sheet','url': '/balance_sheet_custom',   'icon': 'fas fa-balance-scale',       'category': 'Reports'},
@@ -1341,6 +1343,7 @@ def add_supplier():
 
             tin = request.form.get('tin_no')
             nic = request.form.get('nic_no')
+            default_payment_method = (request.form.get('default_payment_method') or '').strip() or None
 
             if not supplier_name or not supplier_code:
                 flash('Supplier Name and Code are required.', 'danger')
@@ -1359,7 +1362,7 @@ def add_supplier():
                         suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
                         suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
                         suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s,
-                        suppliers_TIN=%s, suppliers_NIC=%s
+                        suppliers_TIN=%s, suppliers_NIC=%s, suppliers_default_payment_method=%s
                     WHERE sup_id=%s AND Is_Suplier=1
                 """
                 params_supplier = (
@@ -1368,7 +1371,7 @@ def add_supplier():
                     parse_float(credit_limit), contact_1, contact_2,
                     current_user_pk, current_date,
                     email, vat_no, salutation,
-                    tin, nic,
+                    tin, nic, default_payment_method,
                     supplier_id
                 )
             else:
@@ -1381,8 +1384,8 @@ def add_supplier():
                         supplier_create_date, suppliers_create_user,
                         suppliers_last_edit_user, suppliers_last_edit_date,
                         suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC, suppliers_default_payment_method
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 params_supplier = (
                     0, supplier_name, supplier_code,
@@ -1391,7 +1394,7 @@ def add_supplier():
                     current_date, current_user_pk,
                     current_user_pk, current_date,
                     email, vat_no, salutation,
-                    1, 0, tin, nic
+                    1, 0, tin, nic, default_payment_method
                 )
 
             try:
@@ -1442,7 +1445,8 @@ def add_supplier():
         suppliers_list = db.execute_query("""
             SELECT sup_id AS id, supplier_name, supplier_code,
                    suppliers_teli_1, suppliers_teli_2, suppliers_credit_fasility,
-                   suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail
+                   suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail,
+                   suppliers_default_payment_method
             FROM suppliers
             WHERE Is_Suplier = 1
             ORDER BY supplier_name
@@ -1647,6 +1651,7 @@ def grn():
             job_no = request.form.get('job_no')
             location = request.form.get('location')
             po_id = request.form.get('po_id')
+            payment_method = (request.form.get('payment_method') or '').strip() or None
 
             total_value = parse_float(request.form.get('total_value', 0))
             vat_rate = parse_float(request.form.get('vat_rate', 0))
@@ -1681,7 +1686,8 @@ def grn():
                     'total_value': total_value,
                     'vat_rate': vat_rate,
                     'vat_amount': vat_amount,
-                    'grand_total': grand_total
+                    'grand_total': grand_total,
+                    'payment_method': payment_method
                 }
 
                 jv_no = services.create_grn(db, current_user, supplier_info, invoice_info, items)
@@ -1703,7 +1709,7 @@ def grn():
             return redirect(url_for('grn'))
 
     # GET Request: Load Form Data
-    suppliers = db.execute_query("SELECT supplier_name FROM suppliers")
+    suppliers = db.execute_query("SELECT supplier_name, suppliers_default_payment_method FROM suppliers")
     items = db.execute_query("SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items")
     jobs = db.execute_query("SELECT job_number FROM jobs_unit")
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
@@ -1901,7 +1907,7 @@ def grn_edit(jv_no):
     inv_row = db.execute_query("""
         SELECT s.suppliers_invoice_number, s.suppliers_invoice_date, s.suppliers_invoice_final_date,
                s.suppliers_invoice_total_payment, s.suppliers_invoice_buinding_supplier,
-               s.suppliers_VAT_rate, s.suppliers_oustanding_delete, sup.supplier_name
+               s.suppliers_VAT_rate, s.suppliers_oustanding_delete, s.suppliers_invoice_payment_method, sup.supplier_name
         FROM suppliers_invoice_data s
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
         WHERE s.suppliers_invoice_JV = %s
@@ -1937,6 +1943,7 @@ def grn_edit(jv_no):
         narration = request.form.get('narration')
         job_no = request.form.get('job_no') or None
         location = request.form.get('location')
+        payment_method = (request.form.get('payment_method') or '').strip() or None
 
         total_value = parse_float(request.form.get('total_value', 0))
         vat_rate = parse_float(request.form.get('vat_rate', 0))
@@ -2041,9 +2048,10 @@ def grn_edit(jv_no):
                 INSERT INTO suppliers_invoice_data (
                     suppliers_code, suppliers_invoice_number, suppliers_invoice_date,
                     suppliers_invoice_total_oustanding, suppliers_invoice_final_date,
-                    suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate, suppliers_invoice_total_payment
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 0)
-            """, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, new_jv, vat_rate))
+                    suppliers_invoice_buinding_supplier, suppliers_invoice_JV, suppliers_VAT_rate,
+                    suppliers_invoice_payment_method, suppliers_invoice_total_payment
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0)
+            """, (supplier_code, invoice_no, invoice_date, grand_total, due_date, supplier_id, new_jv, vat_rate, payment_method))
 
             cursor.execute("""
                 INSERT INTO entry_details (
@@ -2096,7 +2104,7 @@ def grn_edit(jv_no):
                 conn.close()
 
     # GET: Load form data + prefill values from the existing GRN
-    suppliers = db.execute_query("SELECT supplier_name FROM suppliers")
+    suppliers = db.execute_query("SELECT supplier_name, suppliers_default_payment_method FROM suppliers")
     items_master = db.execute_query("SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items")
     jobs = db.execute_query("SELECT job_number FROM jobs_unit")
     locations = db.execute_query("SELECT inventory_locations_name FROM inventory_locations")
@@ -2142,7 +2150,8 @@ def grn_edit(jv_no):
                            prefill_location=prefill_location,
                            prefill_items=prefill_items,
                            prefill_vat_rate=float(inv_row['suppliers_VAT_rate'] or 0),
-                           prefill_vat_amount=prefill_vat_amount)
+                           prefill_vat_amount=prefill_vat_amount,
+                           prefill_payment_method=inv_row['suppliers_invoice_payment_method'] or '')
 
 
 @app.route('/grn/view/<int:jv_no>')
@@ -6190,6 +6199,141 @@ def supplier_payments_report():
                            to_date=to_date, supplier=supplier, method=method, suppliers=suppliers)
 
 
+@app.route('/grn_payment_method_report')
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_method_report():
+    """GRN purchases report: invoice date, supplier name, amount, and the
+    payment method (Cash/Cheque) chosen when the GRN was entered — lets the
+    user see at a glance which supplier invoices are meant to be paid by
+    cash vs cheque."""
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()  # '', 'Cash', 'Cheque'
+    download = request.args.get('download')
+
+    q = """
+        SELECT s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
+               s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_total_oustanding AS amount,
+               s.suppliers_invoice_payment_method AS method, s.suppliers_invoice_JV AS jv
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE jv.jv_user_code = 'JV FROM GRN'
+          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+          AND s.suppliers_invoice_date BETWEEN %s AND %s
+    """
+    params = [from_date, to_date]
+    if supplier:
+        q += " AND sup.supplier_name = %s"; params.append(supplier)
+    if method:
+        q += " AND s.suppliers_invoice_payment_method = %s"; params.append(method)
+    q += " ORDER BY s.suppliers_invoice_date DESC, s.suppliers_invoice_JV DESC"
+
+    rows = db.execute_query(q, tuple(params)) or []
+    for r in rows:
+        r['amount'] = float(r['amount'] or 0)
+        r['method'] = r['method'] or 'Not Set'
+
+    total = sum(r['amount'] for r in rows)
+    total_cash = sum(r['amount'] for r in rows if r['method'] == 'Cash')
+    total_cheque = sum(r['amount'] for r in rows if r['method'] == 'Cheque')
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['GRN Payment Method Report', f'{from_date} to {to_date}'])
+        cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'Payment Method', 'Amount'])
+        for r in rows:
+            cw.writerow([r['inv_date'], r['supplier'], r['invoice_no'], r['method'], f"{r['amount']:.2f}"])
+        cw.writerow([])
+        cw.writerow(['', '', '', 'Cash Total', f"{total_cash:.2f}"])
+        cw.writerow(['', '', '', 'Cheque Total', f"{total_cheque:.2f}"])
+        cw.writerow(['', '', '', 'Grand Total', f"{total:.2f}"])
+        out = make_response(si.getvalue())
+        out.headers["Content-Disposition"] = f"attachment; filename=GRN_Payment_Method_{from_date}_{to_date}.csv"
+        out.headers["Content-type"] = "text/csv"
+        return out
+
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    return render_template('grn_payment_method_report.html', rows=rows, total=total,
+                           total_cash=total_cash, total_cheque=total_cheque, from_date=from_date,
+                           to_date=to_date, supplier=supplier, method=method, suppliers=suppliers)
+
+
+@app.route('/grn_payment_ready_list')
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_ready_list():
+    """Checklist of outstanding GRN supplier invoices (Cash/Cheque). The
+    cheques themselves are drawn by a separate division working off their
+    own document, not connected to this system -- when they send over their
+    list of what's been drawn, the user checks off the matching invoices
+    here as Ready. Purely a manual marker; it never touches the ledger,
+    inventory, or the invoice's outstanding balance."""
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()      # '', 'Cash', 'Cheque'
+    ready = (request.args.get('ready') or '').strip()        # '', 'yes', 'no'
+
+    q = """
+        SELECT s.s_i_id AS id, s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
+               s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_oustanding AS amount,
+               s.suppliers_invoice_payment_method AS method, s.suppliers_invoice_payment_ready AS ready,
+               s.suppliers_invoice_JV AS jv
+        FROM suppliers_invoice_data s
+        JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE jv.jv_user_code = 'JV FROM GRN'
+          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+          AND s.suppliers_invoice_oustanding > 0.01
+    """
+    params = []
+    if supplier:
+        q += " AND sup.supplier_name = %s"; params.append(supplier)
+    if method:
+        q += " AND s.suppliers_invoice_payment_method = %s"; params.append(method)
+    if ready == 'yes':
+        q += " AND s.suppliers_invoice_payment_ready = 1"
+    elif ready == 'no':
+        q += " AND (s.suppliers_invoice_payment_ready = 0 OR s.suppliers_invoice_payment_ready IS NULL)"
+    q += " ORDER BY s.suppliers_invoice_date ASC, s.suppliers_invoice_JV ASC"
+
+    rows = db.execute_query(q, tuple(params)) or []
+    for r in rows:
+        r['amount'] = float(r['amount'] or 0)
+        r['method'] = r['method'] or 'Not Set'
+        r['ready'] = bool(r['ready'])
+
+    total = sum(r['amount'] for r in rows)
+    ready_count = sum(1 for r in rows if r['ready'])
+
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    return render_template('grn_payment_ready_list.html', rows=rows, total=total,
+                           ready_count=ready_count, supplier=supplier, method=method, ready=ready,
+                           suppliers=suppliers)
+
+
+@app.route('/grn_payment_ready_list/toggle', methods=['POST'])
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_ready_list_toggle():
+    """AJAX endpoint: set the Ready flag on one outstanding GRN invoice."""
+    data = request.get_json(silent=True) or request.form
+    inv_id = data.get('id')
+    ready_val = data.get('ready')
+    if not inv_id:
+        return jsonify({'success': False, 'error': 'Missing invoice id'}), 400
+    try:
+        ready_flag = 1 if str(ready_val) in ('1', 'true', 'True') else 0
+        db.execute_query(
+            "UPDATE suppliers_invoice_data SET suppliers_invoice_payment_ready = %s WHERE s_i_id = %s",
+            (ready_flag, inv_id), commit=True)
+        return jsonify({'success': True, 'ready': bool(ready_flag)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/get_supplier_data')
 @login_required
 def get_supplier_data():
@@ -9309,11 +9453,19 @@ def ledger_view():
     pl_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_income = 1 OR account_expenses = 1 ORDER BY account_name")
     bs_accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_assets = 1 OR account_liabilities = 1 OR account_equity = 1 ORDER BY account_name")
 
+    # All active sub-accounts, with which parent account each belongs to, so
+    # the page can filter the Sub Account dropdown client-side as soon as an
+    # Account is picked — no extra round trip needed.
+    all_sub_accounts = db.execute_query(
+        "SELECT sub_account_code, sub_sub_accaount_name, sub_new_account "
+        "FROM sub_accont_for_new_account WHERE active = 1 ORDER BY sub_sub_accaount_name") or []
+
     # Structure for Select2 optgroups
     # However, HTML select structure is easier:
     return render_template('ledger_view.html',
                            pl_accounts=pl_accounts,
                            bs_accounts=bs_accounts,
+                           all_sub_accounts=all_sub_accounts,
                            default_from=date.today().replace(day=1).strftime('%Y-%m-%d'),
                            default_to=date.today().strftime('%Y-%m-%d'))
 
@@ -9323,23 +9475,28 @@ def get_ledger_data():
     account_name = request.json.get('account_name')
     from_date = request.json.get('from_date')
     to_date = request.json.get('to_date')
+    sub_account_code = request.json.get('sub_account_code') or None
 
     if not account_name or not from_date or not to_date:
         return {'error': 'Missing parameters'}, 400
-    result = _ledger_data(account_name, from_date, to_date)
+    result = _ledger_data(account_name, from_date, to_date, sub_account_code)
     if 'error' in result:
         return result, 404
     return result
 
 
-def _ledger_data(account_name, from_date, to_date):
-    """Ledger rows + running balance for one account. Shared by the JSON API,
-    the CSV export and the styled Excel export."""
+def _ledger_data(account_name, from_date, to_date, sub_account_code=None):
+    """Ledger rows + running balance for one account, optionally narrowed to
+    a single sub-account of it. Shared by the JSON API, the CSV export and
+    the styled Excel export."""
     # 1. Get Account Basement (DR/CR)
     acc_res = db.execute_query("SELECT account_basment FROM new_account_table WHERE account_name = %s", (account_name,))
     if not acc_res:
         return {'error': 'Account not found'}
     basement = acc_res[0]['account_basment'] # 'DR' or 'CR'
+
+    sub_filter_sql = " AND entry_sub_account_code = %s" if sub_account_code else ""
+    sub_filter_params = (sub_account_code,) if sub_account_code else ()
 
     # 2. Calculate Opening Balance
     # Logic: Sum previous entries based on basement
@@ -9349,13 +9506,14 @@ def _ledger_data(account_name, from_date, to_date):
 
     # Calculate Sums before from_date — filter strictly by EFFECTIVE date (when the
     # transaction occurred), falling back to create date only when effective is NULL.
-    op_res = db.execute_query("""
+    op_res = db.execute_query(f"""
         SELECT SUM(enty_values_DR), SUM(enty_values_CR)
         FROM entry_details
         WHERE account_name = %s
           AND DATE(COALESCE(entry_effective_date, entry_create_date)) < %s
           AND entry_deleted = 0
-    """, (account_name, from_date))
+          {sub_filter_sql}
+    """, (account_name, from_date) + sub_filter_params)
 
     if op_res:
         op_dr = float(op_res[0]['SUM(enty_values_DR)'] or 0)
@@ -9370,7 +9528,7 @@ def _ledger_data(account_name, from_date, to_date):
 
     # 3. Fetch Transactions — show and filter by EFFECTIVE date (transaction date),
     # not the entry/create date. DATE() so datetime values on the last day are included.
-    rows = db.execute_query("""
+    rows = db.execute_query(f"""
         SELECT
             COALESCE(ed.entry_effective_date, ed.entry_create_date) as date,
             ed.entry_naration as narration,
@@ -9384,8 +9542,9 @@ def _ledger_data(account_name, from_date, to_date):
         WHERE ed.account_name = %s
           AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) BETWEEN %s AND %s
           AND ed.entry_deleted = 0
+          {sub_filter_sql}
         ORDER BY COALESCE(ed.entry_effective_date, ed.entry_create_date), ed.id
-    """, (account_name, from_date, to_date))
+    """, (account_name, from_date, to_date) + sub_filter_params)
 
 
     # 4. Process Running Balance
@@ -9414,7 +9573,9 @@ def _ledger_data(account_name, from_date, to_date):
 
 
         narration_text = r['narration']
-        if r.get('sub_account'):
+        # Skip the "[sub-account]" prefix when we've already filtered down to
+        # one sub-account — every row would repeat the same label.
+        if r.get('sub_account') and not sub_account_code:
             narration_text = f"[{r['sub_account']}] {narration_text}"
 
         data.append({
@@ -9506,15 +9667,17 @@ def ledger_export():
     account_name = request.args.get('account_name', '')
     from_date    = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date      = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    sub_account_code = request.args.get('sub_account_code') or None
+    sub_account_name = request.args.get('sub_account_name') or ''
     if not account_name:
         flash('No account selected', 'warning')
         return redirect(url_for('ledger_view'))
 
-    result = _ledger_data(account_name, from_date, to_date)
+    result = _ledger_data(account_name, from_date, to_date, sub_account_code)
     rows = result.get('data', [])
     si = io.StringIO()
     cw = csv.writer(si)
-    cw.writerow([f'Ledger: {account_name}'])
+    cw.writerow([f'Ledger: {account_name}' + (f' — {sub_account_name}' if sub_account_name else '')])
     cw.writerow([f'Period: {from_date} to {to_date}'])
     cw.writerow([])
     cw.writerow(['Date', 'Narration', 'Debit', 'Credit', 'Balance'])
@@ -9541,6 +9704,8 @@ def ledger_export_xlsx():
     account_name = request.args.get('account_name', '')
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    sub_account_code = request.args.get('sub_account_code') or None
+    sub_account_name = request.args.get('sub_account_name') or ''
     if not account_name:
         flash('No account selected', 'warning')
         return redirect(url_for('ledger_view'))
@@ -9550,7 +9715,7 @@ def ledger_export_xlsx():
         flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
         return redirect(url_for('ledger_view'))
 
-    result = _ledger_data(account_name, from_date, to_date)
+    result = _ledger_data(account_name, from_date, to_date, sub_account_code)
     if 'error' in result:
         flash(f"Error: {result['error']}", 'danger')
         return redirect(url_for('ledger_view'))
@@ -9559,7 +9724,7 @@ def ledger_export_xlsx():
     wb, ws = xl.new_workbook('Ledger')
     ncols = 6
     row = xl.title_block(ws, ncols, _company_display_name(),
-                         f'ACCOUNT LEDGER — {account_name}',
+                         f'ACCOUNT LEDGER — {account_name}' + (f' / {sub_account_name}' if sub_account_name else ''),
                          f'{from_date} to {to_date}')
     row = xl.header_row(ws, row, ['Date', 'JV No', 'Narration', 'Debit', 'Credit', 'Balance'])
     for r in rows:

@@ -163,6 +163,16 @@
                             <input type="text" class="form-control" name="nic_no">
                         </div>
 
+                        <div class="mb-3">
+                            <label class="field-label">Default Payment Method</label>
+                            <select class="form-select" name="default_payment_method">
+                                <option value="">Not Set</option>
+                                <option value="Cash">Cash</option>
+                                <option value="Cheque">Cheque</option>
+                            </select>
+                            <small class="text-muted" style="font-size:.72rem;">Used to auto-fill the Payment Method when entering a GRN for this supplier.</small>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -382,6 +392,7 @@
         document.querySelector('input[name="contact_1"]').value = supplier.suppliers_teli_1 || '';
         document.querySelector('input[name="contact_2"]').value = supplier.suppliers_teli_2 || '';
         document.querySelector('input[name="email"]').value = supplier.suppliers_e_mail || '';
+        document.querySelector('select[name="default_payment_method"]').value = supplier.suppliers_default_payment_method || '';
 
         // Update Buttons
         document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> UPDATE SUPPLIER';

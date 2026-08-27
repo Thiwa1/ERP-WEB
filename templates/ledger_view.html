@@ -22,9 +22,9 @@
   <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:1.25rem 1.5rem;">
     <div class="row g-3 align-items-end">
       <!-- Account Selector -->
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fw-bold small" style="color:#374151;">Select Account</label>
-        <select id="accountSelect" class="form-select select2" style="border-radius:8px;">
+        <select id="accountSelect" class="form-select select2" style="border-radius:8px;" onchange="onAccountChanged()">
           <option value="">-- Select Account --</option>
           <optgroup label="P&L Accounts">
             {% for acc in pl_accounts %}
@@ -36,6 +36,16 @@
             <option value="{{ acc.account_name }}">{{ acc.account_name }}</option>
             {% endfor %}
           </optgroup>
+        </select>
+      </div>
+
+      <!-- Sub Account Selector (optional — narrows the ledger to just one
+           sub-account of the selected account; populated client-side from
+           allSubAccounts once an Account is picked) -->
+      <div class="col-md-3">
+        <label class="form-label fw-bold small" style="color:#374151;">Sub Account <span class="text-muted fw-normal">(optional)</span></label>
+        <select id="subAccountSelect" class="form-select select2" style="border-radius:8px;">
+          <option value="">-- Whole Account --</option>
         </select>
       </div>
 
@@ -139,6 +149,24 @@
 </div>
 
 <script>
+    // All active sub-accounts with their parent account, so the Sub Account
+    // dropdown can be narrowed to just the selected Account's sub-accounts
+    // without an extra server round trip.
+    const ALL_SUB_ACCOUNTS = {{ all_sub_accounts | tojson }};
+
+    function onAccountChanged() {
+        const account = $('#accountSelect').val();
+        const sel = document.getElementById('subAccountSelect');
+        const matches = ALL_SUB_ACCOUNTS.filter(s => s.sub_new_account === account);
+
+        sel.innerHTML = '<option value="">-- Whole Account --</option>' +
+            matches.map(s => `<option value="${s.sub_account_code}">${s.sub_sub_accaount_name}</option>`).join('');
+
+        if (window.$ && $.fn.select2) {
+            $(sel).val('').trigger('change');
+        }
+    }
+
     function showJV(jvNo) {
         document.getElementById('jvModalNo').textContent = jvNo;
         document.getElementById('jvModalNarration').textContent = '—';
@@ -219,13 +247,16 @@
         // Show Loading
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><div class="spinner-border text-primary" role="status"></div><div class="mt-2 text-muted">Loading transactions...</div></td></tr>';
 
+        const subAccountCode = $('#subAccountSelect').val();
+
         fetch('/api/ledger_data', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
                 account_name: account,
                 from_date: fromDate,
-                to_date: toDate
+                to_date: toDate,
+                sub_account_code: subAccountCode || null
             })
         })
         .then(response => {
@@ -333,16 +364,26 @@
         const acc  = document.getElementById('accountSelect').value;
         const from = document.getElementById('fromDate').value;
         const to   = document.getElementById('toDate').value;
+        const subSel = document.getElementById('subAccountSelect');
+        const subCode = subSel.value;
+        const subName = subCode ? subSel.options[subSel.selectedIndex].text : '';
         if (!acc) { alert('Please select an account first.'); return; }
-        window.location.href = `/ledger_view/export?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
+        let url = `/ledger_view/export?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
+        if (subCode) url += `&sub_account_code=${encodeURIComponent(subCode)}&sub_account_name=${encodeURIComponent(subName)}`;
+        window.location.href = url;
     }
 
     function exportLedgerXlsx() {
         const acc  = document.getElementById('accountSelect').value;
         const from = document.getElementById('fromDate').value;
         const to   = document.getElementById('toDate').value;
+        const subSel = document.getElementById('subAccountSelect');
+        const subCode = subSel.value;
+        const subName = subCode ? subSel.options[subSel.selectedIndex].text : '';
         if (!acc) { alert('Please select an account first.'); return; }
-        window.location.href = `/ledger_view/export_xlsx?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
+        let url = `/ledger_view/export_xlsx?account_name=${encodeURIComponent(acc)}&from_date=${from}&to_date=${to}`;
+        if (subCode) url += `&sub_account_code=${encodeURIComponent(subCode)}&sub_account_name=${encodeURIComponent(subName)}`;
+        window.location.href = url;
     }
 
     // ── Deep link: /ledger_view?account=X&from=Y&to=Z&jv=N ──
@@ -359,6 +400,7 @@
         setTimeout(function () {
             if (window.$ && $.fn.select2) { $('#accountSelect').val(acc).trigger('change'); }
             else { document.getElementById('accountSelect').value = acc; }
+            onAccountChanged();
             loadLedger();
         }, 250);
     });
