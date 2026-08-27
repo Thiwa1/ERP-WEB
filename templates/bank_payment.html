@@ -227,6 +227,7 @@
                         <tr style="background:#f8f9fa;">
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.75rem 1rem;">Voucher</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Method</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Paid Amount</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice</th>
@@ -344,22 +345,33 @@ function loadSupplierData() {
                         ? `<a href="/grn/view/${hist.inv_jv}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">${hist.invoice_no} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i></a>`
                         : hist.invoice_no)
                     : '-';
+                const isBank = hist.method === 'Bank';
+                const methodPill = isBank
+                    ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e6f0fd;color:#1b5fb8;">Bank</span>'
+                    : '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e7f7ee;color:#0a7d3f;">Cash</span>';
+                const noteCell = isBank ? (hist.narration || '-') : (hist.user_id || '-');
+                const printType = isBank ? 'bank' : 'cash';
+                // "Print Cheque" only makes sense for a Bank payment.
+                const chequeBtn = isBank
+                    ? `<a href="/cheque/print/${hist.jv_no}" target="_blank" class="btn btn-outline-warning" title="Print Cheque" style="border-radius:0 6px 6px 0;font-size:.78rem;">
+                           <i class="fas fa-money-check"></i>
+                       </a>`
+                    : '';
                 const row = `
                     <tr>
                         <td class="font-monospace" style="padding:.5rem 1rem;">${hist.voucher || '-'}</td>
                         <td style="padding:.5rem .75rem;">${hist.date}</td>
+                        <td style="padding:.5rem .75rem;">${methodPill}</td>
                         <td style="padding:.5rem .75rem;">${hist.account}</td>
                         <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(hist.amount)}</td>
                         <td class="font-monospace" style="padding:.5rem .75rem;">${histInvCell}</td>
-                        <td style="padding:.5rem .75rem;">${hist.narration}</td>
+                        <td style="padding:.5rem .75rem;">${noteCell}</td>
                         <td style="padding:.35rem .75rem;">
                             <div class="btn-group btn-group-sm">
-                                <a href="/voucher/print/bank/${hist.jv_no}" target="_blank" class="btn btn-outline-info" title="Print Voucher" style="border-radius:6px 0 0 6px;font-size:.78rem;">
+                                <a href="/voucher/print/${printType}/${hist.jv_no}" target="_blank" class="btn btn-outline-info" title="Print Voucher" style="border-radius:6px${isBank ? ' 0 0 6px' : ''};font-size:.78rem;">
                                     <i class="fas fa-file-invoice"></i>
                                 </a>
-                                <a href="/cheque/print/${hist.jv_no}" target="_blank" class="btn btn-outline-warning" title="Print Cheque" style="border-radius:0 6px 6px 0;font-size:.78rem;">
-                                    <i class="fas fa-money-check"></i>
-                                </a>
+                                ${chequeBtn}
                             </div>
                         </td>
                     </tr>

@@ -4279,37 +4279,48 @@ def api_srn_accounts():
     """) or []
     return jsonify([r['account_name'] for r in rows])
 
-def _get_supplier_history_data(supplier_name, payment_type):
-    """Helper to fetch common supplier details, outstanding invoices, and payment history."""
+def _get_supplier_history_data(supplier_name):
+    """Helper to fetch common supplier details, outstanding invoices, and
+    payment history for a supplier. History is the COMBINED Cash + Bank
+    payment history (tagged per row with 'method': 'Cash'/'Bank') so both
+    the Cash Payment and Bank Payment screens show the full picture of what
+    was paid to this supplier, regardless of which screen a given payment
+    was made on."""
     details, inv_list, sup_id = _get_supplier_base_data(supplier_name)
     if not details:
         return {'error': 'Supplier not found'}, 404
 
-    if payment_type == 'cash':
-        history = db.execute_query("""
-            SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
-                   cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
-                   User_Enter as extra, jv_numbers_jv_id as extra2,
-                   cash_book_recode_suplier_oustanding_id as inv_id
-            FROM cash_book_recode
-            WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
-            ORDER BY chash_book_recod_id DESC
-        """, (supplier_name,))
-    else:
-        history = db.execute_query("""
-            SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
-                   bank_book__accont_name as account, bank_book__recode_cr as amount,
-                   bank_book__naration as extra, jv_numbers_jv_id as extra2,
-                   bank_book__suplier_oustanding_id as inv_id
-            FROM bank_book_recod
-            WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
-            ORDER BY id DESC
-        """, (supplier_name,))
+    cash_history = db.execute_query("""
+        SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
+               cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
+               User_Enter as user_id, jv_numbers_jv_id as jv_no,
+               cash_book_recode_suplier_oustanding_id as inv_id
+        FROM cash_book_recode
+        WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
+        ORDER BY chash_book_recod_id DESC
+    """, (supplier_name,)) or []
+
+    bank_history = db.execute_query("""
+        SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
+               bank_book__accont_name as account, bank_book__recode_cr as amount,
+               bank_book__naration as narration, jv_numbers_jv_id as jv_no,
+               bank_book__suplier_oustanding_id as inv_id
+        FROM bank_book_recod
+        WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
+        ORDER BY id DESC
+    """, (supplier_name,)) or []
+
+    combined = [dict(h, method='Cash') for h in cash_history] + \
+               [dict(h, method='Bank') for h in bank_history]
+    # Merge-sort the two already-descending lists by date (falling back to
+    # jv_no as a tie-breaker so same-day payments still stay in a stable,
+    # newest-first order).
+    combined.sort(key=lambda h: (str(h.get('date') or ''), h.get('jv_no') or 0), reverse=True)
 
     # Look up the original invoice (and its GRN, if any) each payment history row settled,
     # so a "View" link can still be shown after the invoice is fully paid off and has
     # dropped out of the Outstanding Invoices list above.
-    inv_ids = sorted({h['inv_id'] for h in history if h.get('inv_id')})
+    inv_ids = sorted({h['inv_id'] for h in combined if h.get('inv_id')})
     inv_map = {}
     if inv_ids:
         placeholders = ','.join(['%s'] * len(inv_ids))
@@ -4327,23 +4338,21 @@ def _get_supplier_history_data(supplier_name, payment_type):
             }
 
     hist_list = []
-    for h in history:
+    for h in combined:
         inv_info = inv_map.get(h.get('inv_id')) or {}
-        item = {
+        hist_list.append({
             'voucher': h['voucher'],
             'date': str(h['date']),
             'account': h['account'],
             'amount': float(h['amount'] or 0),
-            'jv_no': h['extra2'],
+            'jv_no': h['jv_no'],
+            'method': h['method'],
             'invoice_no': inv_info.get('invoice_no'),
             'inv_jv': inv_info.get('inv_jv'),
-            'is_grn': inv_info.get('is_grn', False)
-        }
-        if payment_type == 'cash':
-            item['user_id'] = h['extra']
-        else:
-            item['narration'] = h['extra']
-        hist_list.append(item)
+            'is_grn': inv_info.get('is_grn', False),
+            'user_id': h.get('user_id'),
+            'narration': h.get('narration'),
+        })
 
     return {'details': details, 'invoices': inv_list, 'history': hist_list}
 
@@ -4423,7 +4432,7 @@ def get_cash_supplier_data():
     if not supplier_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(supplier_name, 'cash')
+    return _get_supplier_history_data(supplier_name)
 
 @app.route('/cash_payment/submit', methods=['POST'])
 @login_required
@@ -6341,7 +6350,7 @@ def get_supplier_data():
     if not supplier_name:
         return {'error': 'No supplier name'}, 400
 
-    return _get_supplier_history_data(supplier_name, 'bank')
+    return _get_supplier_history_data(supplier_name)
 
 def _post_bank_payment_entries(cursor, current_user, supplier_name, bank_account,
                                 payment_date, narration, cheque_no, payments, wht_base=0.0,
