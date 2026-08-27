@@ -215,7 +215,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bank_rec_history',   'label': 'Bank Rec. History',    'url': '/bank_reconciliation/history', 'icon': 'fas fa-clipboard-check',  'category': 'Reports'},
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
     {'key': 'supplier_payments',  'label': 'Supplier Payments',    'url': '/supplier_payments_report','icon': 'fas fa-money-check-dollar', 'category': 'Reports'},
-    {'key': 'grn_payment_method', 'label': 'GRN Payment Method',   'url': '/grn_payment_method_report','icon': 'fas fa-money-check',       'category': 'Reports'},
+    {'key': 'grn_payment_method', 'label': 'Supplier Payment Method',   'url': '/grn_payment_method_report','icon': 'fas fa-money-check',       'category': 'Reports'},
     {'key': 'grn_payment_ready',  'label': 'Payment Ready List',   'url': '/grn_payment_ready_list',   'icon': 'fas fa-check-circle',       'category': 'Reports'},
     {'key': 'customer_aging',     'label': 'Customer Aging',       'url': '/customer_aging',         'icon': 'fas fa-user-clock',          'category': 'Reports'},
     {'key': 'balance_sheet',      'label': 'Balance Sheet',        'url': '/balance_sheet',          'icon': 'fas fa-balance-scale',       'category': 'Reports'},
@@ -6212,10 +6212,12 @@ def supplier_payments_report():
 @login_required
 @has_permission('Access_Reports')
 def grn_payment_method_report():
-    """GRN purchases report: invoice date, supplier name, amount, and the
-    payment method (Cash/Cheque) chosen when the GRN was entered — lets the
-    user see at a glance which supplier invoices are meant to be paid by
-    cash vs cheque."""
+    """Supplier purchase invoices report: invoice date, supplier name,
+    amount, and the payment method (Cash/Cheque) — lets the user see at a
+    glance which supplier invoices are meant to be paid by cash vs cheque.
+    Covers EVERY supplier invoice (GRN, Direct Purchase, Service Entry,
+    Opening Balance, ...), not just GRN — the payment method concept
+    applies the same way regardless of how the invoice was created."""
     from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
     to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
     supplier = (request.args.get('supplier') or '').strip()
@@ -6225,12 +6227,12 @@ def grn_payment_method_report():
     q = """
         SELECT s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
                s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_total_oustanding AS amount,
-               s.suppliers_invoice_payment_method AS method, s.suppliers_invoice_JV AS jv
+               s.suppliers_invoice_payment_method AS method, s.suppliers_invoice_JV AS jv,
+               jv.jv_user_code AS jv_user_code
         FROM suppliers_invoice_data s
-        JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
+        LEFT JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
-        WHERE jv.jv_user_code = 'JV FROM GRN'
-          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+        WHERE COALESCE(s.suppliers_oustanding_delete, 0) = 0
           AND s.suppliers_invoice_date BETWEEN %s AND %s
     """
     params = [from_date, to_date]
@@ -6244,6 +6246,7 @@ def grn_payment_method_report():
     for r in rows:
         r['amount'] = float(r['amount'] or 0)
         r['method'] = r['method'] or 'Not Set'
+        r['is_grn'] = r.get('jv_user_code') == 'JV FROM GRN'
 
     total = sum(r['amount'] for r in rows)
     total_cash = sum(r['amount'] for r in rows if r['method'] == 'Cash')
@@ -6275,9 +6278,12 @@ def grn_payment_method_report():
 @login_required
 @has_permission('Access_Reports')
 def grn_payment_ready_list():
-    """Checklist of outstanding GRN supplier invoices (Cash/Cheque). The
-    cheques themselves are drawn by a separate division working off their
-    own document, not connected to this system -- when they send over their
+    """Checklist of outstanding supplier invoices (Cash/Cheque). Covers
+    EVERY outstanding supplier invoice regardless of how it was created
+    (GRN, Direct Purchase, Service Entry, Opening Balance, ...) — the cheque
+    prep this tracks isn't specific to GRN purchases. The cheques
+    themselves are drawn by a separate division working off their own
+    document, not connected to this system -- when they send over their
     list of what's been drawn, the user checks off the matching invoices
     here as Ready. Purely a manual marker; it never touches the ledger,
     inventory, or the invoice's outstanding balance."""
@@ -6289,12 +6295,11 @@ def grn_payment_ready_list():
         SELECT s.s_i_id AS id, s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
                s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_oustanding AS amount,
                s.suppliers_invoice_payment_method AS method, s.suppliers_invoice_payment_ready AS ready,
-               s.suppliers_invoice_JV AS jv
+               s.suppliers_invoice_JV AS jv, jv.jv_user_code AS jv_user_code
         FROM suppliers_invoice_data s
-        JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
+        LEFT JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
-        WHERE jv.jv_user_code = 'JV FROM GRN'
-          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+        WHERE COALESCE(s.suppliers_oustanding_delete, 0) = 0
           AND s.suppliers_invoice_oustanding > 0.01
     """
     params = []
@@ -6311,8 +6316,9 @@ def grn_payment_ready_list():
     rows = db.execute_query(q, tuple(params)) or []
     for r in rows:
         r['amount'] = float(r['amount'] or 0)
-        r['method'] = r['method'] or 'Not Set'
+        r['method'] = r['method'] or ''
         r['ready'] = bool(r['ready'])
+        r['is_grn'] = r.get('jv_user_code') == 'JV FROM GRN'
 
     total = sum(r['amount'] for r in rows)
     ready_count = sum(1 for r in rows if r['ready'])
@@ -6339,6 +6345,30 @@ def grn_payment_ready_list_toggle():
             "UPDATE suppliers_invoice_data SET suppliers_invoice_payment_ready = %s WHERE s_i_id = %s",
             (ready_flag, inv_id), commit=True)
         return jsonify({'success': True, 'ready': bool(ready_flag)})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/grn_payment_ready_list/set_method', methods=['POST'])
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_ready_list_set_method():
+    """AJAX endpoint: set the Payment Method on one outstanding invoice
+    directly from the Ready List. Needed because invoices created outside
+    the GRN screen (Direct Purchase, Service Entry, Opening Balance, ...)
+    never had a chance to set a payment method at entry time."""
+    data = request.get_json(silent=True) or request.form
+    inv_id = data.get('id')
+    method_val = (data.get('method') or '').strip()
+    if not inv_id:
+        return jsonify({'success': False, 'error': 'Missing invoice id'}), 400
+    if method_val not in ('', 'Cash', 'Cheque'):
+        return jsonify({'success': False, 'error': 'Invalid method'}), 400
+    try:
+        db.execute_query(
+            "UPDATE suppliers_invoice_data SET suppliers_invoice_payment_method = %s WHERE s_i_id = %s",
+            (method_val or None, inv_id), commit=True)
+        return jsonify({'success': True, 'method': method_val})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

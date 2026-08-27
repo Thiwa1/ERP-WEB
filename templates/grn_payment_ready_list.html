@@ -35,7 +35,7 @@
     </div>
     <div>
       <h5 class="mb-0 fw-bold">Payment Ready List</h5>
-      <small class="text-muted">Outstanding supplier invoices (Cash/Cheque) &mdash; check off once the cheque/cash for it is prepared</small>
+      <small class="text-muted">All outstanding supplier invoices &mdash; set the payment method and check off once the cheque/cash for it is prepared</small>
     </div>
     <div class="ms-auto d-flex gap-2 no-print">
       <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
@@ -90,12 +90,22 @@
             <td class="ps-3">{{ r.inv_date }}</td>
             <td class="fw-semibold">{{ r.supplier or '-' }}</td>
             <td>
+              {% if r.is_grn %}
               <a href="/grn/view/{{ r.jv }}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">
                 {{ r.invoice_no }} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i>
               </a>
+              {% else %}
+              {{ r.invoice_no }}
+              {% endif %}
             </td>
             <td>
-              <span class="pill {% if r.method == 'Cash' %}pill-cash{% elif r.method == 'Cheque' %}pill-cheque{% else %}pill-unset{% endif %}">{{ r.method }}</span>
+              <select class="form-select form-select-sm no-print" style="width:auto;min-width:110px;display:inline-block;"
+                      onchange="setMethod({{ r.id }}, this)">
+                <option value="" {% if not r.method %}selected{% endif %}>Not Set</option>
+                <option value="Cash" {% if r.method == 'Cash' %}selected{% endif %}>Cash</option>
+                <option value="Cheque" {% if r.method == 'Cheque' %}selected{% endif %}>Cheque</option>
+              </select>
+              <span class="d-none d-print-inline">{{ r.method or 'Not Set' }}</span>
             </td>
             <td class="num">{{ "{:,.2f}".format(r.amount) }}</td>
             <td class="text-center pe-3">
@@ -109,7 +119,7 @@
           {% else %}
           <tr><td colspan="6" class="text-center text-muted py-5">
             <i class="fas fa-check-circle d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
-            No outstanding GRN invoices match this filter.
+            No outstanding supplier invoices match this filter.
           </td></tr>
           {% endfor %}
         </tbody>
@@ -140,6 +150,31 @@ function toggleReady(invId, checkbox) {
     .catch(err => {
         checkbox.disabled = false;
         checkbox.checked = !checkbox.checked;
+        alert('Could not update: ' + err);
+    });
+}
+
+function setMethod(invId, select) {
+    const prev = select.getAttribute('data-prev') !== null ? select.getAttribute('data-prev') : select.value;
+    select.disabled = true;
+    fetch('/grn_payment_ready_list/set_method', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: invId, method: select.value })
+    })
+    .then(r => r.json())
+    .then(data => {
+        select.disabled = false;
+        if (data.success) {
+            select.setAttribute('data-prev', select.value);
+        } else {
+            select.value = prev;
+            alert('Could not update: ' + (data.error || 'unknown error'));
+        }
+    })
+    .catch(err => {
+        select.disabled = false;
+        select.value = prev;
         alert('Could not update: ' + err);
     });
 }
