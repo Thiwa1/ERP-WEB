@@ -96,17 +96,17 @@
                         <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;" class="mb-2">
                             <i class="fas fa-file-invoice me-1"></i> Outstanding Invoices
                         </div>
-                        <div class="table-responsive" style="max-height:400px;border-radius:8px;border:1px solid #e2e8f0;overflow:hidden;">
+                        <div class="table-responsive mb-3" style="max-height:400px;overflow-y:auto;overflow-x:auto;border-radius:8px;border:1px solid #e2e8f0;scrollbar-gutter:stable;">
                             <table class="table table-hover mb-0">
                                 <thead>
                                     <tr style="background:#f8f9fa;position:sticky;top:0;z-index:1;">
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.65rem .85rem;">Inv No</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Due Date</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Total</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Paid</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Balance</th>
-                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:140px;">Pay Amount</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .9rem;">Inv No</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .75rem;">Date</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .75rem;">Due Date</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .75rem;text-align:right;">Total</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .75rem;text-align:right;">Paid</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .75rem;text-align:right;">Balance</th>
+                                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.7rem .9rem;width:140px;">Pay Amount</th>
                                     </tr>
                                 </thead>
                                 <tbody id="outstandingBody">
@@ -316,13 +316,13 @@ function loadSupplierData() {
                     // in data.invoices at all until that cheque clears or is cancelled.
                     const row = `
                         <tr>
-                            <td style="padding:.5rem .85rem;" class="font-monospace">${ivLabel} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
-                            <td style="padding:.5rem .75rem;">${inv.date}</td>
-                            <td style="padding:.5rem .75rem;">${inv.due_date}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.total)}</td>
-                            <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(inv.paid)}</td>
-                            <td class="text-end fw-bold font-monospace" style="padding:.5rem .75rem;color:#c42b1c;">${fmtNum(inv.balance)}</td>
-                            <td style="padding:.35rem .75rem;">
+                            <td style="padding:.65rem .9rem;" class="font-monospace">${ivLabel} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
+                            <td style="padding:.65rem .75rem;">${inv.date}</td>
+                            <td style="padding:.65rem .75rem;">${inv.due_date}</td>
+                            <td class="text-end font-monospace" style="padding:.65rem .75rem;">${fmtNum(inv.total)}</td>
+                            <td class="text-end font-monospace" style="padding:.65rem .75rem;">${fmtNum(inv.paid)}</td>
+                            <td class="text-end fw-bold font-monospace" style="padding:.65rem .75rem;color:#c42b1c;">${fmtNum(inv.balance)}</td>
+                            <td style="padding:.5rem .9rem;">
                                 <input type="number" class="form-control form-control-sm text-end pay-input font-monospace"
                                        name="payment_${inv.id}" step="0.01" min="0" max="${inv.balance}"
                                        placeholder="0.00" oninput="calculateWHT()"
