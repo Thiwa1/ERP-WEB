@@ -9416,79 +9416,88 @@ def reverse_reconciliation():
         return redirect(url_for('bank_reconciliation_history'))
 
     conn = None
+    cursor = None
+    account = ''
     try:
-        with db.get_connection() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                conn.start_transaction()
-            # Check tables
-            cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
-            if not cursor.fetchone():
-                cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
-                    id INT AUTO_INCREMENT PRIMARY KEY,
-                    original_rec_id INT,
-                    bank_account VARCHAR(100),
-                    reversal_date DATETIME,
-                    reversed_by_user INT,
-                    opening_balance DECIMAL(15,2),
-                    closing_balance DECIMAL(15,2),
-                    reversal_reason TEXT
-                )''')
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
 
-            # Get Reconciliation details
-            cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
-            rec = cursor.fetchone()
-            if not rec:
-                flash('Reconciliation record not found', 'danger')
-                return redirect(url_for('bank_reconciliation_history'))
+        # Check tables
+        cursor.execute("SHOW TABLES LIKE 'bank_reconciliation_reversal_log'")
+        if not cursor.fetchone():
+            cursor.execute('''CREATE TABLE bank_reconciliation_reversal_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                original_rec_id INT,
+                bank_account VARCHAR(100),
+                reversal_date DATETIME,
+                reversed_by_user INT,
+                opening_balance DECIMAL(15,2),
+                closing_balance DECIMAL(15,2),
+                reversal_reason TEXT
+            )''')
 
-            account = rec['bank_accont_no']
+        # Get Reconciliation details
+        cursor.execute("SELECT * FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+        rec = cursor.fetchone()
+        if not rec:
+            flash('Reconciliation record not found', 'danger')
+            return redirect(url_for('bank_reconciliation_history'))
 
-            # Step 1: Get all transaction IDs from details table
-            cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
-            detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
+        account = rec['bank_accont_no']
 
-            # Step 2: Get cleared transaction IDs for this account and period
-            cursor.execute('''
-                SELECT id FROM entry_details
-                WHERE account_name = %s
-                AND entry_Rec = 1
-                AND entry_effective_date BETWEEN %s AND %s
-            ''', (account, rec['opene_date'], rec['closing_date']))
-            cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
+        # Step 1: Get all transaction IDs from details table
+        cursor.execute("SELECT Transaktion_Id FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+        detail_trans_ids = [row['Transaktion_Id'] for row in cursor.fetchall() if row['Transaktion_Id']]
 
-            # Combine and remove duplicates
-            all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
+        # Step 2: Get cleared transaction IDs for this account and period
+        cursor.execute('''
+            SELECT id FROM entry_details
+            WHERE account_name = %s
+            AND entry_Rec = 1
+            AND entry_effective_date BETWEEN %s AND %s
+        ''', (account, rec['opene_date'], rec['closing_date']))
+        cleared_trans_ids = [row['id'] for row in cursor.fetchall()]
 
-            # Step 3: Un-reconcile all these transactions
-            if all_trans_ids:
-                format_strings = ','.join(['%s'] * len(all_trans_ids))
-                cursor.execute(f'''
-                    UPDATE entry_details
-                    SET entry_Rec = 0, entry_save = 0, entry_date = NULL
-                    WHERE id IN ({format_strings})
-                ''', tuple(all_trans_ids))
+        # Combine and remove duplicates
+        all_trans_ids = list(set(detail_trans_ids + cleared_trans_ids))
 
-            # Step 4: Log Reversal
-            cursor.execute('''
-                INSERT INTO bank_reconciliation_reversal_log
-                (original_rec_id, bank_account, reversal_date, reversed_by_user,
-                 opening_balance, closing_balance, reversal_reason)
-                VALUES (%s, %s, NOW(), %s, %s, %s, %s)
-            ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
+        # Step 3: Un-reconcile all these transactions
+        if all_trans_ids:
+            format_strings = ','.join(['%s'] * len(all_trans_ids))
+            cursor.execute(f'''
+                UPDATE entry_details
+                SET entry_Rec = 0, entry_save = 0, entry_date = NULL
+                WHERE id IN ({format_strings})
+            ''', tuple(all_trans_ids))
 
-            # Step 5: Delete Details
-            cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
+        # Step 4: Log Reversal
+        cursor.execute('''
+            INSERT INTO bank_reconciliation_reversal_log
+            (original_rec_id, bank_account, reversal_date, reversed_by_user,
+             opening_balance, closing_balance, reversal_reason)
+            VALUES (%s, %s, NOW(), %s, %s, %s, %s)
+        ''', (rec_id, account, get_current_user_id(), rec['opene_balance'], rec['closing_balance'], reason))
 
-            # Step 6: Delete Record
-            cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+        # Step 5: Delete Details
+        cursor.execute("DELETE FROM bankreconciliiationditails WHERE Key_to_Recode_Table = %s", (rec_id,))
 
-            conn.commit()
-            flash('Reconciliation reversed successfully!', 'success')
+        # Step 6: Delete Record
+        cursor.execute("DELETE FROM bank_reconciliation_recodes WHERE id = %s", (rec_id,))
+
+        conn.commit()
+        flash('Reconciliation reversed successfully!', 'success')
     except Exception as e:
+        if conn:
             conn.rollback()
-            flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+        flash(f'Error reversing reconciliation: {str(e)}', 'danger')
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
 
-    return redirect(url_for('bank_reconciliation_history', bank_account=account if 'account' in locals() else ''))
+    return redirect(url_for('bank_reconciliation_history', bank_account=account))
 
 
 # --- Ledger View ---
