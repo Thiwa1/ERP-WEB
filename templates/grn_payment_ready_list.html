@@ -38,6 +38,10 @@
       <small class="text-muted">All outstanding supplier invoices &mdash; set the payment method and check off once the cheque/cash for it is prepared</small>
     </div>
     <div class="ms-auto d-flex gap-2 no-print">
+      <a class="btn btn-outline-success"
+         href="{{ url_for('grn_payment_ready_list_export_xlsx', supplier=supplier, method=method, ready=ready) }}">
+        <i class="fas fa-file-excel me-1"></i> Export Excel
+      </a>
       <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
     </div>
   </div>

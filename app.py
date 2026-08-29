@@ -6286,23 +6286,11 @@ def grn_payment_method_report():
                            to_date=to_date, supplier=supplier, method=method, suppliers=suppliers)
 
 
-@app.route('/grn_payment_ready_list')
-@login_required
-@has_permission('Access_Reports')
-def grn_payment_ready_list():
-    """Checklist of outstanding supplier invoices (Cash/Cheque). Covers
-    EVERY outstanding supplier invoice regardless of how it was created
-    (GRN, Direct Purchase, Service Entry, Opening Balance, ...) — the cheque
-    prep this tracks isn't specific to GRN purchases. The cheques
-    themselves are drawn by a separate division working off their own
-    document, not connected to this system -- when they send over their
-    list of what's been drawn, the user checks off the matching invoices
-    here as Ready. Purely a manual marker; it never touches the ledger,
-    inventory, or the invoice's outstanding balance."""
-    supplier = (request.args.get('supplier') or '').strip()
-    method = (request.args.get('method') or '').strip()      # '', 'Cash', 'Cheque'
-    ready = (request.args.get('ready') or '').strip()        # '', 'yes', 'no'
-
+def _grn_payment_ready_rows(supplier, method, ready):
+    """Shared query behind the Payment Ready List page and its Excel export,
+    so both apply identical filters/exclusions and therefore identical
+    totals. Covers EVERY outstanding supplier invoice regardless of how it
+    was created (GRN, Direct Purchase, Service Entry, Opening Balance, ...)."""
     q = """
         SELECT s.s_i_id AS id, s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
                s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_oustanding AS amount,
@@ -6355,11 +6343,86 @@ def grn_payment_ready_list():
 
     total = sum(r['amount'] for r in rows)
     ready_count = sum(1 for r in rows if r['ready'])
+    return rows, total, ready_count
+
+
+@app.route('/grn_payment_ready_list')
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_ready_list():
+    """Checklist of outstanding supplier invoices (Cash/Cheque). Covers
+    EVERY outstanding supplier invoice regardless of how it was created
+    (GRN, Direct Purchase, Service Entry, Opening Balance, ...) — the cheque
+    prep this tracks isn't specific to GRN purchases. The cheques
+    themselves are drawn by a separate division working off their own
+    document, not connected to this system -- when they send over their
+    list of what's been drawn, the user checks off the matching invoices
+    here as Ready. Purely a manual marker; it never touches the ledger,
+    inventory, or the invoice's outstanding balance."""
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()      # '', 'Cash', 'Cheque'
+    ready = (request.args.get('ready') or '').strip()        # '', 'yes', 'no'
+
+    rows, total, ready_count = _grn_payment_ready_rows(supplier, method, ready)
 
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
     return render_template('grn_payment_ready_list.html', rows=rows, total=total,
                            ready_count=ready_count, supplier=supplier, method=method, ready=ready,
                            suppliers=suppliers)
+
+
+@app.route('/grn_payment_ready_list/export_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def grn_payment_ready_list_export_xlsx():
+    """Styled Excel export of the Payment Ready List, honoring whatever
+    Supplier / Method / Ready Status filters are currently applied."""
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()
+    ready = (request.args.get('ready') or '').strip()
+
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('grn_payment_ready_list', supplier=supplier, method=method, ready=ready))
+
+    rows, total, ready_count = _grn_payment_ready_rows(supplier, method, ready)
+
+    subtitle_bits = []
+    if supplier: subtitle_bits.append(f'Supplier: {supplier}')
+    if method: subtitle_bits.append(f'Method: {method}')
+    if ready == 'yes': subtitle_bits.append('Ready only')
+    elif ready == 'no': subtitle_bits.append('Not Ready only')
+    subtitle = ' · '.join(subtitle_bits) if subtitle_bits else 'All outstanding supplier invoices'
+
+    wb, ws = xl.new_workbook('Payment Ready List')
+    ncols = 6
+    row = xl.title_block(ws, ncols, _company_display_name(), 'PAYMENT READY LIST', subtitle)
+    row = xl.header_row(ws, row, ['Invoice Date', 'Supplier', 'Invoice No', 'Payment Method', 'Outstanding', 'Ready'])
+    for r in rows:
+        row = xl.data_row(ws, row,
+                          [str(r['inv_date']), r['supplier'] or '-', r['invoice_no'] or '-',
+                           r['method'] or 'Not Set', r['amount'], 'Yes' if r['ready'] else 'No'],
+                          num_cols=(5,))
+    row = xl.total_row(ws, row, f'TOTAL — {len(rows)} invoice(s), {ready_count} marked ready',
+                       [0, 0, 0, total, 0], bg='EAF6EA', color=xl.GREEN_DARK, size=11)
+    # blank out the zero filler cells added just to line up the total under
+    # the Outstanding column (col 5); the label itself covers cols 2-4 & 6.
+    for col in (2, 3, 4, 6):
+        ws.cell(row=row - 1, column=col).value = None
+
+    xl.finish(ws, ncols, first_col_width=14, num_col_width=16)
+    ws.column_dimensions['B'].width = 32
+    ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 16
+    ws.column_dimensions['F'].width = 10
+
+    fname_bits = ['PaymentReadyList']
+    if supplier:
+        fname_bits.append(supplier.replace(' ', '_').replace('/', '-')[:20])
+    fname = '_'.join(fname_bits) + f'_{date.today().strftime("%Y%m%d")}.xlsx'
+    return xl.workbook_response(wb, fname)
 
 
 @app.route('/grn_payment_ready_list/toggle', methods=['POST'])
