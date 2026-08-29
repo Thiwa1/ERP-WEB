@@ -547,6 +547,7 @@
                             <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(row.dr)}</td>
                             <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(row.cr)}</td>
                             <td style="padding:.5rem .75rem;">
+                                <button type="button" class="btn btn-sm btn-outline-success py-0 me-1" title="View JV (on-screen, not the print report)" onclick="openJvView(${row.jv_no})"><i class="fas fa-eye"></i></button>
                                 <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
                                 <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
                                 ${editCtl}${reverseCtl}
@@ -579,5 +580,81 @@
     window.onload = function() {
         addRow();
     };
+
+    // ── JV View modal — a quick on-screen look at one JV's lines, without
+    // leaving the page or opening the print-styled report. ──
+    function openJvView(jvNo) {
+        const body = document.getElementById('jvViewBody');
+        document.getElementById('jvViewTitle').textContent = 'JV ' + jvNo;
+        body.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
+        new bootstrap.Modal(document.getElementById('jvViewModal')).show();
+
+        fetch(`/journal_entry/view/${jvNo}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    body.innerHTML = `<div class="text-center text-danger py-4">${data.error}</div>`;
+                    return;
+                }
+                let rows = data.lines.map(l => `
+                    <tr>
+                        <td style="padding:.5rem .75rem;">${l.account}</td>
+                        <td style="padding:.5rem .75rem;">${l.narration || '-'}</td>
+                        <td style="padding:.5rem .75rem;">${l.job || '-'}</td>
+                        <td class="text-end font-monospace" style="padding:.5rem .75rem;">${l.dr ? fmtNum(l.dr) : ''}</td>
+                        <td class="text-end font-monospace" style="padding:.5rem .75rem;">${l.cr ? fmtNum(l.cr) : ''}</td>
+                    </tr>
+                `).join('');
+                body.innerHTML = `
+                    <div class="row g-2 mb-3" style="font-size:.85rem;">
+                        <div class="col-6"><span class="text-muted">JV Code:</span> <strong>${data.user_code || '-'}</strong></div>
+                        <div class="col-6"><span class="text-muted">Date:</span> <strong>${data.date || '-'}</strong></div>
+                        <div class="col-12"><span class="text-muted">Narration:</span> ${data.narration || '-'}</div>
+                    </div>
+                    <div class="table-responsive" style="border:1px solid #f0f2f5;border-radius:8px;">
+                        <table class="table table-sm mb-0">
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Account</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Narration</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Job</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Debit</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                            <tfoot>
+                                <tr style="background:#f8f9fa;font-weight:700;">
+                                    <td colspan="3" style="padding:.5rem .75rem;">Total</td>
+                                    <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(data.total_dr)}</td>
+                                    <td class="text-end font-monospace" style="padding:.5rem .75rem;">${fmtNum(data.total_cr)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                `;
+            })
+            .catch(() => { body.innerHTML = '<div class="text-center text-danger py-4">Could not load this JV.</div>'; });
+    }
 </script>
+
+<!-- JV View Modal -->
+<div class="modal fade" id="jvViewModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#5c6bc0,#3949ab);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="fas fa-eye"></i>
+          <h6 class="modal-title fw-bold mb-0" id="jvViewTitle">JV</h6>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4" id="jvViewBody"></div>
+      <div class="modal-footer border-0 px-4 pb-4 pt-0">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
+                style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}

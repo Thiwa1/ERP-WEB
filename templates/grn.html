@@ -296,9 +296,14 @@
                                 <div class="input-group" style="width:220px;">
                                     <span class="input-group-text fw-bold">{{ company_currency }}</span>
                                     <input type="number" class="form-control form-control-sm text-end amount-cell fw-bold"
-                                           id="grandTotal" name="grand_total" readonly
-                                           style="font-size:1rem;color:#018574;">
+                                           id="grandTotal" name="grand_total" step="0.01"
+                                           onchange="applyGrandTotalAdjustment()"
+                                           style="font-size:1rem;color:#018574;"
+                                           title="Type the corrected Total Amount — the difference is applied to the last line item so everything still adds up.">
                                 </div>
+                            </div>
+                            <div class="text-end" style="margin-top:.3rem;">
+                                <small style="color:#a0aec0;font-size:.7rem;">Editing Total Amount pushes the rounding difference onto the last line item automatically — line items above are editable too (Qty / Cost).</small>
                             </div>
                         </div>
 
@@ -401,6 +406,51 @@
         calculateTotals();
     }
 
+    function round2(n) { return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+    // Inline edit of an already-added line item's Qty or Cost (from the
+    // items table itself, not just the Item Entry panel on the right).
+    function updateItemField(index, field, value) {
+        const item = items[index];
+        if (!item) return;
+        item[field] = parseFloat(value) || 0;
+        item.total = round2(item.qty * item.cost);
+        renderTable();
+        calculateTotals();
+    }
+
+    // Total Amount is normally read-only-by-formula (items + VAT), but the
+    // supplier's invoice sometimes has a small decimal/rounding difference
+    // that doesn't cleanly split across line items. Typing a corrected Total
+    // Amount here pushes the difference onto the LAST line item's cost, so
+    // the items still sum (with VAT) to exactly the total you typed.
+    function applyGrandTotalAdjustment() {
+        const gtInput = document.getElementById('grandTotal');
+        const typed = parseFloat(gtInput.value);
+        if (isNaN(typed)) { calculateTotals(); return; }
+
+        const totalValue = items.reduce((sum, item) => sum + item.total, 0);
+        const vatAmount = parseFloat(document.getElementById('vatAmount').value) || 0;
+        const autoTotal = round2(totalValue + vatAmount);
+        const delta = round2(typed - autoTotal);
+
+        if (delta === 0) { calculateTotals(); return; }
+
+        if (items.length === 0) {
+            alert('Add at least one item before adjusting the Total Amount — there is nothing to apply the adjustment to.');
+            calculateTotals();
+            return;
+        }
+
+        const last = items[items.length - 1];
+        const newTotal = round2(last.total + delta);
+        last.total = newTotal;
+        last.cost = last.qty ? round2(newTotal / last.qty) : last.cost;
+
+        renderTable();
+        calculateTotals();
+    }
+
     function renderTable() {
         const tbody = document.querySelector('#itemsTable tbody');
         const empty = document.getElementById('emptyState');
@@ -416,8 +466,16 @@
                         <td style="font-size:.875rem;font-weight:500;">${item.name}</td>
                         <td style="font-size:.875rem;color:#605E5C;">${item.code}</td>
                         <td style="font-size:.875rem;color:#605E5C;">${item.unit}</td>
-                        <td class="text-end amount-cell" style="font-size:.875rem;">${item.qty}</td>
-                        <td class="text-end amount-cell" style="font-size:.875rem;">${fmtNum(item.cost)}</td>
+                        <td class="text-end" style="font-size:.875rem;">
+                            <input type="number" class="form-control form-control-sm text-end amount-cell"
+                                   style="width:78px;display:inline-block;" step="0.01" value="${item.qty}"
+                                   onchange="updateItemField(${index}, 'qty', this.value)">
+                        </td>
+                        <td class="text-end" style="font-size:.875rem;">
+                            <input type="number" class="form-control form-control-sm text-end amount-cell"
+                                   style="width:92px;display:inline-block;" step="0.01" value="${item.cost}"
+                                   onchange="updateItemField(${index}, 'cost', this.value)">
+                        </td>
                         <td class="text-end amount-cell fw-bold" style="font-size:.875rem;">${fmtNum(item.total)}</td>
                         <td class="text-center"><button type="button" class="btn btn-outline-danger btn-sm border-0" onclick="removeItem(${index})"><i class="fas fa-trash"></i></button></td>
                     </tr>

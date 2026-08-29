@@ -16018,7 +16018,26 @@ def journal_entry_history():
     amount_max  = request.args.get('amount_max', '').strip()
     dr_cr       = request.args.get('dr_cr', '').strip()
 
-    filters = ['ed.entry_deleted = 0']
+    # Scope this history to JVs actually submitted from THIS window (manual
+    # Journal Entry). jv_user_code here is a free-text code the user types in
+    # the form, but every other module stamps its own fixed/prefixed code
+    # (or the numeric user id) when it posts a JV — so excluding those known
+    # patterns is what's left is genuinely manual journal entries, instead of
+    # this history dumping every JV in the whole system (GRN, Service Entry,
+    # Payments, POS, reversals, opening balances, etc.).
+    filters = [
+        'ed.entry_deleted = 0',
+        "jv.jv_user_code NOT LIKE 'REV-%'",
+        "jv.jv_user_code NOT IN ('JV FROM GRN','JV FORM SEN INVOICE','JV FROM PAYMENT',"
+        "'JV FROM DIRECT CASH','JV FROM RECEIPT','JV FROM POS','JV FROM PRODUCTION ISSUE',"
+        "'JV FROM PRODUCTION RECEIPT','JV FROM INVENTORY ISSUE','OB-UPLOAD')",
+        "jv.jv_user_code NOT LIKE 'FA-PUR-%'",
+        "jv.jv_user_code NOT LIKE 'FA-WO-%'",
+        "jv.jv_user_code NOT LIKE 'DEP-%'",
+        "jv.jv_user_code NOT LIKE 'CN-%'",
+        "jv.jv_user_code NOT LIKE 'DN-%'",
+        "jv.jv_user_code NOT REGEXP '^[0-9]+$'",
+    ]
     params = []
     if from_date:
         filters.append('ed.entry_effective_date >= %s'); params.append(from_date)
@@ -16072,6 +16091,50 @@ def journal_entry_history():
         })
 
     return json.dumps(data)
+
+
+@app.route('/journal_entry/view/<int:jv_no>')
+@login_required
+def journal_entry_view(jv_no):
+    """Quick on-screen detail of one JV's lines — a lightweight alternative
+    to the formatted Print page for just checking what's in an entry."""
+    header_res = db.execute_query("""
+        SELECT j.jv_id, j.jv_user_code, j.jv_naration, MIN(e.entry_effective_date) as entry_date
+        FROM jv_numbers j
+        LEFT JOIN entry_details e ON j.jv_id = e.entry_jv
+        WHERE j.jv_id = %s
+        GROUP BY j.jv_id
+    """, (jv_no,))
+    if not header_res:
+        return jsonify({'error': 'JV not found'}), 404
+    header = header_res[0]
+
+    details = db.execute_query("""
+        SELECT account_name, entry_naration, enty_values_DR, enty_values_CR, entry_job_number
+        FROM entry_details
+        WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0
+        ORDER BY id
+    """, (jv_no,)) or []
+
+    total_dr = sum(float(d['enty_values_DR'] or 0) for d in details)
+    total_cr = sum(float(d['enty_values_CR'] or 0) for d in details)
+
+    return jsonify({
+        'jv_no': header['jv_id'],
+        'user_code': header['jv_user_code'] or '',
+        'narration': header['jv_naration'] or '',
+        'date': str(header['entry_date']) if header['entry_date'] else '',
+        'total_dr': total_dr,
+        'total_cr': total_cr,
+        'lines': [{
+            'account': d['account_name'],
+            'narration': d['entry_naration'] or '',
+            'dr': float(d['enty_values_DR'] or 0),
+            'cr': float(d['enty_values_CR'] or 0),
+            'job': d['entry_job_number'] or '',
+        } for d in details],
+    })
+
 
 @app.route('/journal_entry/reverse', methods=['POST'])
 @login_required
