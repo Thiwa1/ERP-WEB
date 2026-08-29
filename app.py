@@ -6310,7 +6310,7 @@ def grn_payment_ready_list():
                s.suppliers_invoice_JV AS jv, jv.jv_user_code AS jv_user_code
         FROM suppliers_invoice_data s
         LEFT JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
-        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id AND sup.Is_Suplier = 1
         WHERE COALESCE(s.suppliers_oustanding_delete, 0) = 0
           AND s.suppliers_invoice_oustanding > 0.01
     """
@@ -6326,6 +6326,27 @@ def grn_payment_ready_list():
     q += " ORDER BY s.suppliers_invoice_date ASC, s.suppliers_invoice_JV ASC"
 
     rows = db.execute_query(q, tuple(params)) or []
+
+    # Drop invoices fully covered by a not-yet-cleared postdated cheque — the
+    # same exclusion Supplier Aging applies, so the two reports' "outstanding"
+    # totals reconcile. Those are tracked from the Postdated Cheques page
+    # instead, and reappear here automatically once that cheque is Cancelled.
+    try:
+        pdc_rows = db.execute_query(
+            "SELECT payload FROM postdated_cheques WHERE pdc_type = 'payment' AND status = 'pending'") or []
+    except Exception:
+        pdc_rows = []
+    covered_ids = set()
+    for pdc in pdc_rows:
+        try:
+            payload = json.loads(pdc['payload'] or '{}')
+        except Exception:
+            continue
+        for p in payload.get('payments', []):
+            covered_ids.add(str(p.get('id')))
+    if covered_ids:
+        rows = [r for r in rows if str(r['id']) not in covered_ids]
+
     for r in rows:
         r['amount'] = float(r['amount'] or 0)
         r['method'] = r['method'] or ''
