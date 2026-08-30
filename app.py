@@ -16025,6 +16025,11 @@ def journal_entry_history():
     # patterns is what's left is genuinely manual journal entries, instead of
     # this history dumping every JV in the whole system (GRN, Service Entry,
     # Payments, POS, reversals, opening balances, etc.).
+    # NOTE: earlier this excluded purely-numeric jv_user_code values too (some
+    # other modules stamp the current user's numeric id as the code), but that
+    # risked hiding genuine manual entries if this account's own JV-code habit
+    # is also plain numbers — pulled back out to only the unambiguous,
+    # exact/prefix system codes below.
     filters = [
         'ed.entry_deleted = 0',
         "jv.jv_user_code NOT LIKE 'REV-%'",
@@ -16036,7 +16041,6 @@ def journal_entry_history():
         "jv.jv_user_code NOT LIKE 'DEP-%'",
         "jv.jv_user_code NOT LIKE 'CN-%'",
         "jv.jv_user_code NOT LIKE 'DN-%'",
-        "jv.jv_user_code NOT REGEXP '^[0-9]+$'",
     ]
     params = []
     if from_date:
