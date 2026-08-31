@@ -9220,6 +9220,140 @@ def bank_reconciliation():
                            opening_balance=opening_balance,
                            statement_balance=statement_balance)
 
+
+@app.route('/bank_reconciliation/export_xlsx')
+@login_required
+def bank_reconciliation_export_xlsx():
+    """Styled Excel export of the Bank Reconciliation working grid — the
+    Uncleared Deposits / Uncleared Payments grids exactly as shown on screen
+    for the selected account and as-at date. (This is the in-progress working
+    paper; the completed-reconciliation report export already exists at
+    /bank_reconciliation/report/<id> for a saved reconciliation.)"""
+    bank_account = request.args.get('bank_account')
+    rec_date = request.args.get('rec_date', date.today().strftime('%Y-%m-%d'))
+    statement_balance = parse_float(request.args.get('statement_balance', 0))
+
+    if not bank_account:
+        flash('Select a bank account first.', 'warning')
+        return redirect(url_for('bank_reconciliation'))
+
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date,
+                                 statement_balance=statement_balance))
+
+    # Same queries as the page itself, so the export always matches what's on screen.
+    deposits = db.execute_query("""
+        SELECT
+            ed.entry_save, ed.entry_date, ed.id, ed.entry_jv, ed.entry_effective_date,
+            ed.entry_naration, MIN(bbr.bank_book_chque_no) AS bank_book_chque_no, ed.enty_values_DR
+        FROM entry_details ed
+        LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+        WHERE ed.account_name = %s
+        AND ed.enty_values_DR > 0
+        AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+        AND ed.entry_deleted = 0
+        AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+        GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_jv, ed.entry_effective_date,
+                 ed.entry_naration, ed.enty_values_DR
+        ORDER BY ed.entry_effective_date
+    """, (bank_account, rec_date)) or []
+
+    payments = db.execute_query("""
+        SELECT
+            ed.entry_save, ed.entry_date, ed.id, ed.entry_jv, ed.entry_effective_date,
+            ed.entry_naration, MIN(bbr.bank_book_chque_no) AS bank_book_chque_no, ed.enty_values_CR
+        FROM entry_details ed
+        LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+        WHERE ed.account_name = %s
+        AND ed.enty_values_CR > 0
+        AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL)
+        AND ed.entry_deleted = 0
+        AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+        GROUP BY ed.id, ed.entry_save, ed.entry_date, ed.entry_jv, ed.entry_effective_date,
+                 ed.entry_naration, ed.enty_values_CR
+        ORDER BY ed.entry_effective_date
+    """, (bank_account, rec_date)) or []
+
+    try:
+        bb_res = db.execute_query("""
+            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+            FROM entry_details
+            WHERE account_name = %s
+              AND DATE(COALESCE(entry_effective_date, entry_create_date)) <= %s
+              AND entry_deleted = 0
+        """, (bank_account, rec_date))
+        book_balance = float(bb_res[0]['bal'] or 0) if bb_res else 0
+    except Exception:
+        book_balance = 0
+
+    try:
+        op_res = db.execute_query("""
+            SELECT SUM(enty_values_DR) - SUM(enty_values_CR) as bal
+            FROM entry_details
+            WHERE account_name = %s AND entry_Rec = 1 AND entry_deleted = 0
+        """, (bank_account,))
+        opening_balance = float(op_res[0]['bal'] or 0) if op_res else 0
+    except Exception:
+        opening_balance = 0
+
+    wb, ws = xl.new_workbook('Bank Reconciliation')
+    ncols = 5
+    row = xl.title_block(ws, ncols, _company_display_name(),
+                         'BANK RECONCILIATION — WORKING PAPER',
+                         f'{bank_account}  ·  As at {rec_date}')
+
+    row = xl.section_row(ws, row, ncols, 'UNCLEARED DEPOSITS / RECEIPTS', color=xl.GREEN_DARK, bg='EAF6EA')
+    row = xl.header_row(ws, row, ['ID', 'Eff. Date', 'Description', 'Cheque No', 'Amount'])
+    dep_total = 0.0
+    for d in deposits:
+        amt = float(d['enty_values_DR'] or 0)
+        dep_total += amt
+        row = xl.data_row(ws, row,
+                          [d['id'], str(d['entry_effective_date']) if d['entry_effective_date'] else '',
+                           d['entry_naration'] or '', d['bank_book_chque_no'] or '-', amt],
+                          num_cols=(5,))
+    row = xl.total_row(ws, row, f'Deposits Total ({len(deposits)})', [0, 0, 0, dep_total], bg='EAF6EA', color=xl.GREEN_DARK)
+    for col in (2, 3, 4):
+        ws.cell(row=row - 1, column=col).value = None
+    row += 2
+
+    row = xl.section_row(ws, row, ncols, 'UNCLEARED PAYMENTS', color=xl.RED_DARK, bg='FDEDEC')
+    row = xl.header_row(ws, row, ['ID', 'Eff. Date', 'Description', 'Cheque No', 'Amount'])
+    pay_total = 0.0
+    for p in payments:
+        amt = float(p['enty_values_CR'] or 0)
+        pay_total += amt
+        row = xl.data_row(ws, row,
+                          [p['id'], str(p['entry_effective_date']) if p['entry_effective_date'] else '',
+                           p['entry_naration'] or '', p['bank_book_chque_no'] or '-', amt],
+                          num_cols=(5,))
+    row = xl.total_row(ws, row, f'Payments Total ({len(payments)})', [0, 0, 0, pay_total], bg='FDEDEC', color=xl.RED_DARK)
+    for col in (2, 3, 4):
+        ws.cell(row=row - 1, column=col).value = None
+    row += 2
+
+    row = xl.section_row(ws, row, ncols, 'SUMMARY', color=xl.BLUE_DARK, bg='E3F2FD')
+    row = xl.item_row(ws, row, 'Opening Balance (already reconciled)', [opening_balance])
+    row = xl.item_row(ws, row, 'Uncleared Deposits (above)', [dep_total])
+    row = xl.item_row(ws, row, 'Uncleared Payments (above)', [-pay_total])
+    row = xl.total_row(ws, row, 'Book Balance', [book_balance], bg='F3F3F3', color='1A1A2E', size=11)
+    if statement_balance:
+        row = xl.item_row(ws, row, 'Statement Balance (entered)', [statement_balance])
+        row = xl.total_row(ws, row, 'Difference (Book − Statement)', [book_balance - statement_balance],
+                           bg='FFF8E1', color='8A6D00', size=11)
+
+    xl.finish(ws, ncols, first_col_width=10, num_col_width=16)
+    ws.column_dimensions['C'].width = 42
+    ws.column_dimensions['D'].width = 16
+
+    safe_acc = str(bank_account).replace(' ', '_').replace('/', '-')[:30]
+    fname = f'BankReconciliation_{safe_acc}_{rec_date}.xlsx'
+    return xl.workbook_response(wb, fname)
+
+
 @app.route('/bank_reconciliation/process', methods=['POST'])
 @login_required
 def process_reconciliation():
