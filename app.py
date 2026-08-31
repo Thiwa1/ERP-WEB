@@ -16141,29 +16141,44 @@ def save_journal_entry():
 
     return redirect(url_for('journal_entry'))
 
-@app.route('/journal_entry/history')
-@login_required
-def journal_entry_history():
-    from_date   = request.args.get('from', '').strip()
-    to_date     = request.args.get('to', '').strip()
-    search      = request.args.get('search', '').strip()      # account or narration
-    jv_q        = request.args.get('jv', '').strip()
-    amount_min  = request.args.get('amount_min', '').strip()
-    amount_max  = request.args.get('amount_max', '').strip()
-    dr_cr       = request.args.get('dr_cr', '').strip()
+def _journal_entry_history_filters():
+    """Read + validate the History filter querystring shared by the JSON
+    endpoint and the Excel export, so both always agree on what's included."""
+    return {
+        'from_date':  request.args.get('from', '').strip(),
+        'to_date':    request.args.get('to', '').strip(),
+        'search':     request.args.get('search', '').strip(),
+        'jv_q':       request.args.get('jv', '').strip(),
+        'amount_min': request.args.get('amount_min', '').strip(),
+        'amount_max': request.args.get('amount_max', '').strip(),
+        'dr_cr':      request.args.get('dr_cr', '').strip(),
+    }
 
-    # Scope this history to JVs actually submitted from THIS window (manual
-    # Journal Entry). jv_user_code here is a free-text code the user types in
-    # the form, but every other module stamps its own fixed/prefixed code
-    # (or the numeric user id) when it posts a JV — so excluding those known
-    # patterns is what's left is genuinely manual journal entries, instead of
-    # this history dumping every JV in the whole system (GRN, Service Entry,
-    # Payments, POS, reversals, opening balances, etc.).
-    # NOTE: earlier this excluded purely-numeric jv_user_code values too (some
-    # other modules stamp the current user's numeric id as the code), but that
-    # risked hiding genuine manual entries if this account's own JV-code habit
-    # is also plain numbers — pulled back out to only the unambiguous,
-    # exact/prefix system codes below.
+
+def _journal_entry_history_rows(from_date, to_date, search, jv_q, amount_min, amount_max, dr_cr):
+    """Shared query behind both the History JSON endpoint and its Excel
+    export — keeps their filtering and scoping identical.
+
+    Scopes history to JVs actually submitted from THIS window (manual
+    Journal Entry). jv_user_code here is a free-text code the user types in
+    the form, but every other module stamps its own fixed/prefixed code
+    (or the numeric user id) when it posts a JV — so excluding those known
+    patterns is what's left is genuinely manual journal entries, instead of
+    this history dumping every JV in the whole system (GRN, Service Entry,
+    Payments, POS, reversals, opening balances, etc.).
+    NOTE: earlier this excluded purely-numeric jv_user_code values too (some
+    other modules stamp the current user's numeric id as the code), but that
+    risked hiding genuine manual entries if this account's own JV-code habit
+    is also plain numbers — pulled back out to only the unambiguous,
+    exact/prefix system codes below.
+
+    Returns (data, total_dr, total_cr, has_filter) — has_filter is False
+    when no filter was supplied at all, meaning callers should refuse to
+    dump the whole ledger unbounded.
+    """
+    if not (from_date or to_date or search or jv_q or amount_min or amount_max or dr_cr):
+        return [], 0.0, 0.0, False
+
     filters = [
         'ed.entry_deleted = 0',
         "jv.jv_user_code NOT LIKE 'REV-%'",
@@ -16198,10 +16213,6 @@ def journal_entry_history():
     elif dr_cr == 'cr':
         filters.append('ed.enty_values_CR > 0')
 
-    # Require at least one filter so we never dump the whole ledger unbounded
-    if not (from_date or to_date or search or jv_q or amount_min or amount_max or dr_cr):
-        return json.dumps([])
-
     where = ' AND '.join(filters)
     query = f"""
         SELECT
@@ -16214,7 +16225,7 @@ def journal_entry_history():
         ORDER BY ed.entry_jv DESC, ed.id ASC
         LIMIT 1000
     """
-    rows = db.execute_query(query, tuple(params))
+    rows = db.execute_query(query, tuple(params)) or []
 
     data = []
     for r in rows:
@@ -16228,7 +16239,78 @@ def journal_entry_history():
             'is_reversal': str(r.get('jv_user_code') or '').startswith('REV-JV-')
         })
 
+    total_dr = sum(d['dr'] for d in data)
+    total_cr = sum(d['cr'] for d in data)
+    return data, total_dr, total_cr, True
+
+
+@app.route('/journal_entry/history')
+@login_required
+def journal_entry_history():
+    f = _journal_entry_history_filters()
+    data, _total_dr, _total_cr, has_filter = _journal_entry_history_rows(
+        f['from_date'], f['to_date'], f['search'], f['jv_q'],
+        f['amount_min'], f['amount_max'], f['dr_cr'])
+    if not has_filter:
+        return json.dumps([])
     return json.dumps(data)
+
+
+@app.route('/journal_entry/export_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def journal_entry_history_export_xlsx():
+    """Styled Excel export of the Journal Entry History grid, honoring
+    whatever Search / JV / Date / Amount / Type filters are currently
+    applied — same filtering as the on-screen History list."""
+    f = _journal_entry_history_filters()
+
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('journal_entry'))
+
+    data, total_dr, total_cr, has_filter = _journal_entry_history_rows(
+        f['from_date'], f['to_date'], f['search'], f['jv_q'],
+        f['amount_min'], f['amount_max'], f['dr_cr'])
+    if not has_filter:
+        flash('Set at least one History filter (date range, search, JV, or amount) before exporting.', 'warning')
+        return redirect(url_for('journal_entry'))
+
+    subtitle_bits = []
+    if f['from_date'] or f['to_date']:
+        subtitle_bits.append(f"{f['from_date'] or '…'} to {f['to_date'] or '…'}")
+    if f['search']: subtitle_bits.append(f"Search: {f['search']}")
+    if f['jv_q']: subtitle_bits.append(f"JV/Code: {f['jv_q']}")
+    if f['amount_min']: subtitle_bits.append(f"Min: {f['amount_min']}")
+    if f['amount_max']: subtitle_bits.append(f"Max: {f['amount_max']}")
+    if f['dr_cr'] == 'dr': subtitle_bits.append('Debit only')
+    elif f['dr_cr'] == 'cr': subtitle_bits.append('Credit only')
+    subtitle = ' · '.join(subtitle_bits) if subtitle_bits else 'Manual Journal Entries'
+
+    wb, ws = xl.new_workbook('JV History')
+    ncols = 6
+    row = xl.title_block(ws, ncols, _company_display_name(), 'JOURNAL ENTRY HISTORY', subtitle)
+    row = xl.header_row(ws, row, ['JV No', 'Date', 'Account', 'Narration', 'Debit', 'Credit'])
+    for r in data:
+        row = xl.data_row(ws, row,
+                          [r['jv_no'], r['date'], r['account'] or '-',
+                           ('Reversal — ' + (r['narration'] or '')) if r['is_reversal'] else (r['narration'] or ''),
+                           r['dr'], r['cr']],
+                          num_cols=(5, 6))
+    row = xl.total_row(ws, row, f'TOTAL — {len(data)} line(s)', [0, 0, 0, total_dr, total_cr],
+                       bg='EAF6EA', color=xl.GREEN_DARK, size=11)
+    for col in (2, 3, 4):
+        ws.cell(row=row - 1, column=col).value = None
+
+    xl.finish(ws, ncols, first_col_width=12, num_col_width=16)
+    ws.column_dimensions['B'].width = 14
+    ws.column_dimensions['C'].width = 28
+    ws.column_dimensions['D'].width = 34
+
+    fname = f'JournalEntryHistory_{date.today().strftime("%Y%m%d")}.xlsx'
+    return xl.workbook_response(wb, fname)
 
 
 @app.route('/journal_entry/view/<int:jv_no>')

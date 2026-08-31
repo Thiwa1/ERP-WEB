@@ -1,6 +1,18 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+  /* Clearer, more legible Uncleared Deposits / Uncleared Payments grids —
+     roomier row padding, a readable header, gentle zebra striping, and a
+     scroll area that scrolls both ways instead of clipping wide rows. */
+  .brec-card-body { max-height: 340px; overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable; }
+  .brec-table { font-size: .86rem; }
+  .brec-table thead th { padding: .65rem .9rem; font-size: .72rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .4px; color: #495057; white-space: nowrap; }
+  .brec-table tbody td { padding: .6rem .9rem; vertical-align: middle; }
+  .brec-table tbody tr:nth-child(even) { background: #fafbfc; }
+  .brec-table tbody small { font-size: .82rem; }
+</style>
 <div class="container-fluid">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2 class="mb-0">Bank Reconciliation</h2>
@@ -62,8 +74,8 @@
                             <span class="badge bg-light text-success" id="clearedDepositsCount">0 Selected</span>
                         </span>
                     </div>
-                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0">
+                    <div class="card-body p-0 brec-card-body">
+                        <table class="table table-sm table-hover mb-0 brec-table">
                             <thead class="table-light sticky-top">
                                 <tr>
                                     <th class="text-center" style="width: 60px;">Clear</th>
@@ -113,8 +125,8 @@
                             <span class="badge bg-light text-danger" id="clearedPaymentsCount">0 Selected</span>
                         </span>
                     </div>
-                    <div class="card-body p-0" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm table-hover mb-0">
+                    <div class="card-body p-0 brec-card-body">
+                        <table class="table table-sm table-hover mb-0 brec-table">
                             <thead class="table-light sticky-top">
                                 <tr>
                                     <th class="text-center" style="width: 60px;">Clear</th>

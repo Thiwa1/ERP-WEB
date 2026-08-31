@@ -155,7 +155,11 @@
                 <span style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
                     <i class="fas fa-history me-1"></i> Journal Entry History
                 </span>
-                <a href="/fix_reversal_dates" class="ms-auto" title="Re-date old reversals onto their original effective date"
+                <button type="button" class="btn btn-sm btn-outline-success ms-auto me-3" onclick="exportHistoryXlsx()"
+                        title="Export the current History filter results to Excel">
+                    <i class="fas fa-file-excel me-1"></i> Export Excel
+                </button>
+                <a href="/fix_reversal_dates" title="Re-date old reversals onto their original effective date"
                    style="font-size:.72rem;font-weight:600;color:#D67E1A;text-decoration:none;">
                     <i class="fas fa-calendar-check me-1"></i> Fix Reversal Dates
                 </a>
@@ -344,6 +348,9 @@
 
         // 1. Handle Sub Accounts
         const subSelect = row.querySelector(`select[name^="sub_account_"]`);
+        // Tear down any searchable dropdown left over from a previous account
+        // on this row before we wipe the <option> list out from under it.
+        if ($(subSelect).hasClass('select2-hidden-accessible')) { $(subSelect).select2('destroy'); }
         subSelect.innerHTML = '<option value="">-</option>';
         subSelect.disabled = true;
 
@@ -358,6 +365,16 @@
                         opt.value = `${item.code} - ${item.name}`;
                         opt.text = item.name;
                         subSelect.add(opt);
+                    });
+                    // Make the sub-account list searchable — it can get long,
+                    // so always show the search box even for a short list.
+                    $(subSelect).select2({
+                        theme: 'bootstrap-5',
+                        width: '100%',
+                        dropdownParent: $(subSelect).closest('td'),
+                        placeholder: 'Select sub account…',
+                        allowClear: true,
+                        minimumResultsForSearch: 0
                     });
                 }
             });
@@ -545,7 +562,7 @@
                 data.forEach(row => {
                     const reverseCtl = row.is_reversal
                         ? `<span class="badge" style="background:#fef3c7;color:#92400e;font-size:.68rem;font-weight:700;" title="Reversal entries cannot be reversed again">Reversal</span>`
-                        : `<button class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>`;
+                        : `<button id="revBtn${row.jv_no}" class="btn btn-sm btn-outline-warning py-0" onclick="reverseJV(${row.jv_no})">Reverse</button>`;
                     // Edit (date / narration) — amounts and accounts stay locked; reversals excluded
                     const narrEsc = JSON.stringify(row.narration || '').replace(/'/g, '&#39;').replace(/</g, '\\u003c');
                     const editCtl = row.is_reversal ? '' :
@@ -581,23 +598,58 @@
             });
     }
 
-    function reverseJV(jvNo) {
-        if(confirm(`Reverse JV ${jvNo}?`)) {
-            fetch('/journal_entry/reverse', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-                body: `jv_no=${jvNo}`
-            })
-            .then(r => r.json())
-            .then(res => {
-                if(res.success) {
-                    alert('Reversed successfully');
-                    loadHistory();
-                } else {
-                    alert('Error: ' + res.error);
-                }
-            });
+    function exportHistoryXlsx() {
+        const p = new URLSearchParams({
+            from:       document.getElementById('histFromDate').value,
+            to:         document.getElementById('histToDate').value,
+            search:     document.getElementById('histSearch').value,
+            jv:         document.getElementById('histJv').value,
+            amount_min: document.getElementById('histAmtMin').value,
+            amount_max: document.getElementById('histAmtMax').value,
+            dr_cr:      document.getElementById('histDrCr').value
+        });
+        const hasFilter = [...p.values()].some(v => v !== '');
+        if (!hasFilter) {
+            alert('Set at least one filter (Search, JV/Code, Date range, or Amount) before exporting.');
+            return;
         }
+        window.location.href = `/journal_entry/export_xlsx?${p.toString()}`;
+    }
+
+    function reverseJV(jvNo) {
+        if(!confirm(`Reverse JV ${jvNo}?`)) return;
+
+        const btn = document.getElementById('revBtn' + jvNo);
+        const originalHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Reversing…';
+        }
+
+        fetch('/journal_entry/reverse', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `jv_no=${jvNo}`
+        })
+        .then(r => {
+            if (!r.ok) throw new Error(`Server returned ${r.status}`);
+            return r.json();
+        })
+        .then(res => {
+            if(res.success) {
+                alert('Reversed successfully');
+                loadHistory();
+                // loadHistory() rebuilds the row (and the button) from scratch,
+                // so no need to restore this button on the success path.
+            } else {
+                alert('Error: ' + res.error);
+                if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+            }
+        })
+        .catch(err => {
+            alert('Could not reverse this JV (' + err.message + '). Please try again.');
+            if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+        });
     }
 
     window.onload = function() {
