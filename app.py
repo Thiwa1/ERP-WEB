@@ -3706,41 +3706,89 @@ def bank_statement_analysis():
                 return redirect(url_for('bulk_upload_gl'))
 
     try:
-        # Parse extracted text for transactions (Date, Description, Amount)
-        # We look for simple patterns: Date (05JAN26), Desc, Amount (142,739.00)
+        # Parse extracted text for transactions (Date, Description, Amount).
+        #
+        # Real bank statements (e.g. Sampath Bank / Sri Lanka style) print one
+        # line per transaction as:
+        #   03Aug SAMPATH TFRC/CARD5009519   20,016.26   933,240.70Cr
+        #   <day><3-letter month>  <particulars>  <amount>  <running balance><Cr|Dr>
+        # and print opening/closing balance lines with the year attached and
+        # only ONE amount (no separate transaction amount):
+        #   03Aug2026 B/F 913,224.44Cr
+        #   31Aug2026 C/F 453,124.28Cr
+        # There is no "deposit"/"withdrawal" column and no reliable keyword to
+        # tell receipts from payments — instead we track the running balance
+        # and infer the type from whether it went up (Receipt) or down
+        # (Payment) versus the previous line.
+        month_map = {'jan': 1, 'feb': 2, 'mar': 3, 'apr': 4, 'may': 5, 'jun': 6,
+                     'jul': 7, 'aug': 8, 'sep': 9, 'oct': 10, 'nov': 11, 'dec': 12}
+
+        # Balance/brought-forward lines: "<day><Mon><yyyy> B/F|C/F <balance><Cr|Dr>"
+        bf_cf_re = re.compile(
+            r'^(\d{1,2})([A-Za-z]{3})(\d{4})\s+(?:B/F|C/F)\s+([\d,]+\.\d{2})\s*(Cr|Dr)\s*$',
+            re.IGNORECASE)
+        # Normal transaction lines: "<day><Mon> <particulars> <amount> <balance><Cr|Dr>"
+        txn_re = re.compile(
+            r'^(\d{1,2})([A-Za-z]{3})\s+(.+?)\s+([\d,]+\.\d{2})\s+([\d,]+\.\d{2})\s*(Cr|Dr)\s*$',
+            re.IGNORECASE)
+        # Fallback default year, e.g. from a "...From 01/08/2026 To 31/08/2026" header.
+        year_hdr = re.search(r'From\s+\d{1,2}[/-]\d{1,2}[/-](\d{4})', text, re.IGNORECASE)
+        default_year = int(year_hdr.group(1)) if year_hdr else datetime.now().year
+
+        def to_signed_balance(bal_str, sign):
+            bal = float(bal_str.replace(',', ''))
+            return -bal if sign.lower() == 'dr' else bal
+
         transactions = []
+        month_year = {}   # month number -> year, learned from B/F / C/F lines
+        prev_balance = None
 
-        # Regex to catch typical bank statement rows
-        # E.g. "05JAN26 CHEQUE NO000025775 142,739.00"
-        # Or "09JAN26 TRANSFER CHQ 567127 200,000.00"
-        lines = text.split('\n')
-        for line in lines:
-            # Look for a date at the start (e.g. DDMMM YY)
-            match = re.search(r"(\d{2}[A-Za-z]{3}\d{2})\s+(.*?)\s+([\d,]+\.\d{2})", line)
-            if match:
-                date_str = match.group(1).strip()
-                desc = match.group(2).strip()
-                amount_str = match.group(3).replace(',', '').strip()
+        for raw_line in text.split('\n'):
+            line = raw_line.strip()
+            if not line:
+                continue
 
-                try:
-                    amount = float(amount_str)
+            m = bf_cf_re.match(line)
+            if m:
+                mon_key = m.group(2).lower()
+                if mon_key in month_map:
+                    month_year[month_map[mon_key]] = int(m.group(3))
+                prev_balance = to_signed_balance(m.group(4), m.group(5))
+                continue
 
-                    # Guess Type based on keywords (Very basic heuristic)
-                    # For a real system, you'd match against the 'DEPOSIT' column vs 'WITHDRAWAL' column,
-                    # but here we use simple text heuristics or assume everything is a payment unless 'DEPOSIT'
-                    if 'DEPOSIT' in desc.upper() or 'RECEIPT' in desc.upper():
-                        txn_type = 'Receipt'
-                    else:
-                        txn_type = 'Payment'
+            m = txn_re.match(line)
+            if not m:
+                continue
+            day_str, mon_str, desc, amount_str, balance_str, sign = m.groups()
+            mon_key = mon_str.lower()
+            if mon_key not in month_map:
+                continue
+            month_num = month_map[mon_key]
+            year_num = month_year.get(month_num, default_year)
+            try:
+                txn_date = datetime(year_num, month_num, int(day_str))
+            except ValueError:
+                continue
+            try:
+                amount = float(amount_str.replace(',', ''))
+            except ValueError:
+                continue
+            balance = to_signed_balance(balance_str, sign)
 
-                    transactions.append({
-                        'date': date_str,
-                        'description': desc,
-                        'amount': amount,
-                        'type': txn_type
-                    })
-                except ValueError:
-                    continue
+            if prev_balance is None:
+                # No B/F line seen yet to anchor direction — default to Payment,
+                # the more conservative guess (won't misfile money as received).
+                txn_type = 'Payment'
+            else:
+                txn_type = 'Receipt' if balance > prev_balance else 'Payment'
+            prev_balance = balance
+
+            transactions.append({
+                'date': txn_date.strftime('%Y-%m-%d'),
+                'description': desc.strip(),
+                'amount': amount,
+                'type': txn_type
+            })
 
         if not transactions:
             flash('Could not cleanly extract transactions. Please try a clearer image.', 'warning')
