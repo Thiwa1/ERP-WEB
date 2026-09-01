@@ -91,19 +91,19 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end" style="border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:200px;padding:.5rem;">
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/customer_receipt?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/customer_receipt?amount={{ row.amount }}&ref={{ row.description|urlencode }}&date={{ row.date }}" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-receipt" style="color:#107C10;width:16px;"></i> Customer Receipt
                                             </a>
                                         </li>
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=receipt" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description|urlencode }}&date={{ row.date }}&type=receipt" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-book" style="color:#0078D4;width:16px;"></i> Journal Entry (JV)
                                             </a>
                                         </li>
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/invoice_creating?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/invoice_creating?amount={{ row.amount }}&ref={{ row.description|urlencode }}" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-file-invoice-dollar" style="color:#008B8B;width:16px;"></i> Sales Invoice
                                             </a>
@@ -124,25 +124,25 @@
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end" style="border-radius:10px;border:1px solid #e2e8f0;box-shadow:0 4px 16px rgba(0,0,0,.1);min-width:210px;padding:.5rem;">
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/bank_payment?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/bank_payment?amount={{ row.amount }}&ref={{ row.description|urlencode }}&date={{ row.date }}" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-university" style="color:#DC3545;width:16px;"></i> Supplier / Bank Payment
                                             </a>
                                         </li>
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/direct_purchasing?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/direct_purchasing?amount={{ row.amount }}&ref={{ row.description|urlencode }}&date={{ row.date }}" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-hand-holding-usd" style="color:#856404;width:16px;"></i> Direct Purchase
                                             </a>
                                         </li>
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description }}&date={{ row.date }}&type=payment" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/journal_entry?amount={{ row.amount }}&ref={{ row.description|urlencode }}&date={{ row.date }}&type=payment" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-book" style="color:#0078D4;width:16px;"></i> Journal Entry (JV)
                                             </a>
                                         </li>
                                         <li>
-                                            <a class="dropdown-item rounded-2" href="/service_entry?amount={{ row.amount }}&ref={{ row.description }}" target="_blank"
+                                            <a class="dropdown-item rounded-2" href="/service_entry?amount={{ row.amount }}&ref={{ row.description|urlencode }}" target="_blank"
                                                style="font-size:.82rem;padding:.5rem .75rem;display:flex;align-items:center;gap:.5rem;">
                                                 <i class="fas fa-file-invoice" style="color:#605E5C;width:16px;"></i> Service Entry (SRN)
                                             </a>

@@ -662,7 +662,57 @@
 
     window.onload = function() {
         addRow();
+        prefillFromQuery();
     };
+
+    // Coming here from the Bank Statement Review page's "Journal Entry (JV)"
+    // action link passes ?amount=...&ref=...&date=...&type=receipt|payment —
+    // carry that straight into the form instead of leaving it blank, so the
+    // user only has to pick the two accounts and save.
+    function prefillFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const amount = parseFloat(params.get('amount'));
+        const ref = params.get('ref') || '';
+        const dateParam = params.get('date');
+        const type = params.get('type'); // 'receipt' or 'payment'
+
+        if (!amount && !ref && !dateParam) return;
+
+        if (dateParam) {
+            const dateInput = document.querySelector('input[name="entry_date"]');
+            if (dateInput) dateInput.value = dateParam;
+        }
+        if (ref) {
+            const narrInput = document.querySelector('input[name="main_narration"]');
+            if (narrInput) narrInput.value = ref;
+        }
+
+        if (!isNaN(amount) && amount > 0) {
+            addRow(); // second line for the contra account
+            const rows = document.querySelectorAll('#journalTable tbody tr');
+            const row1 = rows[0];
+            const row2 = rows[1];
+            const amtStr = amount.toFixed(2);
+
+            if (type === 'payment') {
+                row1.querySelector('.cr-input').value = amtStr;
+                row2.querySelector('.dr-input').value = amtStr;
+            } else {
+                // receipt (or unspecified) — money in, so debit the bank line
+                row1.querySelector('.dr-input').value = amtStr;
+                row2.querySelector('.cr-input').value = amtStr;
+            }
+
+            if (ref) {
+                row1.querySelector('[name^="narration_"]').value = ref;
+                row2.querySelector('[name^="narration_"]').value = ref;
+            }
+
+            calculateTotals();
+        }
+
+        showStatus('Prefilled from Bank Statement — select the account for each line, then Save.', 'info');
+    }
 
     // ── JV View modal — a quick on-screen look at one JV's lines, without
     // leaving the page or opening the print-styled report. ──
