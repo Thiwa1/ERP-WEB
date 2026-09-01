@@ -6,7 +6,8 @@
      visible gridlines on every cell, a compact Excel-like row height,
      monospace numbers/JV codes, a frozen header, and both-way scrolling so
      nothing gets clipped. */
-  .brec-card-body { max-height: 340px; overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable; }
+  .brec-card-body { max-height: 560px; overflow-y: auto; overflow-x: auto; scrollbar-gutter: stable; }
+  .brec-search { border-bottom: 1px solid #eef0f2; background: #fbfbfc; padding: .5rem .75rem; }
   .brec-table { font-size: .8rem; border-collapse: collapse; }
   .brec-table th, .brec-table td { border: 1px solid #d3d6db !important; }
   .brec-table thead th { padding: .28rem .55rem; font-size: .68rem; font-weight: 700; text-transform: uppercase;
@@ -67,6 +68,8 @@
         <div class="row">
             <!-- Left Side: Grids -->
             <div class="col-md-8">
+            <div class="row">
+            <div class="col-md-6">
                 <!-- Deposits -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-success text-white fw-bold d-flex justify-content-between align-items-center">
@@ -76,6 +79,11 @@
                             <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('deposit', false)">None</button>
                             <span class="badge bg-light text-success" id="clearedDepositsCount">0 Selected</span>
                         </span>
+                    </div>
+                    <div class="brec-search">
+                        <input type="text" class="form-control form-control-sm no-select2" id="depositsSearch"
+                               placeholder="Search deposits… (ID, JV, description, cheque no, amount)"
+                               oninput="filterBrecRows('depositsSearch', 'depositsTbody')" style="border-radius:8px;font-size:.8rem;">
                     </div>
                     <div class="card-body p-0 brec-card-body">
                         <table class="table table-sm table-hover mb-0 brec-table">
@@ -91,7 +99,7 @@
                                     <th class="text-center" style="width: 44px;">View</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="depositsTbody">
                                 {% for item in deposits %}
                                 <tr>
                                     <td class="text-center align-middle">
@@ -113,10 +121,11 @@
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
                                     <td class="text-end fw-bold align-middle mono-cell">{{ item.enty_values_DR|currency }}</td>
                                     <td class="text-center align-middle">
-                                        <button type="button" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
-                                                title="View this JV" onclick="openJvView({{ item.entry_jv }})">
+                                        <a href="/journal_entry/print/{{ item.entry_jv }}" target="_blank"
+                                           class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
+                                           title="View this JV (opens in a new tab)">
                                             <i class="fas fa-eye"></i>
-                                        </button>
+                                        </a>
                                     </td>
                                 </tr>
                                 {% else %}
@@ -126,7 +135,9 @@
                         </table>
                     </div>
                 </div>
+            </div>
 
+            <div class="col-md-6">
                 <!-- Payments -->
                 <div class="card shadow-sm mb-4">
                     <div class="card-header bg-danger text-white fw-bold d-flex justify-content-between align-items-center">
@@ -136,6 +147,11 @@
                             <button type="button" class="btn btn-sm btn-outline-light py-0 px-2" style="font-size:.72rem;" onclick="toggleAll('payment', false)">None</button>
                             <span class="badge bg-light text-danger" id="clearedPaymentsCount">0 Selected</span>
                         </span>
+                    </div>
+                    <div class="brec-search">
+                        <input type="text" class="form-control form-control-sm no-select2" id="paymentsSearch"
+                               placeholder="Search payments… (ID, JV, description, cheque no, amount)"
+                               oninput="filterBrecRows('paymentsSearch', 'paymentsTbody')" style="border-radius:8px;font-size:.8rem;">
                     </div>
                     <div class="card-body p-0 brec-card-body">
                         <table class="table table-sm table-hover mb-0 brec-table">
@@ -151,7 +167,7 @@
                                     <th class="text-center" style="width: 44px;">View</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="paymentsTbody">
                                 {% for item in payments %}
                                 <tr>
                                     <td class="text-center align-middle">
@@ -173,10 +189,11 @@
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
                                     <td class="text-end fw-bold align-middle mono-cell">{{ item.enty_values_CR|currency }}</td>
                                     <td class="text-center align-middle">
-                                        <button type="button" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
-                                                title="View this JV" onclick="openJvView({{ item.entry_jv }})">
+                                        <a href="/journal_entry/print/{{ item.entry_jv }}" target="_blank"
+                                           class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
+                                           title="View this JV (opens in a new tab)">
                                             <i class="fas fa-eye"></i>
-                                        </button>
+                                        </a>
                                     </td>
                                 </tr>
                                 {% else %}
@@ -186,6 +203,8 @@
                         </table>
                     </div>
                 </div>
+            </div>
+            </div>
             </div>
 
             <!-- Right Side: Summary -->
@@ -436,82 +455,17 @@
         }
     });
 
-    // ── JV View modal — a quick on-screen look at one JV's lines for a
-    // deposit/payment row, without leaving this page. Reuses the same
-    // /journal_entry/view/<jv_no> endpoint the Journal Entry screen uses —
-    // it works for any JV regardless of which module posted it. ──
-    function openJvView(jvNo) {
-        const body = document.getElementById('jvViewBody');
-        document.getElementById('jvViewTitle').textContent = 'JV ' + jvNo;
-        body.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
-        new bootstrap.Modal(document.getElementById('jvViewModal')).show();
-
-        fetch(`/journal_entry/view/${jvNo}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.error) {
-                    body.innerHTML = `<div class="text-center text-danger py-4">${data.error}</div>`;
-                    return;
-                }
-                let rows = data.lines.map(l => `
-                    <tr>
-                        <td style="padding:.5rem .75rem;">${l.account}</td>
-                        <td style="padding:.5rem .75rem;">${l.narration || '-'}</td>
-                        <td style="padding:.5rem .75rem;">${l.job || '-'}</td>
-                        <td class="text-end font-monospace" style="padding:.5rem .75rem;">${l.dr ? formatter.format(l.dr) : ''}</td>
-                        <td class="text-end font-monospace" style="padding:.5rem .75rem;">${l.cr ? formatter.format(l.cr) : ''}</td>
-                    </tr>
-                `).join('');
-                body.innerHTML = `
-                    <div class="row g-2 mb-3" style="font-size:.85rem;">
-                        <div class="col-6"><span class="text-muted">JV Code:</span> <strong>${data.user_code || '-'}</strong></div>
-                        <div class="col-6"><span class="text-muted">Date:</span> <strong>${data.date || '-'}</strong></div>
-                        <div class="col-12"><span class="text-muted">Narration:</span> ${data.narration || '-'}</div>
-                    </div>
-                    <div class="table-responsive" style="border:1px solid #f0f2f5;border-radius:8px;">
-                        <table class="table table-sm mb-0">
-                            <thead>
-                                <tr style="background:#f8f9fa;">
-                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Account</th>
-                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Narration</th>
-                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Job</th>
-                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Debit</th>
-                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Credit</th>
-                                </tr>
-                            </thead>
-                            <tbody>${rows}</tbody>
-                            <tfoot>
-                                <tr style="background:#f8f9fa;font-weight:700;">
-                                    <td colspan="3" style="padding:.5rem .75rem;">Total</td>
-                                    <td class="text-end font-monospace" style="padding:.5rem .75rem;">${formatter.format(data.total_dr)}</td>
-                                    <td class="text-end font-monospace" style="padding:.5rem .75rem;">${formatter.format(data.total_cr)}</td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
-                `;
-            })
-            .catch(() => { body.innerHTML = '<div class="text-center text-danger py-4">Could not load this JV.</div>'; });
+    // ── Per-table quick search — filters the Deposits / Payments grids
+    // client-side as you type (matches ID, JV No, date, description, cheque
+    // no, amount — anything visible in the row). Rows stay in the DOM just
+    // hidden, so checkbox selection/totals keep working normally even while
+    // a filter is active. ──
+    function filterBrecRows(inputId, tbodyId) {
+        const q = document.getElementById(inputId).value.trim().toLowerCase();
+        document.querySelectorAll('#' + tbodyId + ' > tr').forEach(function(tr) {
+            if (!q) { tr.style.display = ''; return; }
+            tr.style.display = tr.innerText.toLowerCase().includes(q) ? '' : 'none';
+        });
     }
 </script>
-
-<!-- JV View Modal -->
-<div class="modal fade" id="jvViewModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-centered">
-    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
-      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#5c6bc0,#3949ab);">
-        <div class="d-flex align-items-center gap-2 text-white">
-          <i class="fas fa-eye"></i>
-          <h6 class="modal-title fw-bold mb-0" id="jvViewTitle">JV</h6>
-        </div>
-        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body p-4" id="jvViewBody"></div>
-      <div class="modal-footer border-0 px-4 pb-4 pt-0">
-        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
-                style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
