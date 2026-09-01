@@ -3648,16 +3648,24 @@ def bulk_upload_gl():
 @login_required
 @has_permission('Access_Accounting')
 def bank_statement_analysis():
-    if 'file' not in request.files:
-        flash('No file uploaded', 'danger')
-        return redirect(url_for('bulk_upload_gl'))
+    # If the browser already OCR'd the image (Tesseract.js runs client-side
+    # in bulk_upload_gl.html), use that text directly — no server-side OCR
+    # engine needed at all for this path, and the image is never handed to
+    # this server (or any third party) to read.
+    browser_text = (request.form.get('ocr_text') or '').strip()
 
-    file = request.files['file']
-    if file.filename == '':
-        flash('No file selected', 'danger')
-        return redirect(url_for('bulk_upload_gl'))
+    if browser_text:
+        text = browser_text
+    else:
+        if 'file' not in request.files:
+            flash('No file uploaded', 'danger')
+            return redirect(url_for('bulk_upload_gl'))
 
-    try:
+        file = request.files['file']
+        if file.filename == '':
+            flash('No file selected', 'danger')
+            return redirect(url_for('bulk_upload_gl'))
+
         try:
             text = ocr_image_bytes(file.read())
         except RuntimeError:
@@ -3666,7 +3674,15 @@ def bank_statement_analysis():
         except ImportError:
             flash("Error processing image: 'Pillow' is not installed. Install it with 'pip install Pillow'.", "danger")
             return redirect(url_for('bulk_upload_gl'))
+        except Exception as e:
+            logging.error(f"OCR Error: {e}")
+            if 'tesseract' in str(e).lower() or 'not found' in str(e).lower():
+                flash(_TESSERACT_HELP, 'danger')
+            else:
+                flash(f'Error processing image: {str(e)}', 'danger')
+            return redirect(url_for('bulk_upload_gl'))
 
+    try:
         # Parse extracted text for transactions (Date, Description, Amount)
         # We look for simple patterns: Date (05JAN26), Desc, Amount (142,739.00)
         transactions = []

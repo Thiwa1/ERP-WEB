@@ -52,7 +52,8 @@
       </div>
     </div>
     <div class="card-body p-4">
-      <form action="{{ url_for('bank_statement_analysis') }}" method="POST" enctype="multipart/form-data">
+      <form action="{{ url_for('bank_statement_analysis') }}" method="POST" enctype="multipart/form-data" id="bankStatementForm">
+        <input type="hidden" name="ocr_text" id="bsOcrText">
         <div class="text-center py-4" style="border:2px dashed #c7d0e0;border-radius:10px;background:#f8f9fc;transition:background .2s;"
           onmouseover="this.style.background='#eef1f9'" onmouseout="this.style.background='#f8f9fc'">
           <i class="fas fa-file-invoice-dollar fa-3x mb-3" style="color:#3949ab;"></i>
@@ -61,11 +62,12 @@
             Upload an image of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.
           </p>
           <div class="d-flex justify-content-center mt-3">
-            <input type="file" name="file" class="form-control" style="max-width:360px;border-radius:8px;" accept="image/png, image/jpeg, image/jpg" required>
+            <input type="file" name="file" id="bsFileInput" class="form-control" style="max-width:360px;border-radius:8px;" accept="image/png, image/jpeg, image/jpg" required>
           </div>
+          <div id="bsOcrStatus" class="small text-muted mt-2" style="display:none;max-width:480px;margin:0 auto;"></div>
         </div>
         <div class="text-center mt-4">
-          <button type="submit" style="border:2px solid var(--accent-color);border-radius:8px;font-weight:600;padding:.5rem 2rem;color:var(--accent-color);background:transparent;" class="btn">
+          <button type="submit" id="bsSubmitBtn" style="border:2px solid var(--accent-color);border-radius:8px;font-weight:600;padding:.5rem 2rem;color:var(--accent-color);background:transparent;" class="btn">
             <i class="fas fa-magic me-2"></i> Analyze Image
           </button>
         </div>
@@ -89,4 +91,66 @@
   </div>
 
 </div>
+
+<!-- Client-side OCR (Tesseract.js) for the Bank Statement Image Analysis
+     form above — reads the image in the browser so this works even when
+     the server has no OCR engine installed, and the raw image never has
+     to leave the user's computer. Falls back to a normal upload (letting
+     the server try its own OCR / show its usual message) if the library
+     fails to load or OCR errors out. -->
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+(function() {
+    const form = document.getElementById('bankStatementForm');
+    const fileInput = document.getElementById('bsFileInput');
+    const ocrTextField = document.getElementById('bsOcrText');
+    const statusEl = document.getElementById('bsOcrStatus');
+    const submitBtn = document.getElementById('bsSubmitBtn');
+    if (!form || !fileInput || !ocrTextField || !submitBtn) return;
+
+    form.addEventListener('submit', function(e) {
+        const file = fileInput.files[0];
+        if (!file) return; // let the browser's own "required" validation handle it
+
+        const fileKey = file.name + '|' + file.size;
+        // Already OCR'd this exact file (e.g. user resubmitted after fixing
+        // something else on the page) — just let it submit normally.
+        if (ocrTextField.value && ocrTextField.dataset.forFile === fileKey) {
+            return;
+        }
+        // Tesseract.js failed to load (offline CDN, blocked script, etc.) —
+        // fall back to the original flow: submit the file, server-side OCR
+        // (or its "no OCR available" message) takes over from there.
+        if (typeof Tesseract === 'undefined') return;
+
+        e.preventDefault();
+        const originalHtml = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        statusEl.style.display = 'block';
+        statusEl.textContent = 'Reading the image in your browser — this can take 10–30 seconds…';
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i> Reading image… 0%';
+
+        Tesseract.recognize(file, 'eng', {
+            logger: function(m) {
+                if (m.status === 'recognizing text' && typeof m.progress === 'number') {
+                    const pct = Math.round(m.progress * 100);
+                    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i> Reading image… ${pct}%`;
+                }
+            }
+        }).then(function(result) {
+            ocrTextField.value = (result && result.data && result.data.text) || '';
+            ocrTextField.dataset.forFile = fileKey;
+            statusEl.textContent = 'Done reading — submitting…';
+            submitBtn.innerHTML = originalHtml;
+            form.submit();
+        }).catch(function(err) {
+            console.error('Browser OCR failed, falling back to server-side OCR:', err);
+            statusEl.textContent = 'Could not read it in the browser — trying the server instead…';
+            submitBtn.innerHTML = originalHtml;
+            submitBtn.disabled = false;
+            form.submit();
+        });
+    });
+})();
+</script>
 {% endblock %}
