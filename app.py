@@ -2220,6 +2220,48 @@ def grn_view(jv_no):
                            vat_amount=round(vat_amount, 2), grand_total=grand_total, read_only=True)
 
 
+@app.route('/api/check_duplicate_invoice')
+@login_required
+def check_duplicate_invoice():
+    """Used by the GRN screen while typing the invoice number: tells it
+    whether this supplier already has an invoice on file under that same
+    number, so the user can jump straight to it (via grn_view) instead of
+    accidentally re-entering the same bill twice."""
+    supplier_name = (request.args.get('supplier') or '').strip()
+    invoice_no = (request.args.get('invoice_no') or '').strip()
+    exclude_jv = (request.args.get('exclude_jv') or '').strip()
+
+    if not supplier_name or not invoice_no:
+        return jsonify({'duplicate': False})
+
+    query = """
+        SELECT s.suppliers_invoice_JV AS jv, s.suppliers_invoice_date AS inv_date,
+               s.suppliers_invoice_total_oustanding AS amount
+        FROM suppliers_invoice_data s
+        JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE sup.supplier_name = %s
+          AND s.suppliers_invoice_number = %s
+          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+    """
+    params = [supplier_name, invoice_no]
+    if exclude_jv:
+        query += " AND s.suppliers_invoice_JV != %s"
+        params.append(exclude_jv)
+    query += " ORDER BY s.s_i_id DESC LIMIT 1"
+
+    row = db.execute_query(query, tuple(params))
+    if not row:
+        return jsonify({'duplicate': False})
+
+    r = row[0]
+    return jsonify({
+        'duplicate': True,
+        'jv': r['jv'],
+        'date': str(r['inv_date']) if r['inv_date'] else '',
+        'amount': float(r['amount'] or 0),
+    })
+
+
 @app.route('/api/inventory_items')
 @login_required
 def api_inventory_items():

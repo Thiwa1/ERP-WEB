@@ -119,7 +119,7 @@
                         <span class="section-label">Supplier Selection</span>
                         <div class="mb-3">
                             <label class="form-label">Supplier</label>
-                            <select class="form-select select2" name="supplier" id="supplierSelect" required onchange="applySupplierDefaultPaymentMethod()">
+                            <select class="form-select select2" name="supplier" id="supplierSelect" required onchange="applySupplierDefaultPaymentMethod(); checkDuplicateInvoice();">
                                 <option value="">Select Supplier</option>
                                 {% for sup in suppliers %}
                                 <option value="{{ sup.supplier_name }}" data-default-payment-method="{{ sup.suppliers_default_payment_method or '' }}" {% if edit_mode and prefill_supplier == sup.supplier_name %}selected{% endif %}>{{ sup.supplier_name }}</option>
@@ -215,8 +215,17 @@
                         <div class="row g-3 mb-3">
                             <div class="col-6">
                                 <label class="form-label">Invoice No</label>
-                                <input type="text" class="form-control" name="invoice_no" required placeholder="INV-0001"
-                                       value="{{ prefill_invoice_no if edit_mode else '' }}">
+                                <input type="text" class="form-control" name="invoice_no" id="invoiceNoInput" required placeholder="INV-0001"
+                                       value="{{ prefill_invoice_no if edit_mode else '' }}"
+                                       oninput="scheduleDuplicateInvoiceCheck()" onblur="checkDuplicateInvoice()">
+                                <div id="dupInvoiceWarning" style="display:none;margin-top:.4rem;padding:.5rem .7rem;border-radius:8px;
+                                     background:#fff4e5;border:1px solid #f5c98a;font-size:.8rem;color:#8a5300;">
+                                    <i class="fas fa-triangle-exclamation me-1"></i>
+                                    This supplier already has an invoice numbered <strong id="dupInvoiceNo"></strong>
+                                    (<span id="dupInvoiceDate"></span>, <span id="dupInvoiceAmount"></span>).
+                                    <a id="dupInvoiceLink" href="#" target="_blank" class="fw-bold" style="color:#8a5300;">View that invoice</a>
+                                    — check it isn't already recorded before saving this one.
+                                </div>
                             </div>
                             <div class="col-6">
                                 <label class="form-label">Date</label>
@@ -539,6 +548,50 @@
         if (def && (def === 'Cash' || def === 'Cheque')) {
             pmSelect.value = def;
         }
+    }
+
+    // ── Duplicate invoice number check — as soon as the supplier + invoice
+    // number are both filled in, ask the server whether this supplier
+    // already has an invoice on file with that number, and if so show a
+    // warning with a link to view it (opens in a new tab). Non-blocking —
+    // this just helps catch an accidental re-entry before saving. ──
+    const currentEditJv = {{ edit_jv if edit_mode else 'null' }};
+    let dupInvoiceTimer = null;
+
+    function scheduleDuplicateInvoiceCheck() {
+        clearTimeout(dupInvoiceTimer);
+        dupInvoiceTimer = setTimeout(checkDuplicateInvoice, 500);
+    }
+
+    function checkDuplicateInvoice() {
+        const supplier = document.getElementById('supplierSelect').value;
+        const invoiceNo = document.getElementById('invoiceNoInput').value.trim();
+        const warning = document.getElementById('dupInvoiceWarning');
+
+        if (!supplier || !invoiceNo) {
+            warning.style.display = 'none';
+            return;
+        }
+
+        const p = new URLSearchParams({ supplier: supplier, invoice_no: invoiceNo });
+        if (currentEditJv) p.set('exclude_jv', currentEditJv);
+
+        fetch(`/api/check_duplicate_invoice?${p.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.duplicate) {
+                    warning.style.display = 'none';
+                    return;
+                }
+                document.getElementById('dupInvoiceNo').textContent = invoiceNo;
+                document.getElementById('dupInvoiceDate').textContent = data.date || 'date unknown';
+                document.getElementById('dupInvoiceAmount').textContent = data.amount != null
+                    ? Number(data.amount).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})
+                    : '';
+                document.getElementById('dupInvoiceLink').href = `/grn/view/${data.jv}`;
+                warning.style.display = 'block';
+            })
+            .catch(() => { warning.style.display = 'none'; });
     }
 
     function loadPoDetails() {
