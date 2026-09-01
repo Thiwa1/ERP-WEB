@@ -217,33 +217,41 @@
             border-color: rgba(0, 0, 0, 0.15) !important;
         }
 
-        /* Tables */
+        /* Tables — Excel-style everywhere: visible gridlines on every cell
+           and a compact, spreadsheet-like row height, applied as the site
+           default so every table gets it without needing its own CSS.
+           A page with its own more specific table class (e.g. .brec-table,
+           .gp-table) simply overrides these via normal CSS specificity. */
         .table {
             --bs-table-bg: transparent;
             --bs-table-striped-bg: #faf9f8;
             --bs-table-hover-bg: #f3f2f1;
-            border-collapse: separate;
-            border-spacing: 0;
+            border-collapse: collapse;
             width: 100%;
             margin-bottom: 1rem;
             color: #201f1e;
+            font-size: 0.8rem;
+        }
+        .table th,
+        .table td {
+            border: 1px solid rgba(0,0,0,0.1) !important;
         }
         .table thead th {
-            border-bottom: 2px solid rgba(0,0,0,0.05) !important;
-            border-top: none !important;
-            background-color: #faf9f8 !important;
+            border-bottom: 2px solid rgba(0,0,0,0.15) !important;
+            background-color: #eef1f4 !important;
             color: #605e5c !important;
-            font-weight: 600 !important;
-            font-size: 0.85rem !important;
+            font-weight: 700 !important;
+            font-size: 0.68rem !important;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 12px 16px !important;
+            letter-spacing: 0.4px;
+            padding: 6px 10px !important;
+            white-space: nowrap;
         }
         .table tbody td {
-            border-bottom: 1px solid rgba(0,0,0,0.04) !important;
-            padding: 12px 16px !important;
+            padding: 5px 10px !important;
             vertical-align: middle;
-            font-size: 0.95rem;
+            font-size: 0.8rem;
+            line-height: 1.25;
         }
         /* Rounded corners for table wrappers */
         .table-responsive {
