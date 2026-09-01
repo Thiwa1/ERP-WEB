@@ -3666,21 +3666,44 @@ def bank_statement_analysis():
             flash('No file selected', 'danger')
             return redirect(url_for('bulk_upload_gl'))
 
-        try:
-            text = ocr_image_bytes(file.read())
-        except RuntimeError:
-            flash(_TESSERACT_HELP, 'danger')
-            return redirect(url_for('bulk_upload_gl'))
-        except ImportError:
-            flash("Error processing image: 'Pillow' is not installed. Install it with 'pip install Pillow'.", "danger")
-            return redirect(url_for('bulk_upload_gl'))
-        except Exception as e:
-            logging.error(f"OCR Error: {e}")
-            if 'tesseract' in str(e).lower() or 'not found' in str(e).lower():
+        raw_data = file.read()
+
+        if file.filename.lower().endswith('.pdf'):
+            # Text-based PDF — read directly via PyPDF2, no OCR engine needed
+            # at all (this is the "upload a PDF instead" tip in the OCR
+            # message: a text PDF has its content extracted straight away).
+            try:
+                import PyPDF2
+                reader = PyPDF2.PdfReader(io.BytesIO(raw_data))
+                text = ''
+                for page in reader.pages:
+                    t = page.extract_text()
+                    if t:
+                        text += t + '\n'
+            except Exception as e:
+                flash(f'Could not read this PDF: {str(e)}', 'danger')
+                return redirect(url_for('bulk_upload_gl'))
+            if not text.strip():
+                flash('No selectable text found in this PDF — it is likely a scanned image saved as a PDF, '
+                      'not a text PDF. Try exporting/photographing the page as a PNG or JPG image and '
+                      'uploading that instead (it will be read via OCR).', 'warning')
+                return redirect(url_for('bulk_upload_gl'))
+        else:
+            try:
+                text = ocr_image_bytes(raw_data)
+            except RuntimeError:
                 flash(_TESSERACT_HELP, 'danger')
-            else:
-                flash(f'Error processing image: {str(e)}', 'danger')
-            return redirect(url_for('bulk_upload_gl'))
+                return redirect(url_for('bulk_upload_gl'))
+            except ImportError:
+                flash("Error processing image: 'Pillow' is not installed. Install it with 'pip install Pillow'.", "danger")
+                return redirect(url_for('bulk_upload_gl'))
+            except Exception as e:
+                logging.error(f"OCR Error: {e}")
+                if 'tesseract' in str(e).lower() or 'not found' in str(e).lower():
+                    flash(_TESSERACT_HELP, 'danger')
+                else:
+                    flash(f'Error processing image: {str(e)}', 'danger')
+                return redirect(url_for('bulk_upload_gl'))
 
     try:
         # Parse extracted text for transactions (Date, Description, Amount)

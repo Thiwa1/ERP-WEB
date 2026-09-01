@@ -48,7 +48,7 @@
   <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
     <div class="px-4 pt-4 pb-2">
       <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">
-        <i class="fas fa-file-invoice-dollar me-1"></i> Bank Statement Image Analysis
+        <i class="fas fa-file-invoice-dollar me-1"></i> Bank Statement Image / PDF Analysis
       </div>
     </div>
     <div class="card-body p-4">
@@ -57,12 +57,13 @@
         <div class="text-center py-4" style="border:2px dashed #c7d0e0;border-radius:10px;background:#f8f9fc;transition:background .2s;"
           onmouseover="this.style.background='#eef1f9'" onmouseout="this.style.background='#f8f9fc'">
           <i class="fas fa-file-invoice-dollar fa-3x mb-3" style="color:#3949ab;"></i>
-          <h6 class="fw-bold mb-1">Upload Bank Statement Image</h6>
+          <h6 class="fw-bold mb-1">Upload Bank Statement Image or PDF</h6>
           <p class="text-muted small mb-3" style="max-width:520px;margin:0 auto;">
-            Upload an image of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.
+            Upload an image or PDF of a bank statement to automatically extract receipts and payments and assign them to customers, suppliers, or GL accounts.
+            A text-based PDF (most bank-issued statements) is read directly — no OCR needed at all.
           </p>
           <div class="d-flex justify-content-center mt-3">
-            <input type="file" name="file" id="bsFileInput" class="form-control" style="max-width:360px;border-radius:8px;" accept="image/png, image/jpeg, image/jpg" required>
+            <input type="file" name="file" id="bsFileInput" class="form-control" style="max-width:360px;border-radius:8px;" accept="image/png, image/jpeg, image/jpg, application/pdf" required>
           </div>
           <div id="bsOcrStatus" class="small text-muted mt-2" style="display:none;max-width:480px;margin:0 auto;"></div>
         </div>
@@ -118,6 +119,12 @@
         if (ocrTextField.value && ocrTextField.dataset.forFile === fileKey) {
             return;
         }
+        // PDFs never need browser OCR — the server reads text-based PDFs
+        // directly (PyPDF2), which is faster and more accurate than running
+        // image OCR on a rendered page. Let it submit straight through.
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+        if (isPdf) return;
+
         // Tesseract.js failed to load (offline CDN, blocked script, etc.) —
         // fall back to the original flow: submit the file, server-side OCR
         // (or its "no OCR available" message) takes over from there.
