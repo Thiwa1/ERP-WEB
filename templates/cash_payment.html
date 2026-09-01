@@ -302,7 +302,7 @@
                                    data-balance="${inv.balance}"
                                    step="0.01" min="0" max="${inv.balance}"
                                    placeholder="0.00"
-                                   oninput="updateFormInputs()"
+                                   oninput="updateFormInputs()" onfocus="fillBalanceIfEmpty(this)"
                                    style="border-radius:6px;border-color:#e2e8f0;font-size:.82rem;">
                         </td>
                     `;
@@ -342,6 +342,18 @@
                     `;
                 });
             });
+    }
+
+    // Clicking into an empty Pay Amount box fills it with that invoice's
+    // full outstanding balance, so the common case (pay it in full) needs
+    // no typing. Only fills when the box is empty — refocusing a box you've
+    // already typed a partial amount into won't wipe it out.
+    function fillBalanceIfEmpty(el) {
+        if (!el.value) {
+            const bal = parseFloat(el.getAttribute('data-balance')) || 0;
+            el.value = bal.toFixed(2);
+            updateFormInputs();
+        }
     }
 
     function updateFormInputs() {
