@@ -16372,7 +16372,7 @@ def journal_entry_view(jv_no):
     header = header_res[0]
 
     details = db.execute_query("""
-        SELECT account_name, entry_naration, enty_values_DR, enty_values_CR, entry_job_number
+        SELECT id, account_name, entry_naration, enty_values_DR, enty_values_CR, entry_job_number
         FROM entry_details
         WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0
         ORDER BY id
@@ -16380,6 +16380,7 @@ def journal_entry_view(jv_no):
 
     total_dr = sum(float(d['enty_values_DR'] or 0) for d in details)
     total_cr = sum(float(d['enty_values_CR'] or 0) for d in details)
+    is_reversal = str(header['jv_user_code'] or '').startswith('REV-JV-')
 
     return jsonify({
         'jv_no': header['jv_id'],
@@ -16388,7 +16389,9 @@ def journal_entry_view(jv_no):
         'date': str(header['entry_date']) if header['entry_date'] else '',
         'total_dr': total_dr,
         'total_cr': total_cr,
+        'is_reversal': is_reversal,
         'lines': [{
+            'id': d['id'],
             'account': d['account_name'],
             'narration': d['entry_naration'] or '',
             'dr': float(d['enty_values_DR'] or 0),
@@ -16396,6 +16399,85 @@ def journal_entry_view(jv_no):
             'job': d['entry_job_number'] or '',
         } for d in details],
     })
+
+
+@app.route('/journal_entry/edit_amounts', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def journal_entry_edit_amounts():
+    """Edit the Debit/Credit amounts on an existing manual Journal Entry's
+    lines. Deliberately narrow in scope: the set of lines and their accounts
+    stay exactly as they were — only each line's DR/CR number can change —
+    and the entry must still balance (total DR == total CR) before the save
+    is accepted. Reversal entries and entries in a closed period are
+    blocked, same as the existing Reverse action."""
+    jv_no = (request.form.get('jv_no') or '').strip()
+    lines_json = request.form.get('lines_json')
+    if not jv_no or not lines_json:
+        return jsonify({'success': False, 'error': 'Missing JV or line data'}), 400
+
+    try:
+        lines = json.loads(lines_json)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'Invalid line data'}), 400
+    if not lines:
+        return jsonify({'success': False, 'error': 'No lines to update'}), 400
+
+    if jv_in_closed_period(jv_no):
+        return jsonify({'success': False,
+                        'error': f'This entry is in a closed period (locked through {get_period_lock_date()}).'}), 403
+
+    jvrow = db.execute_query("SELECT jv_user_code FROM jv_numbers WHERE jv_id = %s", (jv_no,))
+    if not jvrow:
+        return jsonify({'success': False, 'error': 'JV not found'}), 404
+    if str(jvrow[0]['jv_user_code'] or '').startswith('REV-JV-'):
+        return jsonify({'success': False, 'error': 'Reversal entries cannot be edited.'}), 400
+
+    total_dr = 0.0
+    total_cr = 0.0
+    updates = []
+    for ln in lines:
+        try:
+            line_id = int(ln.get('id'))
+            dr = round(float(ln.get('dr') or 0), 2)
+            cr = round(float(ln.get('cr') or 0), 2)
+        except (TypeError, ValueError, AttributeError):
+            return jsonify({'success': False, 'error': 'Invalid amount on one of the lines'}), 400
+        if dr < 0 or cr < 0:
+            return jsonify({'success': False, 'error': 'Amounts cannot be negative'}), 400
+        if dr > 0 and cr > 0:
+            return jsonify({'success': False, 'error': 'A line cannot have both a Debit and a Credit amount'}), 400
+        total_dr += dr
+        total_cr += cr
+        updates.append((dr, cr, line_id))
+
+    total_dr = round(total_dr, 2)
+    total_cr = round(total_cr, 2)
+    if total_dr != total_cr:
+        return jsonify({'success': False,
+                        'error': f'Entry is not balanced — Debit {total_dr:,.2f} vs Credit {total_cr:,.2f}.'}), 400
+    if total_dr == 0:
+        return jsonify({'success': False, 'error': 'Total amount cannot be zero'}), 400
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        for dr, cr, line_id in updates:
+            cursor.execute(
+                "UPDATE entry_details SET enty_values_DR=%s, enty_values_CR=%s "
+                "WHERE id=%s AND entry_jv=%s AND COALESCE(entry_deleted,0)=0",
+                (dr, cr, line_id, jv_no))
+        conn.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        if conn: conn.rollback()
+        return jsonify({'success': False, 'error': str(e)}), 500
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
 
 
 @app.route('/journal_entry/reverse', methods=['POST'])

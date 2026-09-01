@@ -570,6 +570,14 @@
                                  onclick='openMetaEdit(${row.jv_no}, "", "${row.date}", ${narrEsc})'>
                             <i class="fas fa-pen"></i>
                         </button>`;
+                    // Edit Amounts — a separate, narrowly-scoped editor for the
+                    // Debit/Credit numbers themselves (accounts/lines stay fixed;
+                    // the entry must still balance to save). Reversals excluded.
+                    const editAmountsCtl = row.is_reversal ? '' :
+                        `<button type="button" class="btn btn-sm btn-outline-warning py-0 me-1" title="Edit Debit/Credit amounts"
+                                 onclick="openEditAmounts(${row.jv_no})">
+                            <i class="fas fa-calculator"></i>
+                        </button>`;
                     tbody.innerHTML += `
                         <tr>
                             <td class="font-monospace" style="padding:.5rem 1rem;">${row.jv_no}</td>
@@ -582,7 +590,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-success py-0 me-1" title="View JV (on-screen, not the print report)" onclick="openJvView(${row.jv_no})"><i class="fas fa-eye"></i></button>
                                 <a href="/journal_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 me-1" title="Print JV"><i class="fas fa-print"></i></a>
                                 <a href="/service_entry/print/${row.jv_no}" target="_blank" class="btn btn-sm btn-outline-info py-0 me-1" title="Print Service Sheet"><i class="fas fa-file-invoice"></i></a>
-                                ${editCtl}${reverseCtl}
+                                ${editCtl}${editAmountsCtl}${reverseCtl}
                             </td>
                         </tr>
                     `;
@@ -711,6 +719,141 @@
             })
             .catch(() => { body.innerHTML = '<div class="text-center text-danger py-4">Could not load this JV.</div>'; });
     }
+
+    // ── Edit Amounts modal — a separate, narrowly-scoped editor: the set of
+    // lines and their accounts stay exactly as posted, only each line's
+    // Debit/Credit number can change, and the entry must still balance
+    // (Total Debit == Total Credit) before Save is even enabled. Reversal
+    // entries can't be edited (same guard as Reverse). ──
+    function openEditAmounts(jvNo) {
+        const body = document.getElementById('jvEditAmountsBody');
+        document.getElementById('jvEditAmountsTitle').textContent = 'Edit Amounts — JV ' + jvNo;
+        document.getElementById('jvEditAmountsSaveBtn').setAttribute('data-jv', jvNo);
+        document.getElementById('jvEditAmountsSaveBtn').disabled = true;
+        body.innerHTML = '<div class="text-center text-muted py-4"><i class="fas fa-spinner fa-spin me-1"></i> Loading…</div>';
+        new bootstrap.Modal(document.getElementById('jvEditAmountsModal')).show();
+
+        fetch(`/journal_entry/view/${jvNo}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    body.innerHTML = `<div class="text-center text-danger py-4">${data.error}</div>`;
+                    return;
+                }
+                if (data.is_reversal) {
+                    body.innerHTML = '<div class="text-center text-danger py-4">Reversal entries cannot be edited.</div>';
+                    return;
+                }
+                let rows = data.lines.map(l => `
+                    <tr data-line-id="${l.id}">
+                        <td style="padding:.5rem .75rem;">${l.account}</td>
+                        <td style="padding:.5rem .75rem;">${l.narration || '-'}</td>
+                        <td style="padding:.4rem .6rem;">
+                            <input type="number" class="form-control form-control-sm text-end font-monospace amt-dr"
+                                   step="0.01" min="0" value="${l.dr ? l.dr.toFixed(2) : ''}"
+                                   placeholder="0.00" oninput="recalcEditAmountsTotals()">
+                        </td>
+                        <td style="padding:.4rem .6rem;">
+                            <input type="number" class="form-control form-control-sm text-end font-monospace amt-cr"
+                                   step="0.01" min="0" value="${l.cr ? l.cr.toFixed(2) : ''}"
+                                   placeholder="0.00" oninput="recalcEditAmountsTotals()">
+                        </td>
+                    </tr>
+                `).join('');
+                body.innerHTML = `
+                    <div class="mb-3" style="font-size:.82rem;color:#605E5C;">
+                        <i class="fas fa-circle-info me-1"></i> Only the Debit/Credit amounts can be changed here —
+                        accounts and lines stay the same. The entry must still balance (Total Debit = Total Credit)
+                        before you can save.
+                    </div>
+                    <div class="table-responsive" style="border:1px solid #f0f2f5;border-radius:8px;">
+                        <table class="table table-sm mb-0" id="editAmountsTable">
+                            <thead>
+                                <tr style="background:#f8f9fa;">
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Account</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;padding:.5rem .75rem;">Narration</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Debit</th>
+                                    <th style="font-size:.7rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;padding:.5rem .75rem;">Credit</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                        </table>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-3" style="font-size:.85rem;">
+                        <div>Total Debit: <strong id="editAmountsTotalDr" class="font-monospace">0.00</strong>
+                             &nbsp;|&nbsp; Total Credit: <strong id="editAmountsTotalCr" class="font-monospace">0.00</strong></div>
+                        <div id="editAmountsBalanceMsg" class="fw-bold"></div>
+                    </div>
+                `;
+                recalcEditAmountsTotals();
+            })
+            .catch(() => { body.innerHTML = '<div class="text-center text-danger py-4">Could not load this JV.</div>'; });
+    }
+
+    function recalcEditAmountsTotals() {
+        let totalDr = 0, totalCr = 0;
+        document.querySelectorAll('#editAmountsTable tbody tr').forEach(tr => {
+            totalDr += parseFloat(tr.querySelector('.amt-dr').value) || 0;
+            totalCr += parseFloat(tr.querySelector('.amt-cr').value) || 0;
+        });
+        document.getElementById('editAmountsTotalDr').textContent = fmtNum(totalDr);
+        document.getElementById('editAmountsTotalCr').textContent = fmtNum(totalCr);
+        const msg = document.getElementById('editAmountsBalanceMsg');
+        const saveBtn = document.getElementById('jvEditAmountsSaveBtn');
+        const balanced = Math.abs(totalDr - totalCr) < 0.01;
+        if (balanced && totalDr > 0) {
+            msg.textContent = 'Balanced ✓';
+            msg.style.color = '#0a7d3f';
+            saveBtn.disabled = false;
+        } else if (balanced) {
+            msg.textContent = 'Total cannot be zero';
+            msg.style.color = '#c42b1c';
+            saveBtn.disabled = true;
+        } else {
+            msg.textContent = `Out of balance by ${fmtNum(Math.abs(totalDr - totalCr))}`;
+            msg.style.color = '#c42b1c';
+            saveBtn.disabled = true;
+        }
+    }
+
+    function saveEditAmounts() {
+        const btn = document.getElementById('jvEditAmountsSaveBtn');
+        const jvNo = btn.getAttribute('data-jv');
+        const lines = [];
+        document.querySelectorAll('#editAmountsTable tbody tr').forEach(tr => {
+            lines.push({
+                id: tr.getAttribute('data-line-id'),
+                dr: parseFloat(tr.querySelector('.amt-dr').value) || 0,
+                cr: parseFloat(tr.querySelector('.amt-cr').value) || 0,
+            });
+        });
+
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving…';
+
+        fetch('/journal_entry/edit_amounts', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: `jv_no=${encodeURIComponent(jvNo)}&lines_json=${encodeURIComponent(JSON.stringify(lines))}`
+        })
+            .then(r => r.json().then(data => ({ok: r.ok, data})))
+            .then(({data}) => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('jvEditAmountsModal')).hide();
+                    loadHistory();
+                } else {
+                    alert('Error: ' + (data.error || 'Could not save.'));
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                }
+            })
+            .catch(err => {
+                alert('Could not save (' + err.message + '). Please try again.');
+                btn.disabled = false;
+                btn.innerHTML = originalHtml;
+            });
+    }
 </script>
 
 <!-- JV View Modal -->
@@ -728,6 +871,30 @@
       <div class="modal-footer border-0 px-4 pb-4 pt-0">
         <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
                 style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- JV Edit Amounts Modal -->
+<div class="modal fade" id="jvEditAmountsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content border-0" style="border-radius:14px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.2);">
+      <div class="modal-header border-0 py-3 px-4" style="background:linear-gradient(135deg,#d97706,#b45309);">
+        <div class="d-flex align-items-center gap-2 text-white">
+          <i class="fas fa-calculator"></i>
+          <h6 class="modal-title fw-bold mb-0" id="jvEditAmountsTitle">Edit Amounts</h6>
+        </div>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-4" id="jvEditAmountsBody"></div>
+      <div class="modal-footer border-0 px-4 pb-4 pt-0">
+        <button type="button" class="btn btn-sm" data-bs-dismiss="modal"
+                style="border:1px solid #e2e8f0;border-radius:8px;padding:7px 18px;">Cancel</button>
+        <button type="button" id="jvEditAmountsSaveBtn" class="btn btn-sm fw-bold text-white" onclick="saveEditAmounts()"
+                style="background:#d97706;border:none;border-radius:8px;padding:7px 22px;" disabled>
+          <i class="fas fa-save me-1"></i> Save Changes
+        </button>
       </div>
     </div>
   </div>

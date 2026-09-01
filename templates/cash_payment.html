@@ -88,6 +88,20 @@
                         </tbody>
                     </table>
                 </div>
+                <div class="row g-2 px-4 py-3" style="border-top:1px solid #f0f2f5;">
+                    <div class="col-6">
+                        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:.55rem .8rem;background:#f8f9fa;">
+                            <div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.4px;color:#8a8886;font-weight:700;">Total Outstanding</div>
+                            <div id="totalOutstandingDisplay" class="fw-bold font-monospace" style="font-size:1.05rem;color:#c42b1c;">0.00</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div style="border:1px solid #cdeed9;border-radius:8px;padding:.55rem .8rem;background:#f0fdf4;">
+                            <div style="font-size:.64rem;text-transform:uppercase;letter-spacing:.4px;color:#166534;font-weight:700;">Total Payment (Entered)</div>
+                            <div id="totalPaymentDisplay" class="fw-bold font-monospace" style="font-size:1.05rem;color:#0a7d3f;">0.00</div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- Payment History -->
@@ -308,6 +322,7 @@
                     `;
                     invBody.appendChild(row);
                 });
+                calculateWHT(); // also refreshes the Total Outstanding / Total Payment strip
 
                 // 3. Update Payment History
                 const histBody = document.querySelector('#historyTable tbody');
@@ -385,17 +400,21 @@
         const whtInput = document.getElementById('wht_amount');
         const rate = parseFloat(rateSelect.value);
 
+        let totalPay = 0;
+        let totalOutstanding = 0;
+        document.querySelectorAll('.payment-input').forEach(inp => {
+            const val = parseFloat(inp.value);
+            if (!isNaN(val)) totalPay += val;
+            const bal = parseFloat(inp.getAttribute('data-balance'));
+            if (!isNaN(bal)) totalOutstanding += bal;
+        });
+        updatePaymentTotals(totalOutstanding, totalPay);
+
         if (rate === -1) {
             whtInput.readOnly = false;
             return;
         }
         whtInput.readOnly = true;
-
-        let totalPay = 0;
-        document.querySelectorAll('.payment-input').forEach(inp => {
-            const val = parseFloat(inp.value);
-            if (!isNaN(val)) totalPay += val;
-        });
 
         if (rate > 0 && totalPay > 0) {
             const wht = (totalPay * rate) / 100;
@@ -403,6 +422,16 @@
         } else {
             whtInput.value = "0.00";
         }
+    }
+
+    // Refresh the Total Outstanding / Total Payment (Entered) strip below
+    // the invoice grid. Called whenever the invoice list is (re)loaded and
+    // whenever a New Payment box changes (calculateWHT runs via updateFormInputs).
+    function updatePaymentTotals(totalOutstanding, totalPay) {
+        const outEl = document.getElementById('totalOutstandingDisplay');
+        const payEl = document.getElementById('totalPaymentDisplay');
+        if (outEl) outEl.textContent = fmtNum(totalOutstanding);
+        if (payEl) payEl.textContent = fmtNum(totalPay);
     }
 
     // Auto-scroll to doc panel if last_jv present
