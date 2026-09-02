@@ -376,6 +376,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Auto-generate the report as soon as a full date range is picked —
+    // no need to click "Generate Report" by hand. Fires on every date
+    // field's change; once every period row has BOTH a From and a To
+    // date filled in, the form submits itself.
+    container.addEventListener('change', function(e) {
+        if (e.target.tagName !== 'INPUT' || e.target.type !== 'date') return;
+        const dateInputs = container.querySelectorAll('input[type="date"]');
+        if (dateInputs.length === 0) return;
+        for (const inp of dateInputs) {
+            if (!inp.value) return; // still missing a date — wait for it
+        }
+        document.getElementById('plForm').submit();
+    });
+
     // ── P&L Charts (pure HTML bars, validated palette, hover tooltips) ──
     const dataEl = document.getElementById('plcData');
     if (dataEl) {
