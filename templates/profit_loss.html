@@ -119,6 +119,19 @@
         </div>
         <div class="card-body" id="plFilterBody" {% if report_data %}style="display:none;"{% endif %}>
             <form method="POST" action="/profit_loss" id="plForm">
+                <div class="d-flex flex-wrap align-items-end gap-2 mb-3 pb-3" style="border-bottom:1px dashed #e2e8f0;">
+                    <div>
+                        <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">Daily Breakdown &mdash; From</label>
+                        <input type="date" class="form-control form-control-sm" id="dailyFrom" style="border-radius:8px;">
+                    </div>
+                    <div>
+                        <label class="form-label mb-1" style="font-size:.72rem;font-weight:700;color:#605E5C;text-transform:uppercase;">To</label>
+                        <input type="date" class="form-control form-control-sm" id="dailyTo" style="border-radius:8px;" onchange="plMaybeAutoFillDaily(this)">
+                    </div>
+                    <div style="font-size:.72rem;color:#8a8886;padding-bottom:.35rem;">
+                        Give a range here and it auto-fills one period per day below (1-1, 2-2, 3-3 …) and generates the report.
+                    </div>
+                </div>
                 <div id="periods-container">
                     {% for p in periods %}
                     <div class="row g-2 mb-2 align-items-center period-row">
@@ -365,6 +378,65 @@ function plMaybeAutoSubmit(el) {
     // sign anything had happened at all. requestSubmit() fires the real,
     // full submit sequence — same as clicking "Generate Report" by hand —
     // so the loading bar and everything else tied to it actually runs.
+    if (form.requestSubmit) {
+        form.requestSubmit();
+    } else {
+        form.submit();
+    }
+}
+
+// "Daily Breakdown" quick-fill — give one From/To range in the small box
+// above the period rows and this replaces whatever periods are currently
+// listed with ONE single-day period per day in that range (1–1, 2–2, 3–3
+// … one column per day in the report), then generates immediately.
+function plMaybeAutoFillDaily(el) {
+    const fromEl = document.getElementById('dailyFrom');
+    const toEl = document.getElementById('dailyTo');
+    if (!fromEl || !toEl || !fromEl.value || !toEl.value) return;
+
+    const start = new Date(fromEl.value + 'T00:00:00');
+    const end = new Date(toEl.value + 'T00:00:00');
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return;
+
+    const msPerDay = 24 * 60 * 60 * 1000;
+    const dayCount = Math.round((end - start) / msPerDay) + 1;
+    if (dayCount > 62) {
+        alert('That range is ' + dayCount + ' days. Please pick 62 days or fewer for a daily breakdown — each day becomes its own column in the report.');
+        return;
+    }
+
+    const container = document.getElementById('periods-container');
+    if (!container) return;
+    container.innerHTML = '';
+    for (let i = 0; i < dayCount; i++) {
+        const d = new Date(start.getTime() + i * msPerDay);
+        const iso = d.toISOString().slice(0, 10);
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-2 align-items-center period-row';
+        row.innerHTML = `
+            <div class="col-auto">
+                <span class="badge bg-secondary period-badge">Day ${i + 1}</span>
+            </div>
+            <div class="col-auto">
+                <label class="visually-hidden">From</label>
+                <input type="date" name="start_date[]" class="form-control form-control-sm" value="${iso}" required>
+            </div>
+            <div class="col-auto">
+                <span class="text-muted small">to</span>
+            </div>
+            <div class="col-auto">
+                <label class="visually-hidden">To</label>
+                <input type="date" name="end_date[]" class="form-control form-control-sm" value="${iso}" required onchange="plMaybeAutoSubmit(this)">
+            </div>
+            <div class="col-auto">
+                <button type="button" class="btn btn-sm btn-outline-danger remove-period"><i class="bi bi-trash"></i></button>
+            </div>
+        `;
+        container.appendChild(row);
+    }
+
+    const form = document.getElementById('plForm');
+    if (!form) return;
     if (form.requestSubmit) {
         form.requestSubmit();
     } else {
