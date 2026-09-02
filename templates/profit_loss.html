@@ -377,31 +377,39 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Auto-generate the report as soon as a full date range is picked —
-    // no need to click "Generate Report" by hand. Fires on every date
-    // field's change; once every period row has BOTH a From and a To
-    // date filled in, the form submits itself. A short debounce (instead
-    // of submitting instantly on the first field) means picking the
-    // From date doesn't fire a submit using a stale/old To date before
-    // you've had a chance to also set the To date — both changes made in
-    // quick succession collapse into a single submit with the final values.
-    let plAutoSubmitTimer = null;
+    // no need to click "Generate Report" by hand.
+    //
+    // Earlier version fired on ANY date field's change after a short pause.
+    // That misfired: picking the From date fires its own 'change' the
+    // moment you pick it from the calendar — long before you've even
+    // opened the To date's picker (opening a picker + clicking a day
+    // easily takes several seconds, far past any short debounce). Since
+    // the To field still held its old/default value at that point, it
+    // submitted a mismatched range instead of waiting for you to finish.
+    //
+    // Fix: only treat the To date ("end_date[]" — the field you fill in
+    // last when giving a new range like 1–10 August) as the "I'm done"
+    // signal. Setting the From date alone never auto-submits; setting the
+    // To date does, using whatever From value is present at that moment.
+    function plAutoSubmitCheck() {
+        const dateInputs = container.querySelectorAll('input[type="date"]');
+        if (dateInputs.length === 0) return;
+        for (const inp of dateInputs) {
+            if (!inp.value) return; // still missing a date — wait for it
+        }
+        const form = document.getElementById('plForm');
+        const submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
+        }
+        form.submit();
+    }
     container.addEventListener('change', function(e) {
-        if (e.target.tagName !== 'INPUT' || e.target.type !== 'date') return;
-        clearTimeout(plAutoSubmitTimer);
-        plAutoSubmitTimer = setTimeout(function() {
-            const dateInputs = container.querySelectorAll('input[type="date"]');
-            if (dateInputs.length === 0) return;
-            for (const inp of dateInputs) {
-                if (!inp.value) return; // still missing a date — wait for it
-            }
-            const form = document.getElementById('plForm');
-            const submitBtn = form.querySelector('button[type="submit"]');
-            if (submitBtn) {
-                submitBtn.disabled = true;
-                submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
-            }
-            form.submit();
-        }, 500);
+        const t = e.target;
+        if (t.tagName !== 'INPUT' || t.type !== 'date') return;
+        if (t.name !== 'end_date[]') return; // only the To date completes a range
+        plAutoSubmitCheck();
     });
 
     // ── P&L Charts (pure HTML bars, validated palette, hover tooltips) ──
