@@ -358,12 +358,18 @@ function plMaybeAutoSubmit(el) {
     }
     const form = document.getElementById('plForm');
     if (!form) return;
-    const submitBtn = form.querySelector('button[type="submit"]');
-    if (submitBtn) {
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
+    // form.submit() (the raw DOM method) bypasses the page's own 'submit'
+    // event entirely — and this app's base template listens for exactly
+    // that event to show its "Generating…" loading bar. Using submit()
+    // meant the report was (probably) being regenerated with no visible
+    // sign anything had happened at all. requestSubmit() fires the real,
+    // full submit sequence — same as clicking "Generate Report" by hand —
+    // so the loading bar and everything else tied to it actually runs.
+    if (form.requestSubmit) {
+        form.requestSubmit();
+    } else {
+        form.submit();
     }
-    form.submit();
 }
 </script>
 <script>
