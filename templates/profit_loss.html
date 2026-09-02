@@ -134,7 +134,7 @@
                         </div>
                         <div class="col-auto">
                             <label class="visually-hidden">To</label>
-                            <input type="date" name="end_date[]" class="form-control form-control-sm" value="{{ p.end }}" required>
+                            <input type="date" name="end_date[]" class="form-control form-control-sm" value="{{ p.end }}" required onchange="plMaybeAutoSubmit(this)">
                         </div>
                         <div class="col-auto">
                             {% if loop.index > 1 %}
@@ -156,7 +156,7 @@
                         </div>
                         <div class="col-auto">
                             <label class="visually-hidden">To</label>
-                            <input type="date" name="end_date[]" class="form-control form-control-sm" value="{{ default_end }}" required>
+                            <input type="date" name="end_date[]" class="form-control form-control-sm" value="{{ default_end }}" required onchange="plMaybeAutoSubmit(this)">
                         </div>
                     </div>
                     {% endfor %}
@@ -334,6 +334,37 @@ function plToggleSubs(btn) {
     const sign = btn.querySelector('.pl-sub-sign');
     if (sign) sign.textContent = open ? '+' : '−';
 }
+
+// Auto-generate the report as soon as a full date range is picked — no
+// need to click "Generate Report" by hand. Wired directly via onchange="
+// plMaybeAutoSubmit(this)" on every "To" date field (the field you fill
+// in last when giving a new range like 1–10 August), the same way this
+// page already wires up its other handlers — not via a delegated
+// container listener, so it can't be skipped by timing/ordering issues
+// elsewhere in the page's scripts.
+//
+// Only the To date triggers this (not the From date): picking the From
+// date fires its own change the moment you pick it — long before you've
+// even opened the To date's picker — so if From alone triggered a submit
+// it would go out using whatever old/default To value was still sitting
+// in the box, generating the wrong range.
+function plMaybeAutoSubmit(el) {
+    const container = document.getElementById('periods-container');
+    if (!container) return;
+    const dateInputs = container.querySelectorAll('input[type="date"]');
+    if (dateInputs.length === 0) return;
+    for (const inp of dateInputs) {
+        if (!inp.value) return; // still missing a date — wait for it
+    }
+    const form = document.getElementById('plForm');
+    if (!form) return;
+    const submitBtn = form.querySelector('button[type="submit"]');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
+    }
+    form.submit();
+}
 </script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -357,7 +388,7 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="col-auto">
                 <label class="visually-hidden">To</label>
-                <input type="date" name="end_date[]" class="form-control form-control-sm" required>
+                <input type="date" name="end_date[]" class="form-control form-control-sm" required onchange="plMaybeAutoSubmit(this)">
             </div>
             <div class="col-auto">
                 <button type="button" class="btn btn-sm btn-outline-danger remove-period"><i class="bi bi-trash"></i></button>
@@ -374,42 +405,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.querySelector('.period-badge').textContent = `Period ${idx + 1}`;
             });
         }
-    });
-
-    // Auto-generate the report as soon as a full date range is picked —
-    // no need to click "Generate Report" by hand.
-    //
-    // Earlier version fired on ANY date field's change after a short pause.
-    // That misfired: picking the From date fires its own 'change' the
-    // moment you pick it from the calendar — long before you've even
-    // opened the To date's picker (opening a picker + clicking a day
-    // easily takes several seconds, far past any short debounce). Since
-    // the To field still held its old/default value at that point, it
-    // submitted a mismatched range instead of waiting for you to finish.
-    //
-    // Fix: only treat the To date ("end_date[]" — the field you fill in
-    // last when giving a new range like 1–10 August) as the "I'm done"
-    // signal. Setting the From date alone never auto-submits; setting the
-    // To date does, using whatever From value is present at that moment.
-    function plAutoSubmitCheck() {
-        const dateInputs = container.querySelectorAll('input[type="date"]');
-        if (dateInputs.length === 0) return;
-        for (const inp of dateInputs) {
-            if (!inp.value) return; // still missing a date — wait for it
-        }
-        const form = document.getElementById('plForm');
-        const submitBtn = form.querySelector('button[type="submit"]');
-        if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Generating…';
-        }
-        form.submit();
-    }
-    container.addEventListener('change', function(e) {
-        const t = e.target;
-        if (t.tagName !== 'INPUT' || t.type !== 'date') return;
-        if (t.name !== 'end_date[]') return; // only the To date completes a range
-        plAutoSubmitCheck();
     });
 
     // ── P&L Charts (pure HTML bars, validated palette, hover tooltips) ──
