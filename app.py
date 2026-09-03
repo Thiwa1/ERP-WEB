@@ -16601,10 +16601,17 @@ def reverse_journal_entry():
         if cursor.fetchone()[0] > 0:
             return {'error': 'This JV has already been reversed.'}, 400
 
-        # Also check entry_deleted flag
-        cursor.execute("SELECT entry_deleted FROM entry_details WHERE entry_jv = %s LIMIT 1", (jv_no,))
-        res = cursor.fetchone()
-        if res and res[0] == 1:
+        # Also check entry_deleted flag — a JV is only truly "deleted" once
+        # EVERY one of its lines is. The old check picked one arbitrary row
+        # (no ORDER BY) and looked only at that row's flag, so a multi-line
+        # JV (e.g. one with a sub-account line) could get wrongly blocked
+        # whenever that one row happened to be the one already flagged,
+        # even though the rest of the entry was still fully active.
+        cursor.execute(
+            "SELECT COUNT(*) FROM entry_details WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0",
+            (jv_no,))
+        active_count = cursor.fetchone()[0]
+        if active_count == 0:
             return {'error': 'Already reversed or deleted'}, 400
 
         conn.start_transaction()
@@ -16622,13 +16629,15 @@ def reverse_journal_entry():
             INSERT INTO entry_details (
                 account_name, enty_values_DR, enty_values_CR,
                 entry_effective_date, entry_create_date,
-                entry_naration, entry_create_user, entry_jv
+                entry_naration, entry_create_user, entry_jv,
+                entry_sub_account_code, entry_job_number
             )
             SELECT account_name,
                    COALESCE(enty_values_CR, 0),
                    COALESCE(enty_values_DR, 0),
-                   entry_effective_date, %s, %s, %s, %s
-            FROM entry_details WHERE entry_jv = %s
+                   entry_effective_date, %s, %s, %s, %s,
+                   entry_sub_account_code, entry_job_number
+            FROM entry_details WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0
         """, (today, f'Journal Reversal of JV-{jv_no}', current_user_pk, rev_jv, jv_no))
 
         conn.commit()

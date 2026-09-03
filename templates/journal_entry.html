@@ -640,22 +640,33 @@
             body: `jv_no=${jvNo}`
         })
         .then(r => {
-            if (!r.ok) throw new Error(`Server returned ${r.status}`);
-            return r.json();
+            // Read the JSON body even on a non-200 response — the server
+            // always sends a specific {'error': '...'} message on 400/403/500,
+            // and discarding it (as this used to do) left every failure
+            // showing the same unhelpful "Server returned 400" with no way
+            // to tell what actually went wrong.
+            const ct = r.headers.get('content-type') || '';
+            if (!ct.includes('application/json')) {
+                throw new Error(`Server returned ${r.status}`);
+            }
+            return r.json().then(data => ({ ok: r.ok, status: r.status, data: data }));
         })
-        .then(res => {
-            if(res.success) {
+        .then(({ ok, status, data }) => {
+            if (!ok) {
+                throw new Error((data && data.error) ? data.error : `Server returned ${status}`);
+            }
+            if (data.success) {
                 alert('Reversed successfully');
                 loadHistory();
                 // loadHistory() rebuilds the row (and the button) from scratch,
                 // so no need to restore this button on the success path.
             } else {
-                alert('Error: ' + res.error);
+                alert('Error: ' + data.error);
                 if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
             }
         })
         .catch(err => {
-            alert('Could not reverse this JV (' + err.message + '). Please try again.');
+            alert('Could not reverse this JV: ' + err.message);
             if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
         });
     }
