@@ -16310,7 +16310,13 @@ def _journal_entry_history_rows(from_date, to_date, search, jv_q, amount_min, am
 
     filters = [
         'ed.entry_deleted = 0',
-        "jv.jv_user_code NOT LIKE 'REV-%'",
+        # NOTE: reversal entries (jv_user_code LIKE 'REV-JV-%') are deliberately
+        # NOT excluded here — they're created from this same screen's "Reverse"
+        # button, and the row template already renders them with a "Reversal"
+        # badge (see is_reversal below). Excluding them used to make a
+        # successful reversal look like it silently did nothing, since the
+        # only visible trace of it (the new REV-JV- entry) never showed up
+        # in this exact list.
         "jv.jv_user_code NOT IN ('JV FROM GRN','JV FORM SEN INVOICE','JV FROM PAYMENT',"
         "'JV FROM DIRECT CASH','JV FROM RECEIPT','JV FROM POS','JV FROM PRODUCTION ISSUE',"
         "'JV FROM PRODUCTION RECEIPT','JV FROM INVENTORY ISSUE','OB-UPLOAD')",
