@@ -190,7 +190,8 @@ class ProfitLossReportGenerator:
             subs_def = defined.get((name or '').strip())
             if not subs_def:
                 continue
-            subs = [{'name': s['name'], 'values': values_by.get(((name or '').strip(), s['code']), [0.0] * n)}
+            subs = [{'name': s['name'], 'code': s['code'],
+                     'values': values_by.get(((name or '').strip(), s['code']), [0.0] * n)}
                     for s in subs_def]
             subs.sort(key=lambda s: str(s['name']).lower())
             acc_map[name]['sub_accounts'] = subs
@@ -256,7 +257,7 @@ class ProfitLossReportGenerator:
             cat['accounts'].append({
                 'name': name,
                 'amounts': data['values'],
-                'sub_accounts': [{'name': s['name'], 'amounts': list(s['values'])}
+                'sub_accounts': [{'name': s['name'], 'code': s.get('code'), 'amounts': list(s['values'])}
                                  for s in data.get('sub_accounts', [])],
                 'sort': acc_sort,
                 'is_income': is_income
@@ -297,7 +298,7 @@ class ProfitLossReportGenerator:
                     unalloc = [acc['amounts'][i] - sum(s['amounts'][i] for s in acc['sub_accounts'])
                                for i in range(len(periods))]
                     if any(abs(v) >= 0.01 for v in unalloc):
-                        acc['sub_accounts'].append({'name': '(Unallocated)', 'amounts': unalloc})
+                        acc['sub_accounts'].append({'name': '(Unallocated)', 'code': None, 'amounts': unalloc})
                 for i, v in enumerate(acc['amounts']):
                     cat['total'][i] += v
 

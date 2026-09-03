@@ -386,14 +386,17 @@
         window.location.href = url;
     }
 
-    // ── Deep link: /ledger_view?account=X&from=Y&to=Z&jv=N ──
-    // Used by Bank Reconciliation "click transaction → open in ledger". Pre-selects
-    // the account and date range, loads the ledger, and highlights the JV's rows.
+    // ── Deep link: /ledger_view?account=X&from=Y&to=Z&jv=N&sub_account_code=S ──
+    // Used by Bank Reconciliation "click transaction → open in ledger" and by
+    // the Profit & Loss report's account/sub-account amounts ("account view").
+    // Pre-selects the account (and sub-account, if given) and date range,
+    // loads the ledger, and highlights the JV's rows.
     window.addEventListener('load', function () {
         const p = new URLSearchParams(window.location.search);
         const acc = p.get('account');
         if (!acc) return;
         window.HL_JV = p.get('jv') || null;
+        const subCode = p.get('sub_account_code') || '';
         if (p.get('from')) document.getElementById('fromDate').value = p.get('from');
         if (p.get('to'))   document.getElementById('toDate').value   = p.get('to');
         // Small delay so Select2 has initialised before we set its value
@@ -401,6 +404,11 @@
             if (window.$ && $.fn.select2) { $('#accountSelect').val(acc).trigger('change'); }
             else { document.getElementById('accountSelect').value = acc; }
             onAccountChanged();
+            if (subCode) {
+                const subSel = document.getElementById('subAccountSelect');
+                if (window.$ && $.fn.select2) { $(subSel).val(subCode).trigger('change'); }
+                else { subSel.value = subCode; }
+            }
             loadLedger();
         }, 250);
     });
