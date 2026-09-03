@@ -16725,6 +16725,119 @@ def fix_reversal_dates():
                            lock_date=get_period_lock_date())
 
 
+def _find_orig_sub_account(orig_jv, account_name, rev_dr, rev_cr):
+    """A reversal line's Debit/Credit is the ORIGINAL line's Credit/Debit
+    swapped, so that swap (plus the account name) uniquely identifies which
+    original line a reversal line came from — used to recover the
+    sub-account code/job number an older reversal never carried over."""
+    match = db.execute_query("""
+        SELECT entry_sub_account_code, entry_job_number
+        FROM entry_details
+        WHERE entry_jv = %s AND account_name = %s
+          AND COALESCE(enty_values_DR, 0) = %s AND COALESCE(enty_values_CR, 0) = %s
+          AND COALESCE(entry_sub_account_code, 0) != 0
+          AND COALESCE(entry_deleted, 0) = 0
+        LIMIT 1
+    """, (orig_jv, account_name, rev_cr or 0, rev_dr or 0))
+    return match[0] if match else None
+
+
+@app.route('/fix_reversal_sub_accounts', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def fix_reversal_sub_accounts():
+    """One-time repair: before this fix, reversing a JV did not carry the
+    original line's sub-account code (or job number) onto the new reversal
+    line — so a sub-account breakdown (e.g. in Profit & Loss or Ledger
+    View) never saw the offsetting reversal and looked unchanged even
+    though the reversal itself worked. This finds reversal lines missing a
+    sub-account code where a matching original line has one, and backfills
+    it onto the reversal."""
+    if request.method == 'POST':
+        rev_ids = request.form.getlist('rev_ids[]')
+        fixed_jvs, fixed_lines = 0, 0
+        for rev_jv in rev_ids:
+            row = db.execute_query("SELECT jv_user_code FROM jv_numbers WHERE jv_id = %s", (rev_jv,))
+            code = (row[0]['jv_user_code'] if row else '') or ''
+            if not code.startswith('REV-JV-'):
+                continue
+            try:
+                orig_jv = int(code[7:])
+            except (TypeError, ValueError):
+                continue
+            lines = db.execute_query("""
+                SELECT id, account_name, enty_values_DR, enty_values_CR
+                FROM entry_details
+                WHERE entry_jv = %s AND COALESCE(entry_sub_account_code, 0) = 0
+                  AND COALESCE(entry_deleted, 0) = 0
+            """, (rev_jv,)) or []
+            any_fixed = False
+            for ln in lines:
+                match = _find_orig_sub_account(orig_jv, ln['account_name'],
+                                               ln['enty_values_DR'], ln['enty_values_CR'])
+                if not match:
+                    continue
+                db.execute_query(
+                    "UPDATE entry_details SET entry_sub_account_code = %s, entry_job_number = %s WHERE id = %s",
+                    (match['entry_sub_account_code'], match['entry_job_number'], ln['id']), commit=True)
+                fixed_lines += 1
+                any_fixed = True
+            if any_fixed:
+                fixed_jvs += 1
+        msg = f'{fixed_jvs} reversal(s), {fixed_lines} line(s) backfilled with their original sub-account code.'
+        flash(msg, 'success' if fixed_jvs else 'warning')
+        return redirect(url_for('fix_reversal_sub_accounts'))
+
+    # GET: scan reversal lines missing a sub-account code and check whether a
+    # matching original line (same account, swapped DR/CR) actually has one —
+    # only those are genuinely fixable, so nothing else shows up as a false lead.
+    try:
+        missing = db.execute_query("""
+            SELECT ed.id, ed.entry_jv AS rev_jv, jv.jv_user_code, ed.account_name,
+                   ed.enty_values_DR, ed.enty_values_CR, ed.entry_effective_date
+            FROM entry_details ed
+            JOIN jv_numbers jv ON ed.entry_jv = jv.jv_id
+            WHERE jv.jv_user_code LIKE 'REV-JV-%'
+              AND COALESCE(ed.entry_sub_account_code, 0) = 0
+              AND COALESCE(ed.entry_deleted, 0) = 0
+        """) or []
+    except Exception as e:
+        flash(f'Error scanning reversals: {e}', 'danger')
+        missing = []
+
+    by_jv = {}
+    for m in missing:
+        code = m['jv_user_code'] or ''
+        try:
+            orig_jv = int(code[7:])
+        except (TypeError, ValueError):
+            continue
+        match = _find_orig_sub_account(orig_jv, m['account_name'], m['enty_values_DR'], m['enty_values_CR'])
+        if not match:
+            continue
+        sub_name = None
+        try:
+            sn = db.execute_query(
+                "SELECT sub_sub_accaount_name FROM sub_accont_for_new_account WHERE sub_account_code = %s",
+                (match['entry_sub_account_code'],))
+            sub_name = sn[0]['sub_sub_accaount_name'] if sn else None
+        except Exception:
+            pass
+        entry = by_jv.setdefault(m['rev_jv'], {
+            'rev_jv': m['rev_jv'], 'orig_jv': orig_jv,
+            'date': str(m['entry_effective_date']), 'accounts': [], 'sub_names': set()
+        })
+        entry['accounts'].append(m['account_name'])
+        entry['sub_names'].add(sub_name or f"code {match['entry_sub_account_code']}")
+
+    candidates = sorted(by_jv.values(), key=lambda c: c['rev_jv'], reverse=True)
+    for c in candidates:
+        c['accounts'] = ', '.join(sorted(set(c['accounts'])))
+        c['sub_names'] = ', '.join(sorted(c['sub_names']))
+
+    return render_template('fix_reversal_sub_accounts.html', candidates=candidates)
+
+
 @app.route('/journal_entry/print/<int:jv_no>')
 @login_required
 def print_journal_voucher(jv_no):
