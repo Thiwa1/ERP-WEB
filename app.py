@@ -9942,6 +9942,7 @@ def _ledger_data(account_name, from_date, to_date, sub_account_code=None):
             ed.enty_values_DR as dr,
             ed.enty_values_CR as cr,
             ed.entry_jv as jv_no,
+            ed.entry_sub_account_code as sub_code,
             s.sub_sub_accaount_name as sub_account
         FROM entry_details ed
         LEFT JOIN sub_accont_for_new_account s
@@ -9969,6 +9970,12 @@ def _ledger_data(account_name, from_date, to_date, sub_account_code=None):
 
     current_bal = opening_balance
 
+    # Sub-account breakdown for the period — only meaningful when looking at
+    # the WHOLE account (not already narrowed to one sub-account), so a
+    # "Sub Account Summary" can sit under the ledger showing how this
+    # account's movement splits across its sub-accounts.
+    sub_totals = {} if not sub_account_code else None
+
     for r in rows:
         dr = float(r['dr'] or 0)
         cr = float(r['cr'] or 0)
@@ -9995,8 +10002,24 @@ def _ledger_data(account_name, from_date, to_date, sub_account_code=None):
             'is_opening': False
         })
 
+        if sub_totals is not None:
+            key = r.get('sub_code') or 0
+            if key not in sub_totals:
+                sub_totals[key] = {'code': key, 'name': r.get('sub_account') or '(Unallocated)',
+                                   'dr': 0.0, 'cr': 0.0}
+            sub_totals[key]['dr'] += dr
+            sub_totals[key]['cr'] += cr
 
-    return {'data': data, 'basement': basement}
+    sub_summary = None
+    if sub_totals is not None:
+        sub_summary = []
+        for v in sub_totals.values():
+            net = (v['dr'] - v['cr']) if basement == 'DR' else (v['cr'] - v['dr'])
+            sub_summary.append({'code': v['code'], 'name': v['name'],
+                                'dr': v['dr'], 'cr': v['cr'], 'net': net})
+        sub_summary.sort(key=lambda s: (s['code'] == 0, s['name'].lower()))
+
+    return {'data': data, 'basement': basement, 'sub_summary': sub_summary}
 
 
 @app.route('/api/jv_details/<jv_no>')
@@ -10159,6 +10182,81 @@ def ledger_export_xlsx():
     ws.column_dimensions['C'].width = 50
     safe_name = account_name.replace(' ', '_').replace('/', '-')[:40]
     return xl.workbook_response(wb, f'Ledger_{safe_name}_{from_date}_{to_date}.xlsx')
+
+
+@app.route('/ledger_view/export_subaccount_summary')
+@login_required
+@has_permission('Access_Reports')
+def ledger_export_subaccount_summary():
+    """CSV export of the Sub Account Summary shown under the ledger — only
+    meaningful for the whole account (not one sub-account already), same as
+    the on-screen summary."""
+    account_name = request.args.get('account_name', '')
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    if not account_name:
+        flash('No account selected', 'warning')
+        return redirect(url_for('ledger_view'))
+
+    result = _ledger_data(account_name, from_date, to_date, None)
+    if 'error' in result:
+        flash(f"Error: {result['error']}", 'danger')
+        return redirect(url_for('ledger_view'))
+    summary = result.get('sub_summary') or []
+
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow([f'Sub Account Summary: {account_name}'])
+    cw.writerow([f'Period: {from_date} to {to_date}'])
+    cw.writerow([])
+    cw.writerow(['Sub Account', 'Debit', 'Credit', 'Net'])
+    for s in summary:
+        cw.writerow([s['name'], f"{s['dr']:.2f}", f"{s['cr']:.2f}", f"{s['net']:.2f}"])
+    output = make_response(si.getvalue())
+    safe_name = account_name.replace(' ', '_').replace('/', '-')[:40]
+    output.headers["Content-Disposition"] = f"attachment; filename=SubAccountSummary_{safe_name}_{from_date}.csv"
+    output.headers["Content-type"] = "text/csv"
+    return output
+
+
+@app.route('/ledger_view/export_subaccount_summary_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def ledger_export_subaccount_summary_xlsx():
+    """Styled Excel export of the Sub Account Summary shown under the ledger."""
+    account_name = request.args.get('account_name', '')
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    if not account_name:
+        flash('No account selected', 'warning')
+        return redirect(url_for('ledger_view'))
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('ledger_view'))
+
+    result = _ledger_data(account_name, from_date, to_date, None)
+    if 'error' in result:
+        flash(f"Error: {result['error']}", 'danger')
+        return redirect(url_for('ledger_view'))
+    summary = result.get('sub_summary') or []
+
+    wb, ws = xl.new_workbook('Sub Account Summary')
+    ncols = 4
+    row = xl.title_block(ws, ncols, _company_display_name(),
+                         f'SUB ACCOUNT SUMMARY — {account_name}', f'{from_date} to {to_date}')
+    row = xl.header_row(ws, row, ['Sub Account', 'Debit', 'Credit', 'Net'])
+    total_dr = total_cr = total_net = 0.0
+    for s in summary:
+        row = xl.data_row(ws, row, [s['name'], s['dr'], s['cr'], s['net']], num_cols=(2, 3, 4))
+        total_dr += s['dr']; total_cr += s['cr']; total_net += s['net']
+    if summary:
+        row = xl.total_row(ws, row, 'TOTAL', [total_dr, total_cr, total_net], bg='E3F2FD', color=xl.BLUE_DARK)
+    xl.finish(ws, ncols, first_col_width=14, num_col_width=18)
+    ws.column_dimensions['A'].width = 40
+    safe_name = account_name.replace(' ', '_').replace('/', '-')[:40]
+    return xl.workbook_response(wb, f'SubAccountSummary_{safe_name}_{from_date}_{to_date}.xlsx')
 
 
 # ================================================================
