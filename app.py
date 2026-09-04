@@ -1500,8 +1500,19 @@ def inventory_category():
 def add_main_category():
     name = (request.form.get('main_category') or '').strip()
     if name:
-        db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (0, %s, NULL)", (name,), commit=True)
-        flash('Main category added', 'success')
+        try:
+            # The old code hard-coded "id = 0" on every insert. That worked
+            # once, then every category added after the first hit a
+            # duplicate-primary-key error -> uncaught exception -> 500
+            # Internal Server Error. Compute the next free id ourselves so
+            # it works regardless of whether the column is auto-increment.
+            row = db.execute_query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM inventory_carogory")
+            next_id = row[0]['next_id'] if row else 1
+            db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (%s, %s, NULL)",
+                              (next_id, name), commit=True)
+            flash('Main category added', 'success')
+        except Exception as e:
+            flash(f'Could not add main category: {e}', 'danger')
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/sub', methods=['POST'])
@@ -1509,26 +1520,39 @@ def add_main_category():
 def add_sub_category():
     name = (request.form.get('sub_category') or '').strip()
     if name:
-        db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (0, NULL, %s)", (name,), commit=True)
-        flash('Sub category added', 'success')
+        try:
+            # Same fix as add_main_category — see comment there.
+            row = db.execute_query("SELECT COALESCE(MAX(id), 0) + 1 AS next_id FROM inventory_carogory")
+            next_id = row[0]['next_id'] if row else 1
+            db.execute_query("INSERT INTO inventory_carogory (id, main_catogory, sub_catogory) VALUES (%s, NULL, %s)",
+                              (next_id, name), commit=True)
+            flash('Sub category added', 'success')
+        except Exception as e:
+            flash(f'Could not add sub category: {e}', 'danger')
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/main/toggle', methods=['POST'])
 @login_required
 def toggle_main_category():
-    cat_id = request.form.get('id')
-    current = int(request.form.get('current_status'))
-    new_status = 0 if current == 1 else 1
-    db.execute_query("UPDATE inventory_carogory SET dis_continue_main = %s WHERE id = %s", (new_status, cat_id), commit=True)
+    try:
+        cat_id = request.form.get('id')
+        current = int(request.form.get('current_status') or 0)
+        new_status = 0 if current == 1 else 1
+        db.execute_query("UPDATE inventory_carogory SET dis_continue_main = %s WHERE id = %s", (new_status, cat_id), commit=True)
+    except Exception as e:
+        flash(f'Could not update category: {e}', 'danger')
     return redirect(url_for('inventory_category'))
 
 @app.route('/inventory_category/sub/toggle', methods=['POST'])
 @login_required
 def toggle_sub_category():
-    cat_id = request.form.get('id')
-    current = int(request.form.get('current_status'))
-    new_status = 0 if current == 1 else 1
-    db.execute_query("UPDATE inventory_carogory SET dis_continue_sub = %s WHERE id = %s", (new_status, cat_id), commit=True)
+    try:
+        cat_id = request.form.get('id')
+        current = int(request.form.get('current_status') or 0)
+        new_status = 0 if current == 1 else 1
+        db.execute_query("UPDATE inventory_carogory SET dis_continue_sub = %s WHERE id = %s", (new_status, cat_id), commit=True)
+    except Exception as e:
+        flash(f'Could not update category: {e}', 'danger')
     return redirect(url_for('inventory_category'))
 
 # --- Add Inventory Item ---
