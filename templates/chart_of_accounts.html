@@ -170,8 +170,11 @@
                             {% endif %}
                         </td>
                         <td style="padding:.6rem 1rem;" class="text-center">
-                            <button type="button" class="btn btn-sm btn-outline-primary" style="border-radius:6px;font-size:.75rem;" title="Edit"
-                                    onclick="openEditSubAccount({{ s.id_sub }}, {{ s.sub_sub_accaount_name|tojson }}, {{ (s.sub_new_account or '')|tojson }}, {{ 1 if s.active == 1 else 0 }})">
+                            <button type="button" class="btn btn-sm btn-outline-primary edit-sub-account-btn" style="border-radius:6px;font-size:.75rem;" title="Edit"
+                                    data-id="{{ s.id_sub }}"
+                                    data-name="{{ s.sub_sub_accaount_name }}"
+                                    data-main="{{ s.sub_new_account or '' }}"
+                                    data-active="{{ 1 if s.active == 1 else 0 }}">
                                 <i class="fas fa-edit"></i>
                             </button>
                         </td>
@@ -256,6 +259,19 @@
 </div>
 
 <script>
+    // Bound via data-* attributes (not inline onclick+tojson) so sub-account
+    // names containing quotes/apostrophes can't break the button's markup.
+    document.querySelectorAll('.edit-sub-account-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            openEditSubAccount(
+                this.dataset.id,
+                this.dataset.name,
+                this.dataset.main,
+                this.dataset.active === '1'
+            );
+        });
+    });
+
     function openEditSubAccount(id, name, mainAccount, active) {
         document.getElementById('editSubId').value = id;
         document.getElementById('editSubName').value = name;
