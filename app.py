@@ -20553,7 +20553,10 @@ def inventory_issue():
                (SELECT COALESCE(p.inventory_price_purcharsing, 0)
                   FROM inventory_price_recod p
                  WHERE p.inventory_price_link = i.id
-                 ORDER BY p.id DESC LIMIT 1) AS cost
+                 ORDER BY p.id DESC LIMIT 1) AS cost,
+               COALESCE((SELECT SUM(r.inventory_recod_moument_in - r.inventory_recod_movment_out)
+                           FROM inventory_recod r
+                          WHERE r.inventoy_name = i.inventoy_name), 0) AS stock
         FROM inventoy_items i
         WHERE i.active = 1
         ORDER BY i.inventoy_name

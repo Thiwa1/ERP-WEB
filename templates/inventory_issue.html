@@ -34,17 +34,19 @@
             <table class="table table-sm mb-0" id="itemsTable">
               <thead>
                 <tr style="font-size:.7rem;text-transform:uppercase;color:#605E5C;">
-                  <th style="width:38%;">Item</th>
-                  <th class="text-end" style="width:16%;">Qty</th>
-                  <th class="text-end" style="width:20%;">Unit Cost</th>
-                  <th class="text-end" style="width:22%;">Line Value</th>
+                  <th style="width:26%;">Item</th>
+                  <th class="text-end" style="width:12%;">Available</th>
+                  <th class="text-end" style="width:11%;">Qty</th>
+                  <th class="text-end" style="width:14%;">Balance After</th>
+                  <th class="text-end" style="width:15%;">Unit Cost</th>
+                  <th class="text-end" style="width:18%;">Line Value</th>
                   <th style="width:4%;"></th>
                 </tr>
               </thead>
               <tbody id="itemsBody"></tbody>
               <tfoot>
                 <tr>
-                  <td colspan="3" class="text-end fw-bold">Total Value</td>
+                  <td colspan="5" class="text-end fw-bold">Total Value</td>
                   <td class="num fw-bold" id="grandTotal" style="font-size:1rem;color:#0078D4;">0.00</td>
                   <td></td>
                 </tr>
@@ -96,7 +98,7 @@
 
 <script>
 const II_ITEMS = [
-  {% for it in items %}{name:{{ it.name|tojson }},code:{{ (it.code or '')|tojson }},unit:{{ (it.unit or '')|tojson }},cost:{{ it.cost or 0 }}},{% endfor %}
+  {% for it in items %}{name:{{ it.name|tojson }},code:{{ (it.code or '')|tojson }},unit:{{ (it.unit or '')|tojson }},cost:{{ it.cost or 0 }},stock:{{ it.stock or 0 }}},{% endfor %}
 ];
 
 function itemOptions(){
@@ -111,7 +113,9 @@ function addRow(){
       <select class="form-select form-select-sm ii-item" onchange="pickItem(this)">${itemOptions()}</select>
       <input type="hidden" name="item_name[]"><input type="hidden" name="item_code[]"><input type="hidden" name="item_unit[]">
     </td>
+    <td class="num ii-avail text-muted">—</td>
     <td><input type="number" step="0.001" min="0" class="form-control form-control-sm num ii-qty" name="qty[]" oninput="recalc()"></td>
+    <td class="num ii-balafter fw-semibold">—</td>
     <td><input type="number" step="0.01" min="0" class="form-control form-control-sm num ii-cost" name="unit_cost[]" oninput="recalc()"></td>
     <td class="num ii-line fw-semibold">0.00</td>
     <td><button type="button" class="btn btn-sm btn-link text-danger p-0" onclick="this.closest('tr').remove();recalc();"><i class="fas fa-times"></i></button></td>`;
@@ -125,6 +129,19 @@ function pickItem(sel){
   tr.querySelector('[name="item_code[]"]').value = it ? it.code : '';
   tr.querySelector('[name="item_unit[]"]').value = it ? it.unit : '';
   if (it && !tr.querySelector('.ii-cost').value) tr.querySelector('.ii-cost').value = it.cost || 0;
+  // Remember this item's current stock on hand (as of page load) so we can
+  // show it immediately and use it to compute "Balance After" while typing qty.
+  tr.dataset.stock = it ? (it.stock || 0) : '';
+  const availCell = tr.querySelector('.ii-avail');
+  if (it) {
+    availCell.textContent = (it.stock || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + (it.unit ? ' ' + it.unit : '');
+    availCell.classList.toggle('text-danger', (it.stock || 0) <= 0);
+    availCell.classList.toggle('text-muted', (it.stock || 0) > 0);
+  } else {
+    availCell.textContent = '—';
+    availCell.classList.remove('text-danger');
+    availCell.classList.add('text-muted');
+  }
   recalc();
 }
 
@@ -136,6 +153,20 @@ function recalc(){
     const line = qty * cost;
     tr.querySelector('.ii-line').textContent = line.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
     grand += line;
+
+    // Balance After = current stock on hand minus the qty being issued on this row
+    const balCell = tr.querySelector('.ii-balafter');
+    const hasStock = tr.dataset.stock !== undefined && tr.dataset.stock !== '';
+    if (hasStock && qty > 0) {
+      const stock = parseFloat(tr.dataset.stock) || 0;
+      const balAfter = stock - qty;
+      balCell.textContent = balAfter.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+      balCell.classList.toggle('text-danger', balAfter < 0);
+      balCell.classList.toggle('text-success', balAfter >= 0);
+    } else {
+      balCell.textContent = '—';
+      balCell.classList.remove('text-danger','text-success');
+    }
   });
   document.getElementById('grandTotal').textContent = grand.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 }
