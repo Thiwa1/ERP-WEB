@@ -2531,11 +2531,48 @@ def chart_of_accounts():
     pl_groups = build_groups(pl_accounts, 'account_name_of_catogory_PL', pl_levels, 'account_pl_sort')
     bs_groups = build_groups(bs_accounts, 'account_name_of_catogory_Balace_sheet', bs_levels, 'account_bs_sort')
 
+    # Sub-accounts have no listing/edit UI anywhere in the app — add_new_account.html
+    # can only create one. List every sub-account here (active and inactive) with an
+    # Edit action so an existing one's name / parent account / active flag can be fixed.
+    sub_accounts = db.execute_query("""
+        SELECT id_sub, sub_sub_accaount_name, sub_new_account, active, sub_account_code
+        FROM sub_accont_for_new_account
+        ORDER BY sub_new_account, sub_sub_accaount_name
+    """) or []
+    existing_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
+
     return render_template('chart_of_accounts.html',
                            pl_groups=pl_groups, bs_groups=bs_groups,
                            other_accounts=other_accounts,
+                           sub_accounts=sub_accounts,
+                           existing_accounts=existing_accounts,
                            total_accounts=len(accounts),
                            pl_count=len(pl_accounts), bs_count=len(bs_accounts))
+
+
+@app.route('/edit_sub_account', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def edit_sub_account():
+    sub_id = request.form.get('sub_id')
+    name = (request.form.get('sub_account_name') or '').strip()
+    main_account = request.form.get('main_account_select') or ''
+    active = 1 if request.form.get('active') == 'on' else 0
+
+    if not sub_id or not name or not main_account:
+        flash('Sub account name and main account are required', 'danger')
+        return redirect(url_for('chart_of_accounts'))
+
+    try:
+        db.execute_query(
+            "UPDATE sub_accont_for_new_account SET sub_sub_accaount_name = %s, sub_new_account = %s, active = %s WHERE id_sub = %s",
+            (name, main_account, active, sub_id), commit=True)
+        flash('Sub account updated successfully', 'success')
+    except Exception as e:
+        flash(f'Error updating sub account: {str(e)}', 'danger')
+
+    return redirect(url_for('chart_of_accounts'))
 
 # --- Add New Account ---
 @app.route('/add_new_account', methods=['GET', 'POST'])

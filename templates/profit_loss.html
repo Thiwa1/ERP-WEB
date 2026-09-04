@@ -38,7 +38,19 @@
        clear room underneath them. */
     #plReportTableWrap { scrollbar-gutter: stable; padding-bottom: 4px; }
     .pl-bottom-spacer { height: 40px; }
-    .pl-table th:first-child, .pl-table td:first-child { min-width: 240px; white-space: normal; }
+    /* Freeze the Description column so it stays visible while scrolling
+       right through many period columns. Sticky is relative to the nearest
+       scrolling ancestor, which is #plReportTableWrap (.table-responsive),
+       so no JS is needed — pure CSS. Each row type already sets its own
+       background on every <td> (including the first one), so the frozen
+       cell keeps the right color behind it at every scroll position; a
+       small shadow on the right edge marks where the frozen column ends. */
+    .pl-table th:first-child, .pl-table td:first-child {
+        min-width: 240px; white-space: normal;
+        position: sticky; left: 0; z-index: 2;
+        box-shadow: 2px 0 4px -2px rgba(0,0,0,.18);
+    }
+    .pl-table thead th:first-child { z-index: 3; }
     .pl-table th:not(:first-child), .pl-table td:not(:first-child) { min-width: 130px; }
     .amount-cell { font-family: 'JetBrains Mono','Courier New',monospace; letter-spacing: .5px; }
     /* "Account view" drill-down — each account/sub-account amount links into
