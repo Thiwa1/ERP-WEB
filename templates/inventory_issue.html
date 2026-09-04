@@ -8,7 +8,23 @@
   .ii-head { background:#f8f9fa;border-bottom:1px solid #e2e8f0;padding:.6rem 1.1rem;font-size:.72rem;
     font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:#605E5C; }
   .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
-  #itemsTable td { vertical-align:middle; }
+
+  /* Excel-style grid for the items table: visible cell borders, shaded
+     header/total row, banded rows, and inputs that sit flush inside their
+     cell (no inner box) so it reads like a spreadsheet. */
+  #itemsTable { border-collapse:collapse; }
+  #itemsTable th, #itemsTable td { border:1px solid #cbd5e1; padding:.35rem .5rem; vertical-align:middle; }
+  #itemsTable thead th { background:#eef1f4; border-bottom:2px solid #94a3b8; color:#374151; }
+  #itemsTable tbody td { background:#fff; }
+  #itemsTable tbody tr:nth-child(even) td { background:#f8fafc; }
+  #itemsTable tbody tr:hover td { background:#eaf3ff; }
+  #itemsTable tfoot td { background:#eef1f4; border-top:2px solid #94a3b8; }
+  #itemsTable input.form-control, #itemsTable select.form-select {
+    border:none; border-radius:0; box-shadow:none; background:transparent; padding:.15rem .25rem;
+  }
+  #itemsTable input.form-control:focus, #itemsTable select.form-select:focus {
+    background:#fff; box-shadow:inset 0 0 0 2px #0078D4; border-radius:2px;
+  }
 </style>
 
 <div class="container-fluid py-3">
