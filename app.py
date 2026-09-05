@@ -6569,6 +6569,10 @@ def supplier_purchasing_report():
     to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
     supplier = (request.args.get('supplier') or '').strip()
     download = request.args.get('download')
+    # Both the old layout (Gross/VAT/Net only) and the new one (with Main
+    # Category) are wanted — one report, toggled by this flag instead of two
+    # separate pages to maintain.
+    show_category = request.args.get('show_category', '1') != '0'
 
     rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
 
@@ -6576,12 +6580,20 @@ def supplier_purchasing_report():
         si = io.StringIO()
         cw = csv.writer(si)
         cw.writerow(['Supplier Purchasing Report', f'{from_date} to {to_date}'])
-        cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'Main Category', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
-        for r in rows:
-            cw.writerow([r['inv_date'], r['supplier'], r['invoice_no'], r['category'], r['vat_rate'],
-                         f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
-        cw.writerow([])
-        cw.writerow(['', '', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
+        if show_category:
+            cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'Main Category', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+            for r in rows:
+                cw.writerow([r['inv_date'], r['supplier'], r['invoice_no'], r['category'], r['vat_rate'],
+                             f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
+            cw.writerow([])
+            cw.writerow(['', '', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
+        else:
+            cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+            for r in rows:
+                cw.writerow([r['inv_date'], r['supplier'], r['invoice_no'], r['vat_rate'],
+                             f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
+            cw.writerow([])
+            cw.writerow(['', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
         out = make_response(si.getvalue())
         out.headers["Content-Disposition"] = f"attachment; filename=Supplier_Purchasing_Report_{from_date}_{to_date}.csv"
         out.headers["Content-type"] = "text/csv"
@@ -6589,7 +6601,8 @@ def supplier_purchasing_report():
 
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
     return render_template('supplier_purchasing_report.html', rows=rows, totals=totals,
-                           from_date=from_date, to_date=to_date, supplier=supplier, suppliers=suppliers)
+                           from_date=from_date, to_date=to_date, supplier=supplier, suppliers=suppliers,
+                           show_category=show_category)
 
 
 @app.route('/supplier_purchasing_report/export_xlsx')
@@ -6599,6 +6612,7 @@ def supplier_purchasing_report_export_xlsx():
     from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
     to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
     supplier = (request.args.get('supplier') or '').strip()
+    show_category = request.args.get('show_category', '1') != '0'
 
     try:
         import excel_export as xl
@@ -6610,30 +6624,41 @@ def supplier_purchasing_report_export_xlsx():
     rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
 
     wb, ws = xl.new_workbook('Supplier Purchasing Report')
-    ncols = 8
+    # Old layout (no Main Category) is 7 columns; the new one is 8 — label
+    # column and amount columns shift by one depending on show_category.
+    ncols = 8 if show_category else 7
+    label_end_col = 5 if show_category else 4
+    amounts_start_col = 6 if show_category else 5
     subtitle = f'{from_date} to {to_date}' + (f' — {supplier}' if supplier else '')
     row = xl.title_block(ws, ncols, _company_display_name(), 'SUPPLIER PURCHASING REPORT', subtitle)
-    row = xl.header_row(ws, row, ['Invoice Date', 'Supplier', 'Invoice No', 'Main Category', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
-    for r in rows:
-        row = xl.data_row(ws, row,
-                           [str(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '', r['category'],
-                            r['vat_rate'], r['gross'], r['vat'], r['net']],
-                           num_cols=(5, 6, 7, 8))
+    if show_category:
+        row = xl.header_row(ws, row, ['Invoice Date', 'Supplier', 'Invoice No', 'Main Category', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+        for r in rows:
+            row = xl.data_row(ws, row,
+                               [str(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '', r['category'],
+                                r['vat_rate'], r['gross'], r['vat'], r['net']],
+                               num_cols=(5, 6, 7, 8))
+    else:
+        row = xl.header_row(ws, row, ['Invoice Date', 'Supplier', 'Invoice No', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+        for r in rows:
+            row = xl.data_row(ws, row,
+                               [str(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '',
+                                r['vat_rate'], r['gross'], r['vat'], r['net']],
+                               num_cols=(4, 5, 6, 7))
     if rows:
         # total_row() puts the label in column 1 and amounts starting at column
         # 2 — fine for a table where amounts ARE columns 2+, but here Gross/
-        # VAT/Net are columns 6-8 (after Supplier/Invoice No/Main Category/VAT
-        # Rate). Merge the label across 1-5 and place the three totals in 6-8
-        # by hand so they land under the right headers instead of under
-        # Supplier etc.
+        # VAT/Net are the last 3 columns instead. Merge the label across the
+        # non-amount columns and place the three totals by hand so they land
+        # under the right headers instead of under Supplier etc.
         label_cell = ws.cell(row=row, column=1, value='TOTAL')
-        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=5)
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=label_end_col)
         label_cell.font = Font(bold=True, size=10, color=xl.BLUE_DARK)
         label_cell.fill = PatternFill('solid', fgColor='E3F2FD')
         label_cell.alignment = Alignment(horizontal='right')
-        for i in range(2, 6):
+        for i in range(2, label_end_col + 1):
             ws.cell(row=row, column=i).fill = PatternFill('solid', fgColor='E3F2FD')
-        for i, v in enumerate([totals['gross'], totals['vat'], totals['net']], start=6):
+        for i, v in enumerate([totals['gross'], totals['vat'], totals['net']], start=amounts_start_col):
             m = ws.cell(row=row, column=i, value=float(v or 0))
             m.number_format = xl.NUM_FMT
             m.font = Font(bold=True, size=10, color=xl.BLUE_DARK)
