@@ -216,6 +216,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
     {'key': 'supplier_payments',  'label': 'Supplier Payments',    'url': '/supplier_payments_report','icon': 'fas fa-money-check-dollar', 'category': 'Reports'},
     {'key': 'grn_payment_method', 'label': 'Supplier Payment Method',   'url': '/grn_payment_method_report','icon': 'fas fa-money-check',       'category': 'Reports'},
+    {'key': 'supplier_purchasing_report', 'label': 'Supplier Purchasing Report', 'url': '/supplier_purchasing_report', 'icon': 'fas fa-truck-loading', 'category': 'Reports'},
     {'key': 'grn_payment_ready',  'label': 'Payment Ready List',   'url': '/grn_payment_ready_list',   'icon': 'fas fa-check-circle',       'category': 'Reports'},
     {'key': 'customer_aging',     'label': 'Customer Aging',       'url': '/customer_aging',         'icon': 'fas fa-user-clock',          'category': 'Reports'},
     {'key': 'balance_sheet',      'label': 'Balance Sheet',        'url': '/balance_sheet',          'icon': 'fas fa-balance-scale',       'category': 'Reports'},
@@ -6474,6 +6475,142 @@ def grn_payment_method_report():
     return render_template('grn_payment_method_report.html', rows=rows, total=total,
                            total_cash=total_cash, total_cheque=total_cheque, from_date=from_date,
                            to_date=to_date, supplier=supplier, method=method, suppliers=suppliers)
+
+
+def _supplier_purchasing_rows(from_date, to_date, supplier):
+    """Every supplier invoice in the period (GRN, Direct Purchase, Service Entry,
+    Opening Balance, ...) with Gross / VAT / Net split back out.
+
+    suppliers_invoice_data only stores the VAT-inclusive grand total
+    (suppliers_invoice_total_oustanding) plus the VAT RATE — the VAT amount
+    itself is never stored — so Net/VAT are derived from the rate the same
+    way the GRN posting logic (services.create_grn) already does it:
+    Net = Gross / (1 + rate/100), VAT = Gross - Net."""
+    q = """
+        SELECT s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
+               s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_total_oustanding AS gross,
+               s.suppliers_VAT_rate AS vat_rate, s.suppliers_invoice_JV AS jv,
+               jv.jv_user_code AS jv_user_code
+        FROM suppliers_invoice_data s
+        LEFT JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
+        LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE COALESCE(s.suppliers_oustanding_delete, 0) = 0
+          AND s.suppliers_invoice_date BETWEEN %s AND %s
+    """
+    params = [from_date, to_date]
+    if supplier:
+        q += " AND sup.supplier_name = %s"; params.append(supplier)
+    q += " ORDER BY s.suppliers_invoice_date DESC, s.suppliers_invoice_JV DESC"
+
+    rows = db.execute_query(q, tuple(params)) or []
+    for r in rows:
+        gross = float(r['gross'] or 0)
+        vat_rate = float(r['vat_rate'] or 0)
+        if vat_rate > 0 and gross > 0:
+            net = gross / (1 + (vat_rate / 100))
+            vat = gross - net
+        else:
+            net = gross
+            vat = 0.0
+        r['gross'] = round(gross, 2)
+        r['vat'] = round(vat, 2)
+        r['net'] = round(net, 2)
+        r['vat_rate'] = vat_rate
+        r['is_grn'] = r.get('jv_user_code') == 'JV FROM GRN'
+
+    totals = {
+        'gross': sum(r['gross'] for r in rows),
+        'vat': sum(r['vat'] for r in rows),
+        'net': sum(r['net'] for r in rows),
+    }
+    return rows, totals
+
+
+@app.route('/supplier_purchasing_report')
+@login_required
+@has_permission('Access_Reports')
+def supplier_purchasing_report():
+    """Supplier purchasing report — Gross / VAT / Net for every supplier
+    invoice in a selected date period. Covers GRN, Direct Purchase, Service
+    Entry and Opening Balance invoices alike (same coverage as the Supplier
+    Payment Method report)."""
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+    supplier = (request.args.get('supplier') or '').strip()
+    download = request.args.get('download')
+
+    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
+
+    if download == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow(['Supplier Purchasing Report', f'{from_date} to {to_date}'])
+        cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+        for r in rows:
+            cw.writerow([r['inv_date'], r['supplier'], r['invoice_no'], r['vat_rate'],
+                         f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
+        cw.writerow([])
+        cw.writerow(['', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
+        out = make_response(si.getvalue())
+        out.headers["Content-Disposition"] = f"attachment; filename=Supplier_Purchasing_Report_{from_date}_{to_date}.csv"
+        out.headers["Content-type"] = "text/csv"
+        return out
+
+    suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    return render_template('supplier_purchasing_report.html', rows=rows, totals=totals,
+                           from_date=from_date, to_date=to_date, supplier=supplier, suppliers=suppliers)
+
+
+@app.route('/supplier_purchasing_report/export_xlsx')
+@login_required
+@has_permission('Access_Reports')
+def supplier_purchasing_report_export_xlsx():
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+    supplier = (request.args.get('supplier') or '').strip()
+
+    try:
+        import excel_export as xl
+        from openpyxl.styles import Font, PatternFill, Alignment
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
+        return redirect(url_for('supplier_purchasing_report', **{'from': from_date, 'to': to_date, 'supplier': supplier}))
+
+    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
+
+    wb, ws = xl.new_workbook('Supplier Purchasing Report')
+    ncols = 7
+    subtitle = f'{from_date} to {to_date}' + (f' — {supplier}' if supplier else '')
+    row = xl.title_block(ws, ncols, _company_display_name(), 'SUPPLIER PURCHASING REPORT', subtitle)
+    row = xl.header_row(ws, row, ['Invoice Date', 'Supplier', 'Invoice No', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
+    for r in rows:
+        row = xl.data_row(ws, row,
+                           [str(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '',
+                            r['vat_rate'], r['gross'], r['vat'], r['net']],
+                           num_cols=(4, 5, 6, 7))
+    if rows:
+        # total_row() puts the label in column 1 and amounts starting at column
+        # 2 — fine for a table where amounts ARE columns 2+, but here Gross/
+        # VAT/Net are columns 5-7 (after Supplier/Invoice No/VAT Rate). Merge
+        # the label across 1-4 and place the three totals in 5-7 by hand so
+        # they land under the right headers instead of under Supplier etc.
+        label_cell = ws.cell(row=row, column=1, value='TOTAL')
+        ws.merge_cells(start_row=row, start_column=1, end_row=row, end_column=4)
+        label_cell.font = Font(bold=True, size=10, color=xl.BLUE_DARK)
+        label_cell.fill = PatternFill('solid', fgColor='E3F2FD')
+        label_cell.alignment = Alignment(horizontal='right')
+        for i in range(2, 5):
+            ws.cell(row=row, column=i).fill = PatternFill('solid', fgColor='E3F2FD')
+        for i, v in enumerate([totals['gross'], totals['vat'], totals['net']], start=5):
+            m = ws.cell(row=row, column=i, value=float(v or 0))
+            m.number_format = xl.NUM_FMT
+            m.font = Font(bold=True, size=10, color=xl.BLUE_DARK)
+            m.fill = PatternFill('solid', fgColor='E3F2FD')
+            m.alignment = Alignment(horizontal='right')
+        row += 1
+    xl.finish(ws, ncols, first_col_width=14, num_col_width=16)
+    ws.column_dimensions['B'].width = 28
+    return xl.workbook_response(wb, f'Supplier_Purchasing_Report_{from_date}_{to_date}.xlsx')
 
 
 def _grn_payment_ready_rows(supplier, method, ready):

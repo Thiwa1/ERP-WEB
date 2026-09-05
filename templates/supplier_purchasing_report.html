@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block content %}
+<style>
+  .sp-card { border:1px solid #e2e8f0;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.06);background:#fff; }
+  .sp-table thead th { background:#f8f9fa;font-size:.7rem;font-weight:700;letter-spacing:.4px;
+    text-transform:uppercase;color:#605E5C;border-bottom:2px solid #e2e8f0; }
+  .sp-table td { vertical-align:middle;font-size:.84rem; }
+  .num { font-family:'JetBrains Mono','Courier New',monospace;text-align:right; }
+  .stat { border:1px solid #e2e8f0;border-radius:12px;padding:.9rem 1.1rem;background:#fff; }
+  .stat .lbl { font-size:.66rem;text-transform:uppercase;letter-spacing:.5px;color:#8a8886;font-weight:700; }
+  .stat .val { font-size:1.2rem;font-weight:800;font-family:'JetBrains Mono',monospace; }
+  @media print { .no-print { display:none !important; } .sp-card { box-shadow:none;border:none; } }
+</style>
+
+<div class="container-fluid py-3">
+  <div class="d-flex align-items-center gap-3 mb-4">
+    <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7c3aed,#5b21b6);display:flex;align-items:center;justify-content:center;color:#fff;">
+      <i class="fas fa-truck-loading"></i>
+    </div>
+    <div>
+      <h5 class="mb-0 fw-bold">Supplier Purchasing Report</h5>
+      <small class="text-muted">Every supplier invoice for the period — split into Gross, VAT and Net</small>
+    </div>
+    <div class="ms-auto d-flex gap-2 no-print">
+      <a href="?download=csv&from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}"
+         class="btn btn-outline-success"><i class="fas fa-file-csv me-1"></i> CSV</a>
+      <a href="/supplier_purchasing_report/export_xlsx?from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}"
+         class="btn text-white" style="background:#107C10;"><i class="fas fa-file-excel me-1"></i> Excel</a>
+      <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <form class="sp-card p-3 mb-4 d-flex align-items-end gap-2 flex-wrap no-print" method="get">
+    <div><label class="form-label small fw-bold mb-1">From</label>
+      <input type="date" name="from" value="{{ from_date }}" class="form-control form-control-sm"></div>
+    <div><label class="form-label small fw-bold mb-1">To</label>
+      <input type="date" name="to" value="{{ to_date }}" class="form-control form-control-sm"></div>
+    <div style="min-width:220px;"><label class="form-label small fw-bold mb-1">Supplier</label>
+      <select name="supplier" class="form-select form-select-sm">
+        <option value="">All suppliers</option>
+        {% for s in suppliers %}<option value="{{ s.supplier_name }}" {% if s.supplier_name == supplier %}selected{% endif %}>{{ s.supplier_name }}</option>{% endfor %}
+      </select></div>
+    <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
+  </form>
+
+  <!-- Totals -->
+  <div class="row g-3 mb-4">
+    <div class="col-md-4"><div class="stat"><div class="lbl">Gross</div><div class="val" style="color:#1a1a2e;">{{ "{:,.2f}".format(totals.gross) }}</div></div></div>
+    <div class="col-md-4"><div class="stat"><div class="lbl">VAT</div><div class="val" style="color:#C42B1C;">{{ "{:,.2f}".format(totals.vat) }}</div></div></div>
+    <div class="col-md-4"><div class="stat"><div class="lbl">Net</div><div class="val" style="color:#107C10;">{{ "{:,.2f}".format(totals.net) }}</div></div></div>
+  </div>
+
+  <div class="sp-card">
+    <div class="table-responsive">
+      <table class="table sp-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Invoice Date</th>
+            <th>Supplier</th>
+            <th>Invoice No</th>
+            <th class="text-end">VAT Rate</th>
+            <th class="text-end">Gross</th>
+            <th class="text-end">VAT</th>
+            <th class="text-end pe-3">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td class="ps-3">{{ r.inv_date }}</td>
+            <td class="fw-semibold">{{ r.supplier or '-' }}</td>
+            <td>
+              {% if r.is_grn %}
+              <a href="/grn/view/{{ r.jv }}" target="_blank" title="View GRN" style="color:#7c3aed;text-decoration:none;">
+                {{ r.invoice_no }} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i>
+              </a>
+              {% else %}
+              {{ r.invoice_no }}
+              {% endif %}
+            </td>
+            <td class="num">{{ r.vat_rate|round(2) }}%</td>
+            <td class="num">{{ "{:,.2f}".format(r.gross) }}</td>
+            <td class="num" style="color:#C42B1C;">{{ "{:,.2f}".format(r.vat) }}</td>
+            <td class="num pe-3 fw-semibold" style="color:#107C10;">{{ "{:,.2f}".format(r.net) }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-5">
+            <i class="fas fa-truck-loading d-block mb-2" style="font-size:1.6rem;opacity:.4;"></i>
+            No supplier invoices in this range.
+          </td></tr>
+          {% endfor %}
+        </tbody>
+        {% if rows %}
+        <tfoot>
+          <tr style="font-weight:700;background:#f8f9fa;border-top:2px solid #e2e8f0;">
+            <td colspan="4" class="text-end">Total</td>
+            <td class="num">{{ "{:,.2f}".format(totals.gross) }}</td>
+            <td class="num" style="color:#C42B1C;">{{ "{:,.2f}".format(totals.vat) }}</td>
+            <td class="num pe-3" style="color:#107C10;">{{ "{:,.2f}".format(totals.net) }}</td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
