@@ -23,9 +23,9 @@
       <small class="text-muted">Every supplier invoice for the period — split into Gross, VAT and Net</small>
     </div>
     <div class="ms-auto d-flex gap-2 no-print">
-      <a href="?download=csv&from={{ from_date }}&to={{ to_date }}&show_category={{ '1' if show_category else '0' }}{% if supplier %}&supplier={{ supplier }}{% endif %}"
+      <a href="?download=csv&from={{ from_date }}&to={{ to_date }}&show_category={{ '1' if show_category else '0' }}{% if supplier %}&supplier={{ supplier }}{% endif %}{% if item %}&item={{ item|urlencode }}{% endif %}"
          class="btn btn-outline-success"><i class="fas fa-file-csv me-1"></i> CSV</a>
-      <a href="/supplier_purchasing_report/export_xlsx?from={{ from_date }}&to={{ to_date }}&show_category={{ '1' if show_category else '0' }}{% if supplier %}&supplier={{ supplier }}{% endif %}"
+      <a href="/supplier_purchasing_report/export_xlsx?from={{ from_date }}&to={{ to_date }}&show_category={{ '1' if show_category else '0' }}{% if supplier %}&supplier={{ supplier }}{% endif %}{% if item %}&item={{ item|urlencode }}{% endif %}"
          class="btn text-white" style="background:#107C10;"><i class="fas fa-file-excel me-1"></i> Excel</a>
       <button class="btn btn-outline-secondary" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
     </div>
@@ -42,6 +42,11 @@
         <option value="">All suppliers</option>
         {% for s in suppliers %}<option value="{{ s.supplier_name }}" {% if s.supplier_name == supplier %}selected{% endif %}>{{ s.supplier_name }}</option>{% endfor %}
       </select></div>
+    <div style="min-width:220px;"><label class="form-label small fw-bold mb-1">Inventory Item</label>
+      <select name="item" class="form-select form-select-sm select2">
+        <option value="">-- All items --</option>
+        {% for it in items %}<option value="{{ it.name }}" {% if it.name == item %}selected{% endif %}>{{ it.name }}</option>{% endfor %}
+      </select></div>
     <input type="hidden" name="show_category" value="{{ '1' if show_category else '0' }}">
     <button class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
   </form>
@@ -52,12 +57,47 @@
        date range and supplier filter. -->
   <div class="mb-3 no-print">
     <div class="btn-group btn-group-sm" role="group">
-      <a href="?from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}&show_category=0"
+      <a href="?from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}{% if item %}&item={{ item|urlencode }}{% endif %}&show_category=0"
          class="btn {{ 'btn-secondary' if not show_category else 'btn-outline-secondary' }}">Old Report (no category)</a>
-      <a href="?from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}&show_category=1"
+      <a href="?from={{ from_date }}&to={{ to_date }}{% if supplier %}&supplier={{ supplier }}{% endif %}{% if item %}&item={{ item|urlencode }}{% endif %}&show_category=1"
          class="btn {{ 'btn-secondary' if show_category else 'btn-outline-secondary' }}">With Main Category</a>
     </div>
   </div>
+
+  <!-- Suppliers for the selected item — the point of the item filter is not
+       just narrowing the invoice list below, but seeing at a glance who this
+       item was actually bought from and how much. -->
+  {% if item %}
+  <div class="sp-card mb-4">
+    <div class="px-3 pt-3 pb-2" style="font-size:.7rem;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#5b21b6;">
+      <i class="fas fa-users me-1"></i> Suppliers for: {{ item }}
+    </div>
+    <div class="table-responsive">
+      <table class="table sp-table mb-0">
+        <thead>
+          <tr>
+            <th class="ps-3">Supplier</th>
+            <th class="text-end">Qty Received</th>
+            <th class="text-end">Value</th>
+            <th class="text-end pe-3">Invoices</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in item_suppliers %}
+          <tr>
+            <td class="ps-3 fw-semibold">{{ s.supplier }}</td>
+            <td class="num">{{ "{:,.2f}".format(s.qty) }}</td>
+            <td class="num">{{ "{:,.2f}".format(s.value) }}</td>
+            <td class="num pe-3">{{ s.invoices }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-center text-muted py-4">No supplier has supplied this item in this date range.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Totals -->
   <div class="row g-3 mb-4">

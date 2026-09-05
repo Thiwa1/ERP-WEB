@@ -6506,7 +6506,34 @@ def _invoices_main_category(jv_list):
     return {jv: cat for jv, (_, cat) in best.items()}
 
 
-def _supplier_purchasing_rows(from_date, to_date, supplier):
+def _item_supplier_summary(from_date, to_date, item):
+    """Which suppliers this inventory item was bought from in the period —
+    qty received, value, and number of invoices per supplier. inventory_recod
+    holds the item lines (for GRN, Direct Purchase and Service Entry alike),
+    keyed by JV_No, which links back to suppliers_invoice_data / suppliers."""
+    if not item:
+        return []
+    rows = db.execute_query("""
+        SELECT sup.supplier_name AS supplier,
+               SUM(COALESCE(ir.inventory_recod_moument_in, 0)) AS qty,
+               SUM(COALESCE(ir.inventory_recod_moument_in, 0) * COALESCE(ir.inventory_recod_unit_price, 0)) AS value,
+               COUNT(DISTINCT ir.JV_No) AS invoices
+        FROM inventory_recod ir
+        JOIN suppliers_invoice_data s ON s.suppliers_invoice_JV = ir.JV_No
+        JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
+        WHERE ir.inventoy_name = %s
+          AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+          AND s.suppliers_invoice_date BETWEEN %s AND %s
+        GROUP BY sup.supplier_name
+        ORDER BY value DESC
+    """, (item, from_date, to_date)) or []
+    for r in rows:
+        r['qty'] = float(r['qty'] or 0)
+        r['value'] = round(float(r['value'] or 0), 2)
+    return rows
+
+
+def _supplier_purchasing_rows(from_date, to_date, supplier, item=None):
     """Every supplier invoice in the period (GRN, Direct Purchase, Service Entry,
     Opening Balance, ...) with Gross / VAT / Net split back out.
 
@@ -6529,6 +6556,9 @@ def _supplier_purchasing_rows(from_date, to_date, supplier):
     params = [from_date, to_date]
     if supplier:
         q += " AND sup.supplier_name = %s"; params.append(supplier)
+    if item:
+        q += " AND s.suppliers_invoice_JV IN (SELECT DISTINCT JV_No FROM inventory_recod WHERE inventoy_name = %s)"
+        params.append(item)
     q += " ORDER BY s.suppliers_invoice_date DESC, s.suppliers_invoice_JV DESC"
 
     rows = db.execute_query(q, tuple(params)) or []
@@ -6568,13 +6598,15 @@ def supplier_purchasing_report():
     from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
     to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
     supplier = (request.args.get('supplier') or '').strip()
+    item = (request.args.get('item') or '').strip()
     download = request.args.get('download')
     # Both the old layout (Gross/VAT/Net only) and the new one (with Main
     # Category) are wanted — one report, toggled by this flag instead of two
     # separate pages to maintain.
     show_category = request.args.get('show_category', '1') != '0'
 
-    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
+    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier, item)
+    item_suppliers = _item_supplier_summary(from_date, to_date, item)
 
     if download == 'csv':
         si = io.StringIO()
@@ -6594,15 +6626,23 @@ def supplier_purchasing_report():
                              f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
             cw.writerow([])
             cw.writerow(['', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
+        if item and item_suppliers:
+            cw.writerow([])
+            cw.writerow([f'Suppliers for: {item}'])
+            cw.writerow(['Supplier', 'Qty Received', 'Value', 'Invoices'])
+            for r in item_suppliers:
+                cw.writerow([r['supplier'], r['qty'], f"{r['value']:.2f}", r['invoices']])
         out = make_response(si.getvalue())
         out.headers["Content-Disposition"] = f"attachment; filename=Supplier_Purchasing_Report_{from_date}_{to_date}.csv"
         out.headers["Content-type"] = "text/csv"
         return out
 
     suppliers = db.execute_query("SELECT supplier_name FROM suppliers WHERE Is_Suplier = 1 ORDER BY supplier_name") or []
+    items = db.execute_query(
+        "SELECT inventoy_name AS name FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name") or []
     return render_template('supplier_purchasing_report.html', rows=rows, totals=totals,
                            from_date=from_date, to_date=to_date, supplier=supplier, suppliers=suppliers,
-                           show_category=show_category)
+                           show_category=show_category, item=item, items=items, item_suppliers=item_suppliers)
 
 
 @app.route('/supplier_purchasing_report/export_xlsx')
@@ -6612,6 +6652,7 @@ def supplier_purchasing_report_export_xlsx():
     from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
     to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
     supplier = (request.args.get('supplier') or '').strip()
+    item = (request.args.get('item') or '').strip()
     show_category = request.args.get('show_category', '1') != '0'
 
     try:
@@ -6621,7 +6662,8 @@ def supplier_purchasing_report_export_xlsx():
         flash("Excel export needs the 'openpyxl' package on the server — run: pip install openpyxl", 'warning')
         return redirect(url_for('supplier_purchasing_report', **{'from': from_date, 'to': to_date, 'supplier': supplier}))
 
-    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier)
+    rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier, item)
+    item_suppliers = _item_supplier_summary(from_date, to_date, item)
 
     wb, ws = xl.new_workbook('Supplier Purchasing Report')
     # Old layout (no Main Category) is 7 columns; the new one is 8 — label
@@ -6665,6 +6707,12 @@ def supplier_purchasing_report_export_xlsx():
             m.fill = PatternFill('solid', fgColor='E3F2FD')
             m.alignment = Alignment(horizontal='right')
         row += 1
+    if item and item_suppliers:
+        row += 1  # blank row
+        row = xl.section_row(ws, row, ncols, f'SUPPLIERS FOR: {item}', color=xl.INDIGO, bg='EEF2FF')
+        row = xl.header_row(ws, row, ['Supplier', 'Qty Received', 'Value', 'Invoices'])
+        for r in item_suppliers:
+            row = xl.data_row(ws, row, [r['supplier'], r['qty'], r['value'], r['invoices']], num_cols=(2, 3, 4))
     xl.finish(ws, ncols, first_col_width=14, num_col_width=16)
     ws.column_dimensions['B'].width = 28
     return xl.workbook_response(wb, f'Supplier_Purchasing_Report_{from_date}_{to_date}.xlsx')
