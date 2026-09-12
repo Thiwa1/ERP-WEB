@@ -200,7 +200,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'food_costing',       'label': 'Food Costing',         'url': '/food_costing',           'icon': 'fas fa-utensils',            'category': 'Restaurant'},
     {'key': 'daily_sales_entry',  'label': 'Daily Sales Entry',    'url': '/daily_sales_entry',      'icon': 'fas fa-cash-register',       'category': 'Restaurant'},
     {'key': 'daily_sales_post',   'label': 'Daily Sales - Post to GL', 'url': '/daily_sales_entry/post', 'icon': 'fas fa-check-double',    'category': 'Core Accounting'},
-    {'key': 'daily_sales_gl_mapping', 'label': 'Daily Sales - GL Mapping', 'url': '/daily_sales_entry/gl_mapping', 'icon': 'fas fa-sitemap', 'category': 'Core Accounting'},
+    {'key': 'daily_sales_gl_mapping', 'label': 'Daily Sales - GL Mapping', 'url': '/daily_sales_entry/gl_mapping', 'icon': 'fas fa-sitemap', 'category': 'Daily Sales Setup'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -5965,7 +5965,7 @@ def update_user_rights():
     all_perms = [
         'Add_New_User', 'OP_Approved',
         'Access_Sales', 'Access_Purchase', 'Access_Accounting',
-        'Access_Inventory', 'Access_POS', 'Access_Daily_Sales',
+        'Access_Inventory', 'Access_POS', 'Access_Daily_Sales', 'Access_Daily_Sales_Mapping',
         'Access_Reports', 'Access_Fixed_Assets', 'Access_VAT',
         'Access_Reversals', 'Access_HR', 'Access_CRM', 'Access_Settings'
     ]
@@ -15595,7 +15595,7 @@ def run_schema_migrations(target_db_conn=None):
         columns = [row[0] for row in cursor.fetchall()]
 
         new_columns = [
-            'Access_Inventory', 'Access_POS', 'Access_Daily_Sales', 'Access_Accounting', 'Access_Reports',
+            'Access_Inventory', 'Access_POS', 'Access_Daily_Sales', 'Access_Daily_Sales_Mapping', 'Access_Accounting', 'Access_Reports',
             'Access_Reversals', 'Access_Fixed_Assets', 'Access_VAT', 'Access_HR', 'Access_CRM',
             'Access_Sales', 'Access_Purchase', 'Access_Settings'
         ]
@@ -20619,7 +20619,7 @@ def daily_sales_entry_records():
 
 @app.route('/daily_sales_entry/gl_mapping', methods=['GET'])
 @login_required
-@has_permission('Access_Accounting')
+@has_permission('Access_Daily_Sales_Mapping')
 def daily_sales_gl_mapping():
     categories = _daily_sales_categories()
     accounts = db.execute_query("""
@@ -20642,7 +20642,7 @@ def daily_sales_gl_mapping():
 
 @app.route('/daily_sales_entry/gl_mapping/save', methods=['POST'])
 @login_required
-@has_permission('Access_Accounting')
+@has_permission('Access_Daily_Sales_Mapping')
 def daily_sales_gl_mapping_save():
     try:
         cat_ids = request.form.getlist('category_id[]')

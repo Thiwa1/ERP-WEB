@@ -84,7 +84,7 @@ def _migrate_user_rights(cursor):
 
         new_columns = [
             'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports', 'Access_Reversals',
-            'Access_Daily_Sales'
+            'Access_Daily_Sales', 'Access_Daily_Sales_Mapping'
         ]
 
         for col in new_columns:
