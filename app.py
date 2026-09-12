@@ -20124,18 +20124,18 @@ def _daily_sales_load_entry(entry_date):
     return header, categories, credit_lines
 
 
-def _daily_sales_expected_received(total_income, total_expenditure, telephone_income, advance_received,
+def _daily_sales_expected_received(total_income, total_expenditure, telephone_expense, advance_received,
                                     advance_given, petty_cash, misc_expenses, credit_received_total, credit_given_total):
     """What Cash + Credit Card (both banks) + Bank Transfer SHOULD add up to
     once every other cash movement of the day is accounted for - not just
     the Sheet9 sales total. Everything that adds to cash on hand (sales,
-    telephone income, advances taken, debts collected) minus everything that
-    reduces it (credit sales not yet collected, advances paid out, petty cash
-    and misc expenses paid out, other general expenditure)."""
+    advances taken, debts collected) minus everything that reduces it
+    (credit sales not yet collected, advances paid out, telephone bill,
+    petty cash and misc expenses paid out, other general expenditure)."""
     misc_total = sum(parse_float(amt) for _label, amt in (misc_expenses or []))
     return round(
-        total_income + telephone_income + advance_received + credit_received_total
-        - credit_given_total - advance_given - petty_cash - misc_total - total_expenditure,
+        total_income + advance_received + credit_received_total
+        - credit_given_total - advance_given - telephone_expense - petty_cash - misc_total - total_expenditure,
         2
     )
 

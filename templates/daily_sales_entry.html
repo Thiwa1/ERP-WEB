@@ -195,11 +195,6 @@
                 <input type="text" class="form-control form-control-sm" id="dseTotalSalesDisplay" readonly>
               </div>
               <div class="col-6">
-                <label class="form-label">Telephone</label>
-                <input type="number" step="0.01" name="telephone_income" id="dseTelephone" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.telephone_income or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
-              </div>
-              <div class="col-6">
                 <label class="form-label">Credit Received</label>
                 <input type="text" class="form-control form-control-sm" id="dseCreditReceivedTotal" readonly>
               </div>
@@ -223,6 +218,11 @@
               <div class="col-6">
                 <label class="form-label">Credit Given</label>
                 <input type="text" class="form-control form-control-sm" id="dseCreditGivenTotal" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Telephone</label>
+                <input type="number" step="0.01" name="telephone_income" id="dseTelephone" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.telephone_income or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
                 <label class="form-label">Petty Cash</label>
@@ -282,8 +282,8 @@
               </div>
             </div>
             <div class="mt-2 text-muted" style="font-size:0.72rem;">
-              Expected Receipt = Total Sales + Telephone + Advance Received + Credit Received
-              &minus; Credit Given &minus; Advance Given &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+              Expected Receipt = Total Sales + Advance Received + Credit Received
+              &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Misc &minus; Total Expenditure
             </div>
           </div>
         </div>
@@ -418,8 +418,8 @@ function dseRecalc() {
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += parseFloat(inp.value) || 0; });
 
   const expectedReceived = Math.round((
-    total + telephone + advanceReceived + creditReceived
-    - creditGiven - advanceGiven - pettyCash - miscTotal - exp
+    total + advanceReceived + creditReceived
+    - creditGiven - advanceGiven - telephone - pettyCash - miscTotal - exp
   ) * 100) / 100;
   document.getElementById('dseExpectedReceived').value = expectedReceived.toFixed(2);
 
