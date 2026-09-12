@@ -14,6 +14,7 @@
   .up-row-bad td { background:#fff5f5; }
   .up-row-warn td { background:#fffaf0; }
   .up-row-skip td { background:#f6f6f6; color:#888; }
+  .up-row-removed td { background:#fff4e5; }
   .up-stat { display:inline-block; padding:6px 14px; border-radius:20px; font-size:0.8rem; font-weight:600; margin-right:8px; }
 </style>
 
@@ -27,6 +28,7 @@
 {% set warn_rows   = report | selectattr('status', 'equalto', 'no_quantities') | list %}
 {% set skip_rows   = report | selectattr('status', 'equalto', 'skipped')       | list %}
 {% set ignored_rows = report | selectattr('status', 'equalto', 'ignored')      | list %}
+{% set removed_rows = report | selectattr('status', 'equalto', 'removed_item') | list %}
 
 <div class="up-card">
   <div class="up-card-header">
@@ -40,6 +42,7 @@
       <span class="up-stat bg-warning text-dark">{{ warn_rows | length }} matched but zero/blank</span>
       <span class="up-stat bg-info text-dark">{{ ignored_rows | length }} ignored (not bar items)</span>
       <span class="up-stat bg-secondary text-white">{{ skip_rows | length }} skipped</span>
+      {% if removed_rows %}<span class="up-stat text-white" style="background:#fd7e14;">{{ removed_rows | length }} removed from item list</span>{% endif %}
     </div>
     <table class="table table-sm table-borderless mb-0" style="width:auto;">
       <tr><td class="text-muted pe-3">Uploading for date</td><td><strong>{{ entry_date }}</strong></td></tr>
@@ -67,6 +70,45 @@
     </table>
   </div>
 </div>
+
+{% if removed_rows %}
+{% set unique_removed = {} %}
+{% set removed_codes = {} %}
+{% for e in removed_rows %}{% if e.removed_item_id not in unique_removed %}{% set _ = unique_removed.update({e.removed_item_id: e.matched_name}) %}{% set _ = removed_codes.update({e.removed_item_id: e.lookup}) %}{% endif %}{% endfor %}
+<div class="up-card" style="border-color:#fd7e14;">
+  <div class="up-card-header" style="background:#fff4e5;">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-undo me-1" style="color:#fd7e14;"></i>{{ unique_removed | length }} item(s) in this file were removed from your item list</h6>
+  </div>
+  <div class="up-card-body">
+    <p class="text-muted small mb-2">
+      These items <strong>do</strong> exist in the system, but they were removed (deleted) from the
+      active list, so quantities can't be posted against them. Restore them and upload the same
+      file again &mdash; their rows will import normally.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_items_bulk_restore') }}"
+          onsubmit="return confirm('Restore {{ unique_removed | length }} item(s) to the active list?');">
+      <input type="hidden" name="next_date" value="{{ entry_date }}">
+      <div class="table-responsive" style="max-height:280px;overflow:auto;">
+        <table class="table table-sm table-bordered up-table mb-2">
+          <thead><tr><th style="width:16%">Code in file</th><th>Item</th></tr></thead>
+          <tbody>
+            {% for item_id, name in unique_removed.items() %}
+            <tr class="up-row-removed">
+              <td><code>{{ removed_codes.get(item_id, '') }}</code></td>
+              <td>{{ name }}<input type="hidden" name="item_ids[]" value="{{ item_id }}"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-sm text-white" style="background:#fd7e14;">
+        <i class="fas fa-undo me-1"></i> Restore all {{ unique_removed | length }} and go back to {{ entry_date }}
+      </button>
+      <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-sm btn-outline-secondary">Manage Items</a>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 {% if applied %}
 <div class="up-card">
@@ -180,7 +222,7 @@
       </thead>
       <tbody>
         {% for e in report %}
-        <tr class="{% if e.status == 'ok' %}up-row-ok{% elif e.status == 'not_matched' %}up-row-bad{% elif e.status == 'no_quantities' %}up-row-warn{% else %}up-row-skip{% endif %}">
+        <tr class="{% if e.status == 'ok' %}up-row-ok{% elif e.status == 'not_matched' %}up-row-bad{% elif e.status == 'no_quantities' %}up-row-warn{% elif e.status == 'removed_item' %}up-row-removed{% else %}up-row-skip{% endif %}">
           <td>{{ e.row_no }}</td>
           <td><code>{{ e.lookup }}</code></td>
           <td>{{ e.file_name }}</td>
@@ -200,6 +242,7 @@
             {% elif e.status == 'not_matched' %}<span class="badge bg-danger">NOT MATCHED</span>
             {% elif e.status == 'no_quantities' %}<span class="badge bg-warning text-dark">ZERO</span>
             {% elif e.status == 'ignored' %}<span class="badge bg-info text-dark">IGNORED</span>
+            {% elif e.status == 'removed_item' %}<span class="badge text-white" style="background:#fd7e14;">REMOVED ITEM</span>
             {% else %}<span class="badge bg-secondary">SKIPPED</span>{% endif %}
           </td>
           <td class="text-muted" style="font-size:0.75rem;">{{ e.note }}</td>

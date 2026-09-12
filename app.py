@@ -21032,6 +21032,20 @@ def bar_inventory_upload():
         ignored_rows = db.execute_query("SELECT code, label FROM bar_inventory_ignored_codes") or []
         ignored_codes = {_bar_inv_norm_identifier(r['code']): (r['label'] or '') for r in ignored_rows}
 
+        # Removed (is_active = 0) items are deliberately excluded from
+        # matching, but "no item has this code" is a misleading way to report
+        # it - look them up separately so the row can say what's really wrong.
+        removed_rows = db.execute_query("""
+            SELECT id, item_code, item_name FROM bar_inventory_items WHERE is_active = 0
+        """) or []
+        removed_map = {}
+        for r in removed_rows:
+            if r['item_code']:
+                removed_map[_bar_inv_norm_identifier(r['item_code'])] = (r['id'], r['item_name'])
+            removed_map[str(r['id'])] = (r['id'], r['item_name'])
+        removed_by_name = {r['item_name'].strip().lower(): (r['id'], r['item_name'])
+                           for r in removed_rows}
+
         # Which column layout is this file?
         #   Identifier layout: A=Item Code/ID, B=Item Name (reference), C..F=quantities
         #   Name layout:       A=Item Name, B..E=quantities
@@ -21084,10 +21098,19 @@ def bar_inventory_upload():
                 'raw_quantities': ['' if v is None else str(v) for v in raw_quantities],
             }
 
-            if item_id is None and _bar_inv_norm_identifier(lookup_value) in ignored_codes:
+            norm_lookup = _bar_inv_norm_identifier(lookup_value)
+            removed_hit = (removed_map.get(norm_lookup) if id_layout
+                           else removed_by_name.get(str(lookup_value).strip().lower()))
+
+            if item_id is None and norm_lookup in ignored_codes:
                 entry['status'] = 'ignored'
                 entry['matched_name'] = ''
                 entry['note'] = 'ignored - marked as not a bar item'
+            elif item_id is None and removed_hit:
+                entry['status'] = 'removed_item'
+                entry['removed_item_id'] = removed_hit[0]
+                entry['matched_name'] = removed_hit[1]
+                entry['note'] = 'this item was REMOVED from the active list - restore it, then upload this file again'
             elif item_id is None:
                 entry['status'] = 'not_matched'
                 entry['matched_name'] = ''
@@ -21398,7 +21421,19 @@ def bar_inventory_items_save():
 @has_permission('Access_Inventory')
 def bar_inventory_items_deactivate(item_id):
     db.execute_query("UPDATE bar_inventory_items SET is_active = 0 WHERE id = %s", (item_id,), commit=True)
-    flash('Item removed from the active list.', 'success')
+    flash('Item removed from the active list. Use Restore on that row to bring it back.', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/items/restore/<int:item_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_restore(item_id):
+    """Undo a removal. Without this a removed item is invisible to the day
+    grid and silently refuses to match on every quantity upload, with no way
+    back short of editing the database."""
+    db.execute_query("UPDATE bar_inventory_items SET is_active = 1 WHERE id = %s", (item_id,), commit=True)
+    flash('Item restored to the active list.', 'success')
     return redirect(url_for('bar_inventory_items'))
 
 
@@ -21415,6 +21450,29 @@ def bar_inventory_items_bulk_deactivate():
     db.execute_query(f"UPDATE bar_inventory_items SET is_active = 0 WHERE id IN ({format_strings})",
                      tuple(ids), commit=True)
     flash(f'Removed {len(ids)} item(s) from the active list.', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/items/bulk_restore', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_bulk_restore():
+    """Bring several removed items back at once - used by the upload preview
+    when a file's codes match items that had been removed."""
+    ids = [i for i in request.form.getlist('item_ids[]') if i.strip().isdigit()]
+    if not ids:
+        flash('No items were selected.', 'danger')
+        return redirect(url_for('bar_inventory_items'))
+
+    format_strings = ','.join(['%s'] * len(ids))
+    db.execute_query(f"UPDATE bar_inventory_items SET is_active = 1 WHERE id IN ({format_strings})",
+                     tuple(ids), commit=True)
+    flash(f'Restored {len(ids)} item(s) to the active list. Upload your file again to import their quantities.',
+          'success')
+
+    next_date = (request.form.get('next_date') or '').strip()
+    if next_date:
+        return redirect(url_for('bar_inventory', date=next_date))
     return redirect(url_for('bar_inventory_items'))
 
 
@@ -21493,9 +21551,14 @@ def bar_inventory_items_upload():
             flash('No item names found in that file.', 'danger')
             return redirect(url_for('bar_inventory_items'))
 
-        existing = db.execute_query("SELECT id, item_code, item_name FROM bar_inventory_items") or []
+        existing = db.execute_query("SELECT id, item_code, item_name, is_active FROM bar_inventory_items") or []
         existing_by_name = {r['item_name']: r['id'] for r in existing}
         existing_by_code = {r['item_code']: r['id'] for r in existing if r['item_code']}
+        # A previously removed item that turns up in an uploaded catalogue is
+        # being re-adopted, so bring it back - otherwise it stays invisible to
+        # the day grid and every quantity upload silently fails to match it.
+        inactive_ids = {r['id'] for r in existing if not r['is_active']}
+        restored = 0
 
         # Keep the file's own row order for genuinely NEW items - continue
         # numbering after whatever already has the highest display_order.
@@ -21518,6 +21581,11 @@ def bar_inventory_items_upload():
 
             try:
                 if existing_id:
+                    if existing_id in inactive_ids:
+                        db.execute_query("UPDATE bar_inventory_items SET is_active = 1 WHERE id = %s",
+                                         (existing_id,), commit=True)
+                        inactive_ids.discard(existing_id)
+                        restored += 1
                     # Every detail field is independently optional here - a
                     # column left blank in the file (e.g. a codes-only
                     # upload that only fills Name + Item Code) must NEVER
@@ -21561,7 +21629,10 @@ def bar_inventory_items_upload():
             except Exception:
                 pass  # skip duplicates/bad rows, keep going
 
-        flash(f'Added {added} new item(s), updated {updated} existing item(s).', 'success')
+        msg = f'Added {added} new item(s), updated {updated} existing item(s).'
+        if restored:
+            msg += f' Restored {restored} previously removed item(s) back to the active list.'
+        flash(msg, 'success')
     except Exception as e:
         flash(f'Error reading file: {str(e)}', 'danger')
 

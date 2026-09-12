@@ -154,7 +154,14 @@
           <td class="text-end">{{ '%.2f'|format(it.unit_price or 0) }}</td>
           <td class="text-end">{{ '%.2f'|format(it.unit_price_restaurant or 0) }}</td>
           <td class="text-end">{{ it.opening_balance or 0 }}</td>
-          <td><span class="badge bg-secondary">Removed</span></td>
+          <td class="text-nowrap">
+            <span class="badge bg-secondary">Removed</span>
+            <form method="POST" action="{{ url_for('bar_inventory_items_restore', item_id=it.id) }}" style="display:inline;">
+              <button type="submit" class="btn btn-sm btn-outline-success" title="Restore this item to the active list">
+                <i class="fas fa-undo"></i> Restore
+              </button>
+            </form>
+          </td>
           {% endif %}
         </tr>
         {% else %}
