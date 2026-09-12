@@ -60,6 +60,7 @@ def run_migrations(conn):
         _migrate_daily_sales_sub_accounts(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
+        _migrate_bar_inventory_ignored_codes(cursor)
 
         conn.commit()
         cursor.close()
@@ -1069,6 +1070,33 @@ def _migrate_bar_inventory_item_code(cursor):
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE bar_inventory_items ADD COLUMN item_code VARCHAR(50) NULL")
             cursor.execute("ALTER TABLE bar_inventory_items ADD UNIQUE KEY item_code_UNIQUE (item_code)")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_ignored_codes(cursor):
+    """Codes that appear in the POS export but aren't bar stock at all
+    (food, rooms, buffet, combo deals). Once a code is in here the upload
+    preview lists it as 'Ignored - not a bar item' instead of flagging it
+    as an error on every single upload."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_ignored_codes'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_ignored_codes table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_ignored_codes (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  code VARCHAR(50) NOT NULL,
+                  label VARCHAR(200) NULL,
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY code_UNIQUE (code)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

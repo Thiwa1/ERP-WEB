@@ -20746,6 +20746,17 @@ def _bar_inv_format_balance(item, qty):
     return f"{qty:g}"
 
 
+def _bar_inv_norm_identifier(v):
+    """Normalises an Item Code / ID for matching. Excel hands numeric cells
+    back as floats, so a code of 1 can arrive as 1.0 and would never match
+    the stored "1" - drop the pointless decimal before comparing."""
+    if v is None:
+        return ''
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    return str(v).strip().lower()
+
+
 def _bar_inv_parse_qty(v):
     """A quantity out of an uploaded cell. The source POS export writes the
     unit into the value itself for part-bottle pours ('575ml', '100ml'), and
@@ -20950,6 +20961,16 @@ def bar_inventory_upload():
             return v.strip() if isinstance(v, str) else v
 
         skipped = []   # (row_no, reason) for rows that never reach matching
+        header_a = header_b = None   # column A/B of the header row, if there is one
+
+        def is_header(col_a):
+            t = (col_a or '').strip().lower()
+            return bool(t) and (
+                t in ('item', 'item id', 'item name', 'description', 'identifier')
+                or t.startswith('identifier')
+                or t.startswith('item code')
+                or t.startswith('code')
+            )
 
         if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
             from openpyxl import load_workbook
@@ -20964,8 +20985,9 @@ def bar_inventory_upload():
                 text = str(first).strip()
                 if not text:
                     continue
-                if text.lower() in ('item', 'item id', 'item name', 'description',
-                                    'identifier (item code or id)', 'identifier'):
+                if header_a is None and is_header(text):
+                    header_a = text
+                    header_b = str(cell(row, 1) or '').strip()
                     skipped.append((row_no, 'header row - skipped'))
                     continue
                 raw_rows.append((row_no,) + tuple(cell(row, i) for i in range(6)))
@@ -20978,8 +21000,9 @@ def bar_inventory_upload():
                 first = (row[0] or '').strip()
                 if not first:
                     continue
-                if first.lower() in ('item', 'item id', 'item name', 'description',
-                                     'identifier (item code or id)', 'identifier'):
+                if header_a is None and is_header(first):
+                    header_a = first
+                    header_b = (row[1] or '').strip() if len(row) > 1 else ''
                     skipped.append((row_no, 'header row - skipped'))
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
@@ -20995,18 +21018,41 @@ def bar_inventory_upload():
         identifier_map = {}
         for it in items:
             if it['item_code']:
-                identifier_map[it['item_code'].strip().lower()] = it['id']
+                identifier_map[_bar_inv_norm_identifier(it['item_code'])] = it['id']
             identifier_map[str(it['id'])] = it['id']
         items_by_name = {it['item_name'].strip().lower(): it['id'] for it in items}
         items_by_id = {it['id']: it for it in items}
 
         def as_identifier(v):
-            return identifier_map.get(str(v).strip().lower())
+            return identifier_map.get(_bar_inv_norm_identifier(v))
 
-        # Detect layout from the first row's column A: an Identifier layout
-        # has a reference-only Name in column B and quantities from C on;
-        # a plain Name layout has RF.Stock itself starting in column B.
-        id_layout = as_identifier(raw_rows[0][1]) is not None
+        # Codes already marked "not a bar item" - reported as Ignored rather
+        # than errors, so the food/room lines in a POS export stop crying
+        # wolf on every upload.
+        ignored_rows = db.execute_query("SELECT code, label FROM bar_inventory_ignored_codes") or []
+        ignored_codes = {_bar_inv_norm_identifier(r['code']): (r['label'] or '') for r in ignored_rows}
+
+        # Which column layout is this file?
+        #   Identifier layout: A=Item Code/ID, B=Item Name (reference), C..F=quantities
+        #   Name layout:       A=Item Name, B..E=quantities
+        # The header row decides it when there is one - that's definitive, and
+        # it must NOT depend on whether the codes happen to match anything yet
+        # (an empty item list would otherwise silently flip a code file over to
+        # Name layout and read the Item Name column as RF.Stock).
+        ha = (header_a or '').lower()
+        if ha:
+            if 'name' in ha and 'code' not in ha and not ha.startswith('identifier'):
+                id_layout = False
+                layout_reason = f'header "{header_a}" in column A'
+            else:
+                id_layout = True
+                layout_reason = f'header "{header_a}" in column A'
+        else:
+            # No header - fall back to probing the first row's column A.
+            id_layout = as_identifier(raw_rows[0][1]) is not None
+            layout_reason = ('no header row; first row\'s column A matches a known Item Code/ID'
+                             if id_layout else
+                             'no header row and column A did not match any Item Code/ID, so treated as names')
 
         # An export straight out of a POS lists one row per bill line, so the
         # same item shows up many times - sometimes in different columns
@@ -21038,7 +21084,11 @@ def bar_inventory_upload():
                 'raw_quantities': ['' if v is None else str(v) for v in raw_quantities],
             }
 
-            if item_id is None:
+            if item_id is None and _bar_inv_norm_identifier(lookup_value) in ignored_codes:
+                entry['status'] = 'ignored'
+                entry['matched_name'] = ''
+                entry['note'] = 'ignored - marked as not a bar item'
+            elif item_id is None:
                 entry['status'] = 'not_matched'
                 entry['matched_name'] = ''
                 entry['note'] = ('no item has this Item Code / ID' if id_layout
@@ -21088,9 +21138,11 @@ def bar_inventory_upload():
                                entry_date=entry_date,
                                filename=f.filename,
                                id_layout=id_layout,
+                               layout_reason=layout_reason,
                                report=report,
                                applied=applied,
-                               total_items_in_system=len(items))
+                               total_items_in_system=len(items),
+                               items_with_codes=sum(1 for it in items if it['item_code']))
 
     except Exception as e:
         flash(f'Error reading file: {str(e)}', 'danger')
@@ -21125,6 +21177,54 @@ def bar_inventory_upload_confirm():
         message = f'Applied {saved} item(s) to {entry_date}. Review the grid, then Save & Verify.'
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/ignore_codes', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_ignore_codes():
+    """Mark codes from the POS export as "not a bar item" so they stop being
+    flagged as errors. Called from the upload preview's unmatched rows."""
+    codes = request.form.getlist('code[]')
+    labels = request.form.getlist('label[]')
+    entry_date = request.form.get('entry_date') or date.today().strftime('%Y-%m-%d')
+
+    added = 0
+    for i, code in enumerate(codes):
+        code = (code or '').strip()
+        if not code:
+            continue
+        label = (labels[i] if i < len(labels) else '') or None
+        try:
+            db.execute_query(
+                "INSERT INTO bar_inventory_ignored_codes (code, label, created_by) VALUES (%s, %s, %s)",
+                (code, label, get_current_user_pk()), commit=True)
+            added += 1
+        except Exception:
+            pass  # already ignored - nothing to do
+
+    flash(f'Marked {added} code(s) as "not a bar item". They will be listed as Ignored from now on. '
+          f'Upload the file again to see the updated report.', 'success')
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/ignored_codes', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_ignored_codes():
+    rows = db.execute_query("""
+        SELECT id, code, label, created_date FROM bar_inventory_ignored_codes ORDER BY code
+    """) or []
+    return render_template('bar_inventory_ignored_codes.html', rows=rows)
+
+
+@app.route('/bar_inventory/ignored_codes/remove/<int:row_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_ignored_codes_remove(row_id):
+    db.execute_query("DELETE FROM bar_inventory_ignored_codes WHERE id = %s", (row_id,), commit=True)
+    flash('Code removed from the ignore list - it will be checked against your items again.', 'success')
+    return redirect(url_for('bar_inventory_ignored_codes'))
 
 
 @app.route('/bar_inventory/download_template')

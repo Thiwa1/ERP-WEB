@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Inventory - Ignored Codes{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-ban me-2 text-primary"></i>Bar Inventory &mdash; Ignored Codes</h4>
+  <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to Bar Inventory</a>
+</div>
+
+<div class="alert alert-info">
+  <i class="fas fa-info-circle me-1"></i>
+  These codes appear in your POS export but aren't bar stock (food, rooms, buffet, combo deals).
+  The upload preview lists them as <strong>Ignored</strong> instead of flagging them as errors.
+  Remove one here if it turns out it <em>should</em> be a bar item &mdash; then give that item its
+  Item Code on <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.
+</div>
+
+<div class="card">
+  <div class="card-header fw-bold">Ignored Codes ({{ rows | length }})</div>
+  <div class="card-body table-responsive">
+    <table class="table table-sm table-bordered align-middle">
+      <thead>
+        <tr>
+          <th style="width:15%">Code</th>
+          <th>Name (as it appeared in the file)</th>
+          <th style="width:20%">Added</th>
+          <th style="width:8%"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td><code>{{ r.code }}</code></td>
+          <td>{{ r.label or '' }}</td>
+          <td class="text-muted">{{ r.created_date }}</td>
+          <td>
+            <form method="POST" action="{{ url_for('bar_inventory_ignored_codes_remove', row_id=r.id) }}"
+                  onsubmit="return confirm('Stop ignoring code {{ r.code }}?');">
+              <button type="submit" class="btn btn-sm btn-outline-danger" title="Stop ignoring this code">
+                <i class="fas fa-times"></i>
+              </button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-4">
+          Nothing ignored yet. You can mark codes as "not a bar item" from the upload preview.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

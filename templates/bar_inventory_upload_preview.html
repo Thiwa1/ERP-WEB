@@ -22,10 +22,11 @@
   <a href="{{ url_for('bar_inventory', date=entry_date) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-times me-1"></i> Cancel</a>
 </div>
 
-{% set ok_rows    = report | selectattr('status', 'equalto', 'ok')            | list %}
-{% set bad_rows   = report | selectattr('status', 'equalto', 'not_matched')   | list %}
-{% set warn_rows  = report | selectattr('status', 'equalto', 'no_quantities') | list %}
-{% set skip_rows  = report | selectattr('status', 'equalto', 'skipped')       | list %}
+{% set ok_rows     = report | selectattr('status', 'equalto', 'ok')            | list %}
+{% set bad_rows    = report | selectattr('status', 'equalto', 'not_matched')   | list %}
+{% set warn_rows   = report | selectattr('status', 'equalto', 'no_quantities') | list %}
+{% set skip_rows   = report | selectattr('status', 'equalto', 'skipped')       | list %}
+{% set ignored_rows = report | selectattr('status', 'equalto', 'ignored')      | list %}
 
 <div class="up-card">
   <div class="up-card-header">
@@ -37,12 +38,14 @@
       <span class="up-stat bg-success text-white">{{ ok_rows | length }} rows will import</span>
       <span class="up-stat bg-danger text-white">{{ bad_rows | length }} not matched</span>
       <span class="up-stat bg-warning text-dark">{{ warn_rows | length }} matched but zero/blank</span>
+      <span class="up-stat bg-info text-dark">{{ ignored_rows | length }} ignored (not bar items)</span>
       <span class="up-stat bg-secondary text-white">{{ skip_rows | length }} skipped</span>
     </div>
     <table class="table table-sm table-borderless mb-0" style="width:auto;">
       <tr><td class="text-muted pe-3">Uploading for date</td><td><strong>{{ entry_date }}</strong></td></tr>
-      <tr><td class="text-muted pe-3">Layout detected</td>
-          <td><strong>{{ 'Identifier (Column A = Item Code / ID)' if id_layout else 'Name (Column A = Item Name)' }}</strong></td></tr>
+      <tr><td class="text-muted pe-3">Matching on</td>
+          <td><strong>{{ 'Item Code / ID (Column A)' if id_layout else 'Item Name (Column A)' }}</strong>
+              <span class="text-muted">&mdash; {{ layout_reason }}</span></td></tr>
       <tr><td class="text-muted pe-3">Items in your Bar Inventory list</td>
           <td><strong>{{ total_items_in_system }}</strong>
             {% if total_items_in_system == 0 %}
@@ -50,6 +53,16 @@
               <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</span>
             {% endif %}
           </td></tr>
+      {% if id_layout %}
+      <tr><td class="text-muted pe-3">Items with an Item Code set</td>
+          <td><strong>{{ items_with_codes }}</strong> of {{ total_items_in_system }}
+            {% if total_items_in_system and items_with_codes == 0 %}
+              <span class="text-danger">&larr; no codes are set, so Column A can only match this app's
+              internal IDs. Set your codes on
+              <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</span>
+            {% endif %}
+          </td></tr>
+      {% endif %}
       <tr><td class="text-muted pe-3">Items that will be written</td><td><strong>{{ applied | length }}</strong></td></tr>
     </table>
   </div>
@@ -102,6 +115,52 @@
 </div>
 {% endif %}
 
+{% if bad_rows %}
+{% set unique_bad = {} %}
+{% for e in bad_rows %}{% if e.lookup not in unique_bad %}{% set _ = unique_bad.update({e.lookup: e.file_name}) %}{% endif %}{% endfor %}
+<div class="up-card">
+  <div class="up-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-ban me-1 text-danger"></i>Not matched &mdash; {{ unique_bad | length }} code(s)</h6>
+    <a href="{{ url_for('bar_inventory_ignored_codes') }}" class="btn btn-outline-secondary btn-sm">Manage ignore list</a>
+  </div>
+  <div class="up-card-body">
+    <p class="text-muted small">
+      Tick the ones that <strong>aren't bar stock at all</strong> (food, rooms, buffet, combo deals) and
+      mark them ignored &mdash; they'll be listed as "Ignored" on every future upload instead of showing
+      up as errors. Anything you leave unticked stays an error, so you can fix its Item Code on
+      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a> instead.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_ignore_codes') }}">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <div class="table-responsive" style="max-height:320px;overflow:auto;">
+        <table class="table table-sm table-bordered up-table mb-2">
+          <thead>
+            <tr>
+              <th style="width:4%"><input type="checkbox" onclick="upToggleIgnoreAll(this)"></th>
+              <th style="width:16%">Code in file</th>
+              <th>Name in file</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for code, name in unique_bad.items() %}
+            <tr>
+              <td><input type="checkbox" class="up-ignore-cb" name="code[]" value="{{ code }}"></td>
+              <td><code>{{ code }}</code></td>
+              <td>{{ name }}<input type="hidden" name="label[]" value="{{ name }}"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-outline-danger btn-sm"
+              onclick="return upConfirmIgnore()">
+        <i class="fas fa-ban me-1"></i> Mark ticked as "not a bar item"
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 <div class="up-card">
   <div class="up-card-header">
     <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-list-ol me-1 text-primary"></i>Line-by-line report (every row in the file)</h6>
@@ -140,6 +199,7 @@
             {% if e.status == 'ok' %}<span class="badge bg-success">OK</span>
             {% elif e.status == 'not_matched' %}<span class="badge bg-danger">NOT MATCHED</span>
             {% elif e.status == 'no_quantities' %}<span class="badge bg-warning text-dark">ZERO</span>
+            {% elif e.status == 'ignored' %}<span class="badge bg-info text-dark">IGNORED</span>
             {% else %}<span class="badge bg-secondary">SKIPPED</span>{% endif %}
           </td>
           <td class="text-muted" style="font-size:0.75rem;">{{ e.note }}</td>
@@ -164,6 +224,19 @@
 </div>
 
 <script>
+function upToggleIgnoreAll(cb) {
+  document.querySelectorAll('.up-ignore-cb').forEach(function (el) { el.checked = cb.checked; });
+}
+
+function upConfirmIgnore() {
+  const n = document.querySelectorAll('.up-ignore-cb:checked').length;
+  if (n === 0) {
+    alert('Tick at least one code first.');
+    return false;
+  }
+  return confirm('Mark ' + n + ' code(s) as "not a bar item"? They will be skipped quietly on future uploads.');
+}
+
 function upRefreshCount() {
   const n = document.querySelectorAll('#upAppliedTable .up-applied-row .up-include:checked').length;
   document.getElementById('upIncludedCount').textContent = n;
