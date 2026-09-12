@@ -20949,31 +20949,41 @@ def bar_inventory_upload():
             v = row[idx]
             return v.strip() if isinstance(v, str) else v
 
+        skipped = []   # (row_no, reason) for rows that never reach matching
+
         if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
             from openpyxl import load_workbook
             wb = load_workbook(f, read_only=True, data_only=True)
             ws = wb.active
-            for row in ws.iter_rows(values_only=True):
+            for row_no, row in enumerate(ws.iter_rows(values_only=True), start=1):
                 if not row:
                     continue
                 first = cell(row, 0)
                 if first is None:
                     continue
                 text = str(first).strip()
-                if not text or text.lower() in ('item', 'item id', 'item name', 'description'):
+                if not text:
                     continue
-                raw_rows.append(tuple(cell(row, i) for i in range(6)))
+                if text.lower() in ('item', 'item id', 'item name', 'description',
+                                    'identifier (item code or id)', 'identifier'):
+                    skipped.append((row_no, 'header row - skipped'))
+                    continue
+                raw_rows.append((row_no,) + tuple(cell(row, i) for i in range(6)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
-            for row in csv.reader(_io.StringIO(text_data)):
+            for row_no, row in enumerate(csv.reader(_io.StringIO(text_data)), start=1):
                 if not row:
                     continue
                 first = (row[0] or '').strip()
-                if not first or first.lower() in ('item', 'item id', 'item name', 'description'):
+                if not first:
+                    continue
+                if first.lower() in ('item', 'item id', 'item name', 'description',
+                                     'identifier (item code or id)', 'identifier'):
+                    skipped.append((row_no, 'header row - skipped'))
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
-                raw_rows.append(tuple(get(i) for i in range(6)))
+                raw_rows.append((row_no,) + tuple(get(i) for i in range(6)))
 
         if not raw_rows:
             flash('No item rows found in that file.', 'danger')
@@ -20988,6 +20998,7 @@ def bar_inventory_upload():
                 identifier_map[it['item_code'].strip().lower()] = it['id']
             identifier_map[str(it['id'])] = it['id']
         items_by_name = {it['item_name'].strip().lower(): it['id'] for it in items}
+        items_by_id = {it['id']: it for it in items}
 
         def as_identifier(v):
             return identifier_map.get(str(v).strip().lower())
@@ -20995,7 +21006,7 @@ def bar_inventory_upload():
         # Detect layout from the first row's column A: an Identifier layout
         # has a reference-only Name in column B and quantities from C on;
         # a plain Name layout has RF.Stock itself starting in column B.
-        id_layout = as_identifier(raw_rows[0][0]) is not None
+        id_layout = as_identifier(raw_rows[0][1]) is not None
 
         # An export straight out of a POS lists one row per bill line, so the
         # same item shows up many times - sometimes in different columns
@@ -21003,48 +21014,116 @@ def bar_inventory_upload():
         # them per item rather than letting the last row win.
         totals = {}
         order = []
-        not_found = []
+        report = []   # one entry per data row, for the preview screen
         for r in raw_rows:
+            row_no, c_a, c_b, c_c, c_d, c_e, c_f = r
             if id_layout:
-                item_id = as_identifier(r[0])
-                if item_id is None:
-                    not_found.append(str(r[0]))
-                    continue
-                rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty = r[2], r[3], r[4], r[5]
+                lookup_value = c_a
+                file_name = c_b
+                item_id = as_identifier(c_a)
+                raw_quantities = (c_c, c_d, c_e, c_f)
             else:
-                name = str(r[0]).strip()
-                item_id = items_by_name.get(name.lower())
-                if not item_id:
-                    not_found.append(name)
-                    continue
-                rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty = r[1], r[2], r[3], r[4]
+                lookup_value = c_a
+                file_name = c_a
+                item_id = items_by_name.get(str(c_a).strip().lower())
+                raw_quantities = (c_b, c_c, c_d, c_e)
 
-            if item_id not in totals:
-                totals[item_id] = {'rf_stock': 0.0, 'sales_bar_qty': 0.0,
-                                   'restaurant_sale_qty': 0.0, 'ent_qty': 0.0}
-                order.append(item_id)
-            t = totals[item_id]
-            t['rf_stock'] += _bar_inv_parse_qty(rf_stock)
-            t['sales_bar_qty'] += _bar_inv_parse_qty(sales_bar_qty)
-            t['restaurant_sale_qty'] += _bar_inv_parse_qty(restaurant_sale_qty)
-            t['ent_qty'] += _bar_inv_parse_qty(ent_qty)
+            qty = [_bar_inv_parse_qty(v) for v in raw_quantities]
+            entry = {
+                'row_no': row_no,
+                'lookup': '' if lookup_value is None else str(lookup_value),
+                'file_name': '' if file_name is None else str(file_name),
+                'rf_stock': qty[0], 'sales_bar_qty': qty[1],
+                'restaurant_sale_qty': qty[2], 'ent_qty': qty[3],
+                'raw_quantities': ['' if v is None else str(v) for v in raw_quantities],
+            }
 
-        lines_in = [dict(item_id=i, **totals[i]) for i in order]
+            if item_id is None:
+                entry['status'] = 'not_matched'
+                entry['matched_name'] = ''
+                entry['note'] = ('no item has this Item Code / ID' if id_layout
+                                 else 'no item has this name')
+            elif not any(qty):
+                entry['status'] = 'no_quantities'
+                entry['matched_name'] = items_by_id[item_id]['item_name']
+                entry['note'] = 'matched, but every quantity column is blank or zero'
+                entry['item_id'] = item_id
+            else:
+                entry['status'] = 'ok'
+                entry['matched_name'] = items_by_id[item_id]['item_name']
+                entry['note'] = ''
+                entry['item_id'] = item_id
+                if item_id not in totals:
+                    totals[item_id] = {'rf_stock': 0.0, 'sales_bar_qty': 0.0,
+                                       'restaurant_sale_qty': 0.0, 'ent_qty': 0.0}
+                    order.append(item_id)
+                t = totals[item_id]
+                t['rf_stock'] += qty[0]
+                t['sales_bar_qty'] += qty[1]
+                t['restaurant_sale_qty'] += qty[2]
+                t['ent_qty'] += qty[3]
 
-        if not lines_in:
-            flash('None of the items in that file matched your Bar Inventory Items list.', 'danger')
-            return redirect(url_for('bar_inventory', date=entry_date))
+            report.append(entry)
 
-        ok, message, saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
-        if ok:
-            message = f'Updated {saved} item(s) for {entry_date} from the uploaded file.'
-            if not_found:
-                message += f" Not matched (check the {'Item Code/ID' if id_layout else 'name/spelling'}): {', '.join(not_found[:8])}" + ('...' if len(not_found) > 8 else '')
-        flash(message, 'success' if ok else 'danger')
+        for row_no, reason in skipped:
+            report.append({'row_no': row_no, 'lookup': '', 'file_name': '', 'status': 'skipped',
+                           'matched_name': '', 'note': reason, 'raw_quantities': ['', '', '', ''],
+                           'rf_stock': 0, 'sales_bar_qty': 0, 'restaurant_sale_qty': 0, 'ent_qty': 0})
+        report.sort(key=lambda e: e['row_no'])
+
+        # What will actually be written, one line per item (summed).
+        applied = []
+        for i in order:
+            it = items_by_id[i]
+            applied.append({
+                'item_id': i,
+                'item_code': it['item_code'] or '',
+                'item_name': it['item_name'],
+                'unit_type': it['unit_type'],
+                'bottle_size_ml': it['bottle_size_ml'],
+                **totals[i],
+            })
+
+        return render_template('bar_inventory_upload_preview.html',
+                               entry_date=entry_date,
+                               filename=f.filename,
+                               id_layout=id_layout,
+                               report=report,
+                               applied=applied,
+                               total_items_in_system=len(items))
 
     except Exception as e:
         flash(f'Error reading file: {str(e)}', 'danger')
 
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/upload/confirm', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_upload_confirm():
+    """Applies what the upload preview showed. The figures come back from
+    the preview screen already matched and summed, so nothing is re-parsed
+    and what gets saved is exactly what was on screen."""
+    entry_date = request.form.get('entry_date')
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    try:
+        lines_in = json.loads(request.form.get('lines_json') or '[]')
+    except (ValueError, TypeError):
+        flash('Could not read the confirmed figures - please upload the file again.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    if not lines_in:
+        flash('Nothing to apply.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    ok, message, saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
+    if ok:
+        message = f'Applied {saved} item(s) to {entry_date}. Review the grid, then Save & Verify.'
+    flash(message, 'success' if ok else 'danger')
     return redirect(url_for('bar_inventory', date=entry_date))
 
 
