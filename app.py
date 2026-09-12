@@ -21032,13 +21032,32 @@ def bar_inventory_items_bulk_deactivate():
     return redirect(url_for('bar_inventory_items'))
 
 
+def _bar_inv_parse_unit_type(raw):
+    """Maps a free-text unit type cell to the stored enum. Defaults to
+    'UNIT' for blank/unrecognised text (e.g. the plain name-only format)."""
+    text = (raw or '').strip().lower()
+    if 'bottle' in text and 'ml' in text:
+        return 'BOTTLE_ML'
+    if text in ('ml', 'ml only', 'ml_only'):
+        return 'ML_ONLY'
+    return 'UNIT'
+
+
 @app.route('/bar_inventory/items/upload', methods=['POST'])
 @login_required
 @has_permission('Access_Inventory')
 def bar_inventory_items_upload():
-    """Bulk-add new items from an uploaded Excel/CSV file - just a plain
-    list of item names (one per row; the first cell of each row is used).
-    Existing items (matched by name) are left untouched."""
+    """Bulk-add/update items from an uploaded Excel/CSV file.
+
+    Supports two formats in the same column layout:
+      - Name only (Column A) - just adds new items as 'Whole Units'.
+      - Full detail (A=Name, B=Unit Type e.g. 'Whole Units'/'Bottle+Ml',
+        C=Bottle Size ml, D=Unit Price, E=Opening Balance) - a new item is
+        created with all of that; an EXISTING item (matched by name) has
+        its unit type / bottle size / price / opening balance UPDATED to
+        match the file (so re-uploading a corrected sheet fixes them all
+        at once) - its restaurant price and display order are left alone.
+    """
     f = request.files.get('file')
     if not f or not f.filename:
         flash('Please choose a file to upload.', 'danger')
@@ -21046,7 +21065,14 @@ def bar_inventory_items_upload():
 
     try:
         fname = f.filename.lower()
-        names = []
+        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance)
+
+        def cell(row, idx):
+            if idx >= len(row) or row[idx] is None:
+                return None
+            v = row[idx]
+            return v.strip() if isinstance(v, str) else v
+
         if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
             from openpyxl import load_workbook
             wb = load_workbook(f, read_only=True, data_only=True)
@@ -21054,52 +21080,71 @@ def bar_inventory_items_upload():
             for row in ws.iter_rows(values_only=True):
                 if not row:
                     continue
-                val = row[0]
-                if val is None:
+                name = cell(row, 0)
+                if name is None:
                     continue
-                text = str(val).strip()
-                if not text or text.lower() in ('item', 'item name', 'description', 'ml'):
+                name = str(name).strip()
+                if not name or name.lower() in ('item', 'item name', 'description', 'ml'):
                     continue
-                names.append(text)
+                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
             for row in csv.reader(_io.StringIO(text_data)):
                 if not row:
                     continue
-                text = (row[0] or '').strip()
-                if not text or text.lower() in ('item', 'item name', 'description'):
+                name = (row[0] or '').strip()
+                if not name or name.lower() in ('item', 'item name', 'description'):
                     continue
-                names.append(text)
+                get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
+                rows_out.append((name, get(1), get(2), get(3), get(4)))
 
-        if not names:
+        if not rows_out:
             flash('No item names found in that file.', 'danger')
             return redirect(url_for('bar_inventory_items'))
 
-        existing = db.execute_query("SELECT item_name FROM bar_inventory_items") or []
-        existing_names = {r['item_name'] for r in existing}
+        existing = db.execute_query("SELECT id, item_name FROM bar_inventory_items") or []
+        existing_ids = {r['item_name']: r['id'] for r in existing}
 
-        # Keep the file's own row order - continue numbering after whatever
-        # already has the highest display_order, so items line up in the
-        # same order they were typed in the spreadsheet, not alphabetically.
+        # Keep the file's own row order for genuinely NEW items - continue
+        # numbering after whatever already has the highest display_order.
         max_order_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_items") or []
         next_order = ((max_order_row[0]['m'] or 0) if max_order_row else 0) + 10
 
         added = 0
-        for name in names:
-            if name in existing_names:
-                continue
+        updated = 0
+        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw in rows_out:
+            has_detail = any(v not in (None, '') for v in (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw))
+            unit_type = _bar_inv_parse_unit_type(unit_type_raw)
+            bottle_size = parse_float(bottle_size_raw) or None
+            unit_price = parse_float(unit_price_raw)
+            opening_balance = parse_float(opening_balance_raw)
+
             try:
-                db.execute_query(
-                    "INSERT INTO bar_inventory_items (item_name, unit_type, display_order) VALUES (%s, 'UNIT', %s)",
-                    (name, next_order), commit=True)
-                existing_names.add(name)
-                next_order += 10
-                added += 1
+                if name in existing_ids:
+                    # Only overwrite these fields when the file actually carries
+                    # detail columns - a plain name-only file must never wipe
+                    # out data someone already entered by hand in the app.
+                    if has_detail:
+                        db.execute_query("""
+                            UPDATE bar_inventory_items
+                            SET unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s
+                            WHERE id=%s
+                        """, (unit_type, bottle_size, unit_price, opening_balance, existing_ids[name]), commit=True)
+                        updated += 1
+                else:
+                    db.execute_query("""
+                        INSERT INTO bar_inventory_items
+                            (item_name, unit_type, bottle_size_ml, unit_price, opening_balance, display_order)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                    """, (name, unit_type, bottle_size, unit_price, opening_balance, next_order), commit=True)
+                    existing_ids[name] = True
+                    next_order += 10
+                    added += 1
             except Exception:
                 pass  # skip duplicates/bad rows, keep going
 
-        flash(f'Added {added} new item(s). Set their price / unit type / opening balance below.', 'success')
+        flash(f'Added {added} new item(s), updated {updated} existing item(s).', 'success')
     except Exception as e:
         flash(f'Error reading file: {str(e)}', 'danger')
 

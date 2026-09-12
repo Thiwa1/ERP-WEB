@@ -57,7 +57,14 @@
     <div class="card h-100">
       <div class="card-header fw-bold">Bulk-Add Items from Excel/CSV</div>
       <div class="card-body">
-        <p class="text-muted small">Upload a file with one item name per row (first column). Items that already exist by name are skipped &mdash; new ones are added as "Whole Units" with a zero opening balance, so set their unit type / price / opening balance below afterwards.</p>
+        <p class="text-muted small">
+          One row per item. Column A = Item Name (required). Optionally add
+          B = Unit Type ("Whole Units" / "Bottle+Ml"), C = Bottle Size (ml),
+          D = Unit Price, E = Opening Balance &mdash; if present, these fill in
+          automatically for new items <em>and update existing ones matched by name</em>
+          (handy for re-uploading a corrected sheet). Name-only rows just add
+          the item as "Whole Units" for you to fill in below.
+        </p>
         <form method="POST" action="{{ url_for('bar_inventory_items_upload') }}" enctype="multipart/form-data">
           <div class="mb-3">
             <input type="file" name="file" class="form-control" accept=".xlsx,.xlsm,.csv" required>
