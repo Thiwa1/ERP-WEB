@@ -470,7 +470,11 @@ function dseJumpToDate(val) {
 function dseGoToDate(offsetDays) {
   const d = new Date("{{ entry_date }}T00:00:00");
   d.setDate(d.getDate() + offsetDays);
-  const iso = d.toISOString().slice(0, 10);
+  // Build from LOCAL date parts - toISOString() converts to UTC, which
+  // shifts the day by one in any timezone that isn't UTC.
+  const iso = d.getFullYear() + '-' +
+              String(d.getMonth() + 1).padStart(2, '0') + '-' +
+              String(d.getDate()).padStart(2, '0');
   dseJumpToDate(iso);
 }
 

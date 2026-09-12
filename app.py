@@ -21044,6 +21044,32 @@ def bar_inventory_download_template():
     return out
 
 
+@app.route('/bar_inventory/clear_day', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_clear_day():
+    """Wipe a Draft day's figures completely - the escape hatch when a
+    file was uploaded against the wrong date. A Verified day is locked and
+    refuses; its lines go with it (ON DELETE CASCADE), so the following
+    days' Opening Balances fall back to the last day that still has one."""
+    entry_date = request.form.get('entry_date')
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+    if not day:
+        flash(f'No Bar Inventory entry exists for {entry_date}.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+    if day[0]['status'] == 'Verified':
+        flash(f'{entry_date} has been verified and cannot be cleared.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    db.execute_query("DELETE FROM bar_inventory_days WHERE id = %s", (day[0]['id'],), commit=True)
+    flash(f'Cleared the Bar Inventory entry for {entry_date}.', 'success')
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
 @app.route('/bar_inventory/records', methods=['GET'])
 @login_required
 @has_permission('Access_Inventory')
