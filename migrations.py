@@ -59,6 +59,7 @@ def run_migrations(conn):
         _migrate_daily_sales_card_banks(cursor)
         _migrate_daily_sales_sub_accounts(cursor)
         _migrate_bar_inventory(cursor)
+        _migrate_bar_inventory_item_code(cursor)
 
         conn.commit()
         cursor.close()
@@ -1051,6 +1052,23 @@ def _migrate_bar_inventory(cursor):
                     REFERENCES bar_inventory_items(id) ON DELETE RESTRICT
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_item_code(cursor):
+    """An optional, user-supplied external Item Code (e.g. the ID from
+    another system being migrated from) - independent of this app's own
+    auto-increment id, and usable as an alternate match key when uploading
+    items or a day's quantities."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM bar_inventory_items LIKE 'item_code'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE bar_inventory_items ADD COLUMN item_code VARCHAR(50) NULL")
+            cursor.execute("ALTER TABLE bar_inventory_items ADD UNIQUE KEY item_code_UNIQUE (item_code)")
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

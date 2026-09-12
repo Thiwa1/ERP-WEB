@@ -20707,7 +20707,7 @@ def daily_sales_gl_mapping_save():
 
 def _bar_inv_items():
     return db.execute_query("""
-        SELECT id, item_name, display_order, unit_type, bottle_size_ml,
+        SELECT id, item_code, item_name, display_order, unit_type, bottle_size_ml,
                unit_price, unit_price_restaurant, opening_balance
         FROM bar_inventory_items
         WHERE is_active = 1
@@ -20904,11 +20904,19 @@ def bar_inventory_save():
 def bar_inventory_upload():
     """Bulk-fill a day's RF.Stock / Sales Bar / Restaurant / ENT quantities
     from an uploaded Excel/CSV, instead of typing every item by hand.
-    Columns: A=Item Name, B=RF.Stock, C=Sales Bar Qty, D=Restaurant Sale Qty,
-    E=ENT Qty. Only items actually listed in the file are touched - every
-    other item's line for that day (if any) is left exactly as it was.
-    Matches items by name (case-insensitive); unmatched names are skipped
-    and reported back so they can be fixed and re-uploaded."""
+
+    Auto-detects the file's own layout from column A of the first data row:
+      - Column A matches an item's Identifier (your own Item Code, if set,
+        OR this app's internal ID)          -> Identifier layout:
+        A=Identifier, B=Item Name (reference only, ignored), C=RF.Stock,
+        D=Sales Bar Qty, E=Restaurant Sale Qty, F=ENT Qty.
+      - Otherwise, column A is treated as a Name              -> Name layout:
+        A=Item Name, B=RF.Stock, C=Sales Bar Qty, D=Restaurant Sale Qty,
+        E=ENT Qty.
+    Use "Download Template" on this page to get a ready-made Identifier+Name
+    file with every item listed, so you only need to fill in the blanks.
+    Only items actually listed in the file are touched - every other
+    item's line for that day (if any) is left exactly as it was."""
     entry_date = request.form.get('entry_date') or date.today().strftime('%Y-%m-%d')
     f = request.files.get('file')
     if not f or not f.filename:
@@ -20917,7 +20925,7 @@ def bar_inventory_upload():
 
     try:
         fname = f.filename.lower()
-        rows_out = []  # (name, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty)
+        raw_rows = []
 
         def cell(row, idx):
             if idx >= len(row) or row[idx] is None:
@@ -20932,38 +20940,64 @@ def bar_inventory_upload():
             for row in ws.iter_rows(values_only=True):
                 if not row:
                     continue
-                name = cell(row, 0)
-                if name is None:
+                first = cell(row, 0)
+                if first is None:
                     continue
-                name = str(name).strip()
-                if not name or name.lower() in ('item', 'item name', 'description'):
+                text = str(first).strip()
+                if not text or text.lower() in ('item', 'item id', 'item name', 'description'):
                     continue
-                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4)))
+                raw_rows.append(tuple(cell(row, i) for i in range(6)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
             for row in csv.reader(_io.StringIO(text_data)):
                 if not row:
                     continue
-                name = (row[0] or '').strip()
-                if not name or name.lower() in ('item', 'item name', 'description'):
+                first = (row[0] or '').strip()
+                if not first or first.lower() in ('item', 'item id', 'item name', 'description'):
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
-                rows_out.append((name, get(1), get(2), get(3), get(4)))
+                raw_rows.append(tuple(get(i) for i in range(6)))
 
-        if not rows_out:
+        if not raw_rows:
             flash('No item rows found in that file.', 'danger')
             return redirect(url_for('bar_inventory', date=entry_date))
 
-        items_by_name = {it['item_name'].strip().lower(): it['id'] for it in _bar_inv_items()}
+        items = _bar_inv_items()
+        # One combined lookup: your own Item Code (if set) OR our internal
+        # numeric ID, either one identifies the item in column A.
+        identifier_map = {}
+        for it in items:
+            if it['item_code']:
+                identifier_map[it['item_code'].strip().lower()] = it['id']
+            identifier_map[str(it['id'])] = it['id']
+        items_by_name = {it['item_name'].strip().lower(): it['id'] for it in items}
+
+        def as_identifier(v):
+            return identifier_map.get(str(v).strip().lower())
+
+        # Detect layout from the first row's column A: an Identifier layout
+        # has a reference-only Name in column B and quantities from C on;
+        # a plain Name layout has RF.Stock itself starting in column B.
+        id_layout = as_identifier(raw_rows[0][0]) is not None
 
         lines_in = []
         not_found = []
-        for name, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty in rows_out:
-            item_id = items_by_name.get(name.lower())
-            if not item_id:
-                not_found.append(name)
-                continue
+        for r in raw_rows:
+            if id_layout:
+                item_id = as_identifier(r[0])
+                if item_id is None:
+                    not_found.append(str(r[0]))
+                    continue
+                rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty = r[2], r[3], r[4], r[5]
+            else:
+                name = str(r[0]).strip()
+                item_id = items_by_name.get(name.lower())
+                if not item_id:
+                    not_found.append(name)
+                    continue
+                rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty = r[1], r[2], r[3], r[4]
+
             lines_in.append({
                 'item_id': item_id,
                 'rf_stock': rf_stock,
@@ -20973,20 +21007,41 @@ def bar_inventory_upload():
             })
 
         if not lines_in:
-            flash('None of the item names in that file matched your Bar Inventory Items list.', 'danger')
+            flash('None of the items in that file matched your Bar Inventory Items list.', 'danger')
             return redirect(url_for('bar_inventory', date=entry_date))
 
         ok, message, saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
         if ok:
             message = f'Updated {saved} item(s) for {entry_date} from the uploaded file.'
             if not_found:
-                message += f" Not matched (check spelling): {', '.join(not_found[:8])}" + ('...' if len(not_found) > 8 else '')
+                message += f" Not matched (check the {'Item Code/ID' if id_layout else 'name/spelling'}): {', '.join(not_found[:8])}" + ('...' if len(not_found) > 8 else '')
         flash(message, 'success' if ok else 'danger')
 
     except Exception as e:
         flash(f'Error reading file: {str(e)}', 'danger')
 
     return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/download_template')
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_download_template():
+    """A ready-to-fill CSV for the quantities upload: every active item's
+    Identifier (your own Item Code if you've set one, otherwise this app's
+    internal ID) + Name already in place (in your display order), with
+    blank RF.Stock / Sales Bar / Restaurant / ENT columns - just fill in
+    the blanks and upload it back on /bar_inventory."""
+    items = _bar_inv_items()
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Identifier (Item Code or ID)', 'Item Name', 'RF.Stock', 'Sales Bar Qty', 'Restaurant Sale Qty', 'ENT Qty'])
+    for it in items:
+        cw.writerow([it['item_code'] or it['id'], it['item_name'], '', '', '', ''])
+    out = make_response(si.getvalue())
+    out.headers["Content-Disposition"] = "attachment; filename=bar_inventory_upload_template.csv"
+    out.headers["Content-type"] = "text/csv"
+    return out
 
 
 @app.route('/bar_inventory/records', methods=['GET'])
@@ -21052,7 +21107,7 @@ def bar_inventory_print():
 @has_permission('Access_Inventory')
 def bar_inventory_items():
     items = db.execute_query("""
-        SELECT id, item_name, display_order, unit_type, bottle_size_ml,
+        SELECT id, item_code, item_name, display_order, unit_type, bottle_size_ml,
                unit_price, unit_price_restaurant, opening_balance, is_active
         FROM bar_inventory_items
         ORDER BY display_order, item_name
@@ -21066,6 +21121,7 @@ def bar_inventory_items():
 def bar_inventory_items_save():
     try:
         item_id = request.form.get('item_id')
+        item_code = (request.form.get('item_code') or '').strip() or None
         item_name = (request.form.get('item_name') or '').strip()
         unit_type = request.form.get('unit_type') if request.form.get('unit_type') in ('UNIT', 'BOTTLE_ML', 'ML_ONLY') else 'UNIT'
         bottle_size_ml = parse_float(request.form.get('bottle_size_ml')) or None
@@ -21081,24 +21137,24 @@ def bar_inventory_items_save():
         if item_id:
             db.execute_query("""
                 UPDATE bar_inventory_items SET
-                    item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s,
+                    item_code=%s, item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s,
                     unit_price_restaurant=%s, opening_balance=%s, display_order=%s
                 WHERE id=%s
-            """, (item_name, unit_type, bottle_size_ml, unit_price,
+            """, (item_code, item_name, unit_type, bottle_size_ml, unit_price,
                   unit_price_restaurant, opening_balance, display_order, item_id), commit=True)
             flash(f'"{item_name}" updated.', 'success')
         else:
             db.execute_query("""
                 INSERT INTO bar_inventory_items (
-                    item_name, unit_type, bottle_size_ml, unit_price,
+                    item_code, item_name, unit_type, bottle_size_ml, unit_price,
                     unit_price_restaurant, opening_balance, display_order, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (item_name, unit_type, bottle_size_ml, unit_price,
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (item_code, item_name, unit_type, bottle_size_ml, unit_price,
                   unit_price_restaurant, opening_balance, display_order, get_current_user_pk()), commit=True)
             flash(f'"{item_name}" added.', 'success')
     except mysql.connector.Error as e:
         if e.errno == 1062:
-            flash('An item with that name already exists.', 'danger')
+            flash('An item with that name or code already exists.', 'danger')
         else:
             flash(f'Error saving item: {str(e)}', 'danger')
     except Exception as e:
@@ -21153,11 +21209,14 @@ def bar_inventory_items_upload():
       - Name only (Column A) - just adds new items as 'Whole Units'.
       - Full detail (A=Name, B=Unit Type e.g. 'Whole Units'/'Bottle+Ml',
         C=Bottle Size ml, D=Unit Price (Bar), E=Opening Balance,
-        F=Unit Price (Restaurant) - optional) - a new item is created with
-        all of that; an EXISTING item (matched by name) has its unit type /
-        bottle size / prices / opening balance UPDATED to match the file
-        (so re-uploading a corrected sheet fixes them all at once) - its
-        display order is left alone.
+        F=Unit Price (Restaurant), G=Item Code - all optional) - a new item
+        is created with all of that; an EXISTING item is matched by Item
+        Code first (if column G is given and matches one already saved -
+        so renaming an item in the file doesn't create a duplicate), else
+        by Name. Its unit type / bottle size / prices / opening balance are
+        UPDATED to match the file (so re-uploading a corrected sheet fixes
+        them all at once) - its display order is left alone, and a blank
+        Item Code in the file never clears one already set.
     """
     f = request.files.get('file')
     if not f or not f.filename:
@@ -21166,7 +21225,7 @@ def bar_inventory_items_upload():
 
     try:
         fname = f.filename.lower()
-        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance, unit_price_restaurant)
+        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance, unit_price_restaurant, item_code)
 
         def cell(row, idx):
             if idx >= len(row) or row[idx] is None:
@@ -21187,7 +21246,7 @@ def bar_inventory_items_upload():
                 name = str(name).strip()
                 if not name or name.lower() in ('item', 'item name', 'description', 'ml'):
                     continue
-                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4), cell(row, 5)))
+                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4), cell(row, 5), cell(row, 6)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
@@ -21198,14 +21257,15 @@ def bar_inventory_items_upload():
                 if not name or name.lower() in ('item', 'item name', 'description'):
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
-                rows_out.append((name, get(1), get(2), get(3), get(4), get(5)))
+                rows_out.append((name, get(1), get(2), get(3), get(4), get(5), get(6)))
 
         if not rows_out:
             flash('No item names found in that file.', 'danger')
             return redirect(url_for('bar_inventory_items'))
 
-        existing = db.execute_query("SELECT id, item_name FROM bar_inventory_items") or []
-        existing_ids = {r['item_name']: r['id'] for r in existing}
+        existing = db.execute_query("SELECT id, item_code, item_name FROM bar_inventory_items") or []
+        existing_by_name = {r['item_name']: r['id'] for r in existing}
+        existing_by_code = {r['item_code']: r['id'] for r in existing if r['item_code']}
 
         # Keep the file's own row order for genuinely NEW items - continue
         # numbering after whatever already has the highest display_order.
@@ -21214,35 +21274,48 @@ def bar_inventory_items_upload():
 
         added = 0
         updated = 0
-        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw in rows_out:
+        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw, item_code_raw in rows_out:
             has_detail = any(v not in (None, '') for v in
-                              (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw))
+                              (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw,
+                               unit_price_restaurant_raw, item_code_raw))
             unit_type = _bar_inv_parse_unit_type(unit_type_raw)
             bottle_size = parse_float(bottle_size_raw) or None
             unit_price = parse_float(unit_price_raw)
             opening_balance = parse_float(opening_balance_raw)
             unit_price_restaurant = parse_float(unit_price_restaurant_raw)
+            item_code = (item_code_raw or '').strip()
+
+            # Item Code (if given) identifies the item even across a rename;
+            # otherwise fall back to matching by the current name.
+            existing_id = existing_by_code.get(item_code) if item_code else None
+            if existing_id is None:
+                existing_id = existing_by_name.get(name)
 
             try:
-                if name in existing_ids:
+                if existing_id:
                     # Only overwrite these fields when the file actually carries
                     # detail columns - a plain name-only file must never wipe
                     # out data someone already entered by hand in the app.
                     if has_detail:
                         db.execute_query("""
                             UPDATE bar_inventory_items
-                            SET unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s,
-                                unit_price_restaurant=COALESCE(NULLIF(%s, 0), unit_price_restaurant)
+                            SET item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s,
+                                unit_price_restaurant=COALESCE(NULLIF(%s, 0), unit_price_restaurant),
+                                item_code=COALESCE(NULLIF(%s, ''), item_code)
                             WHERE id=%s
-                        """, (unit_type, bottle_size, unit_price, opening_balance, unit_price_restaurant, existing_ids[name]), commit=True)
+                        """, (name, unit_type, bottle_size, unit_price, opening_balance,
+                              unit_price_restaurant, item_code, existing_id), commit=True)
                         updated += 1
                 else:
                     db.execute_query("""
                         INSERT INTO bar_inventory_items
-                            (item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (name, unit_type, bottle_size, unit_price, opening_balance, unit_price_restaurant, next_order), commit=True)
-                    existing_ids[name] = True
+                            (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (item_code or None, name, unit_type, bottle_size, unit_price, opening_balance,
+                          unit_price_restaurant, next_order), commit=True)
+                    existing_by_name[name] = True
+                    if item_code:
+                        existing_by_code[item_code] = True
                     next_order += 10
                     added += 1
             except Exception:

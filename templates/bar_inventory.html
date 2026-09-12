@@ -27,13 +27,22 @@
 
 {% if not (day and day.status == 'Verified') %}
 <div class="bi-card">
-  <div class="bi-card-header"><h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-file-upload me-1 text-primary"></i>Upload Day's Quantities</h6></div>
+  <div class="bi-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-file-upload me-1 text-primary"></i>Upload Day's Quantities</h6>
+    <a href="{{ url_for('bar_inventory_download_template') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-download me-1"></i> Download Template (ready to fill)</a>
+  </div>
   <div class="bi-card-body">
     <p class="text-muted small mb-2">
       Upload RF.Stock / Sales Bar / Restaurant / ENT quantities for
       <strong>{{ entry_date }}</strong> from Excel/CSV instead of typing each item.
-      Columns: A = Item Name, B = RF.Stock, C = Sales Bar Qty, D = Restaurant Sale Qty, E = ENT Qty.
-      Matched by item name &mdash; only the items listed in the file are touched, everything else stays as-is.
+      Easiest way: download the template above (every item's <strong>Identifier</strong> and name
+      already filled in, in your order) and just fill in the 4 quantity columns.
+      Columns: A = Identifier (your own <strong>Item Code</strong> from
+      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a> if you've set one, otherwise this
+      app's internal ID), B = Item Name (reference only), C = RF.Stock, D = Sales Bar Qty,
+      E = Restaurant Sale Qty, F = ENT Qty &mdash; or use the older Name-only layout
+      (A = Item Name, B = RF.Stock, C = Sales Bar Qty, D = Restaurant Sale Qty, E = ENT Qty), it's
+      auto-detected either way. Only the items listed in the file are touched, everything else stays as-is.
       Saved as Draft, so review the grid below and click Save &amp; Verify when it's correct.
     </p>
     <form method="POST" action="{{ url_for('bar_inventory_upload') }}" enctype="multipart/form-data" class="d-flex gap-2 flex-wrap align-items-center">
