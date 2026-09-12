@@ -21278,35 +21278,45 @@ def bar_inventory_items_upload():
             has_detail = any(v not in (None, '') for v in
                               (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw,
                                unit_price_restaurant_raw, item_code_raw))
-            unit_type = _bar_inv_parse_unit_type(unit_type_raw)
-            bottle_size = parse_float(bottle_size_raw) or None
-            unit_price = parse_float(unit_price_raw)
-            opening_balance = parse_float(opening_balance_raw)
-            unit_price_restaurant = parse_float(unit_price_restaurant_raw)
-            item_code = (item_code_raw or '').strip()
 
             # Item Code (if given) identifies the item even across a rename;
             # otherwise fall back to matching by the current name.
+            item_code = (item_code_raw or '').strip()
             existing_id = existing_by_code.get(item_code) if item_code else None
             if existing_id is None:
                 existing_id = existing_by_name.get(name)
 
             try:
                 if existing_id:
-                    # Only overwrite these fields when the file actually carries
-                    # detail columns - a plain name-only file must never wipe
-                    # out data someone already entered by hand in the app.
+                    # Every detail field is independently optional here - a
+                    # column left blank in the file (e.g. a codes-only
+                    # upload that only fills Name + Item Code) must NEVER
+                    # reset that field on an item that's already configured.
                     if has_detail:
+                        unit_type = _bar_inv_parse_unit_type(unit_type_raw) if unit_type_raw not in (None, '') else None
+                        bottle_size = parse_float(bottle_size_raw) if bottle_size_raw not in (None, '') else None
+                        unit_price = parse_float(unit_price_raw) if unit_price_raw not in (None, '') else None
+                        opening_balance = parse_float(opening_balance_raw) if opening_balance_raw not in (None, '') else None
+                        unit_price_restaurant = parse_float(unit_price_restaurant_raw) if unit_price_restaurant_raw not in (None, '') else None
                         db.execute_query("""
                             UPDATE bar_inventory_items
-                            SET item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s,
-                                unit_price_restaurant=COALESCE(NULLIF(%s, 0), unit_price_restaurant),
+                            SET item_name=%s,
+                                unit_type=COALESCE(%s, unit_type),
+                                bottle_size_ml=COALESCE(%s, bottle_size_ml),
+                                unit_price=COALESCE(%s, unit_price),
+                                opening_balance=COALESCE(%s, opening_balance),
+                                unit_price_restaurant=COALESCE(%s, unit_price_restaurant),
                                 item_code=COALESCE(NULLIF(%s, ''), item_code)
                             WHERE id=%s
                         """, (name, unit_type, bottle_size, unit_price, opening_balance,
                               unit_price_restaurant, item_code, existing_id), commit=True)
                         updated += 1
                 else:
+                    unit_type = _bar_inv_parse_unit_type(unit_type_raw)
+                    bottle_size = parse_float(bottle_size_raw) or None
+                    unit_price = parse_float(unit_price_raw)
+                    opening_balance = parse_float(opening_balance_raw)
+                    unit_price_restaurant = parse_float(unit_price_restaurant_raw)
                     db.execute_query("""
                         INSERT INTO bar_inventory_items
                             (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
