@@ -200,6 +200,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'food_costing',       'label': 'Food Costing',         'url': '/food_costing',           'icon': 'fas fa-utensils',            'category': 'Restaurant'},
     {'key': 'daily_sales_entry',  'label': 'Daily Sales Entry',    'url': '/daily_sales_entry',      'icon': 'fas fa-cash-register',       'category': 'Restaurant'},
     {'key': 'daily_sales_post',   'label': 'Daily Sales - Post to GL', 'url': '/daily_sales_entry/post', 'icon': 'fas fa-check-double',    'category': 'Core Accounting'},
+    {'key': 'daily_sales_gl_mapping', 'label': 'Daily Sales - GL Mapping', 'url': '/daily_sales_entry/gl_mapping', 'icon': 'fas fa-sitemap', 'category': 'Core Accounting'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
