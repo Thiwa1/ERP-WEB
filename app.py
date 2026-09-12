@@ -20746,6 +20746,22 @@ def _bar_inv_format_balance(item, qty):
     return f"{qty:g}"
 
 
+def _bar_inv_parse_qty(v):
+    """A quantity out of an uploaded cell. The source POS export writes the
+    unit into the value itself for part-bottle pours ('575ml', '100ml'), and
+    plain parse_float() turns those into 0 - silently losing the figure - so
+    take the leading number and ignore any trailing unit text."""
+    if v is None:
+        return 0.0
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = str(v).strip().replace(',', '')
+    if not s:
+        return 0.0
+    m = re.match(r'^-?\d*\.?\d+', s)
+    return float(m.group(0)) if m else 0.0
+
+
 @app.route('/bar_inventory', methods=['GET'])
 @login_required
 @has_permission('Access_Inventory')
@@ -20981,7 +20997,12 @@ def bar_inventory_upload():
         # a plain Name layout has RF.Stock itself starting in column B.
         id_layout = as_identifier(raw_rows[0][0]) is not None
 
-        lines_in = []
+        # An export straight out of a POS lists one row per bill line, so the
+        # same item shows up many times - sometimes in different columns
+        # (14 sold on one row, 3 on another, 24 received on a third). Sum
+        # them per item rather than letting the last row win.
+        totals = {}
+        order = []
         not_found = []
         for r in raw_rows:
             if id_layout:
@@ -20998,13 +21019,17 @@ def bar_inventory_upload():
                     continue
                 rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty = r[1], r[2], r[3], r[4]
 
-            lines_in.append({
-                'item_id': item_id,
-                'rf_stock': rf_stock,
-                'sales_bar_qty': sales_bar_qty,
-                'restaurant_sale_qty': restaurant_sale_qty,
-                'ent_qty': ent_qty,
-            })
+            if item_id not in totals:
+                totals[item_id] = {'rf_stock': 0.0, 'sales_bar_qty': 0.0,
+                                   'restaurant_sale_qty': 0.0, 'ent_qty': 0.0}
+                order.append(item_id)
+            t = totals[item_id]
+            t['rf_stock'] += _bar_inv_parse_qty(rf_stock)
+            t['sales_bar_qty'] += _bar_inv_parse_qty(sales_bar_qty)
+            t['restaurant_sale_qty'] += _bar_inv_parse_qty(restaurant_sale_qty)
+            t['ent_qty'] += _bar_inv_parse_qty(ent_qty)
+
+        lines_in = [dict(item_id=i, **totals[i]) for i in order]
 
         if not lines_in:
             flash('None of the items in that file matched your Bar Inventory Items list.', 'danger')
