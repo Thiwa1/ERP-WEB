@@ -198,6 +198,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'pos_system',         'label': 'POS System',           'url': '/pos',                    'icon': 'fas fa-cash-register',       'category': 'POS'},
     # Restaurant / Food & Beverage
     {'key': 'food_costing',       'label': 'Food Costing',         'url': '/food_costing',           'icon': 'fas fa-utensils',            'category': 'Restaurant'},
+    {'key': 'daily_sales_entry',  'label': 'Daily Sales Entry',    'url': '/daily_sales_entry',      'icon': 'fas fa-cash-register',       'category': 'Restaurant'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -20031,6 +20032,333 @@ def service_entry_edit(jv_no):
                            prefill_include_vat=prefill_include_vat,
                            prefill_vat_rate=prefill_vat_rate,
                            prefill_entries=prefill_entries)
+
+
+# ================================================================
+# ── DAILY SALES ENTRY (Front Office) ────────────────────────────
+# Digitises the front office's daily Bar/Restaurant/Rooms sales sheet:
+#   1. Front office fills the sheet for the day  -> saved as 'Parked'.
+#   2. Whoever posts assigns/confirms the GL account per line and clicks
+#      Post -> creates a normal jv_numbers + entry_details GL entry.
+# ================================================================
+
+def _daily_sales_categories():
+    """Active category lines in display order, each with its default GL
+    account (see GL Mapping screen)."""
+    return db.execute_query("""
+        SELECT id, category_key, description, particulars, display_order,
+               entry_side, gl_account_name
+        FROM daily_sales_categories
+        WHERE is_active = 1
+        ORDER BY display_order, id
+    """) or []
+
+
+@app.route('/daily_sales_entry', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry():
+    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+
+    categories = _daily_sales_categories()
+    accounts = db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE account_active = 1
+        ORDER BY account_name
+    """) or []
+
+    header = db.execute_query("""
+        SELECT id, entry_date, narration, total_income, total_expenditure, balance,
+               cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+               status, jv_id
+        FROM daily_sales_entries WHERE entry_date = %s
+    """, (entry_date,))
+    header = header[0] if header else None
+
+    lines_by_cat = {}
+    if header:
+        rows = db.execute_query("""
+            SELECT category_id, nos, bill_no, amount, gl_account_name
+            FROM daily_sales_entry_lines WHERE entry_id = %s
+        """, (header['id'],)) or []
+        lines_by_cat = {r['category_id']: r for r in rows}
+
+    # Attach the saved (or default) line values onto each category for the template
+    for c in categories:
+        saved = lines_by_cat.get(c['id'])
+        c['nos'] = saved['nos'] if saved else None
+        c['bill_no'] = saved['bill_no'] if saved else ''
+        c['amount'] = saved['amount'] if saved else 0
+        c['line_gl_account'] = (saved['gl_account_name'] if saved and saved['gl_account_name'] else c['gl_account_name'])
+
+    # Day-wise records list (most recent 60 days) for the "Records" panel
+    records = db.execute_query("""
+        SELECT id, entry_date, total_income, status, jv_id
+        FROM daily_sales_entries
+        ORDER BY entry_date DESC
+        LIMIT 60
+    """) or []
+
+    return render_template('daily_sales_entry.html',
+                           entry_date=entry_date,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           categories=categories,
+                           accounts=accounts,
+                           header=header,
+                           records=records,
+                           last_jv=request.args.get('last_jv'))
+
+
+@app.route('/daily_sales_entry/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry_save():
+    entry_date = request.form.get('entry_date')
+    narration = (request.form.get('narration') or '').strip()
+    action = request.form.get('action')  # 'park' or 'post'
+    lines_json = request.form.get('lines_json')
+    total_expenditure = parse_float(request.form.get('total_expenditure'))
+    cash_float = parse_float(request.form.get('cash_float'))
+    cash_amount = parse_float(request.form.get('cash_amount'))
+    credit_card_amount = parse_float(request.form.get('credit_card_amount'))
+    bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
+
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('daily_sales_entry'))
+
+    try:
+        lines_in = json.loads(lines_json) if lines_json else []
+    except (ValueError, TypeError):
+        flash('Invalid entry data submitted.', 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
+
+    categories = {c['id']: c for c in _daily_sales_categories()}
+
+    # Compute Total Income from the category lines (CR adds, DR - e.g. Discount - deducts)
+    total_income = 0.0
+    clean_lines = []  # (category_id, nos, bill_no, amount, gl_account_name)
+    missing_gl = []
+    for ln in lines_in:
+        try:
+            cat_id = int(ln.get('category_id'))
+        except (TypeError, ValueError):
+            continue
+        cat = categories.get(cat_id)
+        if not cat:
+            continue
+        amount = parse_float(ln.get('amount'))
+        nos = ln.get('nos')
+        nos = parse_float(nos) if nos not in (None, '') else None
+        bill_no = (ln.get('bill_no') or '').strip() or None
+        gl_account = (ln.get('gl_account') or cat['gl_account_name'] or '').strip() or None
+
+        if amount:
+            if cat['entry_side'] == 'DR':
+                total_income -= amount
+            else:
+                total_income += amount
+            if not gl_account:
+                missing_gl.append(f"{cat['description']}{(' - ' + cat['particulars']) if cat['particulars'] else ''}")
+
+        clean_lines.append((cat_id, nos, bill_no, amount, gl_account))
+
+    total_income = round(total_income, 2)
+    balance = round(total_income - total_expenditure, 2)
+
+    if action == 'post':
+        if missing_gl:
+            flash('Cannot post: assign a GL account to every line with an amount first - missing: ' + ', '.join(missing_gl[:6]) +
+                  ('...' if len(missing_gl) > 6 else ''), 'danger')
+            action = 'park'  # fall back to saving as Parked so nothing is lost
+        elif abs((cash_amount + credit_card_amount + bank_transfer_amount) - total_income) > 0.01:
+            flash(f'Cannot post: Cash + Credit Card + Bank Transfer ({cash_amount + credit_card_amount + bank_transfer_amount:,.2f}) '
+                  f'must equal Total Income ({total_income:,.2f}). Adjust the breakdown before posting.', 'danger')
+            action = 'park'
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT id, status, jv_id FROM daily_sales_entries WHERE entry_date = %s", (entry_date,))
+        existing = cursor.fetchone()
+        if existing and existing['status'] == 'Posted':
+            flash('This day has already been posted to the GL and can no longer be edited.', 'danger')
+            return redirect(url_for('daily_sales_entry', date=entry_date))
+
+        conn.start_transaction()
+        current_user_pk = get_current_user_pk()
+
+        if existing:
+            entry_id = existing['id']
+            cursor.execute("""
+                UPDATE daily_sales_entries SET
+                    narration=%s, total_income=%s, total_expenditure=%s, balance=%s,
+                    cash_float=%s, cash_amount=%s, credit_card_amount=%s, bank_transfer_amount=%s,
+                    updated_by=%s, updated_date=NOW()
+                WHERE id=%s
+            """, (narration, total_income, total_expenditure, balance,
+                  cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                  current_user_pk, entry_id))
+            cursor.execute("DELETE FROM daily_sales_entry_lines WHERE entry_id = %s", (entry_id,))
+        else:
+            cursor.execute("""
+                INSERT INTO daily_sales_entries (
+                    entry_date, narration, total_income, total_expenditure, balance,
+                    cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                    status, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
+            """, (entry_date, narration, total_income, total_expenditure, balance,
+                  cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                  current_user_pk))
+            entry_id = cursor.lastrowid
+
+        for cat_id, nos, bill_no, amount, gl_account in clean_lines:
+            cursor.execute("""
+                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (entry_id, cat_id, nos, bill_no, amount, gl_account))
+
+        jv_no = None
+        if action == 'post':
+            cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+            wf_row = cursor.fetchone()
+            workflow_enabled = wf_row and wf_row['setting_value'] == '1'
+            jv_status = 0 if workflow_enabled else 1
+
+            main_narration = narration or f"Daily Sales Entry {entry_date}"
+            cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                           ("JV FROM DAILY SALES", main_narration, jv_status))
+            jv_no = cursor.lastrowid
+
+            # DR: how the day's takings were actually received
+            for pm_amount, setting_key, label in (
+                (cash_amount, 'daily_sales_cash_account', 'Cash'),
+                (credit_card_amount, 'daily_sales_card_account', 'Credit Card'),
+                (bank_transfer_amount, 'daily_sales_bank_account', 'Bank Transfer'),
+            ):
+                if pm_amount:
+                    cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = %s", (setting_key,))
+                    acc_row = cursor.fetchone()
+                    pm_account = acc_row['setting_value'] if acc_row else None
+                    if not pm_account:
+                        raise ValueError(f"No GL account configured for {label} collections. Set it in GL Mapping first.")
+                    cursor.execute("""
+                        INSERT INTO entry_details (
+                            account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                            entry_create_date, entry_naration, entry_create_user, entry_jv
+                        ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s)
+                    """, (pm_account, pm_amount, entry_date, date.today(), f"{label} - Daily Sales {entry_date}",
+                          current_user_pk, jv_no))
+
+            # CR (or DR for Discount): each category line against its assigned GL account
+            for cat_id, nos, bill_no, amount, gl_account in clean_lines:
+                if not amount:
+                    continue
+                cat = categories[cat_id]
+                narr = cat['description'] + (f" - {cat['particulars']}" if cat['particulars'] else '')
+                if cat['entry_side'] == 'DR':
+                    dr_amt, cr_amt = amount, 0
+                else:
+                    dr_amt, cr_amt = 0, amount
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (gl_account, dr_amt, cr_amt, entry_date, date.today(), narr, current_user_pk, jv_no))
+
+            cursor.execute("""
+                UPDATE daily_sales_entries SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW()
+                WHERE id=%s
+            """, (jv_no, current_user_pk, entry_id))
+
+        conn.commit()
+        if action == 'post' and jv_no:
+            flash(f'Daily Sales Entry posted to GL. JV: {jv_no}', 'success')
+            return redirect(url_for('daily_sales_entry', date=entry_date, last_jv=jv_no))
+        else:
+            flash('Daily Sales Entry saved as Parked (draft).', 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error saving Daily Sales Entry: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return redirect(url_for('daily_sales_entry', date=entry_date))
+
+
+@app.route('/daily_sales_entry/records', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry_records():
+    date_from = request.args.get('from', '').strip()
+    date_to = request.args.get('to', '').strip()
+
+    filters = []
+    params = []
+    if date_from:
+        filters.append('entry_date >= %s'); params.append(date_from)
+    if date_to:
+        filters.append('entry_date <= %s'); params.append(date_to)
+    where = ('WHERE ' + ' AND '.join(filters)) if filters else ''
+
+    records = db.execute_query(f"""
+        SELECT id, entry_date, total_income, total_expenditure, balance, status, jv_id
+        FROM daily_sales_entries
+        {where}
+        ORDER BY entry_date DESC
+        LIMIT 500
+    """, tuple(params)) or []
+
+    return render_template('daily_sales_entry_records.html',
+                           records=records, date_from=date_from, date_to=date_to)
+
+
+@app.route('/daily_sales_entry/gl_mapping', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_gl_mapping():
+    categories = _daily_sales_categories()
+    accounts = db.execute_query("""
+        SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name
+    """) or []
+    settings = db.execute_query("""
+        SELECT setting_key, setting_value FROM system_settings
+        WHERE setting_key IN ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account')
+    """) or []
+    pm_accounts = {s['setting_key']: s['setting_value'] for s in settings}
+
+    return render_template('daily_sales_gl_mapping.html',
+                           categories=categories, accounts=accounts, pm_accounts=pm_accounts)
+
+
+@app.route('/daily_sales_entry/gl_mapping/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_gl_mapping_save():
+    try:
+        cat_ids = request.form.getlist('category_id[]')
+        gl_accounts = request.form.getlist('gl_account[]')
+        for cat_id, acc in zip(cat_ids, gl_accounts):
+            db.execute_query("UPDATE daily_sales_categories SET gl_account_name = %s WHERE id = %s",
+                             (acc.strip() or None, cat_id), commit=True)
+
+        for key in ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account'):
+            val = (request.form.get(key) or '').strip()
+            db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
+                             (val, key), commit=True)
+
+        flash('GL Account mapping updated.', 'success')
+    except Exception as e:
+        flash(f'Error saving GL mapping: {str(e)}', 'danger')
+
+    return redirect(url_for('daily_sales_gl_mapping'))
 
 
 # ================================================================

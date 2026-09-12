@@ -54,6 +54,7 @@ def run_migrations(conn):
         _migrate_report_period_prefs(cursor)
         _migrate_grn_payment_method(cursor)
         _migrate_grn_payment_ready(cursor)
+        _migrate_daily_sales_entry(cursor)
 
         conn.commit()
         cursor.close()
@@ -647,3 +648,147 @@ def _migrate_approval_workflow(cursor):
             logging.error(f"Schema Migration Error: {e}")
     except Exception as e:
                 pass # Ignore printing error for migrating approval workflow
+
+def _migrate_daily_sales_entry(cursor):
+    """Front Office Daily Sales Entry (bar/restaurant/rooms daily sales sheet).
+
+    Front office records the day's sales by category (rooms, food, beverage,
+    buffet, discount, service charge, etc.) plus the cash/card/bank
+    reconciliation, saves it as 'Parked' (draft), then whoever assigns the GL
+    account posts it to the General Ledger (creates a jv_numbers + entry_details
+    entry, same as every other posting module in this app).
+
+    daily_sales_categories: the fixed list of sale lines (admin-assignable GL
+      account per line - the 'assign / change GL account' requirement).
+    daily_sales_entries: one header row per calendar day.
+    daily_sales_entry_lines: the per-category amounts for that day.
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_categories'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_categories table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_categories (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  category_key VARCHAR(50) NOT NULL,
+                  description VARCHAR(150) NULL,
+                  particulars VARCHAR(150) NULL,
+                  display_order INT NOT NULL DEFAULT 0,
+                  entry_side VARCHAR(2) NOT NULL DEFAULT 'CR',
+                  gl_account_name VARCHAR(60) NULL,
+                  is_active TINYINT NOT NULL DEFAULT 1,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY category_key_UNIQUE (category_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+            # Seed with the categories from the front office's existing
+            # "Daily Sales" Excel sheet, in the same order. entry_side is CR
+            # (adds to Total Income) for every line except Discount, which
+            # deducts from it.
+            seed_rows = [
+                ('ROOM1_NORMAL',   'Non A/C Rooms', 'Normal',          10, 'CR'),
+                ('ROOM1_WEDDING',  'Non A/C Rooms', 'Wedding Couples', 20, 'CR'),
+                ('ROOM1_EXTRABED', 'Non A/C Rooms', 'Extra Bed',       30, 'CR'),
+                ('ROOM1_FOREIGN',  'Non A/C Rooms', 'Foreign',         40, 'CR'),
+                ('ROOM2_NORMAL',   'Non A/C Rooms', 'Normal',          50, 'CR'),
+                ('ROOM2_WEDDING',  'Non A/C Rooms', 'Wedding Couples', 60, 'CR'),
+                ('ROOM2_EXTRABED', 'Non A/C Rooms', 'Extra Bed',       70, 'CR'),
+                ('ROOM2_FOREIGN',  'Non A/C Rooms', 'Foreign',         80, 'CR'),
+                ('ROOM_FOOD_SALE', 'Room Food Sale', None,             90, 'CR'),
+                ('RESTAURANT_FOOD_SALES', 'Restaurant Food Sales', None, 100, 'CR'),
+                ('DESSERT_DESSERT', 'Dessert Sales', 'Dessert',        110, 'CR'),
+                ('DESSERT_FRUITS',  'Dessert Sales', 'Fruits',         120, 'CR'),
+                ('TAKE_AWAY_SALES', 'Take Away Sales', None,           130, 'CR'),
+                ('PICK_ME_SALES',   'Pick Me Sales', None,             140, 'CR'),
+                ('FOOD_HUT_SALES',  'Food Hut Sales', None,            150, 'CR'),
+                ('BEVERAGE_SALE',   'Beverage Sale', None,             160, 'CR'),
+                ('SUNDRY_FOOD_DELIVERY', 'Sundry Sale', 'Food Delivery', 170, 'CR'),
+                ('SUNDRY_WASHROOMS', 'Sundry Sale', 'Wash Rooms',      180, 'CR'),
+                ('RESTAURANT_SALES', 'Restaurant Sales', None,         190, 'CR'),
+                ('AERATED_WATER',   'RH Aerated Water & M/Water', None, 200, 'CR'),
+                ('LOTUS_FOOD',      'Lotus Rooms', 'Food',             210, 'CR'),
+                ('LOTUS_LIQUOR',    'Lotus Rooms', 'Liquor',           220, 'CR'),
+                ('BUFFET_BREAKFAST','Buffet', 'Breakfast',             230, 'CR'),
+                ('BUFFET_LUNCH',    'Buffet', 'Lunch',                 240, 'CR'),
+                ('DISCOUNT',        'Discount', None,                  250, 'DR'),
+                ('SERVICE_CHARGE',  'Service Charge', None,            260, 'CR'),
+            ]
+            cursor.executemany("""
+                INSERT INTO daily_sales_categories
+                    (category_key, description, particulars, display_order, entry_side)
+                VALUES (%s, %s, %s, %s, %s)
+            """, seed_rows)
+
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_entries'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_entries table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_entries (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_date DATE NOT NULL,
+                  narration VARCHAR(300) NULL,
+                  total_income DOUBLE NOT NULL DEFAULT 0,
+                  total_expenditure DOUBLE NOT NULL DEFAULT 0,
+                  balance DOUBLE NOT NULL DEFAULT 0,
+                  cash_float DOUBLE NOT NULL DEFAULT 0,
+                  cash_amount DOUBLE NOT NULL DEFAULT 0,
+                  credit_card_amount DOUBLE NOT NULL DEFAULT 0,
+                  bank_transfer_amount DOUBLE NOT NULL DEFAULT 0,
+                  status VARCHAR(10) NOT NULL DEFAULT 'Parked',
+                  jv_id BIGINT NULL,
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  updated_by INT NULL,
+                  updated_date DATETIME NULL,
+                  posted_by INT NULL,
+                  posted_date DATETIME NULL,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY entry_date_UNIQUE (entry_date),
+                  INDEX idx_dse_status (status),
+                  INDEX idx_dse_jv (jv_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_entry_lines'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_entry_lines table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_entry_lines (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_id BIGINT NOT NULL,
+                  category_id INT NOT NULL,
+                  nos DOUBLE NULL,
+                  bill_no VARCHAR(100) NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  gl_account_name VARCHAR(60) NULL,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY entry_category_UNIQUE (entry_id, category_id),
+                  INDEX idx_dsel_entry (entry_id),
+                  CONSTRAINT fk_dsel_entry FOREIGN KEY (entry_id)
+                    REFERENCES daily_sales_entries(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        # Payment-method control accounts (which GL account Cash / Credit Card /
+        # Bank Transfer collections are debited to when posting). Stored in the
+        # existing generic system_settings key/value table.
+        cursor.execute("SHOW TABLES LIKE 'system_settings'")
+        if cursor.fetchone():
+            for key, desc in (
+                ('daily_sales_cash_account', 'Daily Sales Entry: GL account for Cash collections'),
+                ('daily_sales_card_account', 'Daily Sales Entry: GL account for Credit Card collections'),
+                ('daily_sales_bank_account', 'Daily Sales Entry: GL account for Bank Transfer collections'),
+            ):
+                cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                        (key, desc)
+                    )
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass

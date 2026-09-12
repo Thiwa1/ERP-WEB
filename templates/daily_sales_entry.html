@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Sales Entry{% endblock %}
+
+{% block content %}
+<style>
+  .dse-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:20px; overflow:hidden; }
+  .dse-card-header { padding:12px 18px; border-bottom:1px solid rgba(0,0,0,0.06);
+                      display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .dse-card-title { font-size:0.95rem; font-weight:700; color:#201f1e; margin:0; }
+  .dse-card-body { padding:16px 18px; }
+
+  .dse-group-row td { background:#eef1f4; font-weight:700; font-size:0.72rem;
+                       text-transform:uppercase; letter-spacing:0.3px; color:#605e5c; }
+  .dse-table input.form-control, .dse-table input.form-control-sm { font-size:0.8rem; padding:4px 8px; }
+  .dse-table td, .dse-table th { vertical-align:middle; }
+  .dse-amount-input { text-align:right; }
+  .dse-total-row td { font-weight:700; background:#f3f9ff; border-top:2px solid rgba(0,103,192,0.25) !important; }
+
+  .dse-status-badge { font-size:0.8rem; padding:6px 14px; }
+
+  .dse-recon-box { background:#faf9f8; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding:14px 16px; }
+  .dse-recon-box .form-label { font-size:0.78rem; font-weight:600; color:#5a5a5a; margin-bottom:4px; }
+  .dse-check-ok { color:#107c10; font-weight:600; }
+  .dse-check-bad { color:#c0392b; font-weight:600; }
+
+  .dse-date-nav .btn { padding:6px 10px !important; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-cash-register me-2 text-primary"></i>Daily Sales Entry</h4>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('daily_sales_entry_records') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-list me-1"></i> Records
+    </a>
+    <a href="{{ url_for('daily_sales_gl_mapping') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-sitemap me-1"></i> GL Account Mapping
+    </a>
+  </div>
+</div>
+
+{% if last_jv %}
+<div class="alert alert-success d-flex align-items-center gap-2">
+  <i class="fas fa-check-circle"></i>
+  Posted successfully &mdash;
+  <a href="{{ url_for('journal_entry_view', jv_no=last_jv) }}" target="_blank"><strong>JV #{{ last_jv }}</strong></a>
+</div>
+{% endif %}
+
+<div class="dse-card">
+  <div class="dse-card-header">
+    <h6 class="dse-card-title"><i class="fas fa-calendar-day me-1 text-primary"></i>
+      {{ entry_date }}
+      {% if header %}
+        {% if header.status == 'Posted' %}
+          <a href="{{ url_for('journal_entry_view', jv_no=header.jv_id) }}" target="_blank"
+             class="badge bg-success dse-status-badge ms-2 text-decoration-none">
+             <i class="fas fa-lock me-1"></i>Posted &mdash; JV #{{ header.jv_id }}</a>
+        {% else %}
+          <span class="badge bg-warning text-dark dse-status-badge ms-2"><i class="fas fa-inbox me-1"></i>Parked (Draft)</span>
+        {% endif %}
+      {% else %}
+        <span class="badge bg-light text-muted dse-status-badge ms-2">New</span>
+      {% endif %}
+    </h6>
+    <div class="d-flex align-items-center gap-2 dse-date-nav">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dseGoToDate(-1)"><i class="fas fa-chevron-left"></i></button>
+      <input type="date" id="dseDatePicker" class="form-control form-control-sm" style="width:160px"
+             value="{{ entry_date }}" max="{{ today_date }}" onchange="dseJumpToDate(this.value)">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dseGoToDate(1)"><i class="fas fa-chevron-right"></i></button>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="dseJumpToDate('{{ today_date }}')">Today</button>
+    </div>
+  </div>
+
+  <div class="dse-card-body">
+    {% set readonly = header and header.status == 'Posted' %}
+    <form id="dseForm" method="POST" action="{{ url_for('daily_sales_entry_save') }}">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <input type="hidden" name="action" id="dseAction" value="park">
+      <input type="hidden" name="lines_json" id="dseLinesJson">
+
+      <div class="mb-3">
+        <label class="form-label fw-semibold">Narration / Notes</label>
+        <input type="text" name="narration" class="form-control" placeholder="e.g. Daily Sales - Bar &amp; Restaurant"
+               value="{{ header.narration if header else '' }}" {% if readonly %}disabled{% endif %}>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm dse-table align-middle">
+          <thead>
+            <tr>
+              <th style="width:24%">Description</th>
+              <th style="width:20%">Particulars</th>
+              <th style="width:9%">Nos</th>
+              <th style="width:12%">Bill No</th>
+              <th style="width:13%" class="text-end">Amount (Rs)</th>
+              <th style="width:22%">GL Account</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns = namespace(last_desc='') %}
+            {% for c in categories %}
+            <tr data-cat-id="{{ c.id }}" data-side="{{ c.entry_side }}">
+              <td>
+                {% if c.description != ns.last_desc %}
+                  <strong>{{ c.description }}</strong>
+                  {% set ns.last_desc = c.description %}
+                {% endif %}
+              </td>
+              <td>{{ c.particulars or '' }}</td>
+              <td>
+                <input type="number" step="any" class="form-control form-control-sm dse-nos"
+                       value="{{ c.nos if c.nos is not none else '' }}" {% if readonly %}disabled{% endif %}>
+              </td>
+              <td>
+                <input type="text" class="form-control form-control-sm dse-billno"
+                       value="{{ c.bill_no or '' }}" {% if readonly %}disabled{% endif %}>
+              </td>
+              <td>
+                <input type="number" step="0.01" class="form-control form-control-sm dse-amount dse-amount-input"
+                       value="{{ '%.2f'|format(c.amount or 0) }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </td>
+              <td>
+                <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
+                       value="{{ c.line_gl_account or '' }}"
+                       placeholder="Select account..." {% if readonly %}disabled{% endif %}>
+              </td>
+            </tr>
+            {% endfor %}
+            <tr class="dse-total-row">
+              <td colspan="4" class="text-end">GRAND TOTAL / TOTAL INCOME</td>
+              <td class="text-end"><span id="dseTotalIncome">0.00</span></td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="row g-3 mt-1">
+        <div class="col-md-6">
+          <div class="dse-recon-box">
+            <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-balance-scale me-1"></i>Reconciliation</h6>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Total Income</label>
+                <input type="text" class="form-control form-control-sm" id="dseTotalIncomeDisplay" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Total Expenditure</label>
+                <input type="number" step="0.01" name="total_expenditure" id="dseExpenditure" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.total_expenditure or 0) if header else '0.00' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Balance</label>
+                <input type="text" class="form-control form-control-sm" id="dseBalance" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Cash Float</label>
+                <input type="number" step="0.01" name="cash_float" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.cash_float or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="dse-recon-box">
+            <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-money-bill-wave me-1"></i>Received By</h6>
+            <div class="row g-2">
+              <div class="col-4">
+                <label class="form-label">Cash</label>
+                <input type="number" step="0.01" name="cash_amount" id="dseCash" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.cash_amount or 0) if header else '0.00' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-4">
+                <label class="form-label">Credit Card</label>
+                <input type="number" step="0.01" name="credit_card_amount" id="dseCard" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.credit_card_amount or 0) if header else '0.00' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-4">
+                <label class="form-label">Bank Transfer</label>
+                <input type="number" step="0.01" name="bank_transfer_amount" id="dseBank" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.bank_transfer_amount or 0) if header else '0.00' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+            </div>
+            <div class="mt-2" style="font-size:0.8rem;">
+              Total Received: <span id="dsePmTotal">0.00</span>
+              &nbsp;<span id="dsePmCheck"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {% if not readonly %}
+      <div class="d-flex justify-content-end gap-2 mt-4">
+        <button type="button" class="btn btn-secondary" onclick="dseSubmit('park')">
+          <i class="fas fa-inbox me-1"></i> Save as Parked (Draft)
+        </button>
+        <button type="button" class="btn btn-primary" onclick="dseSubmit('post')">
+          <i class="fas fa-check-circle me-1"></i> Post to GL
+        </button>
+      </div>
+      {% else %}
+      <div class="alert alert-secondary mt-4 mb-0">
+        <i class="fas fa-info-circle me-1"></i> This day has already been posted to the GL and is locked for editing.
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="dse-card">
+  <div class="dse-card-header">
+    <h6 class="dse-card-title"><i class="fas fa-history me-1 text-primary"></i>Recent Entries (Day-wise)</h6>
+  </div>
+  <div class="dse-card-body table-responsive">
+    <table class="table table-sm table-hover">
+      <thead><tr><th>Date</th><th class="text-end">Total Income</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.entry_date }}</td>
+          <td class="text-end">{{ '%.2f'|format(r.total_income or 0) }}</td>
+          <td>
+            {% if r.status == 'Posted' %}
+              <span class="badge bg-success">Posted</span>
+            {% else %}
+              <span class="badge bg-warning text-dark">Parked</span>
+            {% endif %}
+          </td>
+          <td><a href="{{ url_for('daily_sales_entry', date=r.entry_date) }}" class="btn btn-sm btn-outline-primary">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted py-3">No entries yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<datalist id="dseAccountList">
+  {% for acc in accounts %}
+  <option value="{{ acc.account_name }}">
+  {% endfor %}
+</datalist>
+
+<script>
+function dseRecalc() {
+  let total = 0;
+  document.querySelectorAll('#dseForm tbody tr[data-cat-id]').forEach(function(tr) {
+    const side = tr.getAttribute('data-side');
+    const amt = parseFloat(tr.querySelector('.dse-amount').value) || 0;
+    total += (side === 'DR') ? -amt : amt;
+  });
+  total = Math.round(total * 100) / 100;
+  document.getElementById('dseTotalIncome').textContent = total.toFixed(2);
+  document.getElementById('dseTotalIncomeDisplay').value = total.toFixed(2);
+
+  const exp = parseFloat(document.getElementById('dseExpenditure').value) || 0;
+  document.getElementById('dseBalance').value = (total - exp).toFixed(2);
+
+  const cash = parseFloat(document.getElementById('dseCash').value) || 0;
+  const card = parseFloat(document.getElementById('dseCard').value) || 0;
+  const bank = parseFloat(document.getElementById('dseBank').value) || 0;
+  const pmTotal = Math.round((cash + card + bank) * 100) / 100;
+  document.getElementById('dsePmTotal').textContent = pmTotal.toFixed(2);
+
+  const checkEl = document.getElementById('dsePmCheck');
+  if (Math.abs(pmTotal - total) < 0.01) {
+    checkEl.innerHTML = '<i class="fas fa-check-circle dse-check-ok"></i> <span class="dse-check-ok">Matches Total Income</span>';
+  } else {
+    checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (total - pmTotal).toFixed(2) + '</span>';
+  }
+}
+
+function dseSubmit(action) {
+  const lines = [];
+  document.querySelectorAll('#dseForm tbody tr[data-cat-id]').forEach(function(tr) {
+    lines.push({
+      category_id: tr.getAttribute('data-cat-id'),
+      nos: tr.querySelector('.dse-nos').value,
+      bill_no: tr.querySelector('.dse-billno').value,
+      amount: tr.querySelector('.dse-amount').value,
+      gl_account: tr.querySelector('.dse-gl-account').value
+    });
+  });
+  document.getElementById('dseLinesJson').value = JSON.stringify(lines);
+  document.getElementById('dseAction').value = action;
+  document.getElementById('dseForm').submit();
+}
+
+function dseJumpToDate(val) {
+  if (val) window.location.href = "{{ url_for('daily_sales_entry') }}?date=" + val;
+}
+function dseGoToDate(offsetDays) {
+  const d = new Date("{{ entry_date }}T00:00:00");
+  d.setDate(d.getDate() + offsetDays);
+  const iso = d.toISOString().slice(0, 10);
+  dseJumpToDate(iso);
+}
+
+document.addEventListener('DOMContentLoaded', dseRecalc);
+</script>
+{% endblock %}

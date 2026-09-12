@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Sales - GL Account Mapping{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-sitemap me-2 text-primary"></i>Daily Sales Entry &mdash; GL Account Mapping</h4>
+  <a href="{{ url_for('daily_sales_entry') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-arrow-left me-1"></i> Back to Daily Sales Entry
+  </a>
+</div>
+
+<div class="alert alert-info">
+  <i class="fas fa-info-circle me-1"></i>
+  These are the <strong>default</strong> GL accounts used for each sale category and for how the day's
+  takings were received. Whoever posts a day's entry can still override an individual line's account
+  on that screen &mdash; changing it here only changes the default going forward.
+</div>
+
+<form method="POST" action="{{ url_for('daily_sales_gl_mapping_save') }}">
+
+  <div class="card mb-3">
+    <div class="card-header fw-bold">Payment Method Control Accounts</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Cash Account</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_cash_account"
+                 value="{{ pm_accounts.get('daily_sales_cash_account', '') }}" placeholder="Select account...">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Credit Card Account</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_card_account"
+                 value="{{ pm_accounts.get('daily_sales_card_account', '') }}" placeholder="Select account...">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Bank Transfer Account</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_bank_account"
+                 value="{{ pm_accounts.get('daily_sales_bank_account', '') }}" placeholder="Select account...">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header fw-bold">Sale Category &rarr; GL Account</div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th style="width:28%">Description</th>
+            <th style="width:22%">Particulars</th>
+            <th style="width:10%">Side</th>
+            <th style="width:40%">GL Account</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in categories %}
+          <tr>
+            <td><strong>{{ c.description }}</strong></td>
+            <td>{{ c.particulars or '' }}</td>
+            <td>
+              {% if c.entry_side == 'DR' %}
+                <span class="badge bg-danger">DR (deducts)</span>
+              {% else %}
+                <span class="badge bg-success">CR (adds)</span>
+              {% endif %}
+            </td>
+            <td>
+              <input type="hidden" name="category_id[]" value="{{ c.id }}">
+              <input type="text" class="form-control form-control-sm" list="dseglAccountList" name="gl_account[]"
+                     value="{{ c.gl_account_name or '' }}" placeholder="Select account...">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end mt-3">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save Mapping</button>
+  </div>
+</form>
+
+<datalist id="dseglAccountList">
+  {% for acc in accounts %}
+  <option value="{{ acc.account_name }}">
+  {% endfor %}
+</datalist>
+{% endblock %}
