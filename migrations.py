@@ -81,7 +81,8 @@ def _migrate_user_rights(cursor):
         columns = [row[0] for row in cursor.fetchall()]
 
         new_columns = [
-            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports', 'Access_Reversals'
+            'Access_Inventory', 'Access_POS', 'Access_Accounting', 'Access_Reports', 'Access_Reversals',
+            'Access_Daily_Sales'
         ]
 
         for col in new_columns:

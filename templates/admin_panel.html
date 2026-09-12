@@ -230,6 +230,10 @@
                   <label class="form-check-label" style="font-size:.8rem;" for="perm_pos">POS System<br><span style="color:#a0aec0;font-size:.72rem;">Point of Sale, POS Settings</span></label>
                 </div>
                 <div class="form-check form-switch mb-2">
+                  <input class="form-check-input" type="checkbox" name="Access_Daily_Sales" id="perm_daily_sales">
+                  <label class="form-check-label" style="font-size:.8rem;" for="perm_daily_sales">Daily Sales Entry<br><span style="color:#a0aec0;font-size:.72rem;">Front Office Sales Record, Park/Post to GL, GL Mapping</span></label>
+                </div>
+                <div class="form-check form-switch mb-2">
                   <input class="form-check-input" type="checkbox" name="Access_HR" id="perm_hr">
                   <label class="form-check-label" style="font-size:.8rem;" for="perm_hr">HR &amp; Payroll<br><span style="color:#a0aec0;font-size:.72rem;">Employees, Leave, Payroll</span></label>
                 </div>
@@ -292,6 +296,7 @@
                     'Access_Accounting':   'perm_accounting',
                     'Access_Inventory':    'perm_inventory',
                     'Access_POS':          'perm_pos',
+                    'Access_Daily_Sales':  'perm_daily_sales',
                     'Access_HR':           'perm_hr',
                     'Access_CRM':          'perm_crm',
                     'Access_Reports':      'perm_reports',
@@ -335,7 +340,7 @@
         const perms = [
             'Add_New_User','OP_Approved','Access_Settings',
             'Access_Sales','Access_Purchase','Access_Accounting',
-            'Access_Inventory','Access_POS','Access_HR','Access_CRM',
+            'Access_Inventory','Access_POS','Access_Daily_Sales','Access_HR','Access_CRM',
             'Access_Reports','Access_Fixed_Assets','Access_VAT','Access_Reversals'
         ];
         perms.forEach(perm => {

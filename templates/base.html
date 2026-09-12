@@ -908,10 +908,10 @@
                 {% endif %}
 
                 <!-- Restaurant -->
-                {% if 'food_costing' not in menu_disabled or 'daily_sales_entry' not in menu_disabled %}
+                {% if 'food_costing' not in menu_disabled or ('daily_sales_entry' not in menu_disabled and check_permission("Access_Daily_Sales")) %}
                 <div class="menu-category">Restaurant</div>
                 {% if 'food_costing' not in menu_disabled %}<a href="/food_costing" class="nav-link"><i class="fas fa-utensils"></i> <span class="nav-text">Food Costing</span></a>{% endif %}
-                {% if 'daily_sales_entry' not in menu_disabled %}<a href="/daily_sales_entry" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">Daily Sales Entry</span></a>{% endif %}
+                {% if 'daily_sales_entry' not in menu_disabled and check_permission("Access_Daily_Sales") %}<a href="/daily_sales_entry" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">Daily Sales Entry</span></a>{% endif %}
                 {% endif %}
 
                 <!-- HR & Payroll -->
