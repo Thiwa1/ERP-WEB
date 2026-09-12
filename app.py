@@ -21063,15 +21063,22 @@ def bar_inventory_items_upload():
         existing = db.execute_query("SELECT item_name FROM bar_inventory_items") or []
         existing_names = {r['item_name'] for r in existing}
 
+        # Keep the file's own row order - continue numbering after whatever
+        # already has the highest display_order, so items line up in the
+        # same order they were typed in the spreadsheet, not alphabetically.
+        max_order_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_items") or []
+        next_order = ((max_order_row[0]['m'] or 0) if max_order_row else 0) + 10
+
         added = 0
         for name in names:
             if name in existing_names:
                 continue
             try:
                 db.execute_query(
-                    "INSERT INTO bar_inventory_items (item_name, unit_type) VALUES (%s, 'UNIT')",
-                    (name,), commit=True)
+                    "INSERT INTO bar_inventory_items (item_name, unit_type, display_order) VALUES (%s, 'UNIT', %s)",
+                    (name, next_order), commit=True)
                 existing_names.add(name)
+                next_order += 10
                 added += 1
             except Exception:
                 pass  # skip duplicates/bad rows, keep going
