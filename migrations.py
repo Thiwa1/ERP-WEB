@@ -693,10 +693,10 @@ def _migrate_daily_sales_entry(cursor):
                 ('ROOM1_WEDDING',  'Non A/C Rooms', 'Wedding Couples', 20, 'CR'),
                 ('ROOM1_EXTRABED', 'Non A/C Rooms', 'Extra Bed',       30, 'CR'),
                 ('ROOM1_FOREIGN',  'Non A/C Rooms', 'Foreign',         40, 'CR'),
-                ('ROOM2_NORMAL',   'Non A/C Rooms', 'Normal',          50, 'CR'),
-                ('ROOM2_WEDDING',  'Non A/C Rooms', 'Wedding Couples', 60, 'CR'),
-                ('ROOM2_EXTRABED', 'Non A/C Rooms', 'Extra Bed',       70, 'CR'),
-                ('ROOM2_FOREIGN',  'Non A/C Rooms', 'Foreign',         80, 'CR'),
+                ('ROOM2_NORMAL',   'A/C Rooms', 'Normal',          50, 'CR'),
+                ('ROOM2_WEDDING',  'A/C Rooms', 'Wedding Couples', 60, 'CR'),
+                ('ROOM2_EXTRABED', 'A/C Rooms', 'Extra Bed',       70, 'CR'),
+                ('ROOM2_FOREIGN',  'A/C Rooms', 'Foreign',         80, 'CR'),
                 ('ROOM_FOOD_SALE', 'Room Food Sale', None,             90, 'CR'),
                 ('RESTAURANT_FOOD_SALES', 'Restaurant Food Sales', None, 100, 'CR'),
                 ('DESSERT_DESSERT', 'Dessert Sales', 'Dessert',        110, 'CR'),
@@ -895,6 +895,16 @@ def _migrate_daily_sales_sheet10(cursor):
                         "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
                         (key, desc)
                     )
+
+        # 5. Fix-up: the front office's original Excel sheet mislabelled the
+        # second room block as "Non A/C Rooms" again (copy-paste error) when
+        # it should read "A/C Rooms". Any daily_sales_categories table
+        # created before this fix landed still has the old wrong label -
+        # correct it every time (harmless / idempotent if already correct).
+        cursor.execute("""
+            UPDATE daily_sales_categories SET description = 'A/C Rooms'
+            WHERE category_key IN ('ROOM2_NORMAL', 'ROOM2_WEDDING', 'ROOM2_EXTRABED', 'ROOM2_FOREIGN')
+        """)
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
