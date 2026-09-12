@@ -60,10 +60,12 @@
         <p class="text-muted small">
           One row per item. Column A = Item Name (required). Optionally add
           B = Unit Type ("Whole Units" / "Bottle+Ml"), C = Bottle Size (ml),
-          D = Unit Price, E = Opening Balance &mdash; if present, these fill in
-          automatically for new items <em>and update existing ones matched by name</em>
-          (handy for re-uploading a corrected sheet). Name-only rows just add
-          the item as "Whole Units" for you to fill in below.
+          D = Unit Price (Bar), E = Opening Balance, F = Unit Price (Restaurant)
+          &mdash; if present, these fill in automatically for new items
+          <em>and update existing ones matched by name</em> (handy for
+          re-uploading a corrected sheet — a blank Restaurant Price never
+          overwrites one you've already set). Name-only rows just add the
+          item as "Whole Units" for you to fill in below.
         </p>
         <form method="POST" action="{{ url_for('bar_inventory_items_upload') }}" enctype="multipart/form-data">
           <div class="mb-3">

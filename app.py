@@ -20796,26 +20796,13 @@ def bar_inventory():
                            records=records)
 
 
-@app.route('/bar_inventory/save', methods=['POST'])
-@login_required
-@has_permission('Access_Inventory')
-def bar_inventory_save():
-    entry_date = request.form.get('entry_date')
-    verify = request.form.get('verify') == '1'
-    lines_json = request.form.get('lines_json')
-
-    if not entry_date:
-        flash('Date is required.', 'danger')
-        return redirect(url_for('bar_inventory'))
-
-    try:
-        lines_in = json.loads(lines_json) if lines_json else []
-    except (ValueError, TypeError):
-        flash('Invalid data submitted.', 'danger')
-        return redirect(url_for('bar_inventory', date=entry_date))
-
+def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
+    """Core save logic shared by the day-grid form and the quantities
+    upload. `lines_in` is a list of dicts: {item_id, rf_stock, sales_bar_qty,
+    restaurant_sale_qty, ent_qty} - only the items present are touched, so
+    a partial upload safely leaves every other item's line as it was.
+    Returns (ok: bool, message: str, lines_saved: int)."""
     items = {it['id']: it for it in _bar_inv_items()}
-    current_user_pk = get_current_user_pk()
 
     conn = None
     cursor = None
@@ -20826,8 +20813,7 @@ def bar_inventory_save():
         cursor.execute("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
         existing = cursor.fetchone()
         if existing and existing['status'] == 'Verified':
-            flash('This day has already been verified and can no longer be edited.', 'danger')
-            return redirect(url_for('bar_inventory', date=entry_date))
+            return False, 'This day has already been verified and can no longer be edited.', 0
 
         conn.start_transaction()
 
@@ -20838,6 +20824,7 @@ def bar_inventory_save():
                            (entry_date, current_user_pk))
             day_id = cursor.lastrowid
 
+        saved = 0
         for ln in lines_in:
             try:
                 item_id = int(ln.get('item_id'))
@@ -20868,6 +20855,7 @@ def bar_inventory_save():
                     closing_balance=VALUES(closing_balance)
             """, (day_id, item_id, opening, rf_stock, total_available,
                   sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance))
+            saved += 1
 
         if verify:
             cursor.execute("""
@@ -20876,15 +20864,127 @@ def bar_inventory_save():
             """, (current_user_pk, day_id))
 
         conn.commit()
-        flash(f"Bar Inventory {'verified' if verify else 'saved'} for {entry_date}.", 'success')
+        return True, f"Bar Inventory {'verified' if verify else 'saved'} for {entry_date}.", saved
 
     except Exception as e:
         if conn:
             conn.rollback()
-        flash(f'Error saving Bar Inventory: {str(e)}', 'danger')
+        return False, f'Error saving Bar Inventory: {str(e)}', 0
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
+
+
+@app.route('/bar_inventory/save', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_save():
+    entry_date = request.form.get('entry_date')
+    verify = request.form.get('verify') == '1'
+    lines_json = request.form.get('lines_json')
+
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    try:
+        lines_in = json.loads(lines_json) if lines_json else []
+    except (ValueError, TypeError):
+        flash('Invalid data submitted.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    ok, message, _saved = _bar_inv_process_day(entry_date, lines_in, verify, get_current_user_pk())
+    flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/upload', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_upload():
+    """Bulk-fill a day's RF.Stock / Sales Bar / Restaurant / ENT quantities
+    from an uploaded Excel/CSV, instead of typing every item by hand.
+    Columns: A=Item Name, B=RF.Stock, C=Sales Bar Qty, D=Restaurant Sale Qty,
+    E=ENT Qty. Only items actually listed in the file are touched - every
+    other item's line for that day (if any) is left exactly as it was.
+    Matches items by name (case-insensitive); unmatched names are skipped
+    and reported back so they can be fixed and re-uploaded."""
+    entry_date = request.form.get('entry_date') or date.today().strftime('%Y-%m-%d')
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('Please choose a file to upload.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    try:
+        fname = f.filename.lower()
+        rows_out = []  # (name, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty)
+
+        def cell(row, idx):
+            if idx >= len(row) or row[idx] is None:
+                return None
+            v = row[idx]
+            return v.strip() if isinstance(v, str) else v
+
+        if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
+            from openpyxl import load_workbook
+            wb = load_workbook(f, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                if not row:
+                    continue
+                name = cell(row, 0)
+                if name is None:
+                    continue
+                name = str(name).strip()
+                if not name or name.lower() in ('item', 'item name', 'description'):
+                    continue
+                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4)))
+        else:
+            import csv, io as _io
+            text_data = f.read().decode('utf-8-sig', errors='ignore')
+            for row in csv.reader(_io.StringIO(text_data)):
+                if not row:
+                    continue
+                name = (row[0] or '').strip()
+                if not name or name.lower() in ('item', 'item name', 'description'):
+                    continue
+                get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
+                rows_out.append((name, get(1), get(2), get(3), get(4)))
+
+        if not rows_out:
+            flash('No item rows found in that file.', 'danger')
+            return redirect(url_for('bar_inventory', date=entry_date))
+
+        items_by_name = {it['item_name'].strip().lower(): it['id'] for it in _bar_inv_items()}
+
+        lines_in = []
+        not_found = []
+        for name, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty in rows_out:
+            item_id = items_by_name.get(name.lower())
+            if not item_id:
+                not_found.append(name)
+                continue
+            lines_in.append({
+                'item_id': item_id,
+                'rf_stock': rf_stock,
+                'sales_bar_qty': sales_bar_qty,
+                'restaurant_sale_qty': restaurant_sale_qty,
+                'ent_qty': ent_qty,
+            })
+
+        if not lines_in:
+            flash('None of the item names in that file matched your Bar Inventory Items list.', 'danger')
+            return redirect(url_for('bar_inventory', date=entry_date))
+
+        ok, message, saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
+        if ok:
+            message = f'Updated {saved} item(s) for {entry_date} from the uploaded file.'
+            if not_found:
+                message += f" Not matched (check spelling): {', '.join(not_found[:8])}" + ('...' if len(not_found) > 8 else '')
+        flash(message, 'success' if ok else 'danger')
+
+    except Exception as e:
+        flash(f'Error reading file: {str(e)}', 'danger')
 
     return redirect(url_for('bar_inventory', date=entry_date))
 
@@ -21052,11 +21152,12 @@ def bar_inventory_items_upload():
     Supports two formats in the same column layout:
       - Name only (Column A) - just adds new items as 'Whole Units'.
       - Full detail (A=Name, B=Unit Type e.g. 'Whole Units'/'Bottle+Ml',
-        C=Bottle Size ml, D=Unit Price, E=Opening Balance) - a new item is
-        created with all of that; an EXISTING item (matched by name) has
-        its unit type / bottle size / price / opening balance UPDATED to
-        match the file (so re-uploading a corrected sheet fixes them all
-        at once) - its restaurant price and display order are left alone.
+        C=Bottle Size ml, D=Unit Price (Bar), E=Opening Balance,
+        F=Unit Price (Restaurant) - optional) - a new item is created with
+        all of that; an EXISTING item (matched by name) has its unit type /
+        bottle size / prices / opening balance UPDATED to match the file
+        (so re-uploading a corrected sheet fixes them all at once) - its
+        display order is left alone.
     """
     f = request.files.get('file')
     if not f or not f.filename:
@@ -21065,7 +21166,7 @@ def bar_inventory_items_upload():
 
     try:
         fname = f.filename.lower()
-        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance)
+        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance, unit_price_restaurant)
 
         def cell(row, idx):
             if idx >= len(row) or row[idx] is None:
@@ -21086,7 +21187,7 @@ def bar_inventory_items_upload():
                 name = str(name).strip()
                 if not name or name.lower() in ('item', 'item name', 'description', 'ml'):
                     continue
-                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4)))
+                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4), cell(row, 5)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
@@ -21097,7 +21198,7 @@ def bar_inventory_items_upload():
                 if not name or name.lower() in ('item', 'item name', 'description'):
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
-                rows_out.append((name, get(1), get(2), get(3), get(4)))
+                rows_out.append((name, get(1), get(2), get(3), get(4), get(5)))
 
         if not rows_out:
             flash('No item names found in that file.', 'danger')
@@ -21113,12 +21214,14 @@ def bar_inventory_items_upload():
 
         added = 0
         updated = 0
-        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw in rows_out:
-            has_detail = any(v not in (None, '') for v in (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw))
+        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw in rows_out:
+            has_detail = any(v not in (None, '') for v in
+                              (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw))
             unit_type = _bar_inv_parse_unit_type(unit_type_raw)
             bottle_size = parse_float(bottle_size_raw) or None
             unit_price = parse_float(unit_price_raw)
             opening_balance = parse_float(opening_balance_raw)
+            unit_price_restaurant = parse_float(unit_price_restaurant_raw)
 
             try:
                 if name in existing_ids:
@@ -21128,16 +21231,17 @@ def bar_inventory_items_upload():
                     if has_detail:
                         db.execute_query("""
                             UPDATE bar_inventory_items
-                            SET unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s
+                            SET unit_type=%s, bottle_size_ml=%s, unit_price=%s, opening_balance=%s,
+                                unit_price_restaurant=COALESCE(NULLIF(%s, 0), unit_price_restaurant)
                             WHERE id=%s
-                        """, (unit_type, bottle_size, unit_price, opening_balance, existing_ids[name]), commit=True)
+                        """, (unit_type, bottle_size, unit_price, opening_balance, unit_price_restaurant, existing_ids[name]), commit=True)
                         updated += 1
                 else:
                     db.execute_query("""
                         INSERT INTO bar_inventory_items
-                            (item_name, unit_type, bottle_size_ml, unit_price, opening_balance, display_order)
-                        VALUES (%s, %s, %s, %s, %s, %s)
-                    """, (name, unit_type, bottle_size, unit_price, opening_balance, next_order), commit=True)
+                            (item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (name, unit_type, bottle_size, unit_price, opening_balance, unit_price_restaurant, next_order), commit=True)
                     existing_ids[name] = True
                     next_order += 10
                     added += 1
