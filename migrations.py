@@ -56,6 +56,7 @@ def run_migrations(conn):
         _migrate_grn_payment_ready(cursor)
         _migrate_daily_sales_entry(cursor)
         _migrate_daily_sales_sheet10(cursor)
+        _migrate_daily_sales_card_banks(cursor)
 
         conn.commit()
         cursor.close()
@@ -905,6 +906,42 @@ def _migrate_daily_sales_sheet10(cursor):
             UPDATE daily_sales_categories SET description = 'A/C Rooms'
             WHERE category_key IN ('ROOM2_NORMAL', 'ROOM2_WEDDING', 'ROOM2_EXTRABED', 'ROOM2_FOREIGN')
         """)
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_card_banks(cursor):
+    """Splits the single 'Credit Card' collection figure into the two
+    merchant/bank facilities the front office actually settles card
+    payments through (Sampath Bank, HNB Bank) - each posts to its own bank
+    GL account. The old credit_card_amount column is left in place
+    (unused going forward) so historical posted entries keep their data."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM daily_sales_entries")
+        dse_cols = [row[0] for row in cursor.fetchall()]
+        for col in ('credit_card_sampath_amount', 'credit_card_hnb_amount', 'advance_given'):
+            if col not in dse_cols:
+                cursor.execute(f"ALTER TABLE daily_sales_entries ADD COLUMN {col} DOUBLE NOT NULL DEFAULT 0")
+        # Reference/bill numbers for Advance Received and Advance Given
+        for col in ('advance_received_bill_no', 'advance_given_bill_no'):
+            if col not in dse_cols:
+                cursor.execute(f"ALTER TABLE daily_sales_entries ADD COLUMN {col} VARCHAR(100) NULL")
+
+        cursor.execute("SHOW TABLES LIKE 'system_settings'")
+        if cursor.fetchone():
+            for key, desc in (
+                ('daily_sales_card_sampath_account', 'Daily Sales Entry: GL account for Credit Card (Sampath Bank) collections'),
+                ('daily_sales_card_hnb_account', 'Daily Sales Entry: GL account for Credit Card (HNB Bank) collections'),
+            ):
+                cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                        (key, desc)
+                    )
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

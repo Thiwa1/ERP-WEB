@@ -23,17 +23,22 @@
     <div class="card-header fw-bold">Payment Method Control Accounts</div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label">Cash Account</label>
           <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_cash_account"
                  value="{{ pm_accounts.get('daily_sales_cash_account', '') }}" placeholder="Select account...">
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Credit Card Account</label>
-          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_card_account"
-                 value="{{ pm_accounts.get('daily_sales_card_account', '') }}" placeholder="Select account...">
+        <div class="col-md-3">
+          <label class="form-label">Credit Card - Sampath Bank</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_card_sampath_account"
+                 value="{{ pm_accounts.get('daily_sales_card_sampath_account', '') }}" placeholder="Select account...">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
+          <label class="form-label">Credit Card - HNB Bank</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_card_hnb_account"
+                 value="{{ pm_accounts.get('daily_sales_card_hnb_account', '') }}" placeholder="Select account...">
+        </div>
+        <div class="col-md-3">
           <label class="form-label">Bank Transfer Account</label>
           <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_bank_account"
                  value="{{ pm_accounts.get('daily_sales_bank_account', '') }}" placeholder="Select account...">

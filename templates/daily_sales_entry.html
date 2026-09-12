@@ -196,17 +196,22 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Telephone</label>
-                <input type="number" step="0.01" name="telephone_income" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.telephone_income or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+                <input type="number" step="0.01" name="telephone_income" id="dseTelephone" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.telephone_income or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
                 <label class="form-label">Credit Received</label>
                 <input type="text" class="form-control form-control-sm" id="dseCreditReceivedTotal" readonly>
               </div>
-              <div class="col-6">
+              <div class="col-3">
                 <label class="form-label">Advance Received</label>
-                <input type="number" step="0.01" name="advance_received" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.advance_received or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+                <input type="number" step="0.01" name="advance_received" id="dseAdvanceReceived" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.advance_received or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-3">
+                <label class="form-label">Bill No</label>
+                <input type="text" name="advance_received_bill_no" class="form-control form-control-sm"
+                       value="{{ header.advance_received_bill_no or '' if header else '' }}" {% if readonly %}disabled{% endif %}>
               </div>
             </div>
           </div>
@@ -221,8 +226,18 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Petty Cash</label>
-                <input type="number" step="0.01" name="petty_cash" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.petty_cash or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+                <input type="number" step="0.01" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.petty_cash or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-3">
+                <label class="form-label">Advance Given</label>
+                <input type="number" step="0.01" name="advance_given" id="dseAdvanceGiven" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.advance_given or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-3">
+                <label class="form-label">Bill No</label>
+                <input type="text" name="advance_given_bill_no" class="form-control form-control-sm"
+                       value="{{ header.advance_given_bill_no or '' if header else '' }}" {% if readonly %}disabled{% endif %}>
               </div>
               {% for n in [1,2,3] %}
               <div class="col-6">
@@ -232,8 +247,8 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Misc {{ n }} - Amount</label>
-                <input type="number" step="0.01" name="misc_expense_{{ n }}_amount" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header['misc_expense_' ~ n ~ '_amount'] or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+                <input type="number" step="0.01" name="misc_expense_{{ n }}_amount" class="form-control form-control-sm dse-misc-amount"
+                       value="{{ '%.2f'|format(header['misc_expense_' ~ n ~ '_amount'] or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               {% endfor %}
             </div>
@@ -247,8 +262,8 @@
             <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-balance-scale me-1"></i>Reconciliation</h6>
             <div class="row g-2">
               <div class="col-6">
-                <label class="form-label">Total Income</label>
-                <input type="text" class="form-control form-control-sm" id="dseTotalIncomeDisplay" readonly>
+                <label class="form-label">Expected Receipt</label>
+                <input type="text" class="form-control form-control-sm" id="dseExpectedReceived" readonly>
               </div>
               <div class="col-6">
                 <label class="form-label">Total Expenditure</label>
@@ -266,25 +281,35 @@
                        value="{{ '%.2f'|format(header.cash_float or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
               </div>
             </div>
+            <div class="mt-2 text-muted" style="font-size:0.72rem;">
+              Expected Receipt = Total Sales + Telephone + Advance Received + Credit Received
+              &minus; Credit Given &minus; Advance Given &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+            </div>
           </div>
         </div>
         <div class="col-md-6">
           <div class="dse-recon-box">
             <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-money-bill-wave me-1"></i>Received By</h6>
             <div class="row g-2">
-              <div class="col-4">
+              <div class="col-3">
                 <label class="form-label">Cash</label>
                 <input type="number" step="0.01" name="cash_amount" id="dseCash" class="form-control form-control-sm"
                        value="{{ '%.2f'|format(header.cash_amount or 0) if header else '0.00' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
-              <div class="col-4">
-                <label class="form-label">Credit Card</label>
-                <input type="number" step="0.01" name="credit_card_amount" id="dseCard" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.credit_card_amount or 0) if header else '0.00' }}"
+              <div class="col-3">
+                <label class="form-label">Card - Sampath</label>
+                <input type="number" step="0.01" name="credit_card_sampath_amount" id="dseCardSampath" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.credit_card_sampath_amount or 0) if header else '0.00' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
-              <div class="col-4">
+              <div class="col-3">
+                <label class="form-label">Card - HNB</label>
+                <input type="number" step="0.01" name="credit_card_hnb_amount" id="dseCardHnb" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.credit_card_hnb_amount or 0) if header else '0.00' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-3">
                 <label class="form-label">Bank Transfer</label>
                 <input type="number" step="0.01" name="bank_transfer_amount" id="dseBank" class="form-control form-control-sm"
                        value="{{ '%.2f'|format(header.bank_transfer_amount or 0) if header else '0.00' }}"
@@ -372,24 +397,10 @@ function dseRecalc() {
   });
   total = Math.round(total * 100) / 100;
   document.getElementById('dseTotalIncome').textContent = total.toFixed(2);
-  document.getElementById('dseTotalIncomeDisplay').value = total.toFixed(2);
   document.getElementById('dseTotalSalesDisplay').value = total.toFixed(2);
 
   const exp = parseFloat(document.getElementById('dseExpenditure').value) || 0;
   document.getElementById('dseBalance').value = (total - exp).toFixed(2);
-
-  const cash = parseFloat(document.getElementById('dseCash').value) || 0;
-  const card = parseFloat(document.getElementById('dseCard').value) || 0;
-  const bank = parseFloat(document.getElementById('dseBank').value) || 0;
-  const pmTotal = Math.round((cash + card + bank) * 100) / 100;
-  document.getElementById('dsePmTotal').textContent = pmTotal.toFixed(2);
-
-  const checkEl = document.getElementById('dsePmCheck');
-  if (Math.abs(pmTotal - total) < 0.01) {
-    checkEl.innerHTML = '<i class="fas fa-check-circle dse-check-ok"></i> <span class="dse-check-ok">Matches Total Income</span>';
-  } else {
-    checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (total - pmTotal).toFixed(2) + '</span>';
-  }
 
   let creditReceived = 0;
   document.querySelectorAll('#dseCreditReceivedBody .dse-credit-amount').forEach(function(inp) { creditReceived += parseFloat(inp.value) || 0; });
@@ -398,6 +409,33 @@ function dseRecalc() {
   let creditGiven = 0;
   document.querySelectorAll('#dseCreditGivenBody .dse-credit-amount').forEach(function(inp) { creditGiven += parseFloat(inp.value) || 0; });
   document.getElementById('dseCreditGivenTotal').value = creditGiven.toFixed(2);
+
+  const telephone = parseFloat(document.getElementById('dseTelephone').value) || 0;
+  const advanceReceived = parseFloat(document.getElementById('dseAdvanceReceived').value) || 0;
+  const advanceGiven = parseFloat(document.getElementById('dseAdvanceGiven').value) || 0;
+  const pettyCash = parseFloat(document.getElementById('dsePettyCash').value) || 0;
+  let miscTotal = 0;
+  document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += parseFloat(inp.value) || 0; });
+
+  const expectedReceived = Math.round((
+    total + telephone + advanceReceived + creditReceived
+    - creditGiven - advanceGiven - pettyCash - miscTotal - exp
+  ) * 100) / 100;
+  document.getElementById('dseExpectedReceived').value = expectedReceived.toFixed(2);
+
+  const cash = parseFloat(document.getElementById('dseCash').value) || 0;
+  const cardSampath = parseFloat(document.getElementById('dseCardSampath').value) || 0;
+  const cardHnb = parseFloat(document.getElementById('dseCardHnb').value) || 0;
+  const bank = parseFloat(document.getElementById('dseBank').value) || 0;
+  const pmTotal = Math.round((cash + cardSampath + cardHnb + bank) * 100) / 100;
+  document.getElementById('dsePmTotal').textContent = pmTotal.toFixed(2);
+
+  const checkEl = document.getElementById('dsePmCheck');
+  if (Math.abs(pmTotal - expectedReceived) < 0.01) {
+    checkEl.innerHTML = '<i class="fas fa-check-circle dse-check-ok"></i> <span class="dse-check-ok">Matches Expected Receipt</span>';
+  } else {
+    checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (expectedReceived - pmTotal).toFixed(2) + '</span>';
+  }
 }
 
 function dseSubmit() {

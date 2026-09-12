@@ -88,10 +88,14 @@
           <input type="hidden" name="total_expenditure" value="{{ header.total_expenditure or 0 }}">
           <input type="hidden" name="cash_float" value="{{ header.cash_float or 0 }}">
           <input type="hidden" name="cash_amount" value="{{ header.cash_amount or 0 }}">
-          <input type="hidden" name="credit_card_amount" value="{{ header.credit_card_amount or 0 }}">
+          <input type="hidden" name="credit_card_sampath_amount" value="{{ header.credit_card_sampath_amount or 0 }}">
+          <input type="hidden" name="credit_card_hnb_amount" value="{{ header.credit_card_hnb_amount or 0 }}">
           <input type="hidden" name="bank_transfer_amount" value="{{ header.bank_transfer_amount or 0 }}">
           <input type="hidden" name="telephone_income" value="{{ header.telephone_income or 0 }}">
           <input type="hidden" name="advance_received" value="{{ header.advance_received or 0 }}">
+          <input type="hidden" name="advance_received_bill_no" value="{{ header.advance_received_bill_no or '' }}">
+          <input type="hidden" name="advance_given" value="{{ header.advance_given or 0 }}">
+          <input type="hidden" name="advance_given_bill_no" value="{{ header.advance_given_bill_no or '' }}">
           <input type="hidden" name="petty_cash" value="{{ header.petty_cash or 0 }}">
           {% for n in [1,2,3] %}
           <input type="hidden" name="misc_expense_{{ n }}_label" value="{{ header['misc_expense_' ~ n ~ '_label'] or '' }}">
@@ -206,7 +210,9 @@
               <div class="dse-recon-box">
                 <div class="row g-2" style="font-size:0.85rem;">
                   <div class="col-6">Telephone: <strong>{{ '%.2f'|format(header.telephone_income or 0) }}</strong></div>
-                  <div class="col-6">Advance Received: <strong>{{ '%.2f'|format(header.advance_received or 0) }}</strong></div>
+                  <div class="col-6">Advance Received: <strong>{{ '%.2f'|format(header.advance_received or 0) }}</strong>
+                    {% if header.advance_received_bill_no %}<br><span class="text-muted">Bill: {{ header.advance_received_bill_no }}</span>{% endif %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -214,6 +220,9 @@
               <div class="dse-recon-box">
                 <div class="row g-2" style="font-size:0.85rem;">
                   <div class="col-6">Petty Cash: <strong>{{ '%.2f'|format(header.petty_cash or 0) }}</strong></div>
+                  <div class="col-6">Advance Given: <strong>{{ '%.2f'|format(header.advance_given or 0) }}</strong>
+                    {% if header.advance_given_bill_no %}<br><span class="text-muted">Bill: {{ header.advance_given_bill_no }}</span>{% endif %}
+                  </div>
                   {% for n in [1,2,3] %}
                     {% set label = header['misc_expense_' ~ n ~ '_label'] %}
                     {% set amt = header['misc_expense_' ~ n ~ '_amount'] %}
@@ -238,8 +247,8 @@
                 <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-balance-scale me-1"></i>Reconciliation (from front office)</h6>
                 <div class="row g-2">
                   <div class="col-6">
-                    <label class="form-label">Total Income</label>
-                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.total_income or 0) }}" readonly>
+                    <label class="form-label">Expected Receipt</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(expected_received or 0) }}" readonly>
                   </div>
                   <div class="col-6">
                     <label class="form-label">Total Expenditure</label>
@@ -254,31 +263,39 @@
                     <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.cash_float or 0) }}" readonly>
                   </div>
                 </div>
+                <div class="mt-2 text-muted" style="font-size:0.72rem;">
+                  Expected Receipt = Total Sales + Telephone + Advance Received + Credit Received
+                  &minus; Credit Given &minus; Advance Given &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+                </div>
               </div>
             </div>
             <div class="col-md-6">
               <div class="dse-recon-box">
                 <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-money-bill-wave me-1"></i>Received By (from front office)</h6>
                 <div class="row g-2">
-                  <div class="col-4">
+                  <div class="col-3">
                     <label class="form-label">Cash</label>
                     <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.cash_amount or 0) }}" readonly>
                   </div>
-                  <div class="col-4">
-                    <label class="form-label">Credit Card</label>
-                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.credit_card_amount or 0) }}" readonly>
+                  <div class="col-3">
+                    <label class="form-label">Card - Sampath</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.credit_card_sampath_amount or 0) }}" readonly>
                   </div>
-                  <div class="col-4">
+                  <div class="col-3">
+                    <label class="form-label">Card - HNB</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.credit_card_hnb_amount or 0) }}" readonly>
+                  </div>
+                  <div class="col-3">
                     <label class="form-label">Bank Transfer</label>
                     <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.bank_transfer_amount or 0) }}" readonly>
                   </div>
                 </div>
                 <div class="mt-2" style="font-size:0.8rem;">
-                  Total Received: {{ '%.2f'|format((header.cash_amount or 0) + (header.credit_card_amount or 0) + (header.bank_transfer_amount or 0)) }}
+                  Total Received: {{ '%.2f'|format(actual_received or 0) }}
                   {% if not pm_matches %}
-                    <span class="dse-check-bad"><i class="fas fa-exclamation-triangle"></i> Doesn't match Total Income &mdash; posting will be blocked until front office fixes this.</span>
+                    <span class="dse-check-bad"><i class="fas fa-exclamation-triangle"></i> Doesn't match Expected Receipt (diff {{ '%.2f'|format((expected_received or 0) - (actual_received or 0)) }}) &mdash; posting will be blocked until front office fixes this.</span>
                   {% else %}
-                    <span class="dse-check-ok"><i class="fas fa-check-circle"></i> Matches Total Income</span>
+                    <span class="dse-check-ok"><i class="fas fa-check-circle"></i> Matches Expected Receipt</span>
                   {% endif %}
                 </div>
               </div>
