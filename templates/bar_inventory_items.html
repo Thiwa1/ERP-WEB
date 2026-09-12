@@ -89,12 +89,25 @@
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span class="fw-bold">All Items</span>
-    <button type="button" class="btn btn-sm btn-outline-danger" onclick="biItemsDeleteSelected()">
-      <i class="fas fa-trash me-1"></i> Delete Selected
-    </button>
+    <span class="d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-success" onclick="biItemsRestoreSelected()">
+        <i class="fas fa-undo me-1"></i> Restore Selected
+      </button>
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="biItemsDeleteSelected()">
+        <i class="fas fa-trash me-1"></i> Delete Selected
+      </button>
+    </span>
   </div>
   <div class="card-body table-responsive">
-    <p class="text-muted small">Items are listed in <strong>Order</strong> (lowest first) &mdash; matching the order they were uploaded/added in. Change a number and Save to move that item; ties fall back to alphabetical.</p>
+    <p class="text-muted small">
+      Items are listed in <strong>Order</strong> (lowest first) &mdash; matching the order they were
+      uploaded/added in. Change a number and Save to move that item; ties fall back to alphabetical.
+      Every field is editable, including <strong>Code</strong> &mdash; type your own ID from the other
+      system and press the blue Save button on that row. Rows shaded orange with a
+      <span class="badge text-white" style="background:#fd7e14;">Removed</span> tag are still editable,
+      but they're hidden from the day sheet and won't match an upload until you press
+      <i class="fas fa-undo"></i> to restore them.
+    </p>
     <table class="table table-sm table-bordered align-middle">
       <thead>
         <tr>
@@ -113,11 +126,10 @@
       </thead>
       <tbody>
         {% for it in items %}
-        <tr {% if not it.is_active %}class="text-muted"{% endif %}>
-          <td>{% if it.is_active %}<input type="checkbox" class="bi-select-item" value="{{ it.id }}">{% endif %}</td>
+        <tr>
+          <td><input type="checkbox" class="bi-select-item" value="{{ it.id }}" data-active="{{ 1 if it.is_active else 0 }}"></td>
           <td class="text-muted"><code>{{ it.id }}</code></td>
-          {% if it.is_active %}
-          <td colspan="9" style="padding:0;">
+          <td colspan="9" style="padding:0;{% if not it.is_active %}background:#fff4e5;{% endif %}">
           <form method="POST" action="{{ url_for('bar_inventory_items_save') }}">
             <input type="hidden" name="item_id" value="{{ it.id }}">
             <table class="table table-sm mb-0" style="table-layout:fixed;">
@@ -137,32 +149,21 @@
                 <td><input type="number" step="0.01" name="unit_price_restaurant" class="form-control form-control-sm text-end" value="{{ '%.2f'|format(it.unit_price_restaurant or 0) }}"></td>
                 <td><input type="number" step="any" name="opening_balance" class="form-control form-control-sm text-end" value="{{ it.opening_balance or 0 }}"></td>
                 <td class="text-nowrap">
-                  <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-save"></i></button>
+                  <button type="submit" class="btn btn-sm btn-outline-primary" title="Save this row"><i class="fas fa-save"></i></button>
+                  {% if it.is_active %}
                   <button type="submit" formaction="{{ url_for('bar_inventory_items_deactivate', item_id=it.id) }}"
-                          class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove {{ it.item_name }} from the active list?');"><i class="fas fa-trash"></i></button>
+                          class="btn btn-sm btn-outline-danger" title="Remove from the active list"
+                          onclick="return biConfirmDelete(this);"><i class="fas fa-trash"></i></button>
+                  {% else %}
+                  <button type="submit" formaction="{{ url_for('bar_inventory_items_restore', item_id=it.id) }}"
+                          class="btn btn-sm btn-outline-success" title="Restore this item to the active list"><i class="fas fa-undo"></i></button>
+                  <span class="badge text-white" style="background:#fd7e14;">Removed</span>
+                  {% endif %}
                 </td>
               </tr>
             </table>
           </form>
           </td>
-          {% else %}
-          <td>{{ it.item_code or '' }}</td>
-          <td>{{ it.display_order or 0 }}</td>
-          <td>{{ it.item_name }}</td>
-          <td>{{ it.unit_type }}</td>
-          <td>{{ it.bottle_size_ml or '' }}</td>
-          <td class="text-end">{{ '%.2f'|format(it.unit_price or 0) }}</td>
-          <td class="text-end">{{ '%.2f'|format(it.unit_price_restaurant or 0) }}</td>
-          <td class="text-end">{{ it.opening_balance or 0 }}</td>
-          <td class="text-nowrap">
-            <span class="badge bg-secondary">Removed</span>
-            <form method="POST" action="{{ url_for('bar_inventory_items_restore', item_id=it.id) }}" style="display:inline;">
-              <button type="submit" class="btn btn-sm btn-outline-success" title="Restore this item to the active list">
-                <i class="fas fa-undo"></i> Restore
-              </button>
-            </form>
-          </td>
-          {% endif %}
         </tr>
         {% else %}
         <tr><td colspan="11" class="text-center text-muted py-4">No items yet.</td></tr>
@@ -173,6 +174,7 @@
 </div>
 
 <form id="biBulkDeleteForm" method="POST" action="{{ url_for('bar_inventory_items_bulk_deactivate') }}"></form>
+<form id="biBulkRestoreForm" method="POST" action="{{ url_for('bar_inventory_items_bulk_restore') }}"></form>
 
 <script>
 function biItemsToggleBottle(sel) {
@@ -183,15 +185,35 @@ function biItemsToggleAll(checkbox) {
   document.querySelectorAll('.bi-select-item').forEach(function(cb) { cb.checked = checkbox.checked; });
 }
 
-function biItemsDeleteSelected() {
-  const selected = Array.from(document.querySelectorAll('.bi-select-item:checked'));
-  if (selected.length === 0) {
+function biConfirmDelete(btn) {
+  // Read the name off the row instead of inlining it into this handler -
+  // a name with an apostrophe (Bailey's) would break an inlined JS string.
+  const form = btn.closest('form');
+  const field = form ? form.querySelector('input[name="item_name"]') : null;
+  const name = field && field.value ? field.value : 'this item';
+  return confirm('Remove ' + name + ' from the active list?');
+}
+
+function biItemsSubmitBulk(formId, wantActive, verb) {
+  // Only act on rows the action makes sense for, so ticking "select all"
+  // can't silently re-delete something you just restored (or vice versa).
+  const all = Array.from(document.querySelectorAll('.bi-select-item:checked'));
+  if (all.length === 0) {
     alert('Select at least one item first.');
     return;
   }
-  if (!confirm('Remove ' + selected.length + ' selected item(s) from the active list?')) return;
+  const selected = all.filter(function(cb) {
+    return (cb.getAttribute('data-active') === '1') === wantActive;
+  });
+  if (selected.length === 0) {
+    alert(wantActive
+      ? 'None of the ticked items are active, so there is nothing to delete.'
+      : 'None of the ticked items are removed, so there is nothing to restore.');
+    return;
+  }
+  if (!confirm(verb + ' ' + selected.length + ' item(s)?')) return;
 
-  const form = document.getElementById('biBulkDeleteForm');
+  const form = document.getElementById(formId);
   form.querySelectorAll('input[name="item_ids[]"]').forEach(function(el) { el.remove(); });
   selected.forEach(function(cb) {
     const input = document.createElement('input');
@@ -201,6 +223,14 @@ function biItemsDeleteSelected() {
     form.appendChild(input);
   });
   form.submit();
+}
+
+function biItemsDeleteSelected() {
+  biItemsSubmitBulk('biBulkDeleteForm', true, 'Remove from the active list:');
+}
+
+function biItemsRestoreSelected() {
+  biItemsSubmitBulk('biBulkRestoreForm', false, 'Restore to the active list:');
 }
 </script>
 {% endblock %}
