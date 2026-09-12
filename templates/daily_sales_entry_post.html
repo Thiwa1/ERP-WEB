@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Sales - Post to GL{% endblock %}
+
+{% block content %}
+<style>
+  .dse-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:20px; overflow:hidden; }
+  .dse-card-header { padding:12px 18px; border-bottom:1px solid rgba(0,0,0,0.06);
+                      display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .dse-card-title { font-size:0.95rem; font-weight:700; color:#201f1e; margin:0; }
+  .dse-card-body { padding:16px 18px; }
+
+  .dse-table input.form-control, .dse-table input.form-control-sm { font-size:0.8rem; padding:4px 8px; }
+  .dse-table td, .dse-table th { vertical-align:middle; }
+  .dse-amount-input { text-align:right; }
+  .dse-total-row td { font-weight:700; background:#f3f9ff; border-top:2px solid rgba(0,103,192,0.25) !important; }
+
+  .dse-status-badge { font-size:0.8rem; padding:6px 14px; }
+
+  .dse-recon-box { background:#faf9f8; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding:14px 16px; }
+  .dse-recon-box .form-label { font-size:0.78rem; font-weight:600; color:#5a5a5a; margin-bottom:4px; }
+  .dse-check-ok { color:#107c10; font-weight:600; }
+  .dse-check-bad { color:#c0392b; font-weight:600; }
+
+  .dse-date-nav .btn { padding:6px 10px !important; }
+  .dse-gl-missing { border-color:#c0392b !important; background:#fff5f5; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-check-double me-2 text-primary"></i>Daily Sales &mdash; Post to GL</h4>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('daily_sales_entry_records') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-list me-1"></i> Records
+    </a>
+    <a href="{{ url_for('daily_sales_gl_mapping') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-sitemap me-1"></i> GL Account Mapping
+    </a>
+  </div>
+</div>
+
+{% if last_jv %}
+<div class="alert alert-success d-flex align-items-center gap-2">
+  <i class="fas fa-check-circle"></i>
+  Posted successfully &mdash;
+  <a href="{{ url_for('journal_entry_view', jv_no=last_jv) }}" target="_blank"><strong>JV #{{ last_jv }}</strong></a>
+</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-8">
+    <div class="dse-card">
+      <div class="dse-card-header">
+        <h6 class="dse-card-title"><i class="fas fa-calendar-day me-1 text-primary"></i>
+          {{ entry_date }}
+          {% if header %}
+            {% if header.status == 'Posted' %}
+              <a href="{{ url_for('journal_entry_view', jv_no=header.jv_id) }}" target="_blank"
+                 class="badge bg-success dse-status-badge ms-2 text-decoration-none">
+                 <i class="fas fa-lock me-1"></i>Posted &mdash; JV #{{ header.jv_id }}</a>
+            {% else %}
+              <span class="badge bg-warning text-dark dse-status-badge ms-2"><i class="fas fa-inbox me-1"></i>Parked (awaiting posting)</span>
+            {% endif %}
+          {% else %}
+            <span class="badge bg-light text-muted dse-status-badge ms-2">No entry</span>
+          {% endif %}
+        </h6>
+        <div class="d-flex align-items-center gap-2 dse-date-nav">
+          <input type="date" id="dseDatePicker" class="form-control form-control-sm" style="width:160px"
+                 value="{{ entry_date }}" max="{{ today_date }}" onchange="dseJumpToDate(this.value)">
+          <button type="button" class="btn btn-outline-primary btn-sm" onclick="dseJumpToDate('{{ today_date }}')">Today</button>
+        </div>
+      </div>
+
+      <div class="dse-card-body">
+        {% if not header %}
+        <div class="alert alert-secondary mb-0">
+          <i class="fas fa-info-circle me-1"></i> Front office hasn't submitted a Daily Sales Entry for this date yet. Nothing to post.
+        </div>
+        {% else %}
+        {% set readonly = header.status == 'Posted' %}
+        <form id="dseForm" method="POST" action="{{ url_for('daily_sales_entry_post_save') }}">
+          <input type="hidden" name="entry_date" value="{{ entry_date }}">
+          <input type="hidden" name="action" id="dseAction" value="post">
+          <input type="hidden" name="lines_json" id="dseLinesJson">
+          <input type="hidden" name="credit_lines_json" id="dseCreditLinesJson">
+          <input type="hidden" name="narration" value="{{ header.narration or '' }}">
+          <input type="hidden" name="total_expenditure" value="{{ header.total_expenditure or 0 }}">
+          <input type="hidden" name="cash_float" value="{{ header.cash_float or 0 }}">
+          <input type="hidden" name="cash_amount" value="{{ header.cash_amount or 0 }}">
+          <input type="hidden" name="credit_card_amount" value="{{ header.credit_card_amount or 0 }}">
+          <input type="hidden" name="bank_transfer_amount" value="{{ header.bank_transfer_amount or 0 }}">
+          <input type="hidden" name="telephone_income" value="{{ header.telephone_income or 0 }}">
+          <input type="hidden" name="advance_received" value="{{ header.advance_received or 0 }}">
+          <input type="hidden" name="petty_cash" value="{{ header.petty_cash or 0 }}">
+          {% for n in [1,2,3] %}
+          <input type="hidden" name="misc_expense_{{ n }}_label" value="{{ header['misc_expense_' ~ n ~ '_label'] or '' }}">
+          <input type="hidden" name="misc_expense_{{ n }}_amount" value="{{ header['misc_expense_' ~ n ~ '_amount'] or 0 }}">
+          {% endfor %}
+
+          {% if header.narration %}
+          <div class="mb-3"><span class="text-muted">Narration:</span> {{ header.narration }}</div>
+          {% endif %}
+
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Sales</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-sm dse-table align-middle">
+              <thead>
+                <tr>
+                  <th style="width:20%">Description</th>
+                  <th style="width:16%">Particulars</th>
+                  <th style="width:8%">Nos</th>
+                  <th style="width:10%">Bill No</th>
+                  <th style="width:12%" class="text-end">Amount (Rs)</th>
+                  <th style="width:34%">GL Account</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% set ns = namespace(last_desc='') %}
+                {% for c in categories if c.category_group == 'SALES' %}
+                <tr class="dse-line-row" data-cat-id="{{ c.id }}" data-side="{{ c.entry_side }}">
+                  <td>
+                    {% if c.description != ns.last_desc %}
+                      <strong>{{ c.description }}</strong>
+                      {% set ns.last_desc = c.description %}
+                    {% endif %}
+                  </td>
+                  <td>{{ c.particulars or '' }}</td>
+                  <td><input type="text" class="form-control form-control-sm dse-nos" value="{{ c.nos if c.nos is not none else '' }}" disabled></td>
+                  <td><input type="text" class="form-control form-control-sm dse-billno" value="{{ c.bill_no or '' }}" disabled></td>
+                  <td><input type="text" class="form-control form-control-sm dse-amount dse-amount-input" value="{{ '%.2f'|format(c.amount or 0) }}" disabled></td>
+                  <td>
+                    <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
+                           value="{{ c.line_gl_account or '' }}"
+                           placeholder="Select account..." {% if readonly %}disabled{% endif %}>
+                  </td>
+                </tr>
+                {% endfor %}
+                <tr class="dse-total-row">
+                  <td colspan="4" class="text-end">GRAND TOTAL / TOTAL INCOME</td>
+                  <td class="text-end"><span id="dseTotalIncome">{{ '%.2f'|format(header.total_income or 0) }}</span></td>
+                  <td></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Complimentary Food &amp; Liquor</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-sm dse-table align-middle">
+              <thead>
+                <tr>
+                  <th style="width:20%">Type</th>
+                  <th style="width:20%">Given To</th>
+                  <th style="width:14%">Bill No</th>
+                  <th style="width:12%" class="text-end">Amount (Rs)</th>
+                  <th style="width:34%">GL Account (Dr)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% set ns2 = namespace(last_desc='') %}
+                {% for c in categories if c.category_group == 'COMPLIMENTARY' %}
+                <tr class="dse-line-row" data-cat-id="{{ c.id }}">
+                  <td>
+                    {% if c.description != ns2.last_desc %}
+                      <strong>{{ c.description }}</strong>
+                      {% set ns2.last_desc = c.description %}
+                    {% endif %}
+                  </td>
+                  <td>{{ c.particulars or '' }}</td>
+                  <td><input type="text" class="form-control form-control-sm dse-billno" value="{{ c.bill_no or '' }}" disabled></td>
+                  <td><input type="text" class="form-control form-control-sm dse-amount dse-amount-input" value="{{ '%.2f'|format(c.amount or 0) }}" disabled></td>
+                  <td>
+                    <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
+                           value="{{ c.line_gl_account or '' }}"
+                           placeholder="Select account..." {% if readonly %}disabled{% endif %}>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          {% if credit_lines %}
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Credit Received / Credit Given <span class="badge bg-secondary fw-normal">reference only</span></h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-sm dse-table">
+              <thead><tr><th>Type</th><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th></tr></thead>
+              <tbody>
+                {% for cl in credit_lines %}
+                <tr>
+                  <td>{{ 'Received' if cl.credit_type == 'RECEIVED' else 'Given' }}</td>
+                  <td>{{ cl.invoice_no or '' }}</td>
+                  <td>{{ cl.party_name or '' }}</td>
+                  <td class="text-end">{{ '%.2f'|format(cl.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Income &amp; Expenditure Summary <span class="badge bg-secondary fw-normal">reference only</span></h6>
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <div class="dse-recon-box">
+                <div class="row g-2" style="font-size:0.85rem;">
+                  <div class="col-6">Telephone: <strong>{{ '%.2f'|format(header.telephone_income or 0) }}</strong></div>
+                  <div class="col-6">Advance Received: <strong>{{ '%.2f'|format(header.advance_received or 0) }}</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="dse-recon-box">
+                <div class="row g-2" style="font-size:0.85rem;">
+                  <div class="col-6">Petty Cash: <strong>{{ '%.2f'|format(header.petty_cash or 0) }}</strong></div>
+                  {% for n in [1,2,3] %}
+                    {% set label = header['misc_expense_' ~ n ~ '_label'] %}
+                    {% set amt = header['misc_expense_' ~ n ~ '_amount'] %}
+                    {% if label or amt %}
+                    <div class="col-6">{{ label or ('Misc ' ~ n) }}: <strong>{{ '%.2f'|format(amt or 0) }}</strong></div>
+                    {% endif %}
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-light border small mb-3">
+            <i class="fas fa-lock me-1"></i> Nos / Bill No / Amount and the reconciliation below are entered by front office and
+            shown here read-only. If a figure is wrong, ask front office to correct it on their Daily Sales Entry screen
+            (only possible while it's still Parked) &mdash; this screen only assigns GL accounts and posts.
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <div class="dse-recon-box">
+                <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-balance-scale me-1"></i>Reconciliation (from front office)</h6>
+                <div class="row g-2">
+                  <div class="col-6">
+                    <label class="form-label">Total Income</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.total_income or 0) }}" readonly>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">Total Expenditure</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.total_expenditure or 0) }}" readonly>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">Balance</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.balance or 0) }}" readonly>
+                  </div>
+                  <div class="col-6">
+                    <label class="form-label">Cash Float</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.cash_float or 0) }}" readonly>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="dse-recon-box">
+                <h6 class="fw-bold mb-3" style="font-size:0.85rem;"><i class="fas fa-money-bill-wave me-1"></i>Received By (from front office)</h6>
+                <div class="row g-2">
+                  <div class="col-4">
+                    <label class="form-label">Cash</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.cash_amount or 0) }}" readonly>
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label">Credit Card</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.credit_card_amount or 0) }}" readonly>
+                  </div>
+                  <div class="col-4">
+                    <label class="form-label">Bank Transfer</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.bank_transfer_amount or 0) }}" readonly>
+                  </div>
+                </div>
+                <div class="mt-2" style="font-size:0.8rem;">
+                  Total Received: {{ '%.2f'|format((header.cash_amount or 0) + (header.credit_card_amount or 0) + (header.bank_transfer_amount or 0)) }}
+                  {% if not pm_matches %}
+                    <span class="dse-check-bad"><i class="fas fa-exclamation-triangle"></i> Doesn't match Total Income &mdash; posting will be blocked until front office fixes this.</span>
+                  {% else %}
+                    <span class="dse-check-ok"><i class="fas fa-check-circle"></i> Matches Total Income</span>
+                  {% endif %}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {% if not readonly %}
+          <div class="d-flex justify-content-end gap-2 mt-4">
+            <button type="button" class="btn btn-secondary" onclick="dseSubmit('park')">
+              <i class="fas fa-save me-1"></i> Save GL Assignments (don't post yet)
+            </button>
+            <button type="button" class="btn btn-primary" onclick="dseSubmit('post')">
+              <i class="fas fa-check-circle me-1"></i> Post to GL
+            </button>
+          </div>
+          {% endif %}
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="dse-card">
+      <div class="dse-card-header">
+        <h6 class="dse-card-title"><i class="fas fa-inbox me-1 text-primary"></i>Awaiting Posting</h6>
+      </div>
+      <div class="dse-card-body">
+        {% for q in queue %}
+        <a href="{{ url_for('daily_sales_entry_post', date=q.entry_date) }}"
+           class="d-flex justify-content-between align-items-center text-decoration-none mb-2 p-2 rounded"
+           style="background:#faf9f8;{% if q.entry_date|string == entry_date %}outline:2px solid #0078D4;{% endif %}">
+          <span class="text-dark">{{ q.entry_date }}</span>
+          <span class="badge bg-warning text-dark">{{ '%.2f'|format(q.total_income or 0) }}</span>
+        </a>
+        {% else %}
+        <p class="text-muted mb-0">Nothing waiting &mdash; all caught up.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<datalist id="dseAccountList">
+  {% for acc in accounts %}
+  <option value="{{ acc.account_name }}">
+  {% endfor %}
+</datalist>
+
+<script>
+// Passed through unchanged from front office - tojson here is safe because
+// it's assigned to a JS variable inside <script>, not embedded in an HTML attribute.
+const dseCreditLines = {{ credit_lines|default([])|tojson }};
+document.getElementById('dseCreditLinesJson').value = JSON.stringify(dseCreditLines);
+
+function dseSubmit(action) {
+  const lines = [];
+  document.querySelectorAll('#dseForm .dse-line-row').forEach(function(tr) {
+    lines.push({
+      category_id: tr.getAttribute('data-cat-id'),
+      nos: tr.querySelector('.dse-nos') ? tr.querySelector('.dse-nos').value : '',
+      bill_no: tr.querySelector('.dse-billno').value,
+      amount: tr.querySelector('.dse-amount').value,
+      gl_account: tr.querySelector('.dse-gl-account').value
+    });
+  });
+  document.getElementById('dseLinesJson').value = JSON.stringify(lines);
+  document.getElementById('dseAction').value = action;
+  document.getElementById('dseForm').submit();
+}
+
+function dseJumpToDate(val) {
+  if (val) window.location.href = "{{ url_for('daily_sales_entry_post') }}?date=" + val;
+}
+</script>
+{% endblock %}

@@ -42,7 +42,26 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card mb-3">
+    <div class="card-header fw-bold">Complimentary Cost Control Accounts</div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">Credited when Complimentary Food/Liquor is posted (the offsetting entry to whatever expense account each recipient line below is assigned to).</p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Food Cost Account</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_food_cost_account"
+                 value="{{ pm_accounts.get('daily_sales_food_cost_account', '') }}" placeholder="Select account...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Liquor Cost Account</label>
+          <input type="text" class="form-control" list="dseglAccountList" name="daily_sales_liquor_cost_account"
+                 value="{{ pm_accounts.get('daily_sales_liquor_cost_account', '') }}" placeholder="Select account...">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb-3">
     <div class="card-header fw-bold">Sale Category &rarr; GL Account</div>
     <div class="card-body table-responsive">
       <table class="table table-sm table-bordered align-middle">
@@ -55,7 +74,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for c in categories %}
+          {% for c in sales_categories %}
           <tr>
             <td><strong>{{ c.description }}</strong></td>
             <td>{{ c.particulars or '' }}</td>
@@ -66,6 +85,34 @@
                 <span class="badge bg-success">CR (adds)</span>
               {% endif %}
             </td>
+            <td>
+              <input type="hidden" name="category_id[]" value="{{ c.id }}">
+              <input type="text" class="form-control form-control-sm" list="dseglAccountList" name="gl_account[]"
+                     value="{{ c.gl_account_name or '' }}" placeholder="Select account...">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header fw-bold">Complimentary Food & Liquor &rarr; GL Account (Expense side)</div>
+    <div class="card-body table-responsive">
+      <table class="table table-sm table-bordered align-middle">
+        <thead>
+          <tr>
+            <th style="width:28%">Type</th>
+            <th style="width:32%">Given To</th>
+            <th style="width:40%">GL Account (Dr)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in comp_categories %}
+          <tr>
+            <td><strong>{{ c.description }}</strong></td>
+            <td>{{ c.particulars or '' }}</td>
             <td>
               <input type="hidden" name="category_id[]" value="{{ c.id }}">
               <input type="text" class="form-control form-control-sm" list="dseglAccountList" name="gl_account[]"

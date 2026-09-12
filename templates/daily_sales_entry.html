@@ -11,12 +11,11 @@
   .dse-card-title { font-size:0.95rem; font-weight:700; color:#201f1e; margin:0; }
   .dse-card-body { padding:16px 18px; }
 
-  .dse-group-row td { background:#eef1f4; font-weight:700; font-size:0.72rem;
-                       text-transform:uppercase; letter-spacing:0.3px; color:#605e5c; }
   .dse-table input.form-control, .dse-table input.form-control-sm { font-size:0.8rem; padding:4px 8px; }
   .dse-table td, .dse-table th { vertical-align:middle; }
   .dse-amount-input { text-align:right; }
   .dse-total-row td { font-weight:700; background:#f3f9ff; border-top:2px solid rgba(0,103,192,0.25) !important; }
+  .dse-subheader-row td { background:#eef1f4; font-weight:700; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.3px; color:#605e5c; }
 
   .dse-status-badge { font-size:0.8rem; padding:6px 14px; }
 
@@ -26,6 +25,7 @@
   .dse-check-bad { color:#c0392b; font-weight:600; }
 
   .dse-date-nav .btn { padding:6px 10px !important; }
+  .dse-credit-remove { cursor:pointer; color:#c0392b; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -34,19 +34,8 @@
     <a href="{{ url_for('daily_sales_entry_records') }}" class="btn btn-outline-secondary btn-sm">
       <i class="fas fa-list me-1"></i> Records
     </a>
-    <a href="{{ url_for('daily_sales_gl_mapping') }}" class="btn btn-outline-secondary btn-sm">
-      <i class="fas fa-sitemap me-1"></i> GL Account Mapping
-    </a>
   </div>
 </div>
-
-{% if last_jv %}
-<div class="alert alert-success d-flex align-items-center gap-2">
-  <i class="fas fa-check-circle"></i>
-  Posted successfully &mdash;
-  <a href="{{ url_for('journal_entry_view', jv_no=last_jv) }}" target="_blank"><strong>JV #{{ last_jv }}</strong></a>
-</div>
-{% endif %}
 
 <div class="dse-card">
   <div class="dse-card-header">
@@ -54,11 +43,9 @@
       {{ entry_date }}
       {% if header %}
         {% if header.status == 'Posted' %}
-          <a href="{{ url_for('journal_entry_view', jv_no=header.jv_id) }}" target="_blank"
-             class="badge bg-success dse-status-badge ms-2 text-decoration-none">
-             <i class="fas fa-lock me-1"></i>Posted &mdash; JV #{{ header.jv_id }}</a>
+          <span class="badge bg-success dse-status-badge ms-2"><i class="fas fa-lock me-1"></i>Posted to GL</span>
         {% else %}
-          <span class="badge bg-warning text-dark dse-status-badge ms-2"><i class="fas fa-inbox me-1"></i>Parked (Draft)</span>
+          <span class="badge bg-warning text-dark dse-status-badge ms-2"><i class="fas fa-inbox me-1"></i>Parked (awaiting posting)</span>
         {% endif %}
       {% else %}
         <span class="badge bg-light text-muted dse-status-badge ms-2">New</span>
@@ -77,8 +64,8 @@
     {% set readonly = header and header.status == 'Posted' %}
     <form id="dseForm" method="POST" action="{{ url_for('daily_sales_entry_save') }}">
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
-      <input type="hidden" name="action" id="dseAction" value="park">
       <input type="hidden" name="lines_json" id="dseLinesJson">
+      <input type="hidden" name="credit_lines_json" id="dseCreditLinesJson">
 
       <div class="mb-3">
         <label class="form-label fw-semibold">Narration / Notes</label>
@@ -86,22 +73,22 @@
                value="{{ header.narration if header else '' }}" {% if readonly %}disabled{% endif %}>
       </div>
 
-      <div class="table-responsive">
+      <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-utensils me-1 text-primary"></i>Sales</h6>
+      <div class="table-responsive mb-4">
         <table class="table table-bordered table-sm dse-table align-middle">
           <thead>
             <tr>
-              <th style="width:24%">Description</th>
-              <th style="width:20%">Particulars</th>
-              <th style="width:9%">Nos</th>
-              <th style="width:12%">Bill No</th>
-              <th style="width:13%" class="text-end">Amount (Rs)</th>
-              <th style="width:22%">GL Account</th>
+              <th style="width:30%">Description</th>
+              <th style="width:25%">Particulars</th>
+              <th style="width:12%">Nos</th>
+              <th style="width:15%">Bill No</th>
+              <th style="width:18%" class="text-end">Amount (Rs)</th>
             </tr>
           </thead>
           <tbody>
             {% set ns = namespace(last_desc='') %}
-            {% for c in categories %}
-            <tr data-cat-id="{{ c.id }}" data-side="{{ c.entry_side }}">
+            {% for c in categories if c.category_group == 'SALES' %}
+            <tr class="dse-line-row dse-sales-row" data-cat-id="{{ c.id }}" data-side="{{ c.entry_side }}">
               <td>
                 {% if c.description != ns.last_desc %}
                   <strong>{{ c.description }}</strong>
@@ -121,20 +108,137 @@
                 <input type="number" step="0.01" class="form-control form-control-sm dse-amount dse-amount-input"
                        value="{{ '%.2f'|format(c.amount or 0) }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </td>
-              <td>
-                <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
-                       value="{{ c.line_gl_account or '' }}"
-                       placeholder="Select account..." {% if readonly %}disabled{% endif %}>
-              </td>
             </tr>
             {% endfor %}
             <tr class="dse-total-row">
               <td colspan="4" class="text-end">GRAND TOTAL / TOTAL INCOME</td>
               <td class="text-end"><span id="dseTotalIncome">0.00</span></td>
-              <td></td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-gift me-1 text-primary"></i>Complimentary Food &amp; Liquor</h6>
+      <div class="table-responsive mb-4">
+        <table class="table table-bordered table-sm dse-table align-middle">
+          <thead>
+            <tr>
+              <th style="width:25%">Type</th>
+              <th style="width:35%">Given To</th>
+              <th style="width:20%">Bill No</th>
+              <th style="width:20%" class="text-end">Amount (Rs)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% set ns2 = namespace(last_desc='') %}
+            {% for c in categories if c.category_group == 'COMPLIMENTARY' %}
+            <tr class="dse-line-row dse-comp-row" data-cat-id="{{ c.id }}">
+              <td>
+                {% if c.description != ns2.last_desc %}
+                  <strong>{{ c.description }}</strong>
+                  {% set ns2.last_desc = c.description %}
+                {% endif %}
+              </td>
+              <td>{{ c.particulars or '' }}</td>
+              <td>
+                <input type="text" class="form-control form-control-sm dse-billno"
+                       value="{{ c.bill_no or '' }}" {% if readonly %}disabled{% endif %}>
+              </td>
+              <td>
+                <input type="number" step="0.01" class="form-control form-control-sm dse-amount dse-amount-input"
+                       value="{{ '%.2f'|format(c.amount or 0) }}" {% if readonly %}disabled{% endif %}>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-handshake me-1 text-primary"></i>Credit Received / Credit Given</h6>
+      <div class="alert alert-light border small">
+        <i class="fas fa-info-circle me-1"></i> Recorded for reference only &mdash; does not post to the General Ledger.
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong style="font-size:0.85rem;">Credit Received</strong>
+            {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditRow('RECEIVED')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+          </div>
+          <table class="table table-bordered table-sm dse-table">
+            <thead><tr><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th><th></th></tr></thead>
+            <tbody id="dseCreditReceivedBody"></tbody>
+          </table>
+        </div>
+        <div class="col-md-6">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong style="font-size:0.85rem;">Credit Given</strong>
+            {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditRow('GIVEN')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+          </div>
+          <table class="table table-bordered table-sm dse-table">
+            <thead><tr><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th><th></th></tr></thead>
+            <tbody id="dseCreditGivenBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-book me-1 text-primary"></i>Income &amp; Expenditure Summary</h6>
+      <div class="alert alert-light border small">
+        <i class="fas fa-info-circle me-1"></i> Recorded for reference only &mdash; does not post to the General Ledger.
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-6">
+          <div class="dse-recon-box">
+            <h6 class="fw-bold mb-3" style="font-size:0.85rem;">Income</h6>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Total Sales</label>
+                <input type="text" class="form-control form-control-sm" id="dseTotalSalesDisplay" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Telephone</label>
+                <input type="number" step="0.01" name="telephone_income" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.telephone_income or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Credit Received</label>
+                <input type="text" class="form-control form-control-sm" id="dseCreditReceivedTotal" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Advance Received</label>
+                <input type="number" step="0.01" name="advance_received" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.advance_received or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-md-6">
+          <div class="dse-recon-box">
+            <h6 class="fw-bold mb-3" style="font-size:0.85rem;">Expenditure</h6>
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Credit Given</label>
+                <input type="text" class="form-control form-control-sm" id="dseCreditGivenTotal" readonly>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Petty Cash</label>
+                <input type="number" step="0.01" name="petty_cash" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header.petty_cash or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+              {% for n in [1,2,3] %}
+              <div class="col-6">
+                <label class="form-label">Misc {{ n }} - Label</label>
+                <input type="text" name="misc_expense_{{ n }}_label" class="form-control form-control-sm"
+                       value="{{ header['misc_expense_' ~ n ~ '_label'] or '' if header else '' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Misc {{ n }} - Amount</label>
+                <input type="number" step="0.01" name="misc_expense_{{ n }}_amount" class="form-control form-control-sm"
+                       value="{{ '%.2f'|format(header['misc_expense_' ~ n ~ '_amount'] or 0) if header else '0.00' }}" {% if readonly %}disabled{% endif %}>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div class="row g-3 mt-1">
@@ -197,11 +301,8 @@
 
       {% if not readonly %}
       <div class="d-flex justify-content-end gap-2 mt-4">
-        <button type="button" class="btn btn-secondary" onclick="dseSubmit('park')">
-          <i class="fas fa-inbox me-1"></i> Save as Parked (Draft)
-        </button>
-        <button type="button" class="btn btn-primary" onclick="dseSubmit('post')">
-          <i class="fas fa-check-circle me-1"></i> Post to GL
+        <button type="button" class="btn btn-primary" onclick="dseSubmit()">
+          <i class="fas fa-save me-1"></i> Save
         </button>
       </div>
       {% else %}
@@ -242,16 +343,29 @@
   </div>
 </div>
 
-<datalist id="dseAccountList">
-  {% for acc in accounts %}
-  <option value="{{ acc.account_name }}">
-  {% endfor %}
-</datalist>
-
 <script>
+const dseReadonly = {{ 'true' if readonly else 'false' }};
+const dseExistingCreditLines = {{ credit_lines|default([])|tojson }};
+
+function dseCreditRowHtml(type, invoiceNo, partyName, amount) {
+  const dis = dseReadonly ? 'disabled' : '';
+  const removeBtn = dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" onclick="this.closest(\'tr\').remove(); dseRecalc();"></i>';
+  return '<tr class="dse-credit-row" data-credit-type="' + type + '">' +
+    '<td><input type="text" class="form-control form-control-sm dse-credit-invoice" value="' + (invoiceNo || '') + '" ' + dis + '></td>' +
+    '<td><input type="text" class="form-control form-control-sm dse-credit-name" value="' + (partyName || '') + '" ' + dis + '></td>' +
+    '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-credit-amount" value="' + (amount || '') + '" onchange="dseRecalc()" ' + dis + '></td>' +
+    '<td>' + removeBtn + '</td>' +
+  '</tr>';
+}
+
+function dseAddCreditRow(type, invoiceNo, partyName, amount) {
+  const bodyId = type === 'GIVEN' ? 'dseCreditGivenBody' : 'dseCreditReceivedBody';
+  document.getElementById(bodyId).insertAdjacentHTML('beforeend', dseCreditRowHtml(type, invoiceNo, partyName, amount));
+}
+
 function dseRecalc() {
   let total = 0;
-  document.querySelectorAll('#dseForm tbody tr[data-cat-id]').forEach(function(tr) {
+  document.querySelectorAll('#dseForm .dse-sales-row').forEach(function(tr) {
     const side = tr.getAttribute('data-side');
     const amt = parseFloat(tr.querySelector('.dse-amount').value) || 0;
     total += (side === 'DR') ? -amt : amt;
@@ -259,6 +373,7 @@ function dseRecalc() {
   total = Math.round(total * 100) / 100;
   document.getElementById('dseTotalIncome').textContent = total.toFixed(2);
   document.getElementById('dseTotalIncomeDisplay').value = total.toFixed(2);
+  document.getElementById('dseTotalSalesDisplay').value = total.toFixed(2);
 
   const exp = parseFloat(document.getElementById('dseExpenditure').value) || 0;
   document.getElementById('dseBalance').value = (total - exp).toFixed(2);
@@ -275,21 +390,39 @@ function dseRecalc() {
   } else {
     checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (total - pmTotal).toFixed(2) + '</span>';
   }
+
+  let creditReceived = 0;
+  document.querySelectorAll('#dseCreditReceivedBody .dse-credit-amount').forEach(function(inp) { creditReceived += parseFloat(inp.value) || 0; });
+  document.getElementById('dseCreditReceivedTotal').value = creditReceived.toFixed(2);
+
+  let creditGiven = 0;
+  document.querySelectorAll('#dseCreditGivenBody .dse-credit-amount').forEach(function(inp) { creditGiven += parseFloat(inp.value) || 0; });
+  document.getElementById('dseCreditGivenTotal').value = creditGiven.toFixed(2);
 }
 
-function dseSubmit(action) {
+function dseSubmit() {
   const lines = [];
-  document.querySelectorAll('#dseForm tbody tr[data-cat-id]').forEach(function(tr) {
+  document.querySelectorAll('#dseForm .dse-line-row').forEach(function(tr) {
     lines.push({
       category_id: tr.getAttribute('data-cat-id'),
-      nos: tr.querySelector('.dse-nos').value,
+      nos: tr.querySelector('.dse-nos') ? tr.querySelector('.dse-nos').value : '',
       bill_no: tr.querySelector('.dse-billno').value,
-      amount: tr.querySelector('.dse-amount').value,
-      gl_account: tr.querySelector('.dse-gl-account').value
+      amount: tr.querySelector('.dse-amount').value
     });
   });
   document.getElementById('dseLinesJson').value = JSON.stringify(lines);
-  document.getElementById('dseAction').value = action;
+
+  const creditLines = [];
+  document.querySelectorAll('#dseForm .dse-credit-row').forEach(function(tr) {
+    creditLines.push({
+      credit_type: tr.getAttribute('data-credit-type'),
+      invoice_no: tr.querySelector('.dse-credit-invoice').value,
+      party_name: tr.querySelector('.dse-credit-name').value,
+      amount: tr.querySelector('.dse-credit-amount').value
+    });
+  });
+  document.getElementById('dseCreditLinesJson').value = JSON.stringify(creditLines);
+
   document.getElementById('dseForm').submit();
 }
 
@@ -303,6 +436,11 @@ function dseGoToDate(offsetDays) {
   dseJumpToDate(iso);
 }
 
-document.addEventListener('DOMContentLoaded', dseRecalc);
+document.addEventListener('DOMContentLoaded', function() {
+  dseExistingCreditLines.forEach(function(cl) {
+    dseAddCreditRow(cl.credit_type, cl.invoice_no, cl.party_name, cl.amount);
+  });
+  dseRecalc();
+});
 </script>
 {% endblock %}

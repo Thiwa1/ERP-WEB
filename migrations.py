@@ -55,6 +55,7 @@ def run_migrations(conn):
         _migrate_grn_payment_method(cursor)
         _migrate_grn_payment_ready(cursor)
         _migrate_daily_sales_entry(cursor)
+        _migrate_daily_sales_sheet10(cursor)
 
         conn.commit()
         cursor.close()
@@ -780,6 +781,113 @@ def _migrate_daily_sales_entry(cursor):
                 ('daily_sales_cash_account', 'Daily Sales Entry: GL account for Cash collections'),
                 ('daily_sales_card_account', 'Daily Sales Entry: GL account for Credit Card collections'),
                 ('daily_sales_bank_account', 'Daily Sales Entry: GL account for Bank Transfer collections'),
+            ):
+                cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute(
+                        "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                        (key, desc)
+                    )
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_sheet10(cursor):
+    """Extends Daily Sales Entry with the other registers from the front
+    office's daily sheet (Sheet10 of their Excel workbook), all sharing the
+    same date/Park/Post lifecycle as the Sheet9 sales categories:
+
+      - Complimentary Food & Liquor Register: free food/liquor given to
+        MD, Management, Excise Dept, Police, Tour Guide, Entertainment.
+        Reuses daily_sales_categories (new 'category_group'/'subgroup'
+        columns) so it gets a GL account per line the same way sales lines
+        do - but posts as its own balanced Dr Expense / Cr Food-or-Liquor-Cost
+        pair, entirely separate from the Total Income / cash reconciliation.
+
+      - Credit Received / Credit Given ledger: a simple named log (invoice
+        no, party name, amount) - recorded for reference, NOT posted to the
+        GL (the correct double-entry for a receivables sub-ledger needs
+        more input from the business before automating it).
+
+      - Income & Expenditure Summary: a handful of extra manual fields on
+        the day's header (Telephone, Advance Received, Petty Cash, 3 misc
+        expense lines) - also recorded for reference only, not GL-posted.
+    """
+    try:
+        # 1. Categories: which "chart" a line belongs to, and (for
+        #    Complimentary) whether it's Food or Liquor - decides which
+        #    control account gets credited when posted.
+        cursor.execute("SHOW COLUMNS FROM daily_sales_categories LIKE 'category_group'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_categories ADD COLUMN category_group VARCHAR(20) NOT NULL DEFAULT 'SALES'")
+        cursor.execute("SHOW COLUMNS FROM daily_sales_categories LIKE 'subgroup'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_categories ADD COLUMN subgroup VARCHAR(20) NULL")
+
+        # Seed the 12 Complimentary lines (6 recipients x Food/Liquor) if not already present
+        cursor.execute("SELECT COUNT(*) FROM daily_sales_categories WHERE category_group = 'COMPLIMENTARY'")
+        if cursor.fetchone()[0] == 0:
+            print("Migrating: Seeding Complimentary Food & Liquor categories")
+            recipients = ['MD', 'Management', 'Excise Department', 'Police', 'Tour Guide', 'Entertainment']
+            seed_rows = []
+            order = 500
+            for subgroup in ('FOOD', 'LIQUOR'):
+                for recipient in recipients:
+                    key = f"COMP_{subgroup}_{recipient.upper().replace(' ', '_')}"
+                    seed_rows.append((key, f"Complimentary {subgroup.title()}", recipient, order, 'DR', 'COMPLIMENTARY', subgroup))
+                    order += 10
+            cursor.executemany("""
+                INSERT INTO daily_sales_categories
+                    (category_key, description, particulars, display_order, entry_side, category_group, subgroup)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, seed_rows)
+
+        # 2. Credit Received / Credit Given ledger (dynamic rows, one day can have many)
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_credit_lines'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_credit_lines table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_credit_lines (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_id BIGINT NOT NULL,
+                  credit_type VARCHAR(10) NOT NULL,
+                  invoice_no VARCHAR(100) NULL,
+                  party_name VARCHAR(200) NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  INDEX idx_dscl_entry (entry_id),
+                  CONSTRAINT fk_dscl_entry FOREIGN KEY (entry_id)
+                    REFERENCES daily_sales_entries(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        # 3. Income & Expenditure Summary - extra manual fields on the day's header
+        cursor.execute("SHOW COLUMNS FROM daily_sales_entries")
+        dse_cols = [row[0] for row in cursor.fetchall()]
+        extra_cols = [
+            ('telephone_income',     "DOUBLE NOT NULL DEFAULT 0"),
+            ('advance_received',     "DOUBLE NOT NULL DEFAULT 0"),
+            ('petty_cash',           "DOUBLE NOT NULL DEFAULT 0"),
+            ('misc_expense_1_label', "VARCHAR(100) NULL"),
+            ('misc_expense_1_amount',"DOUBLE NOT NULL DEFAULT 0"),
+            ('misc_expense_2_label', "VARCHAR(100) NULL"),
+            ('misc_expense_2_amount',"DOUBLE NOT NULL DEFAULT 0"),
+            ('misc_expense_3_label', "VARCHAR(100) NULL"),
+            ('misc_expense_3_amount',"DOUBLE NOT NULL DEFAULT 0"),
+        ]
+        for col, ddl in extra_cols:
+            if col not in dse_cols:
+                cursor.execute(f"ALTER TABLE daily_sales_entries ADD COLUMN {col} {ddl}")
+
+        # 4. Control accounts credited when Complimentary Food/Liquor is posted
+        cursor.execute("SHOW TABLES LIKE 'system_settings'")
+        if cursor.fetchone():
+            for key, desc in (
+                ('daily_sales_food_cost_account', 'Daily Sales Entry: GL account credited for Complimentary Food'),
+                ('daily_sales_liquor_cost_account', 'Daily Sales Entry: GL account credited for Complimentary Liquor'),
             ):
                 cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
                 if not cursor.fetchone():

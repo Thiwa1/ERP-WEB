@@ -199,6 +199,7 @@ MENU_ITEMS_REGISTRY = [
     # Restaurant / Food & Beverage
     {'key': 'food_costing',       'label': 'Food Costing',         'url': '/food_costing',           'icon': 'fas fa-utensils',            'category': 'Restaurant'},
     {'key': 'daily_sales_entry',  'label': 'Daily Sales Entry',    'url': '/daily_sales_entry',      'icon': 'fas fa-cash-register',       'category': 'Restaurant'},
+    {'key': 'daily_sales_post',   'label': 'Daily Sales - Post to GL', 'url': '/daily_sales_entry/post', 'icon': 'fas fa-check-double',    'category': 'Core Accounting'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -919,6 +920,23 @@ def has_permission(perm):
 
             if not check_permission(perm):
                 flash(f'Access Denied: Required permission {perm}', 'danger')
+                return redirect(url_for('index'))
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+def has_any_permission(*perms):
+    """Like has_permission, but passes if the user has ANY one of the given
+    permissions - for pages shared by more than one role (e.g. a records/
+    history list both front office and accounting staff may need to see)."""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if 'user_id' not in session:
+                return redirect(url_for('login'))
+
+            if not any(check_permission(p) for p in perms):
+                flash(f"Access Denied: Required one of {', '.join(perms)}", 'danger')
                 return redirect(url_for('index'))
             return f(*args, **kwargs)
         return decorated_function
@@ -20036,46 +20054,52 @@ def service_entry_edit(jv_no):
 
 # ================================================================
 # ── DAILY SALES ENTRY (Front Office) ────────────────────────────
-# Digitises the front office's daily Bar/Restaurant/Rooms sales sheet:
-#   1. Front office fills the sheet for the day  -> saved as 'Parked'.
-#   2. Whoever posts assigns/confirms the GL account per line and clicks
-#      Post -> creates a normal jv_numbers + entry_details GL entry.
+# Digitises the front office's daily Bar/Restaurant/Rooms sales sheet.
+# Two separate screens, two separate permissions:
+#   1. Front office fills the sheet for the day (no GL accounts shown)
+#      -> saved as 'Parked'.        [/daily_sales_entry]            Access_Daily_Sales
+#   2. The accountant opens the dedicated Posting screen, assigns/confirms
+#      the GL account per line and clicks Post -> creates a normal
+#      jv_numbers + entry_details GL entry.
+#      [/daily_sales_entry/post]    Access_Accounting
 # ================================================================
 
 def _daily_sales_categories():
     """Active category lines in display order, each with its default GL
-    account (see GL Mapping screen)."""
+    account (see GL Mapping screen). category_group is 'SALES' (Sheet9 -
+    feeds Total Income + the cash/card/bank reconciliation) or
+    'COMPLIMENTARY' (Sheet10's Food & Liquor register - posts its own
+    balanced Dr Expense / Cr Food-or-Liquor-Cost pair, no cash impact)."""
     return db.execute_query("""
         SELECT id, category_key, description, particulars, display_order,
-               entry_side, gl_account_name
+               entry_side, gl_account_name, category_group, subgroup
         FROM daily_sales_categories
         WHERE is_active = 1
         ORDER BY display_order, id
     """) or []
 
 
-@app.route('/daily_sales_entry', methods=['GET'])
-@login_required
-@has_permission('Access_Daily_Sales')
-def daily_sales_entry():
-    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
-
+def _daily_sales_load_entry(entry_date):
+    """Header + per-category lines + credit ledger rows for a given date.
+    Returns (header, categories, credit_lines). Each category dict is
+    annotated with its saved nos/bill_no/amount/gl account for that date
+    (or blank defaults if nothing saved yet)."""
     categories = _daily_sales_categories()
-    accounts = db.execute_query("""
-        SELECT account_name FROM new_account_table
-        WHERE account_active = 1
-        ORDER BY account_name
-    """) or []
 
     header = db.execute_query("""
         SELECT id, entry_date, narration, total_income, total_expenditure, balance,
                cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+               telephone_income, advance_received, petty_cash,
+               misc_expense_1_label, misc_expense_1_amount,
+               misc_expense_2_label, misc_expense_2_amount,
+               misc_expense_3_label, misc_expense_3_amount,
                status, jv_id
         FROM daily_sales_entries WHERE entry_date = %s
     """, (entry_date,))
     header = header[0] if header else None
 
     lines_by_cat = {}
+    credit_lines = []
     if header:
         rows = db.execute_query("""
             SELECT category_id, nos, bill_no, amount, gl_account_name
@@ -20083,7 +20107,12 @@ def daily_sales_entry():
         """, (header['id'],)) or []
         lines_by_cat = {r['category_id']: r for r in rows}
 
-    # Attach the saved (or default) line values onto each category for the template
+        credit_lines = db.execute_query("""
+            SELECT id, credit_type, invoice_no, party_name, amount
+            FROM daily_sales_credit_lines WHERE entry_id = %s
+            ORDER BY id
+        """, (header['id'],)) or []
+
     for c in categories:
         saved = lines_by_cat.get(c['id'])
         c['nos'] = saved['nos'] if saved else None
@@ -20091,53 +20120,25 @@ def daily_sales_entry():
         c['amount'] = saved['amount'] if saved else 0
         c['line_gl_account'] = (saved['gl_account_name'] if saved and saved['gl_account_name'] else c['gl_account_name'])
 
-    # Day-wise records list (most recent 60 days) for the "Records" panel
-    records = db.execute_query("""
-        SELECT id, entry_date, total_income, status, jv_id
-        FROM daily_sales_entries
-        ORDER BY entry_date DESC
-        LIMIT 60
-    """) or []
-
-    return render_template('daily_sales_entry.html',
-                           entry_date=entry_date,
-                           today_date=date.today().strftime('%Y-%m-%d'),
-                           categories=categories,
-                           accounts=accounts,
-                           header=header,
-                           records=records,
-                           last_jv=request.args.get('last_jv'))
+    return header, categories, credit_lines
 
 
-@app.route('/daily_sales_entry/save', methods=['POST'])
-@login_required
-@has_permission('Access_Daily_Sales')
-def daily_sales_entry_save():
-    entry_date = request.form.get('entry_date')
-    narration = (request.form.get('narration') or '').strip()
-    action = request.form.get('action')  # 'park' or 'post'
-    lines_json = request.form.get('lines_json')
-    total_expenditure = parse_float(request.form.get('total_expenditure'))
-    cash_float = parse_float(request.form.get('cash_float'))
-    cash_amount = parse_float(request.form.get('cash_amount'))
-    credit_card_amount = parse_float(request.form.get('credit_card_amount'))
-    bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
-
-    if not entry_date:
-        flash('Date is required.', 'danger')
-        return redirect(url_for('daily_sales_entry'))
-
-    try:
-        lines_in = json.loads(lines_json) if lines_json else []
-    except (ValueError, TypeError):
-        flash('Invalid entry data submitted.', 'danger')
-        return redirect(url_for('daily_sales_entry', date=entry_date))
-
+def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditure, cash_float,
+                                cash_amount, credit_card_amount, bank_transfer_amount,
+                                telephone_income, advance_received, petty_cash, misc_expenses,
+                                credit_lines_in, action, current_user_pk):
+    """Core Park/Post logic shared by the front office Save button and the
+    accountant's Post button. `action` is always decided by the caller
+    ('park' or 'post') - never trusted from the request directly.
+    `misc_expenses` is a list of up to 3 (label, amount) tuples.
+    `credit_lines_in` is a list of dicts: {credit_type, invoice_no, party_name, amount}
+    - recorded for reference only, never posted to the GL (see module docstring).
+    Returns (ok: bool, message: str, jv_no: int|None)."""
     categories = {c['id']: c for c in _daily_sales_categories()}
 
-    # Compute Total Income from the category lines (CR adds, DR - e.g. Discount - deducts)
     total_income = 0.0
-    clean_lines = []  # (category_id, nos, bill_no, amount, gl_account_name)
+    clean_sales_lines = []          # (category_id, nos, bill_no, amount, gl_account_name)
+    clean_comp_lines = []           # (category_id, nos, bill_no, amount, gl_account_name, subgroup)
     missing_gl = []
     for ln in lines_in:
         try:
@@ -20153,27 +20154,41 @@ def daily_sales_entry_save():
         bill_no = (ln.get('bill_no') or '').strip() or None
         gl_account = (ln.get('gl_account') or cat['gl_account_name'] or '').strip() or None
 
-        if amount:
-            if cat['entry_side'] == 'DR':
-                total_income -= amount
-            else:
-                total_income += amount
-            if not gl_account:
-                missing_gl.append(f"{cat['description']}{(' - ' + cat['particulars']) if cat['particulars'] else ''}")
+        if amount and not gl_account:
+            missing_gl.append(f"{cat['description']}{(' - ' + cat['particulars']) if cat['particulars'] else ''}")
 
-        clean_lines.append((cat_id, nos, bill_no, amount, gl_account))
+        if cat['category_group'] == 'COMPLIMENTARY':
+            clean_comp_lines.append((cat_id, nos, bill_no, amount, gl_account, cat['subgroup']))
+        else:
+            if amount:
+                if cat['entry_side'] == 'DR':
+                    total_income -= amount
+                else:
+                    total_income += amount
+            clean_sales_lines.append((cat_id, nos, bill_no, amount, gl_account))
 
     total_income = round(total_income, 2)
     balance = round(total_income - total_expenditure, 2)
 
+    clean_credit_lines = []  # (credit_type, invoice_no, party_name, amount)
+    for cl in (credit_lines_in or []):
+        amount = parse_float(cl.get('amount'))
+        invoice_no = (cl.get('invoice_no') or '').strip() or None
+        party_name = (cl.get('party_name') or '').strip() or None
+        credit_type = 'GIVEN' if cl.get('credit_type') == 'GIVEN' else 'RECEIVED'
+        if amount or invoice_no or party_name:
+            clean_credit_lines.append((credit_type, invoice_no, party_name, amount))
+
+    warning = None
     if action == 'post':
         if missing_gl:
-            flash('Cannot post: assign a GL account to every line with an amount first - missing: ' + ', '.join(missing_gl[:6]) +
-                  ('...' if len(missing_gl) > 6 else ''), 'danger')
+            warning = ('Cannot post: assign a GL account to every line with an amount first - missing: ' +
+                       ', '.join(missing_gl[:6]) + ('...' if len(missing_gl) > 6 else ''))
             action = 'park'  # fall back to saving as Parked so nothing is lost
         elif abs((cash_amount + credit_card_amount + bank_transfer_amount) - total_income) > 0.01:
-            flash(f'Cannot post: Cash + Credit Card + Bank Transfer ({cash_amount + credit_card_amount + bank_transfer_amount:,.2f}) '
-                  f'must equal Total Income ({total_income:,.2f}). Adjust the breakdown before posting.', 'danger')
+            warning = (f'Cannot post: Cash + Credit Card + Bank Transfer ({cash_amount + credit_card_amount + bank_transfer_amount:,.2f}) '
+                       f'must equal Total Income ({total_income:,.2f}). Adjust the breakdown before posting - '
+                       f'ask front office to correct it if the figures themselves are wrong.')
             action = 'park'
 
     conn = None
@@ -20185,11 +20200,13 @@ def daily_sales_entry_save():
         cursor.execute("SELECT id, status, jv_id FROM daily_sales_entries WHERE entry_date = %s", (entry_date,))
         existing = cursor.fetchone()
         if existing and existing['status'] == 'Posted':
-            flash('This day has already been posted to the GL and can no longer be edited.', 'danger')
-            return redirect(url_for('daily_sales_entry', date=entry_date))
+            return False, 'This day has already been posted to the GL and can no longer be edited.', None
 
         conn.start_transaction()
-        current_user_pk = get_current_user_pk()
+
+        misc1 = misc_expenses[0] if len(misc_expenses) > 0 else ('', 0)
+        misc2 = misc_expenses[1] if len(misc_expenses) > 1 else ('', 0)
+        misc3 = misc_expenses[2] if len(misc_expenses) > 2 else ('', 0)
 
         if existing:
             entry_id = existing['id']
@@ -20197,29 +20214,53 @@ def daily_sales_entry_save():
                 UPDATE daily_sales_entries SET
                     narration=%s, total_income=%s, total_expenditure=%s, balance=%s,
                     cash_float=%s, cash_amount=%s, credit_card_amount=%s, bank_transfer_amount=%s,
+                    telephone_income=%s, advance_received=%s, petty_cash=%s,
+                    misc_expense_1_label=%s, misc_expense_1_amount=%s,
+                    misc_expense_2_label=%s, misc_expense_2_amount=%s,
+                    misc_expense_3_label=%s, misc_expense_3_amount=%s,
                     updated_by=%s, updated_date=NOW()
                 WHERE id=%s
             """, (narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                  telephone_income, advance_received, petty_cash,
+                  misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
                   current_user_pk, entry_id))
             cursor.execute("DELETE FROM daily_sales_entry_lines WHERE entry_id = %s", (entry_id,))
+            cursor.execute("DELETE FROM daily_sales_credit_lines WHERE entry_id = %s", (entry_id,))
         else:
             cursor.execute("""
                 INSERT INTO daily_sales_entries (
                     entry_date, narration, total_income, total_expenditure, balance,
                     cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                    telephone_income, advance_received, petty_cash,
+                    misc_expense_1_label, misc_expense_1_amount,
+                    misc_expense_2_label, misc_expense_2_amount,
+                    misc_expense_3_label, misc_expense_3_amount,
                     status, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
             """, (entry_date, narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_amount, bank_transfer_amount,
+                  telephone_income, advance_received, petty_cash,
+                  misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
                   current_user_pk))
             entry_id = cursor.lastrowid
 
-        for cat_id, nos, bill_no, amount, gl_account in clean_lines:
+        for cat_id, nos, bill_no, amount, gl_account in clean_sales_lines:
             cursor.execute("""
                 INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (entry_id, cat_id, nos, bill_no, amount, gl_account))
+        for cat_id, nos, bill_no, amount, gl_account, _subgroup in clean_comp_lines:
+            cursor.execute("""
+                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (entry_id, cat_id, nos, bill_no, amount, gl_account))
+
+        for credit_type, invoice_no, party_name, amount in clean_credit_lines:
+            cursor.execute("""
+                INSERT INTO daily_sales_credit_lines (entry_id, credit_type, invoice_no, party_name, amount)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (entry_id, credit_type, invoice_no, party_name, amount))
 
         jv_no = None
         if action == 'post':
@@ -20253,8 +20294,8 @@ def daily_sales_entry_save():
                     """, (pm_account, pm_amount, entry_date, date.today(), f"{label} - Daily Sales {entry_date}",
                           current_user_pk, jv_no))
 
-            # CR (or DR for Discount): each category line against its assigned GL account
-            for cat_id, nos, bill_no, amount, gl_account in clean_lines:
+            # CR (or DR for Discount): each Sheet9 sales line against its assigned GL account
+            for cat_id, nos, bill_no, amount, gl_account in clean_sales_lines:
                 if not amount:
                     continue
                 cat = categories[cat_id]
@@ -20270,6 +20311,34 @@ def daily_sales_entry_save():
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (gl_account, dr_amt, cr_amt, entry_date, date.today(), narr, current_user_pk, jv_no))
 
+            # Complimentary Food & Liquor: Dr the recipient's mapped expense account,
+            # Cr the Food or Liquor cost control account - a self-balanced pair per
+            # line, entirely separate from the cash reconciliation above.
+            comp_settings = {'FOOD': 'daily_sales_food_cost_account', 'LIQUOR': 'daily_sales_liquor_cost_account'}
+            for cat_id, nos, bill_no, amount, gl_account, subgroup in clean_comp_lines:
+                if not amount:
+                    continue
+                cat = categories[cat_id]
+                setting_key = comp_settings.get(subgroup)
+                cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = %s", (setting_key,))
+                cost_row = cursor.fetchone()
+                cost_account = cost_row['setting_value'] if cost_row else None
+                if not cost_account:
+                    raise ValueError(f"No GL account configured for Complimentary {subgroup.title()} cost. Set it in GL Mapping first.")
+                narr = f"Complimentary {cat['description']} - {cat['particulars']}"
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s)
+                """, (gl_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
+                """, (cost_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
+
             cursor.execute("""
                 UPDATE daily_sales_entries SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW()
                 WHERE id=%s
@@ -20277,25 +20346,190 @@ def daily_sales_entry_save():
 
         conn.commit()
         if action == 'post' and jv_no:
-            flash(f'Daily Sales Entry posted to GL. JV: {jv_no}', 'success')
-            return redirect(url_for('daily_sales_entry', date=entry_date, last_jv=jv_no))
+            return True, f'Daily Sales Entry posted to GL. JV: {jv_no}', jv_no
         else:
-            flash('Daily Sales Entry saved as Parked (draft).', 'success')
+            msg = 'Daily Sales Entry saved as Parked (draft).'
+            if warning:
+                msg = warning + ' Saved as Parked instead.'
+            return (warning is None), msg, None
 
     except Exception as e:
         if conn:
             conn.rollback()
-        flash(f'Error saving Daily Sales Entry: {str(e)}', 'danger')
+        return False, f'Error saving Daily Sales Entry: {str(e)}', None
     finally:
         if cursor: cursor.close()
         if conn: conn.close()
 
+
+@app.route('/daily_sales_entry', methods=['GET'])
+@login_required
+@has_permission('Access_Daily_Sales')
+def daily_sales_entry():
+    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+    header, categories, credit_lines = _daily_sales_load_entry(entry_date)
+
+    # Day-wise records list (most recent 60 days) for the "Records" panel
+    records = db.execute_query("""
+        SELECT id, entry_date, total_income, status, jv_id
+        FROM daily_sales_entries
+        ORDER BY entry_date DESC
+        LIMIT 60
+    """) or []
+
+    return render_template('daily_sales_entry.html',
+                           entry_date=entry_date,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           categories=categories,
+                           header=header,
+                           credit_lines=credit_lines,
+                           records=records)
+
+
+@app.route('/daily_sales_entry/save', methods=['POST'])
+@login_required
+@has_permission('Access_Daily_Sales')
+def daily_sales_entry_save():
+    """Front office Save. Always Parks - never posts, even if the request
+    tampers with an 'action' field, since front office never sees GL accounts."""
+    entry_date = request.form.get('entry_date')
+    narration = (request.form.get('narration') or '').strip()
+    lines_json = request.form.get('lines_json')
+    total_expenditure = parse_float(request.form.get('total_expenditure'))
+    cash_float = parse_float(request.form.get('cash_float'))
+    cash_amount = parse_float(request.form.get('cash_amount'))
+    credit_card_amount = parse_float(request.form.get('credit_card_amount'))
+    bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
+    telephone_income = parse_float(request.form.get('telephone_income'))
+    advance_received = parse_float(request.form.get('advance_received'))
+    petty_cash = parse_float(request.form.get('petty_cash'))
+    misc_expenses = [
+        ((request.form.get('misc_expense_1_label') or '').strip(), parse_float(request.form.get('misc_expense_1_amount'))),
+        ((request.form.get('misc_expense_2_label') or '').strip(), parse_float(request.form.get('misc_expense_2_amount'))),
+        ((request.form.get('misc_expense_3_label') or '').strip(), parse_float(request.form.get('misc_expense_3_amount'))),
+    ]
+    credit_lines_json = request.form.get('credit_lines_json')
+
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('daily_sales_entry'))
+
+    try:
+        lines_in = json.loads(lines_json) if lines_json else []
+    except (ValueError, TypeError):
+        flash('Invalid entry data submitted.', 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
+
+    try:
+        credit_lines_in = json.loads(credit_lines_json) if credit_lines_json else []
+    except (ValueError, TypeError):
+        credit_lines_in = []
+
+    ok, message, _jv = _daily_sales_process_entry(
+        entry_date, narration, lines_in, total_expenditure, cash_float,
+        cash_amount, credit_card_amount, bank_transfer_amount,
+        telephone_income, advance_received, petty_cash, misc_expenses,
+        credit_lines_in, 'park', get_current_user_pk())
+    flash(message, 'success' if ok else 'danger')
     return redirect(url_for('daily_sales_entry', date=entry_date))
+
+
+@app.route('/daily_sales_entry/post', methods=['GET'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry_post():
+    """Accountant's dedicated Posting screen: assign/confirm the GL account
+    per line (front office's Nos/Bill No/Amount are shown read-only here -
+    if the figures themselves are wrong, send it back to front office to
+    correct while it's still Parked) then Post to the GL."""
+    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+    header, categories, credit_lines = _daily_sales_load_entry(entry_date)
+
+    accounts = db.execute_query("""
+        SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name
+    """) or []
+
+    # Queue of Parked entries awaiting posting
+    queue = db.execute_query("""
+        SELECT id, entry_date, total_income, narration
+        FROM daily_sales_entries
+        WHERE status = 'Parked'
+        ORDER BY entry_date ASC
+        LIMIT 60
+    """) or []
+
+    pm_matches = True
+    if header:
+        received_total = (header.get('cash_amount') or 0) + (header.get('credit_card_amount') or 0) + (header.get('bank_transfer_amount') or 0)
+        pm_matches = abs(received_total - (header.get('total_income') or 0)) <= 0.01
+
+    return render_template('daily_sales_entry_post.html',
+                           entry_date=entry_date,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           categories=categories,
+                           pm_matches=pm_matches,
+                           accounts=accounts,
+                           header=header,
+                           credit_lines=credit_lines,
+                           queue=queue,
+                           last_jv=request.args.get('last_jv'))
+
+
+@app.route('/daily_sales_entry/post/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry_post_save():
+    """Accountant's screen. `action` is either 'post' (post to GL now) or
+    'park' (just save the GL account assignments for later - e.g. when the
+    accountant hasn't finished coding every line yet). Safe to trust the
+    submitted action here (unlike the front office endpoint) since this
+    route is gated by Access_Accounting, not front office."""
+    entry_date = request.form.get('entry_date')
+    narration = (request.form.get('narration') or '').strip()
+    action = 'park' if request.form.get('action') == 'park' else 'post'
+    lines_json = request.form.get('lines_json')
+    total_expenditure = parse_float(request.form.get('total_expenditure'))
+    cash_float = parse_float(request.form.get('cash_float'))
+    cash_amount = parse_float(request.form.get('cash_amount'))
+    credit_card_amount = parse_float(request.form.get('credit_card_amount'))
+    bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
+    # These aren't editable on this screen - carried forward unchanged from
+    # what front office entered (see the hidden fields in daily_sales_entry_post.html).
+    telephone_income = parse_float(request.form.get('telephone_income'))
+    advance_received = parse_float(request.form.get('advance_received'))
+    petty_cash = parse_float(request.form.get('petty_cash'))
+    misc_expenses = [
+        ((request.form.get('misc_expense_1_label') or '').strip(), parse_float(request.form.get('misc_expense_1_amount'))),
+        ((request.form.get('misc_expense_2_label') or '').strip(), parse_float(request.form.get('misc_expense_2_amount'))),
+        ((request.form.get('misc_expense_3_label') or '').strip(), parse_float(request.form.get('misc_expense_3_amount'))),
+    ]
+    try:
+        credit_lines_in = json.loads(request.form.get('credit_lines_json') or '[]')
+    except (ValueError, TypeError):
+        credit_lines_in = []
+
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('daily_sales_entry_post'))
+
+    try:
+        lines_in = json.loads(lines_json) if lines_json else []
+    except (ValueError, TypeError):
+        flash('Invalid entry data submitted.', 'danger')
+        return redirect(url_for('daily_sales_entry_post', date=entry_date))
+
+    ok, message, jv_no = _daily_sales_process_entry(
+        entry_date, narration, lines_in, total_expenditure, cash_float,
+        cash_amount, credit_card_amount, bank_transfer_amount,
+        telephone_income, advance_received, petty_cash, misc_expenses,
+        credit_lines_in, action, get_current_user_pk())
+    flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('daily_sales_entry_post', date=entry_date, last_jv=(jv_no if ok and jv_no else None)))
 
 
 @app.route('/daily_sales_entry/records', methods=['GET'])
 @login_required
-@has_permission('Access_Daily_Sales')
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
 def daily_sales_entry_records():
     date_from = request.args.get('from', '').strip()
     date_to = request.args.get('to', '').strip()
@@ -20322,7 +20556,7 @@ def daily_sales_entry_records():
 
 @app.route('/daily_sales_entry/gl_mapping', methods=['GET'])
 @login_required
-@has_permission('Access_Daily_Sales')
+@has_permission('Access_Accounting')
 def daily_sales_gl_mapping():
     categories = _daily_sales_categories()
     accounts = db.execute_query("""
@@ -20330,17 +20564,22 @@ def daily_sales_gl_mapping():
     """) or []
     settings = db.execute_query("""
         SELECT setting_key, setting_value FROM system_settings
-        WHERE setting_key IN ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account')
+        WHERE setting_key IN ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account',
+                               'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account')
     """) or []
     pm_accounts = {s['setting_key']: s['setting_value'] for s in settings}
 
+    sales_categories = [c for c in categories if c['category_group'] == 'SALES']
+    comp_categories = [c for c in categories if c['category_group'] == 'COMPLIMENTARY']
+
     return render_template('daily_sales_gl_mapping.html',
-                           categories=categories, accounts=accounts, pm_accounts=pm_accounts)
+                           sales_categories=sales_categories, comp_categories=comp_categories,
+                           accounts=accounts, pm_accounts=pm_accounts)
 
 
 @app.route('/daily_sales_entry/gl_mapping/save', methods=['POST'])
 @login_required
-@has_permission('Access_Daily_Sales')
+@has_permission('Access_Accounting')
 def daily_sales_gl_mapping_save():
     try:
         cat_ids = request.form.getlist('category_id[]')
@@ -20349,7 +20588,8 @@ def daily_sales_gl_mapping_save():
             db.execute_query("UPDATE daily_sales_categories SET gl_account_name = %s WHERE id = %s",
                              (acc.strip() or None, cat_id), commit=True)
 
-        for key in ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account'):
+        for key in ('daily_sales_cash_account', 'daily_sales_card_account', 'daily_sales_bank_account',
+                    'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
             val = (request.form.get(key) or '').strip()
             db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
                              (val, key), commit=True)
