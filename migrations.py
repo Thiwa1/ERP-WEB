@@ -57,6 +57,8 @@ def run_migrations(conn):
         _migrate_daily_sales_entry(cursor)
         _migrate_daily_sales_sheet10(cursor)
         _migrate_daily_sales_card_banks(cursor)
+        _migrate_daily_sales_sub_accounts(cursor)
+        _migrate_bar_inventory(cursor)
 
         conn.commit()
         cursor.close()
@@ -942,6 +944,113 @@ def _migrate_daily_sales_card_banks(cursor):
                         "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
                         (key, desc)
                     )
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_sub_accounts(cursor):
+    """Adds Sub-Account selection alongside the GL Account, matching how
+    Journal Entry / Service Entry already pair Account + Sub-Account
+    (sub_accont_for_new_account, scoped per account_name)."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM daily_sales_categories LIKE 'gl_sub_account_code'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_categories ADD COLUMN gl_sub_account_code INT NULL")
+
+        cursor.execute("SHOW COLUMNS FROM daily_sales_entry_lines LIKE 'gl_sub_account_code'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_entry_lines ADD COLUMN gl_sub_account_code INT NULL")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory(cursor):
+    """Bar Item perpetual stock ledger (Sheet1 of the front office's Excel
+    workbook): a running day-to-day Bottle/Ml stock balance per bar item.
+
+    Each day: Opening Balance (auto-carried from the previous day's Closing
+    Balance - or the item's own starting Opening Balance on day 1) + RF.Stock
+    (received today) = Total Available; minus Today's Sales Bar Qty,
+    Restaurant Sale Qty and ENT Qty (complimentary) = Closing Balance.
+
+    unit_type on the item decides how the balance displays:
+      'UNIT'      - whole units (cans, bottles counted as one each) - no ml split.
+      'BOTTLE_ML' - a bottle holds bottle_size_ml (e.g. 750ml) - balance shown
+                    as whole bottles + leftover ml from an opened bottle.
+      'ML_ONLY'   - balance shown purely as a total ml figure, no bottle split.
+    All quantities/balances are stored in the item's own base unit (ml for
+    BOTTLE_ML/ML_ONLY, whole units for UNIT) so the arithmetic is always a
+    plain running total - only the *display* differs by unit_type.
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_items'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_items table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_items (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  item_name VARCHAR(150) NOT NULL,
+                  display_order INT NOT NULL DEFAULT 0,
+                  unit_type VARCHAR(10) NOT NULL DEFAULT 'UNIT',
+                  bottle_size_ml DOUBLE NULL,
+                  unit_price DOUBLE NOT NULL DEFAULT 0,
+                  unit_price_restaurant DOUBLE NOT NULL DEFAULT 0,
+                  opening_balance DOUBLE NOT NULL DEFAULT 0,
+                  is_active TINYINT NOT NULL DEFAULT 1,
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY item_name_UNIQUE (item_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_days'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_days table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_days (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_date DATE NOT NULL,
+                  status VARCHAR(10) NOT NULL DEFAULT 'Draft',
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  verified_by INT NULL,
+                  verified_date DATETIME NULL,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY entry_date_UNIQUE (entry_date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_day_lines'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_day_lines table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_day_lines (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  day_id BIGINT NOT NULL,
+                  item_id INT NOT NULL,
+                  opening_balance DOUBLE NOT NULL DEFAULT 0,
+                  rf_stock DOUBLE NOT NULL DEFAULT 0,
+                  total_available DOUBLE NOT NULL DEFAULT 0,
+                  sales_bar_qty DOUBLE NOT NULL DEFAULT 0,
+                  restaurant_sale_qty DOUBLE NOT NULL DEFAULT 0,
+                  ent_qty DOUBLE NOT NULL DEFAULT 0,
+                  closing_balance DOUBLE NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY day_item_UNIQUE (day_id, item_id),
+                  INDEX idx_bidl_item (item_id),
+                  CONSTRAINT fk_bidl_day FOREIGN KEY (day_id)
+                    REFERENCES bar_inventory_days(id) ON DELETE CASCADE,
+                  CONSTRAINT fk_bidl_item FOREIGN KEY (item_id)
+                    REFERENCES bar_inventory_items(id) ON DELETE RESTRICT
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

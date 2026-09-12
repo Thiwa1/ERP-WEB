@@ -111,12 +111,13 @@
             <table class="table table-bordered table-sm dse-table align-middle">
               <thead>
                 <tr>
-                  <th style="width:20%">Description</th>
-                  <th style="width:16%">Particulars</th>
-                  <th style="width:8%">Nos</th>
-                  <th style="width:10%">Bill No</th>
-                  <th style="width:12%" class="text-end">Amount (Rs)</th>
-                  <th style="width:34%">GL Account</th>
+                  <th style="width:16%">Description</th>
+                  <th style="width:13%">Particulars</th>
+                  <th style="width:7%">Nos</th>
+                  <th style="width:9%">Bill No</th>
+                  <th style="width:10%" class="text-end">Amount (Rs)</th>
+                  <th style="width:23%">GL Account</th>
+                  <th style="width:22%">Sub Account</th>
                 </tr>
               </thead>
               <tbody>
@@ -136,13 +137,22 @@
                   <td>
                     <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
                            value="{{ c.line_gl_account or '' }}"
-                           placeholder="Select account..." {% if readonly %}disabled{% endif %}>
+                           placeholder="Select account..." onchange="dsePostRefreshSub(this)" {% if readonly %}disabled{% endif %}>
+                  </td>
+                  <td>
+                    <select class="form-select form-select-sm dse-sub-account" {% if not c.sub_account_options %}disabled{% endif %} {% if readonly %}disabled{% endif %}>
+                      <option value="">-</option>
+                      {% for opt in c.sub_account_options %}
+                      <option value="{{ opt.sub_account_code }}" {% if c.line_sub_account_code == opt.sub_account_code %}selected{% endif %}>{{ opt.sub_sub_accaount_name }}</option>
+                      {% endfor %}
+                    </select>
                   </td>
                 </tr>
                 {% endfor %}
                 <tr class="dse-total-row">
                   <td colspan="4" class="text-end">GRAND TOTAL / TOTAL INCOME</td>
                   <td class="text-end"><span id="dseTotalIncome">{{ '%.2f'|format(header.total_income or 0) }}</span></td>
+                  <td></td>
                   <td></td>
                 </tr>
               </tbody>
@@ -154,11 +164,12 @@
             <table class="table table-bordered table-sm dse-table align-middle">
               <thead>
                 <tr>
-                  <th style="width:20%">Type</th>
-                  <th style="width:20%">Given To</th>
-                  <th style="width:14%">Bill No</th>
-                  <th style="width:12%" class="text-end">Amount (Rs)</th>
-                  <th style="width:34%">GL Account (Dr)</th>
+                  <th style="width:16%">Type</th>
+                  <th style="width:16%">Given To</th>
+                  <th style="width:11%">Bill No</th>
+                  <th style="width:10%" class="text-end">Amount (Rs)</th>
+                  <th style="width:23%">GL Account (Dr)</th>
+                  <th style="width:24%">Sub Account</th>
                 </tr>
               </thead>
               <tbody>
@@ -177,7 +188,15 @@
                   <td>
                     <input type="text" class="form-control form-control-sm dse-gl-account" list="dseAccountList"
                            value="{{ c.line_gl_account or '' }}"
-                           placeholder="Select account..." {% if readonly %}disabled{% endif %}>
+                           placeholder="Select account..." onchange="dsePostRefreshSub(this)" {% if readonly %}disabled{% endif %}>
+                  </td>
+                  <td>
+                    <select class="form-select form-select-sm dse-sub-account" {% if not c.sub_account_options %}disabled{% endif %} {% if readonly %}disabled{% endif %}>
+                      <option value="">-</option>
+                      {% for opt in c.sub_account_options %}
+                      <option value="{{ opt.sub_account_code }}" {% if c.line_sub_account_code == opt.sub_account_code %}selected{% endif %}>{{ opt.sub_sub_accaount_name }}</option>
+                      {% endfor %}
+                    </select>
                   </td>
                 </tr>
                 {% endfor %}
@@ -354,17 +373,41 @@ document.getElementById('dseCreditLinesJson').value = JSON.stringify(dseCreditLi
 function dseSubmit(action) {
   const lines = [];
   document.querySelectorAll('#dseForm .dse-line-row').forEach(function(tr) {
+    const subSelect = tr.querySelector('.dse-sub-account');
     lines.push({
       category_id: tr.getAttribute('data-cat-id'),
       nos: tr.querySelector('.dse-nos') ? tr.querySelector('.dse-nos').value : '',
       bill_no: tr.querySelector('.dse-billno').value,
       amount: tr.querySelector('.dse-amount').value,
-      gl_account: tr.querySelector('.dse-gl-account').value
+      gl_account: tr.querySelector('.dse-gl-account').value,
+      sub_account_code: subSelect ? subSelect.value : ''
     });
   });
   document.getElementById('dseLinesJson').value = JSON.stringify(lines);
   document.getElementById('dseAction').value = action;
   document.getElementById('dseForm').submit();
+}
+
+function dsePostRefreshSub(accountInput) {
+  const row = accountInput.closest('.dse-line-row');
+  const subSelect = row.querySelector('.dse-sub-account');
+  if (!subSelect) return;
+  subSelect.innerHTML = '<option value="">-</option>';
+  subSelect.disabled = true;
+  if (!accountInput.value) return;
+  fetch('/api/get_sub_accounts?account_name=' + encodeURIComponent(accountInput.value))
+    .then(r => r.json())
+    .then(data => {
+      if (data && data.length > 0) {
+        subSelect.disabled = false;
+        data.forEach(item => {
+          const opt = document.createElement('option');
+          opt.value = item.code;
+          opt.text = item.name;
+          subSelect.add(opt);
+        });
+      }
+    });
 }
 
 function dseJumpToDate(val) {

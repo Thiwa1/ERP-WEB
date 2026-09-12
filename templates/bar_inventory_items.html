@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Inventory Items{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-boxes me-2 text-primary"></i>Bar Inventory &mdash; Items</h4>
+  <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to Bar Inventory</a>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">Add Item</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('bar_inventory_items_save') }}">
+          <div class="mb-2">
+            <label class="form-label">Item Name</label>
+            <input type="text" name="item_name" class="form-control" required>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label">Unit Type</label>
+              <select name="unit_type" class="form-select" onchange="biItemsToggleBottle(this)">
+                <option value="UNIT">Whole Units (cans, bottles as 1 each)</option>
+                <option value="BOTTLE_ML">Bottle + Ml (e.g. 750ml bottle)</option>
+                <option value="ML_ONLY">Ml only</option>
+              </select>
+            </div>
+            <div class="col-6" id="biBottleSizeWrap" style="display:none;">
+              <label class="form-label">Bottle Size (ml)</label>
+              <input type="number" step="any" name="bottle_size_ml" class="form-control" placeholder="e.g. 750">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
+              <label class="form-label">Unit Price (Bar)</label>
+              <input type="number" step="0.01" name="unit_price" class="form-control" value="0">
+            </div>
+            <div class="col-6">
+              <label class="form-label">Unit Price (Restaurant)</label>
+              <input type="number" step="0.01" name="unit_price_restaurant" class="form-control" value="0">
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Opening Balance</label>
+            <input type="number" step="any" name="opening_balance" class="form-control" value="0">
+            <div class="form-text">In whole units, or ml if this item is Bottle+Ml / Ml only.</div>
+          </div>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-plus me-1"></i> Add Item</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-6">
+    <div class="card h-100">
+      <div class="card-header fw-bold">Bulk-Add Items from Excel/CSV</div>
+      <div class="card-body">
+        <p class="text-muted small">Upload a file with one item name per row (first column). Items that already exist by name are skipped &mdash; new ones are added as "Whole Units" with a zero opening balance, so set their unit type / price / opening balance below afterwards.</p>
+        <form method="POST" action="{{ url_for('bar_inventory_items_upload') }}" enctype="multipart/form-data">
+          <div class="mb-3">
+            <input type="file" name="file" class="form-control" accept=".xlsx,.xlsm,.csv" required>
+          </div>
+          <button type="submit" class="btn btn-outline-primary"><i class="fas fa-file-upload me-1"></i> Upload &amp; Add New Items</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-bold">All Items</div>
+  <div class="card-body table-responsive">
+    <table class="table table-sm table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>Item Name</th>
+          <th>Unit Type</th>
+          <th>Bottle Size (ml)</th>
+          <th class="text-end">Unit Price (Bar)</th>
+          <th class="text-end">Unit Price (Rest.)</th>
+          <th class="text-end">Opening Balance</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr {% if not it.is_active %}class="text-muted"{% endif %}>
+          {% if it.is_active %}
+          <td colspan="7" style="padding:0;">
+          <form method="POST" action="{{ url_for('bar_inventory_items_save') }}">
+            <input type="hidden" name="item_id" value="{{ it.id }}">
+            <table class="table table-sm mb-0" style="table-layout:fixed;">
+              <tr>
+                <td><input type="text" name="item_name" class="form-control form-control-sm" value="{{ it.item_name }}"></td>
+                <td>
+                  <select name="unit_type" class="form-select form-select-sm">
+                    <option value="UNIT" {% if it.unit_type == 'UNIT' %}selected{% endif %}>Whole Units</option>
+                    <option value="BOTTLE_ML" {% if it.unit_type == 'BOTTLE_ML' %}selected{% endif %}>Bottle + Ml</option>
+                    <option value="ML_ONLY" {% if it.unit_type == 'ML_ONLY' %}selected{% endif %}>Ml only</option>
+                  </select>
+                </td>
+                <td><input type="number" step="any" name="bottle_size_ml" class="form-control form-control-sm" value="{{ it.bottle_size_ml or '' }}"></td>
+                <td><input type="number" step="0.01" name="unit_price" class="form-control form-control-sm text-end" value="{{ '%.2f'|format(it.unit_price or 0) }}"></td>
+                <td><input type="number" step="0.01" name="unit_price_restaurant" class="form-control form-control-sm text-end" value="{{ '%.2f'|format(it.unit_price_restaurant or 0) }}"></td>
+                <td><input type="number" step="any" name="opening_balance" class="form-control form-control-sm text-end" value="{{ it.opening_balance or 0 }}"></td>
+                <td class="text-nowrap">
+                  <button type="submit" class="btn btn-sm btn-outline-primary"><i class="fas fa-save"></i></button>
+                  <button type="submit" formaction="{{ url_for('bar_inventory_items_deactivate', item_id=it.id) }}"
+                          class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove {{ it.item_name }} from the active list?');"><i class="fas fa-trash"></i></button>
+                </td>
+              </tr>
+            </table>
+          </form>
+          </td>
+          {% else %}
+          <td>{{ it.item_name }}</td>
+          <td>{{ it.unit_type }}</td>
+          <td>{{ it.bottle_size_ml or '' }}</td>
+          <td class="text-end">{{ '%.2f'|format(it.unit_price or 0) }}</td>
+          <td class="text-end">{{ '%.2f'|format(it.unit_price_restaurant or 0) }}</td>
+          <td class="text-end">{{ it.opening_balance or 0 }}</td>
+          <td><span class="badge bg-secondary">Removed</span></td>
+          {% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-4">No items yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function biItemsToggleBottle(sel) {
+  document.getElementById('biBottleSizeWrap').style.display = (sel.value === 'BOTTLE_ML') ? '' : 'none';
+}
+</script>
+{% endblock %}

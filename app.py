@@ -185,6 +185,8 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'postdated_cheques',  'label': 'Postdated Cheques',    'url': '/postdated_cheques',      'icon': 'fas fa-calendar-check',      'category': 'Reversals & Adjustments'},
     # Inventory
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
+    {'key': 'bar_inventory',      'label': 'Bar Inventory',        'url': '/bar_inventory',           'icon': 'fas fa-beer',                'category': 'Inventory'},
+    {'key': 'bar_inventory_items','label': 'Bar Inventory Items',  'url': '/bar_inventory/items',     'icon': 'fas fa-list-ul',             'category': 'Inventory'},
     {'key': 'new_inventory_item', 'label': 'New Inventory Item',   'url': '/add_inventory_item',     'icon': 'fas fa-plus-square',         'category': 'Inventory'},
     {'key': 'grn',                'label': 'GRN',                  'url': '/grn',                    'icon': 'fas fa-truck-loading',       'category': 'Inventory'},
     {'key': 'po_generator',       'label': 'PO Generator',         'url': '/purchase_orders',        'icon': 'fas fa-file-invoice',        'category': 'Inventory'},
@@ -20073,11 +20075,24 @@ def _daily_sales_categories():
     balanced Dr Expense / Cr Food-or-Liquor-Cost pair, no cash impact)."""
     return db.execute_query("""
         SELECT id, category_key, description, particulars, display_order,
-               entry_side, gl_account_name, category_group, subgroup
+               entry_side, gl_account_name, gl_sub_account_code, category_group, subgroup
         FROM daily_sales_categories
         WHERE is_active = 1
         ORDER BY display_order, id
     """) or []
+
+
+def _daily_sales_sub_accounts_for(account_name):
+    """Sub-accounts available under a given GL account (same
+    sub_accont_for_new_account table Journal Entry / Service Entry use)."""
+    if not account_name:
+        return []
+    return db.execute_query("""
+        SELECT sub_account_code, sub_sub_accaount_name
+        FROM sub_accont_for_new_account
+        WHERE sub_new_account = %s AND active = 1
+        ORDER BY sub_sub_accaount_name
+    """, (account_name,)) or []
 
 
 def _daily_sales_load_entry(entry_date):
@@ -20104,7 +20119,7 @@ def _daily_sales_load_entry(entry_date):
     credit_lines = []
     if header:
         rows = db.execute_query("""
-            SELECT category_id, nos, bill_no, amount, gl_account_name
+            SELECT category_id, nos, bill_no, amount, gl_account_name, gl_sub_account_code
             FROM daily_sales_entry_lines WHERE entry_id = %s
         """, (header['id'],)) or []
         lines_by_cat = {r['category_id']: r for r in rows}
@@ -20121,6 +20136,8 @@ def _daily_sales_load_entry(entry_date):
         c['bill_no'] = saved['bill_no'] if saved else ''
         c['amount'] = saved['amount'] if saved else 0
         c['line_gl_account'] = (saved['gl_account_name'] if saved and saved['gl_account_name'] else c['gl_account_name'])
+        c['line_sub_account_code'] = (saved['gl_sub_account_code'] if saved and saved['gl_sub_account_code'] is not None else c['gl_sub_account_code'])
+        c['sub_account_options'] = _daily_sales_sub_accounts_for(c['line_gl_account'])
 
     return header, categories, credit_lines
 
@@ -20156,8 +20173,8 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
     categories = {c['id']: c for c in _daily_sales_categories()}
 
     total_income = 0.0
-    clean_sales_lines = []          # (category_id, nos, bill_no, amount, gl_account_name)
-    clean_comp_lines = []           # (category_id, nos, bill_no, amount, gl_account_name, subgroup)
+    clean_sales_lines = []          # (category_id, nos, bill_no, amount, gl_account_name, sub_account_code)
+    clean_comp_lines = []           # (category_id, nos, bill_no, amount, gl_account_name, sub_account_code, subgroup)
     missing_gl = []
     for ln in lines_in:
         try:
@@ -20172,19 +20189,27 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
         nos = parse_float(nos) if nos not in (None, '') else None
         bill_no = (ln.get('bill_no') or '').strip() or None
         gl_account = (ln.get('gl_account') or cat['gl_account_name'] or '').strip() or None
+        sub_raw = ln.get('sub_account_code')
+        if sub_raw not in (None, '', '0', 0):
+            try:
+                sub_account_code = int(sub_raw)
+            except (TypeError, ValueError):
+                sub_account_code = cat['gl_sub_account_code']
+        else:
+            sub_account_code = cat['gl_sub_account_code']
 
         if amount and not gl_account:
             missing_gl.append(f"{cat['description']}{(' - ' + cat['particulars']) if cat['particulars'] else ''}")
 
         if cat['category_group'] == 'COMPLIMENTARY':
-            clean_comp_lines.append((cat_id, nos, bill_no, amount, gl_account, cat['subgroup']))
+            clean_comp_lines.append((cat_id, nos, bill_no, amount, gl_account, sub_account_code, cat['subgroup']))
         else:
             if amount:
                 if cat['entry_side'] == 'DR':
                     total_income -= amount
                 else:
                     total_income += amount
-            clean_sales_lines.append((cat_id, nos, bill_no, amount, gl_account))
+            clean_sales_lines.append((cat_id, nos, bill_no, amount, gl_account, sub_account_code))
 
     total_income = round(total_income, 2)
     balance = round(total_income - total_expenditure, 2)
@@ -20280,16 +20305,16 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                   current_user_pk))
             entry_id = cursor.lastrowid
 
-        for cat_id, nos, bill_no, amount, gl_account in clean_sales_lines:
+        for cat_id, nos, bill_no, amount, gl_account, sub_account_code in clean_sales_lines:
             cursor.execute("""
-                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (entry_id, cat_id, nos, bill_no, amount, gl_account))
-        for cat_id, nos, bill_no, amount, gl_account, _subgroup in clean_comp_lines:
+                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name, gl_sub_account_code)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (entry_id, cat_id, nos, bill_no, amount, gl_account, sub_account_code))
+        for cat_id, nos, bill_no, amount, gl_account, sub_account_code, _subgroup in clean_comp_lines:
             cursor.execute("""
-                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (entry_id, cat_id, nos, bill_no, amount, gl_account))
+                INSERT INTO daily_sales_entry_lines (entry_id, category_id, nos, bill_no, amount, gl_account_name, gl_sub_account_code)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """, (entry_id, cat_id, nos, bill_no, amount, gl_account, sub_account_code))
 
         for credit_type, invoice_no, party_name, amount in clean_credit_lines:
             cursor.execute("""
@@ -20331,7 +20356,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                           current_user_pk, jv_no))
 
             # CR (or DR for Discount): each Sheet9 sales line against its assigned GL account
-            for cat_id, nos, bill_no, amount, gl_account in clean_sales_lines:
+            for cat_id, nos, bill_no, amount, gl_account, sub_account_code in clean_sales_lines:
                 if not amount:
                     continue
                 cat = categories[cat_id]
@@ -20343,15 +20368,15 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
-                        entry_create_date, entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                """, (gl_account, dr_amt, cr_amt, entry_date, date.today(), narr, current_user_pk, jv_no))
+                        entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (gl_account, dr_amt, cr_amt, entry_date, date.today(), narr, current_user_pk, jv_no, sub_account_code or 0))
 
             # Complimentary Food & Liquor: Dr the recipient's mapped expense account,
             # Cr the Food or Liquor cost control account - a self-balanced pair per
             # line, entirely separate from the cash reconciliation above.
             comp_settings = {'FOOD': 'daily_sales_food_cost_account', 'LIQUOR': 'daily_sales_liquor_cost_account'}
-            for cat_id, nos, bill_no, amount, gl_account, subgroup in clean_comp_lines:
+            for cat_id, nos, bill_no, amount, gl_account, sub_account_code, subgroup in clean_comp_lines:
                 if not amount:
                     continue
                 cat = categories[cat_id]
@@ -20365,9 +20390,9 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
-                        entry_create_date, entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s)
-                """, (gl_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
+                        entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, %s)
+                """, (gl_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no, sub_account_code or 0))
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
@@ -20634,6 +20659,8 @@ def daily_sales_gl_mapping():
 
     sales_categories = [c for c in categories if c['category_group'] == 'SALES']
     comp_categories = [c for c in categories if c['category_group'] == 'COMPLIMENTARY']
+    for c in sales_categories + comp_categories:
+        c['sub_account_options'] = _daily_sales_sub_accounts_for(c['gl_account_name'])
 
     return render_template('daily_sales_gl_mapping.html',
                            sales_categories=sales_categories, comp_categories=comp_categories,
@@ -20647,9 +20674,13 @@ def daily_sales_gl_mapping_save():
     try:
         cat_ids = request.form.getlist('category_id[]')
         gl_accounts = request.form.getlist('gl_account[]')
-        for cat_id, acc in zip(cat_ids, gl_accounts):
-            db.execute_query("UPDATE daily_sales_categories SET gl_account_name = %s WHERE id = %s",
-                             (acc.strip() or None, cat_id), commit=True)
+        sub_accounts = request.form.getlist('sub_account_code[]')
+        for i, cat_id in enumerate(cat_ids):
+            acc = gl_accounts[i] if i < len(gl_accounts) else ''
+            sub_raw = sub_accounts[i] if i < len(sub_accounts) else ''
+            sub_code = int(sub_raw) if sub_raw.strip().isdigit() else None
+            db.execute_query("UPDATE daily_sales_categories SET gl_account_name = %s, gl_sub_account_code = %s WHERE id = %s",
+                             (acc.strip() or None, sub_code, cat_id), commit=True)
 
         for key in ('daily_sales_cash_account', 'daily_sales_card_sampath_account', 'daily_sales_card_hnb_account',
                     'daily_sales_bank_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
@@ -20662,6 +20693,394 @@ def daily_sales_gl_mapping_save():
         flash(f'Error saving GL mapping: {str(e)}', 'danger')
 
     return redirect(url_for('daily_sales_gl_mapping'))
+
+
+# ================================================================
+# ── BAR INVENTORY (perpetual stock ledger) ──────────────────────
+# Digitises Sheet1 of the front office's Excel workbook: a running day-to-
+# day Bottle/Ml stock balance per bar item.
+#   Opening Balance (auto-carried from yesterday's Closing Balance)
+#   + RF.Stock (received today)                = Total Available
+#   - Sales Bar Qty - Restaurant Qty - ENT Qty  = Closing Balance
+# A day starts 'Draft' (editable) and is locked once 'Verified'.
+# ================================================================
+
+def _bar_inv_items():
+    return db.execute_query("""
+        SELECT id, item_name, display_order, unit_type, bottle_size_ml,
+               unit_price, unit_price_restaurant, opening_balance
+        FROM bar_inventory_items
+        WHERE is_active = 1
+        ORDER BY display_order, item_name
+    """) or []
+
+
+def _bar_inv_opening_balance(item, entry_date):
+    """Yesterday's Closing Balance for this item, from the most recent day
+    before entry_date - or the item's own starting Opening Balance if this
+    is the first day it's ever been entered."""
+    prior = db.execute_query("""
+        SELECT dl.closing_balance
+        FROM bar_inventory_day_lines dl
+        JOIN bar_inventory_days d ON dl.day_id = d.id
+        WHERE dl.item_id = %s AND d.entry_date < %s
+        ORDER BY d.entry_date DESC
+        LIMIT 1
+    """, (item['id'], entry_date))
+    if prior:
+        return prior[0]['closing_balance']
+    return item['opening_balance'] or 0
+
+
+def _bar_inv_format_balance(item, qty):
+    """Renders a stored quantity (ml for BOTTLE_ML/ML_ONLY, whole units for
+    UNIT) as the display string appropriate to the item's unit_type."""
+    qty = qty or 0
+    if item['unit_type'] == 'BOTTLE_ML' and item.get('bottle_size_ml'):
+        size = item['bottle_size_ml']
+        bottles = int(qty // size)
+        ml = round(qty - (bottles * size), 2)
+        return f"{bottles} btl {ml:g} ml"
+    if item['unit_type'] == 'ML_ONLY':
+        return f"{qty:g} ml"
+    return f"{qty:g}"
+
+
+@app.route('/bar_inventory', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory():
+    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+    items = _bar_inv_items()
+
+    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+    day = day[0] if day else None
+
+    lines_by_item = {}
+    if day:
+        rows = db.execute_query("""
+            SELECT item_id, opening_balance, rf_stock, total_available,
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
+            FROM bar_inventory_day_lines WHERE day_id = %s
+        """, (day['id'],)) or []
+        lines_by_item = {r['item_id']: r for r in rows}
+
+    for it in items:
+        saved = lines_by_item.get(it['id'])
+        if saved:
+            it['opening'] = saved['opening_balance']
+            it['rf_stock'] = saved['rf_stock']
+            it['sales_bar_qty'] = saved['sales_bar_qty']
+            it['restaurant_sale_qty'] = saved['restaurant_sale_qty']
+            it['ent_qty'] = saved['ent_qty']
+            it['closing_balance'] = saved['closing_balance']
+        else:
+            it['opening'] = _bar_inv_opening_balance(it, entry_date)
+            it['rf_stock'] = 0
+            it['sales_bar_qty'] = 0
+            it['restaurant_sale_qty'] = 0
+            it['ent_qty'] = 0
+            it['closing_balance'] = it['opening']
+        it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
+        it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
+
+    records = db.execute_query("""
+        SELECT id, entry_date, status FROM bar_inventory_days ORDER BY entry_date DESC LIMIT 60
+    """) or []
+
+    return render_template('bar_inventory.html',
+                           entry_date=entry_date,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           items=items,
+                           day=day,
+                           records=records)
+
+
+@app.route('/bar_inventory/save', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_save():
+    entry_date = request.form.get('entry_date')
+    verify = request.form.get('verify') == '1'
+    lines_json = request.form.get('lines_json')
+
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    try:
+        lines_in = json.loads(lines_json) if lines_json else []
+    except (ValueError, TypeError):
+        flash('Invalid data submitted.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    items = {it['id']: it for it in _bar_inv_items()}
+    current_user_pk = get_current_user_pk()
+
+    conn = None
+    cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+
+        cursor.execute("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+        existing = cursor.fetchone()
+        if existing and existing['status'] == 'Verified':
+            flash('This day has already been verified and can no longer be edited.', 'danger')
+            return redirect(url_for('bar_inventory', date=entry_date))
+
+        conn.start_transaction()
+
+        if existing:
+            day_id = existing['id']
+        else:
+            cursor.execute("INSERT INTO bar_inventory_days (entry_date, status, created_by) VALUES (%s, 'Draft', %s)",
+                           (entry_date, current_user_pk))
+            day_id = cursor.lastrowid
+
+        for ln in lines_in:
+            try:
+                item_id = int(ln.get('item_id'))
+            except (TypeError, ValueError):
+                continue
+            item = items.get(item_id)
+            if not item:
+                continue
+
+            rf_stock = parse_float(ln.get('rf_stock'))
+            sales_bar_qty = parse_float(ln.get('sales_bar_qty'))
+            restaurant_sale_qty = parse_float(ln.get('restaurant_sale_qty'))
+            ent_qty = parse_float(ln.get('ent_qty'))
+
+            opening = _bar_inv_opening_balance(item, entry_date)
+            total_available = round(opening + rf_stock, 4)
+            closing_balance = round(total_available - sales_bar_qty - restaurant_sale_qty - ent_qty, 4)
+
+            cursor.execute("""
+                INSERT INTO bar_inventory_day_lines (
+                    day_id, item_id, opening_balance, rf_stock, total_available,
+                    sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    opening_balance=VALUES(opening_balance), rf_stock=VALUES(rf_stock),
+                    total_available=VALUES(total_available), sales_bar_qty=VALUES(sales_bar_qty),
+                    restaurant_sale_qty=VALUES(restaurant_sale_qty), ent_qty=VALUES(ent_qty),
+                    closing_balance=VALUES(closing_balance)
+            """, (day_id, item_id, opening, rf_stock, total_available,
+                  sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance))
+
+        if verify:
+            cursor.execute("""
+                UPDATE bar_inventory_days SET status='Verified', verified_by=%s, verified_date=NOW()
+                WHERE id=%s
+            """, (current_user_pk, day_id))
+
+        conn.commit()
+        flash(f"Bar Inventory {'verified' if verify else 'saved'} for {entry_date}.", 'success')
+
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error saving Bar Inventory: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/records', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_records():
+    date_from = request.args.get('from', '').strip()
+    date_to = request.args.get('to', '').strip()
+
+    filters = []
+    params = []
+    if date_from:
+        filters.append('entry_date >= %s'); params.append(date_from)
+    if date_to:
+        filters.append('entry_date <= %s'); params.append(date_to)
+    where = ('WHERE ' + ' AND '.join(filters)) if filters else ''
+
+    records = db.execute_query(f"""
+        SELECT id, entry_date, status FROM bar_inventory_days
+        {where}
+        ORDER BY entry_date DESC
+        LIMIT 500
+    """, tuple(params)) or []
+
+    return render_template('bar_inventory_records.html', records=records, date_from=date_from, date_to=date_to)
+
+
+@app.route('/bar_inventory/print')
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_print():
+    entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+    items = _bar_inv_items()
+
+    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+    day = day[0] if day else None
+
+    lines_by_item = {}
+    if day:
+        rows = db.execute_query("""
+            SELECT item_id, opening_balance, rf_stock, total_available,
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
+            FROM bar_inventory_day_lines WHERE day_id = %s
+        """, (day['id'],)) or []
+        lines_by_item = {r['item_id']: r for r in rows}
+
+    for it in items:
+        saved = lines_by_item.get(it['id']) or {}
+        it['opening'] = saved.get('opening_balance', _bar_inv_opening_balance(it, entry_date))
+        it['rf_stock'] = saved.get('rf_stock', 0)
+        it['sales_bar_qty'] = saved.get('sales_bar_qty', 0)
+        it['restaurant_sale_qty'] = saved.get('restaurant_sale_qty', 0)
+        it['ent_qty'] = saved.get('ent_qty', 0)
+        it['closing_balance'] = saved.get('closing_balance', it['opening'])
+        it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
+        it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
+
+    return render_template('bar_inventory_print.html', entry_date=entry_date, items=items, day=day)
+
+
+@app.route('/bar_inventory/items', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items():
+    items = db.execute_query("""
+        SELECT id, item_name, display_order, unit_type, bottle_size_ml,
+               unit_price, unit_price_restaurant, opening_balance, is_active
+        FROM bar_inventory_items
+        ORDER BY display_order, item_name
+    """) or []
+    return render_template('bar_inventory_items.html', items=items)
+
+
+@app.route('/bar_inventory/items/save', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_save():
+    try:
+        item_id = request.form.get('item_id')
+        item_name = (request.form.get('item_name') or '').strip()
+        unit_type = request.form.get('unit_type') if request.form.get('unit_type') in ('UNIT', 'BOTTLE_ML', 'ML_ONLY') else 'UNIT'
+        bottle_size_ml = parse_float(request.form.get('bottle_size_ml')) or None
+        unit_price = parse_float(request.form.get('unit_price'))
+        unit_price_restaurant = parse_float(request.form.get('unit_price_restaurant'))
+        opening_balance = parse_float(request.form.get('opening_balance'))
+        display_order = parse_float(request.form.get('display_order')) or 0
+
+        if not item_name:
+            flash('Item name is required.', 'danger')
+            return redirect(url_for('bar_inventory_items'))
+
+        if item_id:
+            db.execute_query("""
+                UPDATE bar_inventory_items SET
+                    item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s,
+                    unit_price_restaurant=%s, opening_balance=%s, display_order=%s
+                WHERE id=%s
+            """, (item_name, unit_type, bottle_size_ml, unit_price,
+                  unit_price_restaurant, opening_balance, display_order, item_id), commit=True)
+            flash(f'"{item_name}" updated.', 'success')
+        else:
+            db.execute_query("""
+                INSERT INTO bar_inventory_items (
+                    item_name, unit_type, bottle_size_ml, unit_price,
+                    unit_price_restaurant, opening_balance, display_order, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (item_name, unit_type, bottle_size_ml, unit_price,
+                  unit_price_restaurant, opening_balance, display_order, get_current_user_pk()), commit=True)
+            flash(f'"{item_name}" added.', 'success')
+    except mysql.connector.Error as e:
+        if e.errno == 1062:
+            flash('An item with that name already exists.', 'danger')
+        else:
+            flash(f'Error saving item: {str(e)}', 'danger')
+    except Exception as e:
+        flash(f'Error saving item: {str(e)}', 'danger')
+
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/items/deactivate/<int:item_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_deactivate(item_id):
+    db.execute_query("UPDATE bar_inventory_items SET is_active = 0 WHERE id = %s", (item_id,), commit=True)
+    flash('Item removed from the active list.', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/items/upload', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_upload():
+    """Bulk-add new items from an uploaded Excel/CSV file - just a plain
+    list of item names (one per row; the first cell of each row is used).
+    Existing items (matched by name) are left untouched."""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('Please choose a file to upload.', 'danger')
+        return redirect(url_for('bar_inventory_items'))
+
+    try:
+        fname = f.filename.lower()
+        names = []
+        if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
+            from openpyxl import load_workbook
+            wb = load_workbook(f, read_only=True, data_only=True)
+            ws = wb.active
+            for row in ws.iter_rows(values_only=True):
+                if not row:
+                    continue
+                val = row[0]
+                if val is None:
+                    continue
+                text = str(val).strip()
+                if not text or text.lower() in ('item', 'item name', 'description', 'ml'):
+                    continue
+                names.append(text)
+        else:
+            import csv, io as _io
+            text_data = f.read().decode('utf-8-sig', errors='ignore')
+            for row in csv.reader(_io.StringIO(text_data)):
+                if not row:
+                    continue
+                text = (row[0] or '').strip()
+                if not text or text.lower() in ('item', 'item name', 'description'):
+                    continue
+                names.append(text)
+
+        if not names:
+            flash('No item names found in that file.', 'danger')
+            return redirect(url_for('bar_inventory_items'))
+
+        existing = db.execute_query("SELECT item_name FROM bar_inventory_items") or []
+        existing_names = {r['item_name'] for r in existing}
+
+        added = 0
+        for name in names:
+            if name in existing_names:
+                continue
+            try:
+                db.execute_query(
+                    "INSERT INTO bar_inventory_items (item_name, unit_type) VALUES (%s, 'UNIT')",
+                    (name,), commit=True)
+                existing_names.add(name)
+                added += 1
+            except Exception:
+                pass  # skip duplicates/bad rows, keep going
+
+        flash(f'Added {added} new item(s). Set their price / unit type / opening balance below.', 'success')
+    except Exception as e:
+        flash(f'Error reading file: {str(e)}', 'danger')
+
+    return redirect(url_for('bar_inventory_items'))
 
 
 # ================================================================

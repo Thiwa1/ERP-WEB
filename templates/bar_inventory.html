@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Inventory{% endblock %}
+
+{% block content %}
+<style>
+  .bi-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:20px; overflow:hidden; }
+  .bi-card-header { padding:12px 18px; border-bottom:1px solid rgba(0,0,0,0.06);
+                     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
+  .bi-card-body { padding:16px 18px; }
+  .bi-table input.form-control-sm { font-size:0.8rem; padding:3px 6px; }
+  .bi-table td, .bi-table th { vertical-align:middle; }
+  .bi-status-badge { font-size:0.8rem; padding:6px 14px; }
+  .bi-readonly-cell { font-weight:600; color:#201f1e; }
+  .bi-date-nav .btn { padding:6px 10px !important; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-beer me-2 text-primary"></i>Bar Inventory</h4>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('bar_inventory_records') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list me-1"></i> Records</a>
+    <a href="{{ url_for('bar_inventory_print', date=entry_date) }}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="fas fa-print me-1"></i> Print</a>
+    <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i> Manage Items</a>
+  </div>
+</div>
+
+<div class="bi-card">
+  <div class="bi-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-calendar-day me-1 text-primary"></i>
+      {{ entry_date }}
+      {% if day %}
+        {% if day.status == 'Verified' %}
+          <span class="badge bg-success bi-status-badge ms-2"><i class="fas fa-lock me-1"></i>Verified</span>
+        {% else %}
+          <span class="badge bg-warning text-dark bi-status-badge ms-2"><i class="fas fa-inbox me-1"></i>Draft</span>
+        {% endif %}
+      {% else %}
+        <span class="badge bg-light text-muted bi-status-badge ms-2">New</span>
+      {% endif %}
+    </h6>
+    <div class="d-flex align-items-center gap-2 bi-date-nav">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="biGoToDate(-1)"><i class="fas fa-chevron-left"></i></button>
+      <input type="date" class="form-control form-control-sm" style="width:160px" value="{{ entry_date }}" max="{{ today_date }}" onchange="biJumpToDate(this.value)">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="biGoToDate(1)"><i class="fas fa-chevron-right"></i></button>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="biJumpToDate('{{ today_date }}')">Today</button>
+    </div>
+  </div>
+
+  <div class="bi-card-body">
+    {% set readonly = day and day.status == 'Verified' %}
+    <form id="biForm" method="POST" action="{{ url_for('bar_inventory_save') }}">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <input type="hidden" name="verify" id="biVerify" value="0">
+      <input type="hidden" name="lines_json" id="biLinesJson">
+
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm bi-table align-middle">
+          <thead>
+            <tr>
+              <th style="width:20%">Item</th>
+              <th style="width:12%" class="text-end">Opening Balance</th>
+              <th style="width:10%">RF.Stock (Received)</th>
+              <th style="width:10%">Sales Bar Qty</th>
+              <th style="width:12%">Restaurant Sale Qty</th>
+              <th style="width:9%">ENT Qty</th>
+              <th style="width:14%" class="text-end">Closing Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for it in items %}
+            <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}">
+              <td><strong>{{ it.item_name }}</strong></td>
+              <td class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-sales" value="{{ it.sales_bar_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td class="text-end bi-readonly-cell bi-closing">{{ it.closing_display }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="7" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      {% if not readonly and items %}
+      <div class="d-flex justify-content-end gap-2 mt-3">
+        <button type="button" class="btn btn-secondary" onclick="biSubmit(false)"><i class="fas fa-save me-1"></i> Save</button>
+        <button type="button" class="btn btn-primary" onclick="biSubmit(true)"><i class="fas fa-check-circle me-1"></i> Save &amp; Verify</button>
+      </div>
+      {% elif readonly %}
+      <div class="alert alert-secondary mt-3 mb-0"><i class="fas fa-info-circle me-1"></i> This day has been verified and is locked for editing.</div>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="bi-card">
+  <div class="bi-card-header"><h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-history me-1 text-primary"></i>Recent Days</h6></div>
+  <div class="bi-card-body table-responsive">
+    <table class="table table-sm table-hover">
+      <thead><tr><th>Date</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.entry_date }}</td>
+          <td>{% if r.status == 'Verified' %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Draft</span>{% endif %}</td>
+          <td><a href="{{ url_for('bar_inventory', date=r.entry_date) }}" class="btn btn-sm btn-outline-primary">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-center text-muted py-3">No entries yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function biFormatBalance(unitType, bottleSize, qty) {
+  qty = Math.round(qty * 10000) / 10000;
+  if (unitType === 'BOTTLE_ML' && bottleSize) {
+    const bottles = Math.floor(qty / bottleSize);
+    const ml = Math.round((qty - bottles * bottleSize) * 100) / 100;
+    return bottles + ' btl ' + ml + ' ml';
+  }
+  if (unitType === 'ML_ONLY') return qty + ' ml';
+  return String(qty);
+}
+
+function biRecalcRow(input) {
+  const tr = input.closest('tr');
+  const unitType = tr.getAttribute('data-unit-type');
+  const bottleSize = parseFloat(tr.getAttribute('data-bottle-size')) || 0;
+  const opening = parseFloat(tr.querySelector('.bi-opening').getAttribute('data-value')) || 0;
+  const rf = parseFloat(tr.querySelector('.bi-rf').value) || 0;
+  const sales = parseFloat(tr.querySelector('.bi-sales').value) || 0;
+  const restaurant = parseFloat(tr.querySelector('.bi-restaurant').value) || 0;
+  const ent = parseFloat(tr.querySelector('.bi-ent').value) || 0;
+  const closing = opening + rf - sales - restaurant - ent;
+  tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
+}
+
+function biSubmit(verify) {
+  const lines = [];
+  document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
+    lines.push({
+      item_id: tr.getAttribute('data-item-id'),
+      rf_stock: tr.querySelector('.bi-rf').value,
+      sales_bar_qty: tr.querySelector('.bi-sales').value,
+      restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
+      ent_qty: tr.querySelector('.bi-ent').value
+    });
+  });
+  document.getElementById('biLinesJson').value = JSON.stringify(lines);
+  document.getElementById('biVerify').value = verify ? '1' : '0';
+  document.getElementById('biForm').submit();
+}
+
+function biJumpToDate(val) {
+  if (val) window.location.href = "{{ url_for('bar_inventory') }}?date=" + val;
+}
+function biGoToDate(offsetDays) {
+  const d = new Date("{{ entry_date }}T00:00:00");
+  d.setDate(d.getDate() + offsetDays);
+  biJumpToDate(d.toISOString().slice(0, 10));
+}
+</script>
+{% endblock %}

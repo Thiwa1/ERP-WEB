@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bar Inventory - {{ entry_date }}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: #f5f7fa;
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            color: #1e293b;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+        .no-print-bar {
+            position: sticky; top: 0; z-index: 100;
+            background: #1e293b; padding: 10px 24px;
+            display: flex; align-items: center; justify-content: center; gap: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+        }
+        .btn-print {
+            background: #0078D4; color: #fff; border: none; border-radius: 7px;
+            padding: 7px 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer;
+        }
+        .btn-print:hover { background: #005a9e; }
+        .sheet {
+            max-width: 1100px; margin: 24px auto; background: #fff;
+            padding: 30px 36px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); border-radius: 8px;
+        }
+        h1 { font-size: 18px; margin-bottom: 4px; }
+        .sub { color: #64748b; font-size: 12px; margin-bottom: 16px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #cbd5e1; padding: 5px 8px; text-align: left; }
+        th { background: #eef1f4; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; color: #475569; }
+        td.num, th.num { text-align: right; }
+        @media print {
+            body { background: #fff; }
+            .no-print-bar { display: none; }
+            .sheet { box-shadow: none; margin: 0; padding: 0; max-width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print-bar">
+        <button class="btn-print" onclick="window.print()">🖨 Print</button>
+    </div>
+
+    <div class="sheet">
+        <h1>Bar Inventory &mdash; {{ entry_date }}</h1>
+        <div class="sub">
+            {% if day %}
+                Status: {{ day.status }}
+            {% else %}
+                Status: Not yet saved
+            {% endif %}
+        </div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Item</th>
+                    <th class="num">Opening</th>
+                    <th class="num">RF.Stock</th>
+                    <th class="num">Sales Bar</th>
+                    <th class="num">Restaurant</th>
+                    <th class="num">ENT</th>
+                    <th class="num">Closing</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for it in items %}
+                <tr>
+                    <td>{{ it.item_name }}</td>
+                    <td class="num">{{ it.opening_display }}</td>
+                    <td class="num">{{ '%g'|format(it.rf_stock or 0) }}</td>
+                    <td class="num">{{ '%g'|format(it.sales_bar_qty or 0) }}</td>
+                    <td class="num">{{ '%g'|format(it.restaurant_sale_qty or 0) }}</td>
+                    <td class="num">{{ '%g'|format(it.ent_qty or 0) }}</td>
+                    <td class="num">{{ it.closing_display }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>
