@@ -70,12 +70,18 @@
 </div>
 
 <div class="card">
-  <div class="card-header fw-bold">All Items</div>
+  <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span class="fw-bold">All Items</span>
+    <button type="button" class="btn btn-sm btn-outline-danger" onclick="biItemsDeleteSelected()">
+      <i class="fas fa-trash me-1"></i> Delete Selected
+    </button>
+  </div>
   <div class="card-body table-responsive">
     <p class="text-muted small">Items are listed in <strong>Order</strong> (lowest first) &mdash; matching the order they were uploaded/added in. Change a number and Save to move that item; ties fall back to alphabetical.</p>
     <table class="table table-sm table-bordered align-middle">
       <thead>
         <tr>
+          <th style="width:3%"><input type="checkbox" onclick="biItemsToggleAll(this)"></th>
           <th style="width:8%">Order</th>
           <th>Item Name</th>
           <th>Unit Type</th>
@@ -89,6 +95,7 @@
       <tbody>
         {% for it in items %}
         <tr {% if not it.is_active %}class="text-muted"{% endif %}>
+          <td>{% if it.is_active %}<input type="checkbox" class="bi-select-item" value="{{ it.id }}">{% endif %}</td>
           {% if it.is_active %}
           <td colspan="8" style="padding:0;">
           <form method="POST" action="{{ url_for('bar_inventory_items_save') }}">
@@ -129,16 +136,42 @@
           {% endif %}
         </tr>
         {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">No items yet.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">No items yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 
+<form id="biBulkDeleteForm" method="POST" action="{{ url_for('bar_inventory_items_bulk_deactivate') }}"></form>
+
 <script>
 function biItemsToggleBottle(sel) {
   document.getElementById('biBottleSizeWrap').style.display = (sel.value === 'BOTTLE_ML') ? '' : 'none';
+}
+
+function biItemsToggleAll(checkbox) {
+  document.querySelectorAll('.bi-select-item').forEach(function(cb) { cb.checked = checkbox.checked; });
+}
+
+function biItemsDeleteSelected() {
+  const selected = Array.from(document.querySelectorAll('.bi-select-item:checked'));
+  if (selected.length === 0) {
+    alert('Select at least one item first.');
+    return;
+  }
+  if (!confirm('Remove ' + selected.length + ' selected item(s) from the active list?')) return;
+
+  const form = document.getElementById('biBulkDeleteForm');
+  form.querySelectorAll('input[name="item_ids[]"]').forEach(function(el) { el.remove(); });
+  selected.forEach(function(cb) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'item_ids[]';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  form.submit();
 }
 </script>
 {% endblock %}

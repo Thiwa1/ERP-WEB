@@ -21016,6 +21016,22 @@ def bar_inventory_items_deactivate(item_id):
     return redirect(url_for('bar_inventory_items'))
 
 
+@app.route('/bar_inventory/items/bulk_deactivate', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_bulk_deactivate():
+    ids = [i for i in request.form.getlist('item_ids[]') if i.strip().isdigit()]
+    if not ids:
+        flash('No items were selected.', 'danger')
+        return redirect(url_for('bar_inventory_items'))
+
+    format_strings = ','.join(['%s'] * len(ids))
+    db.execute_query(f"UPDATE bar_inventory_items SET is_active = 0 WHERE id IN ({format_strings})",
+                     tuple(ids), commit=True)
+    flash(f'Removed {len(ids)} item(s) from the active list.', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
 @app.route('/bar_inventory/items/upload', methods=['POST'])
 @login_required
 @has_permission('Access_Inventory')
