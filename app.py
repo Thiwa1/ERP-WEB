@@ -188,6 +188,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'bar_inventory',      'label': 'Bar Inventory',        'url': '/bar_inventory',           'icon': 'fas fa-beer',                'category': 'Inventory'},
     {'key': 'bar_inventory_items','label': 'Bar Inventory Items',  'url': '/bar_inventory/items',     'icon': 'fas fa-list-ul',             'category': 'Inventory'},
     {'key': 'bar_inventory_categories','label': 'Bar Inventory Categories', 'url': '/bar_inventory/categories', 'icon': 'fas fa-tags', 'category': 'Inventory'},
+    {'key': 'bar_inventory_closing_stock','label': 'Bar Closing Stock', 'url': '/bar_inventory/closing_stock', 'icon': 'fas fa-warehouse', 'category': 'Inventory'},
     {'key': 'new_inventory_item', 'label': 'New Inventory Item',   'url': '/add_inventory_item',     'icon': 'fas fa-plus-square',         'category': 'Inventory'},
     {'key': 'grn',                'label': 'GRN',                  'url': '/grn',                    'icon': 'fas fa-truck-loading',       'category': 'Inventory'},
     {'key': 'po_generator',       'label': 'PO Generator',         'url': '/purchase_orders',        'icon': 'fas fa-file-invoice',        'category': 'Inventory'},
@@ -20909,6 +20910,18 @@ def _bar_inv_sales_totals(items, day, missing=None):
         t['rest'] += it['rest_value']
         key = it.get('category_name') or ''
         t['by_category'][key] = round(t['by_category'].get(key, 0.0) + it['sales_value'], 2)
+        # Closing stock valued at the bar price, same rule as sales value.
+        it['closing_value'] = _bar_inv_value(it, max(float(it.get('closing_balance') or 0), 0.0), it.get('unit_price'))
+        if it.get('unit_type') in ('BOTTLE_ML', 'ML_ONLY'):
+            t['stock_ml'] = t.get('stock_ml', 0.0) + it['closing_value']
+        else:
+            t['stock_units'] = t.get('stock_units', 0.0) + it['closing_value']
+        t.setdefault('stock_by_category', {})
+        t['stock_by_category'][key] = round(t['stock_by_category'].get(key, 0.0) + it['closing_value'], 2)
+    t['stock_units'] = round(t.get('stock_units', 0.0), 2)
+    t['stock_ml'] = round(t.get('stock_ml', 0.0), 2)
+    t['stock_total'] = round(t['stock_units'] + t['stock_ml'], 2)
+    t.setdefault('stock_by_category', {})
     t['units'] = round(t['units'], 2)
     t['ml'] = round(t['ml'], 2)
     t['grand'] = round(t['units'] + t['ml'], 2)
@@ -21898,6 +21911,94 @@ def bar_inventory_clear_day():
     flash(f'Cleared the {"verified " if was_verified else ""}Bar Inventory entry for {entry_date}.'
           + _bar_inv_rollforward_note(entry_date), 'success')
     return redirect(url_for('bar_inventory', date=entry_date))
+
+
+def _bar_inv_closing_stock(as_of):
+    """Closing stock of every active item as at the end of `as_of`: the
+    closing balance from the item's latest day line on or before that date,
+    or its starting Opening Balance if it has never been entered. Each item
+    gets bottles / ml split, value at bar price, and the date the figure
+    comes from; returns (items, totals)."""
+    items = _bar_inv_items()
+    rows = db.execute_query("""
+        SELECT dl.item_id, dl.closing_balance, d.entry_date, d.status
+        FROM bar_inventory_day_lines dl
+        JOIN bar_inventory_days d ON d.id = dl.day_id
+        WHERE d.entry_date <= %s
+        ORDER BY d.entry_date
+    """, (as_of,)) or []
+    last = {}
+    for r in rows:
+        last[r['item_id']] = r   # ordered by date, so the latest wins
+
+    t = {'units': 0.0, 'ml': 0.0, 'by_category': {}, 'negative': 0, 'never_entered': 0}
+    for it in items:
+        ln = last.get(it['id'])
+        if ln:
+            qty = float(ln['closing_balance'] or 0)
+            it['as_of_date'] = ln['entry_date']
+            it['as_of_status'] = ln['status']
+        else:
+            qty = float(it['opening_balance'] or 0)
+            it['as_of_date'] = None
+            it['as_of_status'] = None
+            t['never_entered'] += 1
+        it['closing_balance'] = qty
+        it['closing_display'] = _bar_inv_format_balance(it, qty)
+        if it['unit_type'] == 'BOTTLE_ML' and it.get('bottle_size_ml'):
+            size = float(it['bottle_size_ml'])
+            it['bottles'] = int(max(qty, 0) // size)
+            it['loose_ml'] = round(max(qty, 0) - it['bottles'] * size, 2)
+        elif it['unit_type'] == 'ML_ONLY':
+            it['bottles'] = None
+            it['loose_ml'] = qty
+        else:
+            it['bottles'] = qty
+            it['loose_ml'] = None
+        it['closing_value'] = _bar_inv_value(it, max(qty, 0.0), it.get('unit_price'))
+        if qty < 0:
+            t['negative'] += 1
+        if it['unit_type'] in ('BOTTLE_ML', 'ML_ONLY'):
+            t['ml'] += it['closing_value']
+        else:
+            t['units'] += it['closing_value']
+        key = it.get('category_name') or ''
+        t['by_category'][key] = round(t['by_category'].get(key, 0.0) + it['closing_value'], 2)
+    t['units'] = round(t['units'], 2)
+    t['ml'] = round(t['ml'], 2)
+    t['total'] = round(t['units'] + t['ml'], 2)
+    return items, t
+
+
+@app.route('/bar_inventory/closing_stock', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_closing_stock():
+    as_of = request.args.get('date') or date.today().strftime('%Y-%m-%d')
+    items, totals = _bar_inv_closing_stock(as_of)
+    if request.args.get('export') == 'csv':
+        si = io.StringIO()
+        cw = csv.writer(si)
+        cw.writerow([f'Bar Closing Stock as at {as_of}'])
+        cw.writerow(['Category', 'Item Code', 'Item Name', 'Bottles / Units', 'Ml', 'Closing Balance',
+                     'Unit Price', 'Closing Stock Value', 'Last Entry Date'])
+        for it in items:
+            cw.writerow([it['category_name'] or '', it['item_code'] or '', it['item_name'],
+                         '' if it['bottles'] is None else f"{it['bottles']:g}",
+                         '' if it['loose_ml'] is None else f"{it['loose_ml']:g}",
+                         it['closing_display'], f"{float(it['unit_price'] or 0):.2f}",
+                         f"{it['closing_value']:.2f}", it['as_of_date'] or 'opening balance'])
+        cw.writerow([])
+        cw.writerow(['', '', 'Total - Unit items', '', '', '', '', f"{totals['units']:.2f}"])
+        cw.writerow(['', '', 'Total - Ml items', '', '', '', '', f"{totals['ml']:.2f}"])
+        cw.writerow(['', '', 'Total Closing Stock Value', '', '', '', '', f"{totals['total']:.2f}"])
+        out = make_response(si.getvalue())
+        out.headers["Content-Disposition"] = f"attachment; filename=bar_closing_stock_{as_of}.csv"
+        out.headers["Content-type"] = "text/csv"
+        return out
+    return render_template('bar_inventory_closing_stock.html', as_of=as_of, items=items, totals=totals,
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           print_mode=request.args.get('print') == '1')
 
 
 @app.route('/bar_inventory/records', methods=['GET'])

@@ -31,6 +31,7 @@
   <div class="d-flex gap-2">
     <a href="{{ url_for('bar_inventory_records') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list me-1"></i> Records</a>
     <a href="{{ url_for('bar_inventory_print', date=entry_date) }}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="fas fa-print me-1"></i> Print</a>
+    <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-warehouse me-1"></i> Closing Stock</a>
     <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i> Manage Items</a>
     <a href="{{ url_for('bar_inventory_categories') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-tags me-1"></i> Categories</a>
     <a href="{{ url_for('bar_inventory_ignored_codes') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-ban me-1"></i> Ignored Codes</a>
@@ -133,6 +134,7 @@
               <th style="width:10%" class="text-end">Sales Value</th>
               <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Rest. Price</th>
               <th style="width:9%" class="text-end">Rest. Value</th>
+              <th style="width:10%" class="text-end" title="Closing Balance valued at Unit Price (ml items per 100 ml)">Closing Stock Value</th>
             </tr>
           </thead>
           <tbody>
@@ -142,6 +144,7 @@
               <td colspan="9" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
               <td class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
               <td colspan="2" style="background:#eaf2fb;"></td>
+              <td class="text-end fw-bold bi-cat-stock" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.stock_by_category.get(it.category_name or '', 0)) }}</td>
             </tr>
             {% endif %}
             <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}"
@@ -153,14 +156,15 @@
               <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td class="text-end bi-missing" data-value="{{ it.missing_qty or 0 }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
-              <td class="text-end bi-readonly-cell bi-closing">{{ it.closing_display }}</td>
+              <td class="text-end bi-readonly-cell bi-closing" data-value="{{ it.closing_balance or 0 }}">{{ it.closing_display }}</td>
               <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
               <td class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
               <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price_restaurant or 0) }}</td>
               <td class="text-end bi-rest-value">{{ '{:,.2f}'.format(it.rest_value) }}</td>
+              <td class="text-end bi-readonly-cell bi-closing-value">{{ '{:,.2f}'.format(it.closing_value) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="12" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            <tr><td colspan="13" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
             {% endfor %}
           </tbody>
           {% if items %}
@@ -168,28 +172,29 @@
             <tr>
               <td colspan="9" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
               <td class="text-end" id="biTotUnits">{{ '{:,.2f}'.format(totals.units) }}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <tr>
               <td colspan="9" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
               <td class="text-end" id="biTotMl">{{ '{:,.2f}'.format(totals.ml) }}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <tr class="bi-grand">
               <td colspan="9" class="text-end">Grand Total Sales Value (Bar)</td>
               <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
               <td class="text-end small">Restaurant</td>
               <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
+              <td></td>
             </tr>
             <tr class="bi-mv-missing-row">
               <td colspan="9" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
               <td class="text-end" id="biTotMissing">{{ '{:,.2f}'.format(totals.missing) }}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <tr>
               <td colspan="9" class="text-end">Total incl. Missing Items</td>
               <td class="text-end" id="biTotWithMissing">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <tr>
               <td colspan="9" class="text-end">Sheet (sales as per POS / sales sheet)</td>
@@ -197,12 +202,24 @@
                 <input type="number" step="0.01" name="sheet_amount" id="biSheet" class="form-control form-control-sm text-end"
                        value="{{ '%.2f'|format(totals.sheet) if totals.sheet is not none else '' }}" oninput="biRecalcTotals()" {% if readonly %}disabled{% endif %}>
               </td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
             </tr>
             <tr>
               <td colspan="9" class="text-end">Difference (Grand Total &minus; Sheet)</td>
               <td class="text-end" id="biTotDiff">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td>
-              <td colspan="2"></td>
+              <td colspan="3"></td>
+            </tr>
+            <tr class="bi-stock-row">
+              <td colspan="12" class="text-end">Closing Stock Value &mdash; Unit items</td>
+              <td class="text-end" id="biStockUnits">{{ '{:,.2f}'.format(totals.stock_units) }}</td>
+            </tr>
+            <tr class="bi-stock-row">
+              <td colspan="12" class="text-end">Closing Stock Value &mdash; Ml items</td>
+              <td class="text-end" id="biStockMl">{{ '{:,.2f}'.format(totals.stock_ml) }}</td>
+            </tr>
+            <tr class="bi-grand">
+              <td colspan="12" class="text-end">Total Closing Stock Value &mdash; <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}">full closing stock report</a></td>
+              <td class="text-end" id="biStockTotal">{{ '{:,.2f}'.format(totals.stock_total) }}</td>
             </tr>
           </tfoot>
           {% endif %}
@@ -495,6 +512,7 @@ function biRecalcRow(input) {
   const ent = parseFloat(tr.querySelector('.bi-ent').value) || 0;
   const missingQty = parseFloat(tr.querySelector('.bi-missing').getAttribute('data-value')) || 0;
   const closing = opening + rf - sales - restaurant - ent - missingQty;
+  tr.querySelector('.bi-closing').setAttribute('data-value', closing);
   tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
   biRecalcTotals();
 }
@@ -512,6 +530,8 @@ function biMoney(v) {
 function biRecalcTotals() {
   let units = 0, ml = 0, rest = 0;
   const byCat = {};
+  let stockUnits = 0, stockMl = 0;
+  const stockByCat = {};
   document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
     const unitType = tr.getAttribute('data-unit-type');
     const sales = parseFloat(tr.querySelector('.bi-sales').value) || 0;
@@ -524,6 +544,10 @@ function biRecalcTotals() {
     rest += rv;
     const cat = tr.getAttribute('data-category');
     byCat[cat] = (byCat[cat] || 0) + sv;
+    const cv = biValue(unitType, Math.max(parseFloat(tr.querySelector('.bi-closing').getAttribute('data-value')) || 0, 0), parseFloat(tr.getAttribute('data-price')) || 0);
+    tr.querySelector('.bi-closing-value').textContent = biMoney(cv);
+    if (unitType === 'BOTTLE_ML' || unitType === 'ML_ONLY') stockMl += cv; else stockUnits += cv;
+    stockByCat[cat] = (stockByCat[cat] || 0) + cv;
   });
   document.querySelectorAll('#biForm .bi-cat-total').forEach(function(td) {
     td.textContent = biMoney(byCat[td.getAttribute('data-category')] || 0);
@@ -534,6 +558,12 @@ function biRecalcTotals() {
   set('biTotMl', biMoney(ml));
   set('biTotGrand', biMoney(grand));
   set('biTotRest', biMoney(rest));
+  document.querySelectorAll('#biForm .bi-cat-stock').forEach(function(td) {
+    td.textContent = biMoney(stockByCat[td.getAttribute('data-category')] || 0);
+  });
+  set('biStockUnits', biMoney(stockUnits));
+  set('biStockMl', biMoney(stockMl));
+  set('biStockTotal', biMoney(stockUnits + stockMl));
   set('biTotWithMissing', biMoney(grand + BI_MISSING_TOTAL));
   biMarkMovement();
   const sheet = document.getElementById('biSheet');
