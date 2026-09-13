@@ -6,6 +6,7 @@
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <h4 class="mb-0 fw-bold"><i class="fas fa-tags me-2 text-primary"></i>Bar Inventory &mdash; Categories</h4>
   <span class="d-flex gap-2">
+    <a href="{{ url_for('bar_inventory_items_arrange') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-sort me-1"></i> Arrange Item Order</a>
     <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i> Manage Items</a>
     <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to Bar Inventory</a>
   </span>

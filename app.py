@@ -22432,6 +22432,60 @@ def bar_inventory_categories():
     return render_template('bar_inventory_categories.html', categories=categories, uncategorised=uncategorised)
 
 
+@app.route('/bar_inventory/items/arrange', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_arrange():
+    """Drag-and-drop page for the position of every active item within its
+    category (and moving an item to another category)."""
+    items = _bar_inv_items()
+    categories = _bar_inv_categories()
+    groups = [{'id': c['id'], 'name': c['name'], 'items': []} for c in categories]
+    by_id = {g['id']: g for g in groups}
+    uncategorised = {'id': None, 'name': 'No category', 'items': []}
+    for it in items:
+        by_id.get(it['category_id'], uncategorised)['items'].append(it)
+    groups.append(uncategorised)
+    return render_template('bar_inventory_items_arrange.html', groups=groups, item_count=len(items))
+
+
+@app.route('/bar_inventory/items/arrange', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_arrange_save():
+    """Saves the arrangement: order_json is a list of
+    {category_id, item_ids[]} in the order shown. Items are numbered 10, 20,
+    30... within each category, and take that category."""
+    try:
+        groups = json.loads(request.form.get('order_json') or '[]')
+    except (ValueError, TypeError):
+        flash('Could not read the new order - please try again.', 'danger')
+        return redirect(url_for('bar_inventory_items_arrange'))
+
+    valid_cats = {c['id'] for c in _bar_inv_categories(active_only=False)}
+    updated = 0
+    moved = 0
+    current = {it['id']: it['category_id'] for it in _bar_inv_items()}
+    for g in groups if isinstance(groups, list) else []:
+        cat_id = g.get('category_id')
+        cat_id = int(cat_id) if str(cat_id).isdigit() and int(cat_id) in valid_cats else None
+        for pos, item_id in enumerate(g.get('item_ids') or [], start=1):
+            if not str(item_id).isdigit() or int(item_id) not in current:
+                continue
+            item_id = int(item_id)
+            if current[item_id] != cat_id:
+                moved += 1
+            db.execute_query("UPDATE bar_inventory_items SET display_order = %s, category_id = %s WHERE id = %s",
+                             (pos * 10, cat_id, item_id), commit=True)
+            updated += 1
+
+    msg = f'Item order saved for {updated} item(s).'
+    if moved:
+        msg += f' {moved} item(s) moved to a different category.'
+    flash(msg, 'success')
+    return redirect(url_for('bar_inventory_items_arrange'))
+
+
 @app.route('/bar_inventory/categories/reorder', methods=['POST'])
 @login_required
 @has_permission('Access_Inventory')

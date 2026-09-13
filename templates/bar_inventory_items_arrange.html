@@ -1,0 +1,194 @@
+{% extends "base.html" %}
+
+{% block title %}Arrange Bar Items{% endblock %}
+
+{% block content %}
+<style>
+  .ar-group { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+              box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:16px; overflow:hidden; }
+  .ar-group-head { padding:10px 16px; background:#eaf2fb; display:flex; align-items:center;
+                   justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  .ar-list { list-style:none; margin:0; padding:6px; min-height:44px; }
+  .ar-item { display:flex; align-items:center; gap:8px; padding:5px 8px; margin:3px 0;
+             border:1px solid rgba(0,0,0,0.08); border-radius:6px; background:#fff; cursor:grab; }
+  .ar-item:hover { background:#f6f9ff; }
+  .ar-item.dragging { opacity:0.4; }
+  .ar-item.ar-moved { border-left:4px solid #fd7e14; }
+  .ar-empty { color:#adb5bd; font-size:0.8rem; padding:8px; text-align:center; }
+  .ar-pos { min-width:2.2em; }
+  .ar-save-bar { position:sticky; top:0; z-index:50; background:#fff; padding:10px 0; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-sort me-2 text-primary"></i>Arrange Bar Items</h4>
+  <span class="d-flex gap-2">
+    <a href="{{ url_for('bar_inventory_categories') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-tags me-1"></i> Category Positions</a>
+    <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i> Manage Items</a>
+    <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Bar Inventory</a>
+  </span>
+</div>
+
+<div class="ar-save-bar d-flex align-items-center justify-content-between flex-wrap gap-2">
+  <span class="text-muted small">
+    {{ item_count }} items. Move with <i class="fas fa-arrow-up"></i> <i class="fas fa-arrow-down"></i> or drag an item &mdash;
+    drop it on another category to move it there. This order is used on the day sheet, printout, template and closing stock report.
+    Categories come in the order set on <a href="{{ url_for('bar_inventory_categories') }}">Category Positions</a>.
+  </span>
+  <span class="d-flex align-items-center gap-2">
+    <span id="arChanged" class="small text-danger fw-semibold" style="display:none;">Order changed &mdash; not saved yet</span>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.location.reload()">Undo changes</button>
+    <button type="button" id="arSaveBtn" class="btn btn-success btn-sm" onclick="arSave()" disabled>
+      <i class="fas fa-save me-1"></i> Save Order
+    </button>
+  </span>
+</div>
+
+<div class="row g-3">
+  {% for g in groups %}
+  {% if g.items or g.id is not none %}
+  <div class="col-lg-6">
+    <div class="ar-group">
+      <div class="ar-group-head">
+        <span class="fw-bold"><i class="fas fa-tag me-1 text-primary"></i>{{ g.name }}
+          <span class="badge bg-light text-dark border ms-1 ar-count">{{ g.items | length }}</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="arSortAZ(this)" title="Sort this category alphabetically">
+          <i class="fas fa-sort-alpha-down me-1"></i> A&ndash;Z
+        </button>
+      </div>
+      <ul class="ar-list" data-category-id="{{ g.id if g.id is not none else '' }}">
+        {% for it in g.items %}
+        <li class="ar-item" draggable="true" data-id="{{ it.id }}" data-original-category="{{ g.id if g.id is not none else '' }}">
+          <i class="fas fa-grip-vertical text-muted"></i>
+          <span class="badge bg-primary ar-pos">{{ loop.index }}</span>
+          <span class="flex-grow-1 ar-name">{{ it.item_name }}</span>
+          {% if it.item_code %}<code class="small">{{ it.item_code }}</code>{% endif %}
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Move up" onclick="arMove(this, -1)"><i class="fas fa-arrow-up"></i></button>
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Move down" onclick="arMove(this, 1)"><i class="fas fa-arrow-down"></i></button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+</div>
+
+<form id="arForm" method="POST" action="{{ url_for('bar_inventory_items_arrange_save') }}">
+  <input type="hidden" name="order_json" id="arOrderJson">
+</form>
+
+<script>
+let arDirty = false;
+
+function arRefresh() {
+  document.querySelectorAll('.ar-list').forEach(function(list) {
+    const rows = list.querySelectorAll('.ar-item');
+    rows.forEach(function(li, i) {
+      li.querySelector('.ar-pos').textContent = i + 1;
+      li.classList.toggle('ar-moved', li.getAttribute('data-original-category') !== list.getAttribute('data-category-id'));
+    });
+    const count = list.closest('.ar-group').querySelector('.ar-count');
+    if (count) count.textContent = rows.length;
+    let empty = list.querySelector('.ar-empty');
+    if (rows.length === 0 && !empty) {
+      empty = document.createElement('li');
+      empty.className = 'ar-empty';
+      empty.textContent = 'Drop items here';
+      list.appendChild(empty);
+    } else if (rows.length && empty) {
+      empty.remove();
+    }
+  });
+  arDirty = true;
+  document.getElementById('arSaveBtn').disabled = false;
+  document.getElementById('arChanged').style.display = '';
+}
+
+function arMove(btn, dir) {
+  const li = btn.closest('.ar-item');
+  const list = li.parentNode;
+  if (dir < 0) {
+    const prev = li.previousElementSibling;
+    if (!prev || !prev.classList.contains('ar-item')) return;
+    list.insertBefore(li, prev);
+  } else {
+    const next = li.nextElementSibling;
+    if (!next || !next.classList.contains('ar-item')) return;
+    list.insertBefore(next, li);
+  }
+  arRefresh();
+}
+
+function arSortAZ(btn) {
+  const list = btn.closest('.ar-group').querySelector('.ar-list');
+  const rows = Array.from(list.querySelectorAll('.ar-item'));
+  if (rows.length < 2) return;
+  rows.sort(function(a, b) {
+    return a.querySelector('.ar-name').textContent.trim().localeCompare(b.querySelector('.ar-name').textContent.trim());
+  });
+  rows.forEach(function(li) { list.appendChild(li); });
+  arRefresh();
+}
+
+(function() {
+  let dragging = null;
+  document.addEventListener('dragstart', function(e) {
+    const li = e.target.closest && e.target.closest('.ar-item');
+    if (!li) return;
+    dragging = li;
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', li.getAttribute('data-id'));
+  });
+  document.addEventListener('dragend', function() {
+    if (dragging) dragging.classList.remove('dragging');
+    dragging = null;
+  });
+  document.addEventListener('dragover', function(e) {
+    if (!dragging) return;
+    const list = e.target.closest && e.target.closest('.ar-list');
+    if (!list) return;
+    e.preventDefault();
+    const over = e.target.closest('.ar-item');
+    if (over && over !== dragging) {
+      const rect = over.getBoundingClientRect();
+      const after = (e.clientY - rect.top) > rect.height / 2;
+      list.insertBefore(dragging, after ? over.nextElementSibling : over);
+    } else if (!over && dragging.parentNode !== list) {
+      list.appendChild(dragging);
+    } else {
+      return;
+    }
+    arRefresh();
+  });
+  document.addEventListener('drop', function(e) {
+    if (dragging) e.preventDefault();
+  });
+  // Show a "Drop items here" spot in empty categories from the start.
+  document.querySelectorAll('.ar-list').forEach(function(list) {
+    if (!list.querySelector('.ar-item')) {
+      const empty = document.createElement('li');
+      empty.className = 'ar-empty';
+      empty.textContent = 'Drop items here';
+      list.appendChild(empty);
+    }
+  });
+})();
+
+function arSave() {
+  const groups = [];
+  document.querySelectorAll('.ar-list').forEach(function(list) {
+    const ids = Array.from(list.querySelectorAll('.ar-item')).map(function(li) { return li.getAttribute('data-id'); });
+    if (!ids.length) return;
+    groups.push({ category_id: list.getAttribute('data-category-id') || null, item_ids: ids });
+  });
+  document.getElementById('arOrderJson').value = JSON.stringify(groups);
+  arDirty = false;
+  document.getElementById('arForm').submit();
+}
+
+window.addEventListener('beforeunload', function(e) {
+  if (arDirty) { e.preventDefault(); e.returnValue = ''; }
+});
+</script>
+{% endblock %}
