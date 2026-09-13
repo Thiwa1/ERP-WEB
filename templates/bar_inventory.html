@@ -268,7 +268,10 @@
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
       <input type="hidden" name="lines_json" class="bi-miss-lines">
       <div class="col-md-4">
-        <label class="form-label small mb-1">Item <span class="text-danger">*</span></label>
+        <label class="form-label small mb-1">Item <span class="text-danger">*</span>
+          <span class="text-muted fw-normal">({{ items | length }} items &mdash; not listed? add it with "New Item (not in list)")</span></label>
+        <input type="text" id="biMissSearch" class="form-control form-control-sm mb-1" placeholder="Type name or code to search..."
+               oninput="biMissFilter(this.value)" autocomplete="off">
         <select name="item_id" id="biMissItem" class="form-select form-select-sm" required onchange="biMissPreview()">
           <option value="">Choose item...</option>
           {% for it in items %}
@@ -572,6 +575,28 @@ function biFilterMoved(on) {
     tr.style.display = (on && !tr.classList.contains('bi-moved')) ? 'none' : '';
   });
   document.querySelectorAll('#biForm .bi-cat-row').forEach(function(tr) { tr.style.display = on ? 'none' : ''; });
+}
+
+// Narrow the item list to matches (name or code); picks the first match so
+// Enter/Record works straight after typing.
+function biMissFilter(text) {
+  const sel = document.getElementById('biMissItem');
+  const q = text.trim().toLowerCase();
+  let first = null;
+  sel.querySelectorAll('option').forEach(function(opt) {
+    if (!opt.value) return;
+    const hit = !q || opt.textContent.toLowerCase().indexOf(q) !== -1;
+    opt.hidden = !hit;
+    opt.disabled = !hit;
+    if (hit && !first) first = opt;
+  });
+  sel.querySelectorAll('optgroup').forEach(function(g) {
+    g.hidden = !Array.from(g.querySelectorAll('option')).some(function(o) { return !o.hidden; });
+  });
+  if (q) {
+    sel.value = first ? first.value : '';
+  }
+  biMissPreview();
 }
 
 function biMissPreview() {

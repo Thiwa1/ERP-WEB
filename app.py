@@ -21511,13 +21511,27 @@ def bar_inventory_upload():
                                      for r in removed_rows if r['item_code']}
         internal_id_map = {str(it['id']): it['id'] for it in items}
 
-        def as_identifier(v):
+        def as_identifier(v, name_in_file=None):
             key = _bar_inv_norm_identifier(v)
             if key in code_map:
                 return code_map[key]
-            if key not in all_codes:
-                return internal_id_map.get(key)
-            return None
+            if key in all_codes or key in ignored_codes:
+                return None
+            # Internal-ID fallback, only when it can't be a coincidence: the
+            # item has no Item Code of its own, and the name in column B (if
+            # any) is that item's name. Otherwise a POS code that isn't on any
+            # item (food, rooms, a code not assigned yet) would quietly land
+            # on whichever bar item has that ID and never show as missing.
+            item_id = internal_id_map.get(key)
+            if item_id is None:
+                return None
+            it = items_by_id[item_id]
+            if it['item_code']:
+                return None
+            if name_in_file not in (None, '') and \
+                    _bar_inv_norm_name(name_in_file) != _bar_inv_norm_name(it['item_name']):
+                return None
+            return item_id
 
         # Codes already marked "not a bar item" - reported as Ignored rather
         # than errors, so the food/room lines in a POS export stop crying
@@ -21551,7 +21565,7 @@ def bar_inventory_upload():
                 layout_reason = f'header "{header_a}" in column A'
         else:
             # No header - fall back to probing the first row's column A.
-            id_layout = as_identifier(raw_rows[0][1]) is not None
+            id_layout = as_identifier(raw_rows[0][1], raw_rows[0][2]) is not None
             layout_reason = ('no header row; first row\'s column A matches a known Item Code/ID'
                              if id_layout else
                              'no header row and column A did not match any Item Code/ID, so treated as names')
@@ -21575,7 +21589,7 @@ def bar_inventory_upload():
             if id_layout:
                 lookup_value = c_a
                 file_name = c_b
-                item_id = as_identifier(c_a)
+                item_id = as_identifier(c_a, c_b)
                 if item_id is None and c_b not in (None, ''):
                     # The code isn't on any current item - but if the Item Name
                     # in column B is one of your CURRENT items, that's the item
