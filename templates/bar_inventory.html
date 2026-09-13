@@ -270,9 +270,9 @@
       <div class="col-md-4">
         <label class="form-label small mb-1">Item <span class="text-danger">*</span>
           <span class="text-muted fw-normal">({{ items | length }} items &mdash; not listed? add it with "New Item (not in list)")</span></label>
-        <input type="text" id="biMissSearch" class="form-control form-control-sm mb-1" placeholder="Type name or code to search..."
+        <input type="text" id="biMissSearch" class="form-control form-control-sm mb-1 no-select2" placeholder="Type name or code to search..."
                oninput="biMissFilter(this.value)" autocomplete="off">
-        <select name="item_id" id="biMissItem" class="form-select form-select-sm" required onchange="biMissPreview()">
+        <select name="item_id" id="biMissItem" class="form-select form-select-sm no-select2" size="6" onchange="biMissPreview()">
           <option value="">Choose item...</option>
           {% for it in items %}
           {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}{% if not loop.first %}</optgroup>{% endif %}<optgroup label="{{ it.category_name or 'No category' }}">{% endif %}
@@ -283,7 +283,7 @@
       </div>
       <div class="col-md-2">
         <label class="form-label small mb-1">Qty <span id="biMissUnit" class="text-muted"></span> <span class="text-danger">*</span></label>
-        <input type="number" step="any" name="qty" id="biMissQty" class="form-control form-control-sm" required oninput="biMissPreview()">
+        <input type="number" step="any" name="qty" id="biMissQty" class="form-control form-control-sm no-select2" oninput="biMissPreview()">
       </div>
       <div class="col-md-2">
         <label class="form-label small mb-1">Barman</label>
@@ -299,6 +299,16 @@
         <button type="submit" class="btn btn-danger btn-sm w-100"><i class="fas fa-plus me-1"></i> Record</button>
       </div>
     </form>
+    {% else %}
+    <div class="alert alert-warning py-2 small d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span><i class="fas fa-lock me-1"></i> {{ entry_date }} is <strong>verified</strong>, so missing items can't be recorded. Unlock the day first.</span>
+      <form method="POST" action="{{ url_for('bar_inventory_unverify') }}" class="mb-0">
+        <input type="hidden" name="entry_date" value="{{ entry_date }}">
+        <button type="submit" class="btn btn-warning btn-sm" onclick="return confirm('Unlock {{ entry_date }} for editing?');">
+          <i class="fas fa-lock-open me-1"></i> Unlock to Edit
+        </button>
+      </form>
+    </div>
     {% endif %}
 
     <div class="table-responsive">
@@ -611,6 +621,18 @@ function biMissPreview() {
 }
 
 function biMissingSubmit(form) {
+  const sel = document.getElementById('biMissItem');
+  const qty = parseFloat(document.getElementById('biMissQty').value) || 0;
+  if (!sel.value) {
+    alert('Choose the item first - type part of the name or code in the search box, then click the item in the list.');
+    document.getElementById('biMissSearch').focus();
+    return false;
+  }
+  if (!qty) {
+    alert('Enter the missing quantity (ml for Bottle + Ml / Ml items).');
+    document.getElementById('biMissQty').focus();
+    return false;
+  }
   form.querySelector('.bi-miss-lines').value = JSON.stringify(biCollectLines());
   return true;
 }
