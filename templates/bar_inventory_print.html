@@ -41,6 +41,7 @@
             .no-print-bar { display: none; }
             .sheet { box-shadow: none; margin: 0; padding: 0; max-width: 100%; }
         }
+        .cat-row td { background: #eef3f8; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     </style>
 </head>
 <body>
@@ -71,6 +72,9 @@
             </thead>
             <tbody>
                 {% for it in items %}
+                {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
+                <tr class="cat-row"><td colspan="7"><strong>{{ it.category_name or 'No category' }}</strong></td></tr>
+                {% endif %}
                 <tr>
                     <td>{{ it.item_name }}</td>
                     <td class="num">{{ it.opening_display }}</td>

@@ -130,7 +130,7 @@
       <i class="fas fa-exclamation-triangle me-1"></i>
       <strong>{{ bad_codes | length }} code(s) did not match any bar item</strong> and will <strong>not</strong> be imported.
       You can still submit the matched ones now. To fix the rest, set the right Item Code on
-      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>, or (for food/rooms/combos) mark them
+      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>, <a href="#upMissing">add them as new items</a> if they're missing, or (for food/rooms/combos) mark them
       "not a bar item" below so they stop showing as errors.
     </div>
     {% endif %}
@@ -232,6 +232,74 @@
 </div>
 {% endif %}
 
+{# ------------------------------------ missing items -> add as new items #}
+{% if missing %}
+<div class="up-card" id="upMissing">
+  <div class="up-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-plus-circle me-1 text-success"></i>Add Missing Items &mdash; {{ missing | length }} in the file but not in your item list</h6>
+    <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm">Manage Items</a>
+  </div>
+  <div class="up-card-body">
+    <p class="text-muted small">
+      Tick the real bar items, check the name / category / unit type, and press <strong>Add ticked items</strong>.
+      They're created with the code from the file, so when you upload this file again their quantities import.
+      Items with <span class="badge bg-light text-muted border">no qty today</span> were empty in this file but still aren't in your list.
+      Category and unit type are a best guess from the name &mdash; change them if wrong. Prices can be set later on Manage Items.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_items_add_missing') }}">
+      <input type="hidden" name="next_date" value="{{ entry_date }}">
+      <div class="table-responsive" style="max-height:420px;overflow:auto;">
+        <table class="table table-sm table-bordered up-table mb-2">
+          <thead>
+            <tr>
+              <th style="width:4%"><input type="checkbox" onclick="upToggleMissingAll(this)"></th>
+              <th style="width:10%">Code</th>
+              <th>Item Name</th>
+              <th style="width:18%">Category</th>
+              <th style="width:15%">Unit Type</th>
+              <th style="width:10%">Bottle ml</th>
+              <th style="width:10%">Opening Bal.</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for m in missing %}
+            {% set i = loop.index0 %}
+            <tr>
+              <td><input type="checkbox" class="up-missing-cb" name="add_idx[]" value="{{ i }}"></td>
+              <td>
+                <input type="text" name="code_{{ i }}" class="form-control form-control-sm" value="{{ m.code }}" placeholder="(none)">
+                {% if not m.has_qty %}<span class="badge bg-light text-muted border mt-1">no qty today</span>{% endif %}
+              </td>
+              <td><input type="text" name="name_{{ i }}" class="form-control form-control-sm" value="{{ m.file_name }}"></td>
+              <td>
+                <select name="category_{{ i }}" class="form-select form-select-sm">
+                  <option value="">(none)</option>
+                  {% for c in categories %}<option value="{{ c.id }}" {% if m.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                </select>
+              </td>
+              <td>
+                <select name="unit_type_{{ i }}" class="form-select form-select-sm" onchange="upMissingUnit(this, {{ i }})">
+                  <option value="UNIT" {% if m.unit_type == 'UNIT' %}selected{% endif %}>Whole Units</option>
+                  <option value="BOTTLE_ML" {% if m.unit_type == 'BOTTLE_ML' %}selected{% endif %}>Bottle + Ml</option>
+                  <option value="ML_ONLY" {% if m.unit_type == 'ML_ONLY' %}selected{% endif %}>Ml only</option>
+                </select>
+              </td>
+              <td><input type="number" step="any" name="bottle_size_{{ i }}" id="upBottle{{ i }}" class="form-control form-control-sm"
+                         value="{{ 750 if m.unit_type == 'BOTTLE_ML' else '' }}" {% if m.unit_type != 'BOTTLE_ML' %}disabled{% endif %}></td>
+              <td><input type="number" step="any" name="opening_{{ i }}" class="form-control form-control-sm" value="0"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm" onclick="return upConfirmAddMissing()">
+        <i class="fas fa-plus me-1"></i> Add ticked items
+      </button>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {# --------------------------------------- not matched -> mark as ignored #}
 {% if bad_codes %}
 <div class="up-card">
@@ -260,7 +328,7 @@
             <tr>
               <td><input type="checkbox" class="up-ignore-cb" name="code[]" value="{{ s.code }}"></td>
               <td><code>{{ s.code }}</code></td>
-              <td>{{ s.file_name }}<input type="hidden" name="label[]" value="{{ s.file_name }}"></td>
+              <td>{{ s.file_name }}<input type="hidden" name="label_{{ s.code }}" value="{{ s.file_name }}"></td>
             </tr>
             {% endfor %}
           </tbody>
@@ -355,6 +423,23 @@ function upBuildPayload(form) {
   }
   form.querySelector('.up-lines-json').value = JSON.stringify(lines);
   return confirm('Submit ' + lines.length + ' item(s) to {{ entry_date }}?');
+}
+
+function upToggleMissingAll(cb) {
+  document.querySelectorAll('.up-missing-cb').forEach(function(el) { el.checked = cb.checked; });
+}
+
+function upMissingUnit(sel, i) {
+  const box = document.getElementById('upBottle' + i);
+  if (!box) return;
+  box.disabled = sel.value !== 'BOTTLE_ML';
+  if (!box.disabled && !box.value) box.value = 750;
+}
+
+function upConfirmAddMissing() {
+  const n = document.querySelectorAll('.up-missing-cb:checked').length;
+  if (n === 0) { alert('Tick at least one item to add.'); return false; }
+  return confirm('Add ' + n + ' new item(s) to Bar Inventory?');
 }
 
 function upToggleIgnoreAll(cb) {

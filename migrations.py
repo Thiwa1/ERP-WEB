@@ -61,6 +61,7 @@ def run_migrations(conn):
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
+        _migrate_bar_inventory_categories(cursor)
 
         conn.commit()
         cursor.close()
@@ -1097,6 +1098,40 @@ def _migrate_bar_inventory_ignored_codes(cursor):
                   UNIQUE KEY code_UNIQUE (code)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_categories(cursor):
+    """Item categories (Beer, Arrack, Gin, ...) for grouping bar items on
+    Manage Items, the day grid and the printout."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_categories'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_categories table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_categories (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  name VARCHAR(100) NOT NULL,
+                  display_order INT NOT NULL DEFAULT 0,
+                  is_active TINYINT(1) NOT NULL DEFAULT 1,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY name_UNIQUE (name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            defaults = ['Beer', 'Arrack', 'Gin', 'Brandy', 'Whisky', 'Rum', 'Vodka', 'Wine',
+                        'Soft Drinks & Mixers', 'Water', 'Snacks', 'Cigarettes', 'Empties']
+            for i, name in enumerate(defaults):
+                cursor.execute("INSERT IGNORE INTO bar_inventory_categories (name, display_order) VALUES (%s, %s)",
+                               (name, (i + 1) * 10))
+
+        cursor.execute("SHOW COLUMNS FROM bar_inventory_items LIKE 'category_id'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE bar_inventory_items ADD COLUMN category_id INT NULL")
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

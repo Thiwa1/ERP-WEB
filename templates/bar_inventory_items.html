@@ -26,6 +26,19 @@
           </div>
           <div class="row g-2 mb-2">
             <div class="col-6">
+              <label class="form-label">Category</label>
+              <select name="category_id" class="form-select">
+                <option value="">(none)</option>
+                {% for c in categories if c.is_active %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+              </select>
+            </div>
+            <div class="col-6">
+              <label class="form-label">or New Category <span class="text-muted fw-normal">(optional)</span></label>
+              <input type="text" name="new_category" class="form-control" placeholder="e.g. Liqueur">
+            </div>
+          </div>
+          <div class="row g-2 mb-2">
+            <div class="col-6">
               <label class="form-label">Unit Type</label>
               <select name="unit_type" class="form-select" onchange="biItemsToggleBottle(this)">
                 <option value="UNIT">Whole Units (cans, bottles as 1 each)</option>
@@ -67,7 +80,8 @@
           One row per item. Column A = Item Name (required). Optionally add
           B = Unit Type ("Whole Units" / "Bottle+Ml"), C = Bottle Size (ml),
           D = Unit Price (Bar), E = Opening Balance, F = Unit Price (Restaurant),
-          G = Item Code (your own ID from another system, if you have one)
+          G = Item Code (your own ID from another system, if you have one),
+          H = Category (e.g. "Beer", "Arrack" &mdash; a new name creates the category)
           &mdash; if present, these fill in automatically for new items
           <em>and update existing ones</em> (matched by Item Code first if
           given, otherwise by name &mdash; handy for re-uploading a corrected
@@ -86,10 +100,73 @@
   </div>
 </div>
 
+{# ------------------------------------------------------------ categories #}
+<details class="card mb-3" {% if not categories %}open{% endif %}>
+  <summary class="card-header fw-bold" style="cursor:pointer;">
+    <i class="fas fa-tags me-1 text-primary"></i> Item Categories ({{ categories | length }}) &mdash; click to add / rename / reorder
+  </summary>
+  <div class="card-body">
+    <p class="text-muted small mb-2">
+      Categories group your items on this page, on the day sheet and on the printout, in <strong>Order</strong>
+      (lowest first). Deleting a category never deletes items &mdash; they just become uncategorised.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-2" style="max-width:720px;">
+        <thead><tr><th style="width:14%">Order</th><th>Category Name</th><th style="width:12%" class="text-center">Items</th><th style="width:16%"></th></tr></thead>
+        <tbody>
+          {% for c in categories %}
+          <tr>
+            <td colspan="4" style="padding:0;">
+              <form method="POST" action="{{ url_for('bar_inventory_categories_save') }}" class="d-flex align-items-center gap-2 p-1">
+                <input type="hidden" name="category_id" value="{{ c.id }}">
+                <input type="number" step="1" name="display_order" class="form-control form-control-sm" style="width:14%;" value="{{ c.display_order or 0 }}">
+                <input type="text" name="name" class="form-control form-control-sm flex-grow-1" value="{{ c.name }}" required>
+                <a href="{{ url_for('bar_inventory_items', category=c.id) }}" class="badge bg-light text-dark border text-decoration-none" style="width:12%;" title="Show only this category">{{ c.item_count }}</a>
+                <span class="text-nowrap" style="width:16%;">
+                  <button type="submit" class="btn btn-sm btn-outline-primary" title="Save"><i class="fas fa-save"></i></button>
+                  <button type="submit" formaction="{{ url_for('bar_inventory_categories_delete', cat_id=c.id) }}"
+                          class="btn btn-sm btn-outline-danger" title="Delete category"
+                          onclick="return confirm('Delete this category? Its items will become uncategorised.');"><i class="fas fa-trash"></i></button>
+                </span>
+              </form>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr>
+            <td colspan="4" style="padding:0;">
+              <form method="POST" action="{{ url_for('bar_inventory_categories_save') }}" class="d-flex align-items-center gap-2 p-1">
+                <input type="number" step="1" name="display_order" class="form-control form-control-sm" style="width:14%;" placeholder="auto">
+                <input type="text" name="name" class="form-control form-control-sm flex-grow-1" placeholder="New category name, e.g. Liqueur" required>
+                <span style="width:12%;"></span>
+                <span style="width:16%;"><button type="submit" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i> Add</button></span>
+              </form>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</details>
+
 <div class="card">
   <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <span class="fw-bold">All Items</span>
-    <span class="d-flex gap-2">
+    <span class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-bold">All Items</span>
+      <select class="form-select form-select-sm" style="width:auto;" onchange="window.location = '{{ url_for('bar_inventory_items') }}' + (this.value ? '?category=' + this.value : '');">
+        <option value="">All categories</option>
+        {% for c in categories %}<option value="{{ c.id }}" {% if filter_cat == c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        <option value="none" {% if filter_cat == 'none' %}selected{% endif %}>(No category)</option>
+      </select>
+    </span>
+    <span class="d-flex gap-2 flex-wrap align-items-center">
+      <select id="biBulkCategory" class="form-select form-select-sm" style="width:auto;">
+        <option value="">Set category of selected to...</option>
+        {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        <option value="none">(No category)</option>
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-primary" onclick="biItemsSetCategory()">
+        <i class="fas fa-tags me-1"></i> Apply
+      </button>
       <button type="button" class="btn btn-sm btn-outline-success" onclick="biItemsRestoreSelected()">
         <i class="fas fa-undo me-1"></i> Restore Selected
       </button>
@@ -116,6 +193,7 @@
           <th style="width:8%">Code</th>
           <th style="width:8%">Order</th>
           <th>Item Name</th>
+          <th>Category</th>
           <th>Unit Type</th>
           <th>Bottle Size (ml)</th>
           <th class="text-end">Unit Price (Bar)</th>
@@ -126,17 +204,30 @@
       </thead>
       <tbody>
         {% for it in items %}
+        {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
+        <tr class="table-primary">
+          <td><input type="checkbox" title="Select all items in this category" onclick="biItemsToggleGroup(this, '{{ it.category_id or 'none' }}')"></td>
+          <td colspan="11" class="fw-bold"><i class="fas fa-tag me-1"></i>{{ it.category_name or 'No category' }}</td>
+        </tr>
+        {% endif %}
         <tr>
-          <td><input type="checkbox" class="bi-select-item" value="{{ it.id }}" data-active="{{ 1 if it.is_active else 0 }}"></td>
+          <td><input type="checkbox" class="bi-select-item" value="{{ it.id }}" data-active="{{ 1 if it.is_active else 0 }}" data-category="{{ it.category_id or 'none' }}"></td>
           <td class="text-muted"><code>{{ it.id }}</code></td>
-          <td colspan="9" style="padding:0;{% if not it.is_active %}background:#fff4e5;{% endif %}">
+          <td colspan="10" style="padding:0;{% if not it.is_active %}background:#fff4e5;{% endif %}">
           <form method="POST" action="{{ url_for('bar_inventory_items_save') }}">
             <input type="hidden" name="item_id" value="{{ it.id }}">
+            <input type="hidden" name="return_category" value="{{ filter_cat }}">
             <table class="table table-sm mb-0" style="table-layout:fixed;">
               <tr>
                 <td style="width:9%"><input type="text" name="item_code" class="form-control form-control-sm" value="{{ it.item_code or '' }}" placeholder="(none)"></td>
                 <td style="width:8%"><input type="number" step="1" name="display_order" class="form-control form-control-sm" value="{{ it.display_order or 0 }}"></td>
                 <td><input type="text" name="item_name" class="form-control form-control-sm" value="{{ it.item_name }}"></td>
+                <td>
+                  <select name="category_id" class="form-select form-select-sm">
+                    <option value="">(none)</option>
+                    {% for c in categories %}<option value="{{ c.id }}" {% if it.category_id == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+                  </select>
+                </td>
                 <td>
                   <select name="unit_type" class="form-select form-select-sm">
                     <option value="UNIT" {% if it.unit_type == 'UNIT' %}selected{% endif %}>Whole Units</option>
@@ -166,7 +257,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="11" class="text-center text-muted py-4">No items yet.</td></tr>
+        <tr><td colspan="12" class="text-center text-muted py-4">No items {{ 'in this category' if filter_cat else 'yet' }}.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -175,8 +266,37 @@
 
 <form id="biBulkDeleteForm" method="POST" action="{{ url_for('bar_inventory_items_bulk_deactivate') }}"></form>
 <form id="biBulkRestoreForm" method="POST" action="{{ url_for('bar_inventory_items_bulk_restore') }}"></form>
+<form id="biBulkCategoryForm" method="POST" action="{{ url_for('bar_inventory_items_set_category') }}">
+  <input type="hidden" name="category_id" id="biBulkCategoryValue">
+</form>
 
 <script>
+function biItemsToggleGroup(checkbox, cat) {
+  document.querySelectorAll('.bi-select-item').forEach(function(cb) {
+    if (cb.getAttribute('data-category') === cat) cb.checked = checkbox.checked;
+  });
+}
+
+function biItemsSetCategory() {
+  const sel = document.getElementById('biBulkCategory');
+  if (!sel.value) { alert('Choose a category first.'); return; }
+  const selected = Array.from(document.querySelectorAll('.bi-select-item:checked'));
+  if (selected.length === 0) { alert('Select at least one item first.'); return; }
+  const label = sel.options[sel.selectedIndex].text;
+  if (!confirm('Set category "' + label + '" on ' + selected.length + ' item(s)?')) return;
+  const form = document.getElementById('biBulkCategoryForm');
+  document.getElementById('biBulkCategoryValue').value = sel.value;
+  form.querySelectorAll('input[name="item_ids[]"]').forEach(function(el) { el.remove(); });
+  selected.forEach(function(cb) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'item_ids[]';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  form.submit();
+}
+
 function biItemsToggleBottle(sel) {
   document.getElementById('biBottleSizeWrap').style.display = (sel.value === 'BOTTLE_ML') ? '' : 'none';
 }

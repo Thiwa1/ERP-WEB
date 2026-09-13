@@ -20706,13 +20706,96 @@ def daily_sales_gl_mapping_save():
 # ================================================================
 
 def _bar_inv_items():
+    # Grouped by category (in the category's own order, uncategorised last),
+    # then the item's own display order within the category.
     return db.execute_query("""
-        SELECT id, item_code, item_name, display_order, unit_type, bottle_size_ml,
-               unit_price, unit_price_restaurant, opening_balance
-        FROM bar_inventory_items
-        WHERE is_active = 1
-        ORDER BY display_order, item_name
+        SELECT i.id, i.item_code, i.item_name, i.display_order, i.unit_type, i.bottle_size_ml,
+               i.unit_price, i.unit_price_restaurant, i.opening_balance,
+               i.category_id, c.name AS category_name
+        FROM bar_inventory_items i
+        LEFT JOIN bar_inventory_categories c ON c.id = i.category_id
+        WHERE i.is_active = 1
+        ORDER BY (c.id IS NULL), c.display_order, c.name, i.display_order, i.item_name
     """) or []
+
+
+def _bar_inv_categories(active_only=True):
+    where = "WHERE is_active = 1" if active_only else ""
+    return db.execute_query(f"""
+        SELECT id, name, display_order, is_active
+        FROM bar_inventory_categories {where}
+        ORDER BY display_order, name
+    """) or []
+
+
+def _bar_inv_category_id(raw):
+    """A category from a form field or an uploaded cell: a numeric id is
+    used as-is, a name is looked up case-insensitively and created if it
+    doesn't exist yet. Blank returns None."""
+    if raw is None:
+        return None
+    if isinstance(raw, float) and raw.is_integer():
+        raw = int(raw)
+    text = ' '.join(str(raw).split())
+    if not text:
+        return None
+    if text.isdigit():
+        found = db.execute_query("SELECT id FROM bar_inventory_categories WHERE id = %s", (int(text),))
+        if found:
+            return found[0]['id']
+    found = db.execute_query("SELECT id, is_active FROM bar_inventory_categories WHERE LOWER(name) = LOWER(%s)", (text,))
+    if found:
+        if not found[0]['is_active']:
+            db.execute_query("UPDATE bar_inventory_categories SET is_active = 1 WHERE id = %s",
+                             (found[0]['id'],), commit=True)
+        return found[0]['id']
+    max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_categories") or []
+    next_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+    return db.execute_query("INSERT INTO bar_inventory_categories (name, display_order) VALUES (%s, %s)",
+                            (text[:100], next_order), commit=True)
+
+
+_BAR_INV_CATEGORY_KEYWORDS = [
+    # (words in the item name, words in the category name) - first hit wins
+    (('empty',), ('empt',)),
+    (('water',), ('water',)),
+    (('arrack', 'vsoa', 'v.s.o.a'), ('arrack',)),
+    (('gin',), ('gin',)),
+    (('brandy',), ('brandy',)),
+    (('whisky', 'whiskey', 'visky', 'vat 69'), ('whisk',)),
+    (('rum',), ('rum',)),
+    (('vodka', 'twist'), ('vodka',)),
+    (('beer', 'lager', 'larger', 'stout', 'strong', 'brew', 'keg', 'heineken', 'heiniken', 'tiger', 'tigger', 'carlsberg', 'lion'), ('beer',)),
+    (('wine', 'martini', 'sauv', 'cabernet', 'merlot'), ('wine',)),
+    (('soda', 'tonic', 'coke', 'sprite', 'ginger', 'g/ale', 'egb', 'pepsi', 'fanta', 'soft'), ('soft', 'mixer')),
+    (('cigarette', 'dunhil', 'dunhill', 'gold leaf', 'g/leaf', 'john player'), ('cigar',)),
+    (('nut', 'biscuit', 'bicuit', 'cheese', 'bite', 'chips'), ('snack',)),
+]
+
+
+def _bar_inv_guess_category(item_name, categories):
+    """Best-guess category id for an item name (for pre-filling the "add
+    missing items" form) - None when nothing obvious fits."""
+    text = ' '.join(str(item_name or '').lower().split())
+    words = set(re.split(r'[^a-z0-9]+', text))
+    for name_words, cat_words in _BAR_INV_CATEGORY_KEYWORDS:
+        hit = any((w in words or w + 's' in words) if w.isalnum() else (w in text)
+                  for w in name_words)
+        if not hit:
+            continue
+        for c in categories:
+            if any(cw in c['name'].lower() for cw in cat_words):
+                return c['id']
+    return None
+
+
+def _bar_inv_guess_unit_type(item_name, categories, category_id):
+    """Spirits are poured by the tot, so they're Bottle + Ml; everything
+    else (cans, bottles of beer, soft drinks, snacks) counts in whole units."""
+    cat = next((c for c in categories if c['id'] == category_id), None)
+    if cat and any(w in cat['name'].lower() for w in ('arrack', 'gin', 'brandy', 'whisk', 'rum', 'vodka')):
+        return 'BOTTLE_ML'
+    return 'UNIT'
 
 
 def _bar_inv_opening_balance(item, entry_date):
@@ -21154,6 +21237,7 @@ def bar_inventory_upload():
             }
 
             norm_lookup = _bar_inv_norm_identifier(lookup_value)
+            entry['norm_lookup'] = norm_lookup
             removed_hit = (removed_map.get(norm_lookup) if id_layout
                            else removed_by_name.get(_bar_inv_norm_name(lookup_value)))
             has_value = [v not in (None, '') for v in raw_quantities]
@@ -21251,6 +21335,32 @@ def bar_inventory_upload():
                 row[k] = ct[k] if k in ct['given'] else None
             subtotals.append(row)
 
+        # Candidates for "Add missing items": codes with quantities that
+        # matched nothing, plus codes that matched nothing but were empty
+        # today (still real items missing from the list). One per code.
+        categories = _bar_inv_categories()
+        missing = []
+        seen_missing = set()
+        for s in subtotals:
+            if s['status'] == 'not_matched':
+                seen_missing.add(s['code'].lower())
+                missing.append({'code': s['code'], 'file_name': s['file_name'], 'has_qty': True})
+        for e in report:
+            if e['status'] != 'disregarded' or e.get('matched_name'):
+                continue
+            norm = e.get('norm_lookup') or ''
+            if not norm or norm in ignored_codes or norm in seen_missing:
+                continue
+            if (removed_map.get(norm) if id_layout else removed_by_name.get(_bar_inv_norm_name(e['lookup']))):
+                continue
+            seen_missing.add(norm)
+            missing.append({'code': (e['lookup'][:-2] if e['lookup'].endswith('.0') else e['lookup']), 'file_name': e['file_name'], 'has_qty': False})
+        for m in missing:
+            if not id_layout:
+                m['code'] = ''
+            m['category_id'] = _bar_inv_guess_category(m['file_name'], categories)
+            m['unit_type'] = 'UNIT' if m['category_id'] is None else _bar_inv_guess_unit_type(m['file_name'], categories, m['category_id'])
+
         return render_template('bar_inventory_upload_preview.html',
                                entry_date=entry_date,
                                filename=f.filename,
@@ -21259,6 +21369,8 @@ def bar_inventory_upload():
                                report=report,
                                subtotals=subtotals,
                                applied=applied,
+                               missing=missing,
+                               categories=categories,
                                total_items_in_system=len(items),
                                items_with_codes=sum(1 for it in items if it['item_code']))
 
@@ -21312,7 +21424,11 @@ def bar_inventory_ignore_codes():
         code = (code or '').strip()
         if not code:
             continue
-        label = (labels[i] if i < len(labels) else '') or None
+        # Labels come keyed by code - a plain label[] list also carries the
+        # unticked rows, so it can't be paired with the ticked codes by position.
+        label = (request.form.get('label_' + code) or '').strip() or None
+        if label is None and len(labels) == len(codes):
+            label = labels[i] or None
         try:
             db.execute_query(
                 "INSERT INTO bar_inventory_ignored_codes (code, label, created_by) VALUES (%s, %s, %s)",
@@ -21455,12 +21571,28 @@ def bar_inventory_print():
 @has_permission('Access_Inventory')
 def bar_inventory_items():
     items = db.execute_query("""
-        SELECT id, item_code, item_name, display_order, unit_type, bottle_size_ml,
-               unit_price, unit_price_restaurant, opening_balance, is_active
-        FROM bar_inventory_items
-        ORDER BY display_order, item_name
+        SELECT i.id, i.item_code, i.item_name, i.display_order, i.unit_type, i.bottle_size_ml,
+               i.unit_price, i.unit_price_restaurant, i.opening_balance, i.is_active,
+               i.category_id, c.name AS category_name
+        FROM bar_inventory_items i
+        LEFT JOIN bar_inventory_categories c ON c.id = i.category_id
+        ORDER BY (c.id IS NULL), c.display_order, c.name, i.display_order, i.item_name
     """) or []
-    return render_template('bar_inventory_items.html', items=items)
+    categories = _bar_inv_categories(active_only=False)
+    counts = db.execute_query("""
+        SELECT category_id, COUNT(*) AS n FROM bar_inventory_items
+        WHERE is_active = 1 AND category_id IS NOT NULL GROUP BY category_id
+    """) or []
+    count_map = {r['category_id']: r['n'] for r in counts}
+    for c in categories:
+        c['item_count'] = count_map.get(c['id'], 0)
+    filter_cat = request.args.get('category') or ''
+    if filter_cat == 'none':
+        items = [it for it in items if not it['category_id']]
+    elif filter_cat.isdigit():
+        items = [it for it in items if it['category_id'] == int(filter_cat)]
+    return render_template('bar_inventory_items.html', items=items, categories=categories,
+                           filter_cat=filter_cat)
 
 
 @app.route('/bar_inventory/items/save', methods=['POST'])
@@ -21477,6 +21609,8 @@ def bar_inventory_items_save():
         unit_price_restaurant = parse_float(request.form.get('unit_price_restaurant'))
         opening_balance = parse_float(request.form.get('opening_balance'))
         display_order = parse_float(request.form.get('display_order')) or 0
+        new_category = (request.form.get('new_category') or '').strip()
+        category_id = _bar_inv_category_id(new_category or request.form.get('category_id'))
 
         if not item_name:
             flash('Item name is required.', 'danger')
@@ -21494,19 +21628,24 @@ def bar_inventory_items_save():
             db.execute_query("""
                 UPDATE bar_inventory_items SET
                     item_code=%s, item_name=%s, unit_type=%s, bottle_size_ml=%s, unit_price=%s,
-                    unit_price_restaurant=%s, opening_balance=%s, display_order=%s
+                    unit_price_restaurant=%s, opening_balance=%s, display_order=%s, category_id=%s
                 WHERE id=%s
             """, (item_code, item_name, unit_type, bottle_size_ml, unit_price,
-                  unit_price_restaurant, opening_balance, display_order, item_id), commit=True)
+                  unit_price_restaurant, opening_balance, display_order, category_id, item_id), commit=True)
             flash(f'"{item_name}" updated.', 'success')
         else:
+            if not display_order:
+                # Put a new item at the end of its list rather than the top.
+                max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_items") or []
+                display_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
             db.execute_query("""
                 INSERT INTO bar_inventory_items (
                     item_code, item_name, unit_type, bottle_size_ml, unit_price,
-                    unit_price_restaurant, opening_balance, display_order, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    unit_price_restaurant, opening_balance, display_order, category_id, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (item_code, item_name, unit_type, bottle_size_ml, unit_price,
-                  unit_price_restaurant, opening_balance, display_order, get_current_user_pk()), commit=True)
+                  unit_price_restaurant, opening_balance, display_order, category_id,
+                  get_current_user_pk()), commit=True)
             flash(f'"{item_name}" added.', 'success')
     except mysql.connector.Error as e:
         if e.errno == 1062:
@@ -21516,6 +21655,9 @@ def bar_inventory_items_save():
     except Exception as e:
         flash(f'Error saving item: {str(e)}', 'danger')
 
+    return_category = (request.form.get('return_category') or '').strip()
+    if return_category:
+        return redirect(url_for('bar_inventory_items', category=return_category))
     return redirect(url_for('bar_inventory_items'))
 
 
@@ -21625,6 +21767,146 @@ def bar_inventory_items_assign_codes():
     return redirect(url_for('bar_inventory_items'))
 
 
+@app.route('/bar_inventory/items/add_missing', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_add_missing():
+    """Create new bar items straight from the upload preview's "code not
+    matched" rows - each ticked row becomes an active item carrying the
+    file's code, so re-uploading the same file matches it."""
+    idxs = request.form.getlist('add_idx[]')
+    next_date = (request.form.get('next_date') or '').strip()
+
+    max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_items") or []
+    next_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+
+    added = 0
+    problems = []
+    for idx in idxs:
+        idx = str(idx).strip()
+        if not idx.isdigit():
+            continue
+        code = (request.form.get(f'code_{idx}') or '').strip()
+        name = ' '.join((request.form.get(f'name_{idx}') or '').split())
+        if not name:
+            problems.append(f'{code or "?"} (no name)')
+            continue
+        unit_type = request.form.get(f'unit_type_{idx}')
+        if unit_type not in ('UNIT', 'BOTTLE_ML', 'ML_ONLY'):
+            unit_type = 'UNIT'
+        bottle_size = parse_float(request.form.get(f'bottle_size_{idx}')) or None
+        opening_balance = parse_float(request.form.get(f'opening_{idx}'))
+        category_id = _bar_inv_category_id(request.form.get(f'category_{idx}'))
+
+        if code:
+            other = db.execute_query(
+                "SELECT item_name FROM bar_inventory_items WHERE item_code = %s AND is_active = 1", (code,)) or []
+            if other:
+                problems.append(f'{code} (already on {other[0]["item_name"]})')
+                continue
+        same_name = db.execute_query(
+            "SELECT id, is_active, item_code FROM bar_inventory_items WHERE LOWER(item_name) = LOWER(%s)", (name,)) or []
+
+        try:
+            if code:
+                db.execute_query("UPDATE bar_inventory_items SET item_code = NULL WHERE item_code = %s AND is_active = 0",
+                                 (code,), commit=True)
+            if same_name:
+                # The name already exists (item_name is unique) - adopt that
+                # row instead of failing: restore it and give it the code.
+                row = same_name[0]
+                if row['is_active'] and row['item_code'] and code and row['item_code'] != code:
+                    problems.append(f'{code} ("{name}" already has code {row["item_code"]})')
+                    continue
+                db.execute_query("""
+                    UPDATE bar_inventory_items
+                    SET is_active = 1, item_code = COALESCE(%s, item_code),
+                        category_id = COALESCE(%s, category_id)
+                    WHERE id = %s
+                """, (code or None, category_id, row['id']), commit=True)
+            else:
+                db.execute_query("""
+                    INSERT INTO bar_inventory_items
+                        (item_code, item_name, unit_type, bottle_size_ml, unit_price, unit_price_restaurant,
+                         opening_balance, display_order, category_id, created_by)
+                    VALUES (%s, %s, %s, %s, 0, 0, %s, %s, %s, %s)
+                """, (code or None, name, unit_type, bottle_size, opening_balance, next_order,
+                      category_id, get_current_user_pk()), commit=True)
+                next_order += 10
+            added += 1
+        except Exception as e:
+            problems.append(f'{code or name} ({e})')
+
+    msg = f'Added {added} missing item(s) to Bar Inventory.'
+    if added:
+        msg += ' Upload the file again to import their quantities; set prices on Manage Items.'
+    if problems:
+        msg += ' Not added: ' + ', '.join(problems[:8]) + ('...' if len(problems) > 8 else '')
+    flash(msg, 'success' if added else 'warning')
+    if next_date:
+        return redirect(url_for('bar_inventory', date=next_date))
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/items/set_category', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_set_category():
+    """Bulk: put every ticked item into one category (or none)."""
+    ids = [int(x) for x in request.form.getlist('item_ids[]') if str(x).strip().isdigit()]
+    raw = (request.form.get('category_id') or '').strip()
+    category_id = None if raw in ('', 'none') else _bar_inv_category_id(raw)
+    if not ids:
+        flash('Select at least one item first.', 'warning')
+        return redirect(url_for('bar_inventory_items'))
+    placeholders = ','.join(['%s'] * len(ids))
+    db.execute_query(f"UPDATE bar_inventory_items SET category_id = %s WHERE id IN ({placeholders})",
+                     tuple([category_id] + ids), commit=True)
+    flash(f'Category updated on {len(ids)} item(s).', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/categories/save', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_save():
+    cat_id = (request.form.get('category_id') or '').strip()
+    name = ' '.join((request.form.get('name') or '').split())
+    display_order = int(parse_float(request.form.get('display_order')) or 0)
+    if not name:
+        flash('Category name is required.', 'danger')
+        return redirect(url_for('bar_inventory_items'))
+    try:
+        if cat_id.isdigit():
+            db.execute_query("UPDATE bar_inventory_categories SET name = %s, display_order = %s, is_active = 1 WHERE id = %s",
+                             (name, display_order, int(cat_id)), commit=True)
+            flash(f'Category "{name}" updated.', 'success')
+        else:
+            if not display_order:
+                max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_categories") or []
+                display_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+            db.execute_query("INSERT INTO bar_inventory_categories (name, display_order) VALUES (%s, %s)",
+                             (name, display_order), commit=True)
+            flash(f'Category "{name}" added.', 'success')
+    except mysql.connector.Error as e:
+        if e.errno == 1062:
+            flash('A category with that name already exists.', 'danger')
+        else:
+            flash(f'Error saving category: {str(e)}', 'danger')
+    return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/categories/delete/<int:cat_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_delete(cat_id):
+    """Deletes a category; its items simply become uncategorised."""
+    db.execute_query("UPDATE bar_inventory_items SET category_id = NULL WHERE category_id = %s", (cat_id,), commit=True)
+    db.execute_query("DELETE FROM bar_inventory_categories WHERE id = %s", (cat_id,), commit=True)
+    flash('Category deleted. Its items are now uncategorised.', 'success')
+    return redirect(url_for('bar_inventory_items'))
+
+
 def _bar_inv_parse_unit_type(raw):
     """Maps a free-text unit type cell to the stored enum. Defaults to
     'UNIT' for blank/unrecognised text (e.g. the plain name-only format)."""
@@ -21662,7 +21944,7 @@ def bar_inventory_items_upload():
 
     try:
         fname = f.filename.lower()
-        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance, unit_price_restaurant, item_code)
+        rows_out = []  # (name, unit_type_raw, bottle_size, unit_price, opening_balance, unit_price_restaurant, item_code, category)
 
         def cell(row, idx):
             if idx >= len(row) or row[idx] is None:
@@ -21683,7 +21965,7 @@ def bar_inventory_items_upload():
                 name = str(name).strip()
                 if not name or name.lower() in ('item', 'item name', 'description', 'ml'):
                     continue
-                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4), cell(row, 5), cell(row, 6)))
+                rows_out.append((name, cell(row, 1), cell(row, 2), cell(row, 3), cell(row, 4), cell(row, 5), cell(row, 6), cell(row, 7)))
         else:
             import csv, io as _io
             text_data = f.read().decode('utf-8-sig', errors='ignore')
@@ -21694,7 +21976,7 @@ def bar_inventory_items_upload():
                 if not name or name.lower() in ('item', 'item name', 'description'):
                     continue
                 get = lambda i: (row[i].strip() if i < len(row) and row[i] not in (None, '') else None)
-                rows_out.append((name, get(1), get(2), get(3), get(4), get(5), get(6)))
+                rows_out.append((name, get(1), get(2), get(3), get(4), get(5), get(6), get(7)))
 
         if not rows_out:
             flash('No item names found in that file.', 'danger')
@@ -21725,10 +22007,11 @@ def bar_inventory_items_upload():
 
         added = 0
         updated = 0
-        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw, item_code_raw in rows_out:
+        for name, unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw, unit_price_restaurant_raw, item_code_raw, category_raw in rows_out:
             has_detail = any(v not in (None, '') for v in
                               (unit_type_raw, bottle_size_raw, unit_price_raw, opening_balance_raw,
-                               unit_price_restaurant_raw, item_code_raw))
+                               unit_price_restaurant_raw, item_code_raw, category_raw))
+            category_id = _bar_inv_category_id(category_raw)
 
             # Item Code (if given) identifies the item even across a rename;
             # otherwise fall back to matching by the current name.
@@ -21784,10 +22067,11 @@ def bar_inventory_items_upload():
                                 unit_price=COALESCE(%s, unit_price),
                                 opening_balance=COALESCE(%s, opening_balance),
                                 unit_price_restaurant=COALESCE(%s, unit_price_restaurant),
-                                item_code=COALESCE(NULLIF(%s, ''), item_code)
+                                item_code=COALESCE(NULLIF(%s, ''), item_code),
+                                category_id=COALESCE(%s, category_id)
                             WHERE id=%s
                         """, (name, unit_type, bottle_size, unit_price, opening_balance,
-                              unit_price_restaurant, item_code, existing_id), commit=True)
+                              unit_price_restaurant, item_code, category_id, existing_id), commit=True)
                         updated += 1
                 else:
                     unit_type = _bar_inv_parse_unit_type(unit_type_raw)
@@ -21797,10 +22081,10 @@ def bar_inventory_items_upload():
                     unit_price_restaurant = parse_float(unit_price_restaurant_raw)
                     new_id = db.execute_query("""
                         INSERT INTO bar_inventory_items
-                            (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                            (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order, category_id)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """, (item_code or None, name, unit_type, bottle_size, unit_price, opening_balance,
-                          unit_price_restaurant, next_order), commit=True)
+                          unit_price_restaurant, next_order, category_id), commit=True)
                     active_ids.add(new_id)
                     existing_by_name[name_key] = new_id
                     if item_code:

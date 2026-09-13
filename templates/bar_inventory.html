@@ -109,6 +109,9 @@
           </thead>
           <tbody>
             {% for it in items %}
+            {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
+            <tr class="bi-cat-row"><td colspan="7" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td></tr>
+            {% endif %}
             <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}">
               <td><strong>{{ it.item_name }}</strong></td>
               <td class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
