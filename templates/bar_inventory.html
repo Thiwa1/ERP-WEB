@@ -15,6 +15,14 @@
   .bi-readonly-cell { font-weight:600; color:#201f1e; }
   .bi-date-nav .btn { padding:6px 10px !important; }
   .bi-totals td { font-weight:600; background:#f8fafc; }
+  .bi-legend { padding:2px 10px; border-radius:4px; border:1px solid rgba(0,0,0,0.08); }
+  .bi-mv-rf, td.bi-mv-rf, td.bi-mv-rf input { background:#d1f2dd !important; }
+  .bi-mv-sales, td.bi-mv-sales, td.bi-mv-sales input { background:#d6e8ff !important; }
+  .bi-mv-restaurant, td.bi-mv-restaurant, td.bi-mv-restaurant input { background:#eadcff !important; }
+  .bi-mv-ent, td.bi-mv-ent, td.bi-mv-ent input { background:#ffe8c7 !important; }
+  .bi-mv-missing, td.bi-mv-missing { background:#ffd6d6 !important; color:#b02a37; font-weight:700; }
+  tr.bi-moved > td:first-child { border-left:4px solid #0d6efd !important; background:#f3f8ff; }
+  .bi-mv-missing-row td { color:#b02a37; }
   .bi-totals .bi-grand td { font-weight:700; background:#e8f3ff; border-top:2px solid rgba(0,103,192,0.3) !important; }
 </style>
 
@@ -96,6 +104,18 @@
       <input type="hidden" name="verify" id="biVerify" value="0">
       <input type="hidden" name="lines_json" id="biLinesJson">
 
+      <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
+        <span class="text-muted">Moved today:</span>
+        <span class="bi-legend bi-mv-rf">RF.Stock received</span>
+        <span class="bi-legend bi-mv-sales">Bar sales</span>
+        <span class="bi-legend bi-mv-restaurant">Restaurant sales</span>
+        <span class="bi-legend bi-mv-ent">ENT</span>
+        <span class="bi-legend bi-mv-missing">Missing (not entered)</span>
+        <span class="bi-legend" style="border-left:4px solid #0d6efd;">Row with any movement</span>
+        <label class="ms-auto d-flex align-items-center gap-1 mb-0" style="cursor:pointer;">
+          <input type="checkbox" id="biOnlyMoved" onchange="biFilterMoved(this.checked)"> Show only moved items
+        </label>
+      </div>
       <div class="table-responsive">
         <table class="table table-bordered table-sm bi-table align-middle">
           <thead>
@@ -105,7 +125,8 @@
               <th style="width:8%">RF.Stock (Received)</th>
               <th style="width:8%">Sales Bar Qty</th>
               <th style="width:8%">Restaurant Sale Qty</th>
-              <th style="width:7%">ENT Qty</th>
+              <th style="width:6%">ENT Qty</th>
+              <th style="width:6%" class="text-end" title="Sold by the barman but not entered into the POS - recorded below">Missing</th>
               <th style="width:11%" class="text-end">Closing Balance</th>
               <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Unit Price</th>
               <th style="width:10%" class="text-end">Sales Value</th>
@@ -117,7 +138,7 @@
             {% for it in items %}
             {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
             <tr class="bi-cat-row">
-              <td colspan="8" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
+              <td colspan="9" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
               <td class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
               <td colspan="2" style="background:#eaf2fb;"></td>
             </tr>
@@ -126,10 +147,11 @@
                 data-price="{{ it.unit_price or 0 }}" data-price-rest="{{ it.unit_price_restaurant or 0 }}" data-category="{{ it.category_name or '' }}">
               <td><strong>{{ it.item_name }}</strong></td>
               <td class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-sales" value="{{ it.sales_bar_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-sales" value="{{ it.sales_bar_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td class="text-end bi-missing" data-value="{{ it.missing_qty or 0 }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
               <td class="text-end bi-readonly-cell bi-closing">{{ it.closing_display }}</td>
               <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
               <td class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
@@ -137,29 +159,39 @@
               <td class="text-end bi-rest-value">{{ '{:,.2f}'.format(it.rest_value) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="11" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            <tr><td colspan="12" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
             {% endfor %}
           </tbody>
           {% if items %}
           <tfoot class="bi-totals">
             <tr>
-              <td colspan="8" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
+              <td colspan="9" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
               <td class="text-end" id="biTotUnits">{{ '{:,.2f}'.format(totals.units) }}</td>
               <td colspan="2"></td>
             </tr>
             <tr>
-              <td colspan="8" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
+              <td colspan="9" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
               <td class="text-end" id="biTotMl">{{ '{:,.2f}'.format(totals.ml) }}</td>
               <td colspan="2"></td>
             </tr>
             <tr class="bi-grand">
-              <td colspan="8" class="text-end">Grand Total Sales Value (Bar)</td>
+              <td colspan="9" class="text-end">Grand Total Sales Value (Bar)</td>
               <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
               <td class="text-end small">Restaurant</td>
               <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
             </tr>
+            <tr class="bi-mv-missing-row">
+              <td colspan="9" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
+              <td class="text-end" id="biTotMissing">{{ '{:,.2f}'.format(totals.missing) }}</td>
+              <td colspan="2"></td>
+            </tr>
             <tr>
-              <td colspan="8" class="text-end">Sheet (sales as per POS / sales sheet)</td>
+              <td colspan="9" class="text-end">Total incl. Missing Items</td>
+              <td class="text-end" id="biTotWithMissing">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td>
+              <td colspan="2"></td>
+            </tr>
+            <tr>
+              <td colspan="9" class="text-end">Sheet (sales as per POS / sales sheet)</td>
               <td class="text-end">
                 <input type="number" step="0.01" name="sheet_amount" id="biSheet" class="form-control form-control-sm text-end"
                        value="{{ '%.2f'|format(totals.sheet) if totals.sheet is not none else '' }}" oninput="biRecalcTotals()" {% if readonly %}disabled{% endif %}>
@@ -167,7 +199,7 @@
               <td colspan="2"></td>
             </tr>
             <tr>
-              <td colspan="8" class="text-end">Difference (Grand Total &minus; Sheet)</td>
+              <td colspan="9" class="text-end">Difference (Grand Total &minus; Sheet)</td>
               <td class="text-end" id="biTotDiff">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td>
               <td colspan="2"></td>
             </tr>
@@ -187,8 +219,11 @@
             <i class="fas fa-eraser me-1"></i> Clear This Day
           </button>
           {% endif %}
+          <a href="#biMissingCard" class="btn btn-outline-danger" onclick="setTimeout(function(){ var s = document.getElementById('biMissItem'); if (s) s.focus(); }, 300);">
+            <i class="fas fa-user-times me-1"></i> Record Missing Item (not entered by barman)
+          </a>
           <button type="button" class="btn btn-outline-success" onclick="biShowQuickAdd()">
-            <i class="fas fa-plus me-1"></i> Add Missing Item
+            <i class="fas fa-plus me-1"></i> New Item (not in list)
           </button>
         </div>
         <div class="d-flex gap-2">
@@ -215,10 +250,108 @@
   </div>
 </div>
 
+{% if items %}
+<div class="bi-card" id="biMissingCard">
+  <div class="bi-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-user-times me-1 text-danger"></i>Missing Items &mdash; sold but not entered by barman ({{ entry_date }})</h6>
+    <span class="fw-bold text-danger">Total: Rs. {{ '{:,.2f}'.format(totals.missing) }}</span>
+  </div>
+  <div class="bi-card-body">
+    {% if not readonly %}
+    <p class="text-muted small mb-2">
+      Record each item the barman served but didn't enter into the POS. It is deducted from this day's stock
+      (shown in the red <strong>Missing</strong> column) and valued at the item's bar Unit Price.
+      For Bottle + Ml / Ml items enter the quantity in <strong>ml</strong>. Figures already typed in the grid above are saved as Draft at the same time.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_missing_add') }}" class="row g-2 align-items-end mb-3" onsubmit="return biMissingSubmit(this);">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <input type="hidden" name="lines_json" class="bi-miss-lines">
+      <div class="col-md-4">
+        <label class="form-label small mb-1">Item <span class="text-danger">*</span></label>
+        <select name="item_id" id="biMissItem" class="form-select form-select-sm" required onchange="biMissPreview()">
+          <option value="">Choose item...</option>
+          {% for it in items %}
+          {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}{% if not loop.first %}</optgroup>{% endif %}<optgroup label="{{ it.category_name or 'No category' }}">{% endif %}
+          <option value="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-price="{{ it.unit_price or 0 }}">{{ it.item_name }}{% if it.item_code %} ({{ it.item_code }}){% endif %}</option>
+          {% if loop.last %}</optgroup>{% endif %}
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Qty <span id="biMissUnit" class="text-muted"></span> <span class="text-danger">*</span></label>
+        <input type="number" step="any" name="qty" id="biMissQty" class="form-control form-control-sm" required oninput="biMissPreview()">
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Barman</label>
+        <input type="text" name="barman" class="form-control form-control-sm" placeholder="name" list="biBarmanList">
+        <datalist id="biBarmanList">{% for b in missing | map(attribute='barman') | select | unique %}<option value="{{ b }}">{% endfor %}</datalist>
+      </div>
+      <div class="col-md-2">
+        <label class="form-label small mb-1">Remarks</label>
+        <input type="text" name="remarks" class="form-control form-control-sm" placeholder="optional">
+      </div>
+      <div class="col-md-2">
+        <div class="small text-muted mb-1">Value: <strong id="biMissValue">0.00</strong></div>
+        <button type="submit" class="btn btn-danger btn-sm w-100"><i class="fas fa-plus me-1"></i> Record</button>
+      </div>
+    </form>
+    {% endif %}
+
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle mb-0">
+        <thead>
+          <tr>
+            <th style="width:4%">#</th>
+            <th>Item</th>
+            <th class="text-end" style="width:10%">Qty</th>
+            <th class="text-end" style="width:11%">Unit Price</th>
+            <th class="text-end" style="width:12%">Amount</th>
+            <th style="width:14%">Barman</th>
+            <th>Remarks</th>
+            {% if not readonly %}<th style="width:5%"></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for m in missing %}
+          <tr>
+            <td>{{ loop.index }}</td>
+            <td>{{ m.item_name }}{% if m.item_code %} <span class="text-muted small">({{ m.item_code }})</span>{% endif %}</td>
+            <td class="text-end">{{ m.qty_display }}</td>
+            <td class="text-end">{{ '{:,.2f}'.format(m.unit_price or 0) }}</td>
+            <td class="text-end fw-bold text-danger">{{ '{:,.2f}'.format(m.amount or 0) }}</td>
+            <td>{{ m.barman or '' }}</td>
+            <td>{{ m.remarks or '' }}</td>
+            {% if not readonly %}
+            <td>
+              <form method="POST" action="{{ url_for('bar_inventory_missing_delete', entry_id=m.id) }}" onsubmit="return confirm('Delete this missing-item entry?');">
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete"><i class="fas fa-trash"></i></button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+          {% else %}
+          <tr><td colspan="{{ 7 if readonly else 8 }}" class="text-center text-muted py-3">No missing items recorded for this day.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if missing %}
+        <tfoot>
+          <tr class="bi-mv-missing-row">
+            <td colspan="4" class="text-end fw-bold">Total Missing</td>
+            <td class="text-end fw-bold">{{ '{:,.2f}'.format(totals.missing) }}</td>
+            <td colspan="{{ 2 if readonly else 3 }}"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% if not readonly %}
 <div class="bi-card" id="biQuickAddCard" style="display:none;">
   <div class="bi-card-header">
-    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-plus-circle me-1 text-success"></i>Add Missing Item to {{ entry_date }}</h6>
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-plus-circle me-1 text-success"></i>Add New Item (not in your item list) to {{ entry_date }}</h6>
     <button type="button" class="btn-close" onclick="document.getElementById('biQuickAddCard').style.display='none';"></button>
   </div>
   <div class="bi-card-body">
@@ -337,7 +470,8 @@ function biRecalcRow(input) {
   const sales = parseFloat(tr.querySelector('.bi-sales').value) || 0;
   const restaurant = parseFloat(tr.querySelector('.bi-restaurant').value) || 0;
   const ent = parseFloat(tr.querySelector('.bi-ent').value) || 0;
-  const closing = opening + rf - sales - restaurant - ent;
+  const missingQty = parseFloat(tr.querySelector('.bi-missing').getAttribute('data-value')) || 0;
+  const closing = opening + rf - sales - restaurant - ent - missingQty;
   tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
   biRecalcTotals();
 }
@@ -377,6 +511,8 @@ function biRecalcTotals() {
   set('biTotMl', biMoney(ml));
   set('biTotGrand', biMoney(grand));
   set('biTotRest', biMoney(rest));
+  set('biTotWithMissing', biMoney(grand + BI_MISSING_TOTAL));
+  biMarkMovement();
   const sheet = document.getElementById('biSheet');
   if (sheet) set('biTotDiff', sheet.value === '' ? '—' : biMoney(grand - (parseFloat(sheet.value) || 0)));
 }
@@ -408,13 +544,60 @@ function biCollectLines() {
   return lines;
 }
 
+const BI_MISSING_TOTAL = {{ totals.missing | default(0) | float }};
+
+// Colour every quantity cell that moved today, and flag the whole row.
+function biMarkMovement() {
+  const onlyMoved = document.getElementById('biOnlyMoved');
+  document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
+    let moved = false;
+    [['.bi-rf', 'bi-mv-rf'], ['.bi-sales', 'bi-mv-sales'], ['.bi-restaurant', 'bi-mv-restaurant'], ['.bi-ent', 'bi-mv-ent']].forEach(function(p) {
+      const input = tr.querySelector(p[0]);
+      const has = (parseFloat(input.value) || 0) !== 0;
+      input.closest('td').classList.toggle(p[1], has);
+      moved = moved || has;
+    });
+    const miss = tr.querySelector('.bi-missing');
+    const hasMiss = (parseFloat(miss.getAttribute('data-value')) || 0) !== 0;
+    miss.classList.toggle('bi-mv-missing', hasMiss);
+    moved = moved || hasMiss;
+    tr.classList.toggle('bi-moved', moved);
+    if (onlyMoved && onlyMoved.checked) tr.style.display = moved ? '' : 'none';
+  });
+}
+
+function biFilterMoved(on) {
+  document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
+    tr.style.display = (on && !tr.classList.contains('bi-moved')) ? 'none' : '';
+  });
+  document.querySelectorAll('#biForm .bi-cat-row').forEach(function(tr) { tr.style.display = on ? 'none' : ''; });
+}
+
+function biMissPreview() {
+  const sel = document.getElementById('biMissItem');
+  if (!sel) return;
+  const opt = sel.options[sel.selectedIndex];
+  const unitType = opt ? opt.getAttribute('data-unit-type') : null;
+  document.getElementById('biMissUnit').textContent = (unitType === 'BOTTLE_ML' || unitType === 'ML_ONLY') ? '(ml)' : (unitType ? '(units)' : '');
+  const qty = parseFloat(document.getElementById('biMissQty').value) || 0;
+  const price = opt ? (parseFloat(opt.getAttribute('data-price')) || 0) : 0;
+  document.getElementById('biMissValue').textContent = unitType ? biMoney(biValue(unitType, qty, price)) : '0.00';
+}
+
+function biMissingSubmit(form) {
+  form.querySelector('.bi-miss-lines').value = JSON.stringify(biCollectLines());
+  return true;
+}
+
+document.addEventListener('DOMContentLoaded', biMarkMovement);
+
 function biQuickAddSubmit(form) {
   form.querySelector('.bi-qa-lines').value = JSON.stringify(biCollectLines());
   return true;
 }
 
 function biSubmit(verify) {
-  if (verify && !confirm('Verify {{ entry_date }}?\n\nMake sure every missing item has been added first (use "Add Missing Item"). ' +
+  if (verify && !confirm('Verify {{ entry_date }}?\n\nMake sure every item the barman did not enter is recorded first (use "Record Missing Item"). ' +
                          'A verified day is locked until you unlock it again.')) {
     return;
   }

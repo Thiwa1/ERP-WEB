@@ -63,6 +63,7 @@ def run_migrations(conn):
         _migrate_bar_inventory_ignored_codes(cursor)
         _migrate_bar_inventory_categories(cursor)
         _migrate_bar_inventory_sheet_amount(cursor)
+        _migrate_bar_inventory_missing_items(cursor)
 
         conn.commit()
         cursor.close()
@@ -1148,6 +1149,44 @@ def _migrate_bar_inventory_sheet_amount(cursor):
         cursor.execute("SHOW COLUMNS FROM bar_inventory_days LIKE 'sheet_amount'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE bar_inventory_days ADD COLUMN sheet_amount DOUBLE NULL")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_missing_items(cursor):
+    """Items the barman sold but did not enter into the POS for a day. Each
+    entry deducts from that day's stock (day line missing_qty = sum of the
+    entries) and is valued at the item's bar price, so the amount can be
+    followed up with the barman."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'bar_inventory_missing_items'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_inventory_missing_items table")
+            cursor.execute("""
+                CREATE TABLE bar_inventory_missing_items (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  day_id BIGINT NOT NULL,
+                  item_id INT NOT NULL,
+                  qty DOUBLE NOT NULL DEFAULT 0,
+                  unit_price DOUBLE NOT NULL DEFAULT 0,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  barman VARCHAR(100) NULL,
+                  remarks VARCHAR(255) NULL,
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  INDEX idx_bimi_day (day_id),
+                  CONSTRAINT fk_bimi_day FOREIGN KEY (day_id)
+                    REFERENCES bar_inventory_days(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW COLUMNS FROM bar_inventory_day_lines LIKE 'missing_qty'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE bar_inventory_day_lines ADD COLUMN missing_qty DOUBLE NOT NULL DEFAULT 0")
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

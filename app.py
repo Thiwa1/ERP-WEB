@@ -20840,12 +20840,64 @@ def _bar_inv_value(item, qty, price):
     return round(qty * price, 2)
 
 
-def _bar_inv_sales_totals(items, day):
+def _bar_inv_missing_entries(day):
+    """Items the barman sold but didn't enter into the POS, for one day."""
+    if not day:
+        return []
+    rows = db.execute_query("""
+        SELECT m.id, m.item_id, m.qty, m.unit_price, m.amount, m.barman, m.remarks, m.created_date,
+               i.item_name, i.item_code, i.unit_type, i.bottle_size_ml
+        FROM bar_inventory_missing_items m
+        JOIN bar_inventory_items i ON i.id = m.item_id
+        WHERE m.day_id = %s
+        ORDER BY m.id
+    """, (day['id'],)) or []
+    for r in rows:
+        r['qty_display'] = _bar_inv_format_balance(r, r['qty']) if r['unit_type'] != 'UNIT' else f"{float(r['qty'] or 0):g}"
+    return rows
+
+
+def _bar_inv_sync_missing_line(day_id, item_id, entry_date):
+    """Re-totals missing_qty on the item's day line from its missing entries
+    and recomputes that line's closing balance (creating the line if the
+    item had nothing else entered that day)."""
+    total = db.execute_query("""
+        SELECT COALESCE(SUM(qty), 0) AS q FROM bar_inventory_missing_items WHERE day_id = %s AND item_id = %s
+    """, (day_id, item_id)) or []
+    missing_qty = float(total[0]['q'] or 0) if total else 0.0
+    line = db.execute_query("""
+        SELECT id, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty
+        FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
+    """, (day_id, item_id)) or []
+    item = db.execute_query("SELECT id, opening_balance FROM bar_inventory_items WHERE id = %s", (item_id,))[0]
+    opening = float(_bar_inv_opening_balance(item, entry_date) or 0)
+    if line:
+        ln = line[0]
+        total_available = round(opening + float(ln['rf_stock'] or 0), 4)
+        closing = round(total_available - float(ln['sales_bar_qty'] or 0) - float(ln['restaurant_sale_qty'] or 0)
+                        - float(ln['ent_qty'] or 0) - missing_qty, 4)
+        db.execute_query("""
+            UPDATE bar_inventory_day_lines
+            SET opening_balance = %s, total_available = %s, missing_qty = %s, closing_balance = %s
+            WHERE id = %s
+        """, (opening, total_available, missing_qty, closing, ln['id']), commit=True)
+    elif missing_qty:
+        db.execute_query("""
+            INSERT INTO bar_inventory_day_lines
+                (day_id, item_id, opening_balance, rf_stock, total_available, sales_bar_qty,
+                 restaurant_sale_qty, ent_qty, missing_qty, closing_balance)
+            VALUES (%s, %s, %s, 0, %s, 0, 0, 0, %s, %s)
+        """, (day_id, item_id, opening, opening, missing_qty, round(opening - missing_qty, 4)), commit=True)
+
+
+def _bar_inv_sales_totals(items, day, missing=None):
     """Adds sales_value / rest_value to each item line and returns the
     Excel-style totals: unit items total, ml items total, Grand Total (bar
     sales), restaurant total, per-category subtotals, and the POS 'Sheet'
-    figure with the Difference against the Grand Total."""
+    figure with the Difference against the Grand Total. Missing items (sold
+    but not entered by the barman) are totalled separately."""
     t = {'units': 0.0, 'ml': 0.0, 'grand': 0.0, 'rest': 0.0, 'by_category': {}}
+    t['missing'] = round(sum(float(m['amount'] or 0) for m in (missing or [])), 2)
     for it in items:
         it['sales_value'] = _bar_inv_value(it, it.get('sales_bar_qty'), it.get('unit_price'))
         it['rest_value'] = _bar_inv_value(it, it.get('restaurant_sale_qty'), it.get('unit_price_restaurant'))
@@ -20859,6 +20911,7 @@ def _bar_inv_sales_totals(items, day):
     t['units'] = round(t['units'], 2)
     t['ml'] = round(t['ml'], 2)
     t['grand'] = round(t['units'] + t['ml'], 2)
+    t['grand_with_missing'] = round(t['grand'] + t['missing'], 2)
     t['rest'] = round(t['rest'], 2)
     sheet = day.get('sheet_amount') if day else None
     t['sheet'] = sheet
@@ -20915,7 +20968,7 @@ def bar_inventory():
     if day:
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
-                   sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
@@ -20928,6 +20981,7 @@ def bar_inventory():
             it['sales_bar_qty'] = saved['sales_bar_qty']
             it['restaurant_sale_qty'] = saved['restaurant_sale_qty']
             it['ent_qty'] = saved['ent_qty']
+            it['missing_qty'] = saved['missing_qty']
             it['closing_balance'] = saved['closing_balance']
         else:
             it['opening'] = _bar_inv_opening_balance(it, entry_date)
@@ -20935,10 +20989,12 @@ def bar_inventory():
             it['sales_bar_qty'] = 0
             it['restaurant_sale_qty'] = 0
             it['ent_qty'] = 0
+            it['missing_qty'] = 0
             it['closing_balance'] = it['opening']
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
-    totals = _bar_inv_sales_totals(items, day)
+    missing = _bar_inv_missing_entries(day)
+    totals = _bar_inv_sales_totals(items, day, missing)
 
     records = db.execute_query("""
         SELECT id, entry_date, status FROM bar_inventory_days ORDER BY entry_date DESC LIMIT 60
@@ -20950,6 +21006,7 @@ def bar_inventory():
                            items=items,
                            day=day,
                            totals=totals,
+                           missing=missing,
                            categories=_bar_inv_categories(),
                            records=records)
 
@@ -20974,7 +21031,7 @@ def _bar_inv_rollforward(from_date):
 
     later = db.execute_query("""
         SELECT dl.id, dl.day_id, dl.item_id, dl.opening_balance, dl.rf_stock,
-               dl.sales_bar_qty, dl.restaurant_sale_qty, dl.ent_qty, dl.closing_balance
+               dl.sales_bar_qty, dl.restaurant_sale_qty, dl.ent_qty, dl.missing_qty, dl.closing_balance
         FROM bar_inventory_day_lines dl
         JOIN bar_inventory_days d ON d.id = dl.day_id
         WHERE d.entry_date > %s
@@ -20986,7 +21043,8 @@ def _bar_inv_rollforward(from_date):
         opening = round(last_closing.get(ln['item_id'], 0.0), 4)
         total_available = round(opening + float(ln['rf_stock'] or 0), 4)
         closing = round(total_available - float(ln['sales_bar_qty'] or 0)
-                        - float(ln['restaurant_sale_qty'] or 0) - float(ln['ent_qty'] or 0), 4)
+                        - float(ln['restaurant_sale_qty'] or 0) - float(ln['ent_qty'] or 0)
+                        - float(ln['missing_qty'] or 0), 4)
         if (abs(float(ln['opening_balance'] or 0) - opening) > 0.00001
                 or abs(float(ln['closing_balance'] or 0) - closing) > 0.00001):
             db.execute_query("""
@@ -21049,14 +21107,16 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
             if not item:
                 continue
 
-            qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
-            current = {}
-            if any(ln.get(k) is None for k in qty_keys):
-                cursor.execute("""
-                    SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty
-                    FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
-                """, (day_id, item_id))
-                current = cursor.fetchone() or {}
+            # The current line is always read: besides "keep existing" for a
+            # None quantity, its missing_qty (items the barman didn't enter,
+            # kept in sync from bar_inventory_missing_items) must still be
+            # deducted from the closing balance.
+            cursor.execute("""
+                SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty
+                FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
+            """, (day_id, item_id))
+            current = cursor.fetchone() or {}
+            missing_qty = float(current.get('missing_qty') or 0)
 
             def qty_for(k):
                 v = ln.get(k)
@@ -21071,7 +21131,7 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
 
             opening = _bar_inv_opening_balance(item, entry_date)
             total_available = round(opening + rf_stock, 4)
-            closing_balance = round(total_available - sales_bar_qty - restaurant_sale_qty - ent_qty, 4)
+            closing_balance = round(total_available - sales_bar_qty - restaurant_sale_qty - ent_qty - missing_qty, 4)
 
             cursor.execute("""
                 INSERT INTO bar_inventory_day_lines (
@@ -21151,6 +21211,89 @@ def bar_inventory_unverify():
     """, (day[0]['id'],), commit=True)
     flash(f'{entry_date} unlocked for editing (back to Draft). Make your changes, then click Save & Verify again.', 'warning')
     return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/missing/add', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_missing_add():
+    """Record an item the barman sold but didn't enter into the POS. It is
+    deducted from the day's stock and valued at the item's bar price. Grid
+    figures typed but not yet saved are saved as Draft first."""
+    entry_date = request.form.get('entry_date')
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,)) or []
+    if day and day[0]['status'] == 'Verified':
+        flash(f'{entry_date} is verified - click "Unlock to Edit" first.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    item_raw = (request.form.get('item_id') or '').strip()
+    qty = parse_float(request.form.get('qty'))
+    barman = (request.form.get('barman') or '').strip()[:100] or None
+    remarks = (request.form.get('remarks') or '').strip()[:255] or None
+    item = db.execute_query("""
+        SELECT id, item_name, unit_type, bottle_size_ml, unit_price FROM bar_inventory_items
+        WHERE id = %s AND is_active = 1
+    """, (int(item_raw),)) if item_raw.isdigit() else None
+    if not item:
+        flash('Choose the item from the list.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+    item = item[0]
+    if not qty:
+        flash('Enter the missing quantity.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    # Save what's typed in the grid (this also creates the day if needed).
+    try:
+        lines_in = json.loads(request.form.get('lines_json') or '[]')
+    except (ValueError, TypeError):
+        lines_in = []
+    if not day:
+        qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
+        lines_in = [ln for ln in lines_in if any(str(ln.get(k) or '').strip() not in ('', '0') for k in qty_keys)]
+    ok, save_msg, _saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
+    if not ok:
+        flash(save_msg, 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    day_id = db.execute_query("SELECT id FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))[0]['id']
+    price = float(item['unit_price'] or 0)
+    amount = _bar_inv_value(item, qty, price)
+    db.execute_query("""
+        INSERT INTO bar_inventory_missing_items (day_id, item_id, qty, unit_price, amount, barman, remarks, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+    """, (day_id, item['id'], qty, price, amount, barman, remarks, get_current_user_pk()), commit=True)
+    _bar_inv_sync_missing_line(day_id, item['id'], entry_date)
+
+    flash(f'Recorded missing item: {item["item_name"]} x {qty:g} = Rs. {amount:,.2f}'
+          + (f' ({barman})' if barman else '') + '.' + _bar_inv_rollforward_note(entry_date), 'success')
+    return redirect(url_for('bar_inventory', date=entry_date) + '#biMissingCard')
+
+
+@app.route('/bar_inventory/missing/delete/<int:entry_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_missing_delete(entry_id):
+    row = db.execute_query("""
+        SELECT m.id, m.day_id, m.item_id, d.entry_date, d.status
+        FROM bar_inventory_missing_items m JOIN bar_inventory_days d ON d.id = m.day_id
+        WHERE m.id = %s
+    """, (entry_id,)) or []
+    if not row:
+        flash('That missing-item entry no longer exists.', 'warning')
+        return redirect(url_for('bar_inventory'))
+    row = row[0]
+    entry_date = row['entry_date'].strftime('%Y-%m-%d') if hasattr(row['entry_date'], 'strftime') else str(row['entry_date'])
+    if row['status'] == 'Verified':
+        flash(f'{entry_date} is verified - click "Unlock to Edit" first.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+    db.execute_query("DELETE FROM bar_inventory_missing_items WHERE id = %s", (entry_id,), commit=True)
+    _bar_inv_sync_missing_line(row['day_id'], row['item_id'], entry_date)
+    flash('Missing-item entry deleted.' + _bar_inv_rollforward_note(entry_date), 'success')
+    return redirect(url_for('bar_inventory', date=entry_date) + '#biMissingCard')
 
 
 @app.route('/bar_inventory/quick_add_item', methods=['POST'])
@@ -21767,7 +21910,7 @@ def bar_inventory_print():
     if day:
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
-                   sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
@@ -21779,12 +21922,15 @@ def bar_inventory_print():
         it['sales_bar_qty'] = saved.get('sales_bar_qty', 0)
         it['restaurant_sale_qty'] = saved.get('restaurant_sale_qty', 0)
         it['ent_qty'] = saved.get('ent_qty', 0)
+        it['missing_qty'] = saved.get('missing_qty', 0)
         it['closing_balance'] = saved.get('closing_balance', it['opening'])
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
-    totals = _bar_inv_sales_totals(items, day)
+    missing = _bar_inv_missing_entries(day)
+    totals = _bar_inv_sales_totals(items, day, missing)
 
-    return render_template('bar_inventory_print.html', entry_date=entry_date, items=items, day=day, totals=totals)
+    return render_template('bar_inventory_print.html', entry_date=entry_date, items=items, day=day,
+                           totals=totals, missing=missing)
 
 
 @app.route('/bar_inventory/items', methods=['GET'])
