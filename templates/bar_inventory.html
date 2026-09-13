@@ -9,8 +9,23 @@
   .bi-card-header { padding:12px 18px; border-bottom:1px solid rgba(0,0,0,0.06);
                      display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
   .bi-card-body { padding:16px 18px; }
-  .bi-table input.form-control-sm { font-size:0.8rem; padding:3px 6px; }
+  /* Excel-like compact sheet: small Calibri text, tight rows, thin grey gridlines */
+  .bi-card table.table { font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:11px; line-height:1.2; margin-bottom:0; }
+  .bi-card table.table > :not(caption) > * > * { padding:1px 4px; border-color:#d4d4d4; }
+  .bi-card table.table thead th { background:#f2f2f2; font-size:10.5px; font-weight:700; color:#333;
+                                   white-space:normal; vertical-align:bottom; text-transform:none; letter-spacing:0; }
+  .bi-card table.table strong { font-weight:600; }
   .bi-table td, .bi-table th { vertical-align:middle; }
+  .bi-table input.form-control-sm, .bi-card table.table .form-control-sm, .bi-card table.table .form-select-sm {
+    font-family:inherit; font-size:11px; padding:0 3px; height:18px; min-height:18px; line-height:16px;
+    border-radius:0; border-color:#e0e0e0; box-shadow:none; }
+  .bi-table input.form-control-sm:focus { border-color:#217346; box-shadow:0 0 0 1px #217346; }
+  .bi-table input[type=number]::-webkit-inner-spin-button,
+  .bi-table input[type=number]::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+  .bi-table input[type=number] { -moz-appearance:textfield; text-align:right; }
+  .bi-card table.table .btn-sm { font-size:10px; padding:0 4px; line-height:16px; }
+  .bi-card table.table .badge { font-size:9.5px; padding:1px 4px; }
+  .bi-cat-row td { padding-top:2px !important; padding-bottom:2px !important; }
   .bi-status-badge { font-size:0.8rem; padding:6px 14px; }
   .bi-readonly-cell { font-weight:600; color:#201f1e; }
   .bi-date-nav .btn { padding:6px 10px !important; }
@@ -495,7 +510,8 @@ function biFormatBalance(unitType, bottleSize, qty) {
   if (unitType === 'BOTTLE_ML' && bottleSize) {
     const bottles = Math.floor(qty / bottleSize);
     const ml = Math.round((qty - bottles * bottleSize) * 100) / 100;
-    return bottles + ' btl ' + ml + ' ml';
+    const totalMl = (Math.round(qty * 100) / 100).toLocaleString('en-US', { maximumFractionDigits: 2 });
+    return bottles + ' btl ' + ml + ' ml (' + totalMl + ' ml)';
   }
   if (unitType === 'ML_ONLY') return qty + ' ml';
   return String(qty);

@@ -20817,6 +20817,12 @@ def _bar_inv_opening_balance(item, entry_date):
     return item['opening_balance'] or 0
 
 
+def _bar_inv_ml_total(qty):
+    """83800.0 -> '83,800'; 1250.5 -> '1,250.5'."""
+    qty = round(float(qty or 0), 2)
+    return f"{qty:,.0f}" if qty.is_integer() else f"{qty:,.2f}".rstrip('0').rstrip('.')
+
+
 def _bar_inv_format_balance(item, qty):
     """Renders a stored quantity (ml for BOTTLE_ML/ML_ONLY, whole units for
     UNIT) as the display string appropriate to the item's unit_type."""
@@ -20825,7 +20831,8 @@ def _bar_inv_format_balance(item, qty):
         size = item['bottle_size_ml']
         bottles = int(qty // size)
         ml = round(qty - (bottles * size), 2)
-        return f"{bottles} btl {ml:g} ml"
+        # Total in ml alongside, e.g. "111 btl 550 ml (83,800 ml)".
+        return f"{bottles} btl {ml:g} ml ({_bar_inv_ml_total(qty)} ml)"
     if item['unit_type'] == 'ML_ONLY':
         return f"{qty:g} ml"
     return f"{qty:g}"

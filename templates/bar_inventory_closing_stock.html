@@ -7,7 +7,12 @@
   .cs-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
              box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:20px; overflow:hidden; }
   .cs-card-body { padding:16px 18px; }
-  .cs-table td, .cs-table th { vertical-align:middle; font-size:0.82rem; }
+  /* Excel-like compact sheet */
+  .cs-table { font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:11px; line-height:1.2; }
+  .cs-table > :not(caption) > * > * { padding:1px 4px; border-color:#d4d4d4; vertical-align:middle; }
+  .cs-table thead th { background:#f2f2f2; font-size:10.5px; font-weight:700; color:#333; vertical-align:bottom; }
+  .cs-table .badge { font-size:9.5px; padding:1px 4px; }
+  .cs-table code { font-size:10px; }
   .cs-cat td { background:#eaf2fb; font-weight:700; }
   .cs-neg td { background:#fff0f0; }
   .cs-tot td { font-weight:600; background:#f8fafc; }
