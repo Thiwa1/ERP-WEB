@@ -14,6 +14,8 @@
   .bi-status-badge { font-size:0.8rem; padding:6px 14px; }
   .bi-readonly-cell { font-weight:600; color:#201f1e; }
   .bi-date-nav .btn { padding:6px 10px !important; }
+  .bi-totals td { font-weight:600; background:#f8fafc; }
+  .bi-totals .bi-grand td { font-weight:700; background:#e8f3ff; border-top:2px solid rgba(0,103,192,0.3) !important; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -98,21 +100,30 @@
         <table class="table table-bordered table-sm bi-table align-middle">
           <thead>
             <tr>
-              <th style="width:20%">Item</th>
-              <th style="width:12%" class="text-end">Opening Balance</th>
-              <th style="width:10%">RF.Stock (Received)</th>
-              <th style="width:10%">Sales Bar Qty</th>
-              <th style="width:12%">Restaurant Sale Qty</th>
-              <th style="width:9%">ENT Qty</th>
-              <th style="width:14%" class="text-end">Closing Balance</th>
+              <th style="width:17%">Item</th>
+              <th style="width:10%" class="text-end">Opening Balance</th>
+              <th style="width:8%">RF.Stock (Received)</th>
+              <th style="width:8%">Sales Bar Qty</th>
+              <th style="width:8%">Restaurant Sale Qty</th>
+              <th style="width:7%">ENT Qty</th>
+              <th style="width:11%" class="text-end">Closing Balance</th>
+              <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Unit Price</th>
+              <th style="width:10%" class="text-end">Sales Value</th>
+              <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Rest. Price</th>
+              <th style="width:9%" class="text-end">Rest. Value</th>
             </tr>
           </thead>
           <tbody>
             {% for it in items %}
             {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
-            <tr class="bi-cat-row"><td colspan="7" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td></tr>
+            <tr class="bi-cat-row">
+              <td colspan="8" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
+              <td class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
+              <td colspan="2" style="background:#eaf2fb;"></td>
+            </tr>
             {% endif %}
-            <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}">
+            <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}"
+                data-price="{{ it.unit_price or 0 }}" data-price-rest="{{ it.unit_price_restaurant or 0 }}" data-category="{{ it.category_name or '' }}">
               <td><strong>{{ it.item_name }}</strong></td>
               <td class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
               <td><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
@@ -120,17 +131,55 @@
               <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" onchange="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td class="text-end bi-readonly-cell bi-closing">{{ it.closing_display }}</td>
+              <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
+              <td class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
+              <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price_restaurant or 0) }}</td>
+              <td class="text-end bi-rest-value">{{ '{:,.2f}'.format(it.rest_value) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="7" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            <tr><td colspan="11" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
             {% endfor %}
           </tbody>
+          {% if items %}
+          <tfoot class="bi-totals">
+            <tr>
+              <td colspan="8" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
+              <td class="text-end" id="biTotUnits">{{ '{:,.2f}'.format(totals.units) }}</td>
+              <td colspan="2"></td>
+            </tr>
+            <tr>
+              <td colspan="8" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
+              <td class="text-end" id="biTotMl">{{ '{:,.2f}'.format(totals.ml) }}</td>
+              <td colspan="2"></td>
+            </tr>
+            <tr class="bi-grand">
+              <td colspan="8" class="text-end">Grand Total Sales Value (Bar)</td>
+              <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
+              <td class="text-end small">Restaurant</td>
+              <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
+            </tr>
+            <tr>
+              <td colspan="8" class="text-end">Sheet (sales as per POS / sales sheet)</td>
+              <td class="text-end">
+                <input type="number" step="0.01" name="sheet_amount" id="biSheet" class="form-control form-control-sm text-end"
+                       value="{{ '%.2f'|format(totals.sheet) if totals.sheet is not none else '' }}" oninput="biRecalcTotals()" {% if readonly %}disabled{% endif %}>
+              </td>
+              <td colspan="2"></td>
+            </tr>
+            <tr>
+              <td colspan="8" class="text-end">Difference (Grand Total &minus; Sheet)</td>
+              <td class="text-end" id="biTotDiff">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td>
+              <td colspan="2"></td>
+            </tr>
+          </tfoot>
+          {% endif %}
         </table>
       </div>
+      <div class="small text-muted">Sales Value = Sales Bar Qty &times; Unit Price; for Bottle + Ml / Ml items it's (ml &divide; 100) &times; Unit Price &mdash; the same as your Excel sheet.</div>
 
       {% if not readonly and items %}
       <div class="d-flex justify-content-between align-items-center gap-2 mt-3 flex-wrap">
-        <div>
+        <div class="d-flex gap-2 flex-wrap">
           {% if day %}
           <button type="submit" formaction="{{ url_for('bar_inventory_clear_day') }}" formnovalidate
                   class="btn btn-outline-danger"
@@ -138,6 +187,9 @@
             <i class="fas fa-eraser me-1"></i> Clear This Day
           </button>
           {% endif %}
+          <button type="button" class="btn btn-outline-success" onclick="biShowQuickAdd()">
+            <i class="fas fa-plus me-1"></i> Add Missing Item
+          </button>
         </div>
         <div class="d-flex gap-2">
           <button type="button" class="btn btn-secondary" onclick="biSubmit(false)"><i class="fas fa-save me-1"></i> Save</button>
@@ -145,11 +197,104 @@
         </div>
       </div>
       {% elif readonly %}
-      <div class="alert alert-secondary mt-3 mb-0"><i class="fas fa-info-circle me-1"></i> This day has been verified and is locked for editing.</div>
+      <div class="alert alert-secondary mt-3 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="fas fa-lock me-1"></i> This day has been verified and is locked. Unlock it to edit figures or add a missing item, then Save &amp; Verify again.</span>
+        <span class="d-flex gap-2">
+          <button type="submit" formaction="{{ url_for('bar_inventory_unverify') }}" class="btn btn-warning btn-sm"
+                  onclick="return confirm('Unlock {{ entry_date }} for editing? It goes back to Draft until you verify it again.');">
+            <i class="fas fa-lock-open me-1"></i> Unlock to Edit
+          </button>
+          <button type="submit" formaction="{{ url_for('bar_inventory_clear_day') }}" class="btn btn-outline-danger btn-sm"
+                  onclick="return confirm('{{ entry_date }} is VERIFIED. Clear ALL its figures? This cannot be undone, and later days\' balances will be recalculated.');">
+            <i class="fas fa-eraser me-1"></i> Clear This Day
+          </button>
+        </span>
+      </div>
       {% endif %}
     </form>
   </div>
 </div>
+
+{% if not readonly %}
+<div class="bi-card" id="biQuickAddCard" style="display:none;">
+  <div class="bi-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-plus-circle me-1 text-success"></i>Add Missing Item to {{ entry_date }}</h6>
+    <button type="button" class="btn-close" onclick="document.getElementById('biQuickAddCard').style.display='none';"></button>
+  </div>
+  <div class="bi-card-body">
+    <p class="text-muted small mb-2">
+      For an item that isn't on the sheet yet. It's added to your item list and to this day, with its quantities if you enter them.
+      Anything you've already typed in the grid above is saved as Draft at the same time, so nothing is lost.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_quick_add_item') }}" onsubmit="return biQuickAddSubmit(this);">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <input type="hidden" name="lines_json" class="bi-qa-lines">
+      <div class="row g-2 mb-2">
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Item Code</label>
+          <input type="text" name="item_code" class="form-control form-control-sm" placeholder="optional">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label small mb-1">Item Name <span class="text-danger">*</span></label>
+          <input type="text" name="item_name" id="biQaName" class="form-control form-control-sm" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Category</label>
+          <select name="category_id" class="form-select form-select-sm">
+            <option value="">(none)</option>
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">or New Category</label>
+          <input type="text" name="new_category" class="form-control form-control-sm" placeholder="optional">
+        </div>
+      </div>
+      <div class="row g-2 mb-2">
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Unit Type</label>
+          <select name="unit_type" class="form-select form-select-sm" onchange="biQaUnit(this)">
+            <option value="UNIT">Whole Units</option>
+            <option value="BOTTLE_ML">Bottle + Ml</option>
+            <option value="ML_ONLY">Ml only</option>
+          </select>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Bottle Size (ml)</label>
+          <input type="number" step="any" name="bottle_size_ml" id="biQaBottle" class="form-control form-control-sm" disabled>
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Unit Price (Bar)</label>
+          <input type="number" step="0.01" name="unit_price" class="form-control form-control-sm" value="0">
+        </div>
+        <div class="col-md-3">
+          <label class="form-label small mb-1">Opening Balance</label>
+          <input type="number" step="any" name="opening_balance" class="form-control form-control-sm" value="0">
+        </div>
+      </div>
+      <div class="row g-2 mb-3">
+        <div class="col-md-2">
+          <label class="form-label small mb-1">RF.Stock</label>
+          <input type="number" step="any" name="rf_stock" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Sales Bar Qty</label>
+          <input type="number" step="any" name="sales_bar_qty" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">Restaurant Sale Qty</label>
+          <input type="number" step="any" name="restaurant_sale_qty" class="form-control form-control-sm">
+        </div>
+        <div class="col-md-2">
+          <label class="form-label small mb-1">ENT Qty</label>
+          <input type="number" step="any" name="ent_qty" class="form-control form-control-sm">
+        </div>
+      </div>
+      <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-plus me-1"></i> Add Item to This Day</button>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <div class="bi-card">
   <div class="bi-card-header"><h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-history me-1 text-primary"></i>Recent Days</h6></div>
@@ -194,9 +339,85 @@ function biRecalcRow(input) {
   const ent = parseFloat(tr.querySelector('.bi-ent').value) || 0;
   const closing = opening + rf - sales - restaurant - ent;
   tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
+  biRecalcTotals();
+}
+
+// Same rule as the Excel sheet: unit items qty x price, ml items (ml / 100) x price.
+function biValue(unitType, qty, price) {
+  const v = (unitType === 'BOTTLE_ML' || unitType === 'ML_ONLY') ? (qty / 100) * price : qty * price;
+  return Math.round(v * 100) / 100;
+}
+
+function biMoney(v) {
+  return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function biRecalcTotals() {
+  let units = 0, ml = 0, rest = 0;
+  const byCat = {};
+  document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
+    const unitType = tr.getAttribute('data-unit-type');
+    const sales = parseFloat(tr.querySelector('.bi-sales').value) || 0;
+    const restaurant = parseFloat(tr.querySelector('.bi-restaurant').value) || 0;
+    const sv = biValue(unitType, sales, parseFloat(tr.getAttribute('data-price')) || 0);
+    const rv = biValue(unitType, restaurant, parseFloat(tr.getAttribute('data-price-rest')) || 0);
+    tr.querySelector('.bi-sales-value').textContent = biMoney(sv);
+    tr.querySelector('.bi-rest-value').textContent = biMoney(rv);
+    if (unitType === 'BOTTLE_ML' || unitType === 'ML_ONLY') ml += sv; else units += sv;
+    rest += rv;
+    const cat = tr.getAttribute('data-category');
+    byCat[cat] = (byCat[cat] || 0) + sv;
+  });
+  document.querySelectorAll('#biForm .bi-cat-total').forEach(function(td) {
+    td.textContent = biMoney(byCat[td.getAttribute('data-category')] || 0);
+  });
+  const grand = Math.round((units + ml) * 100) / 100;
+  const set = function(id, v) { const el = document.getElementById(id); if (el) el.textContent = v; };
+  set('biTotUnits', biMoney(units));
+  set('biTotMl', biMoney(ml));
+  set('biTotGrand', biMoney(grand));
+  set('biTotRest', biMoney(rest));
+  const sheet = document.getElementById('biSheet');
+  if (sheet) set('biTotDiff', sheet.value === '' ? '—' : biMoney(grand - (parseFloat(sheet.value) || 0)));
+}
+
+function biShowQuickAdd() {
+  const card = document.getElementById('biQuickAddCard');
+  card.style.display = '';
+  card.scrollIntoView({ behavior: 'smooth' });
+  document.getElementById('biQaName').focus();
+}
+
+function biQaUnit(sel) {
+  const box = document.getElementById('biQaBottle');
+  box.disabled = sel.value !== 'BOTTLE_ML';
+  if (!box.disabled && !box.value) box.value = 750;
+}
+
+function biCollectLines() {
+  const lines = [];
+  document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
+    lines.push({
+      item_id: tr.getAttribute('data-item-id'),
+      rf_stock: tr.querySelector('.bi-rf').value,
+      sales_bar_qty: tr.querySelector('.bi-sales').value,
+      restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
+      ent_qty: tr.querySelector('.bi-ent').value
+    });
+  });
+  return lines;
+}
+
+function biQuickAddSubmit(form) {
+  form.querySelector('.bi-qa-lines').value = JSON.stringify(biCollectLines());
+  return true;
 }
 
 function biSubmit(verify) {
+  if (verify && !confirm('Verify {{ entry_date }}?\n\nMake sure every missing item has been added first (use "Add Missing Item"). ' +
+                         'A verified day is locked until you unlock it again.')) {
+    return;
+  }
   const lines = [];
   document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
     lines.push({

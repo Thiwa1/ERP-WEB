@@ -62,6 +62,7 @@ def run_migrations(conn):
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
         _migrate_bar_inventory_categories(cursor)
+        _migrate_bar_inventory_sheet_amount(cursor)
 
         conn.commit()
         cursor.close()
@@ -1132,6 +1133,21 @@ def _migrate_bar_inventory_categories(cursor):
         cursor.execute("SHOW COLUMNS FROM bar_inventory_items LIKE 'category_id'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE bar_inventory_items ADD COLUMN category_id INT NULL")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_sheet_amount(cursor):
+    """The day's sales figure from the POS/sales sheet, entered on the day
+    grid so the stock-based Grand Total Sales Value can be checked against
+    it (Difference = Grand Total - Sheet), as on the Excel Sheet1."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM bar_inventory_days LIKE 'sheet_amount'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE bar_inventory_days ADD COLUMN sheet_amount DOUBLE NULL")
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

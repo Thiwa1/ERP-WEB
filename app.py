@@ -20829,6 +20829,43 @@ def _bar_inv_format_balance(item, qty):
     return f"{qty:g}"
 
 
+def _bar_inv_value(item, qty, price):
+    """Sales value of a quantity, as on the Excel Sheet1: whole-unit items
+    are qty x Unit Price; Bottle+Ml / Ml items are priced per 100 ml, so
+    (ml / 100) x Unit Price."""
+    qty = float(qty or 0)
+    price = float(price or 0)
+    if item.get('unit_type') in ('BOTTLE_ML', 'ML_ONLY'):
+        return round(qty / 100.0 * price, 2)
+    return round(qty * price, 2)
+
+
+def _bar_inv_sales_totals(items, day):
+    """Adds sales_value / rest_value to each item line and returns the
+    Excel-style totals: unit items total, ml items total, Grand Total (bar
+    sales), restaurant total, per-category subtotals, and the POS 'Sheet'
+    figure with the Difference against the Grand Total."""
+    t = {'units': 0.0, 'ml': 0.0, 'grand': 0.0, 'rest': 0.0, 'by_category': {}}
+    for it in items:
+        it['sales_value'] = _bar_inv_value(it, it.get('sales_bar_qty'), it.get('unit_price'))
+        it['rest_value'] = _bar_inv_value(it, it.get('restaurant_sale_qty'), it.get('unit_price_restaurant'))
+        if it.get('unit_type') in ('BOTTLE_ML', 'ML_ONLY'):
+            t['ml'] += it['sales_value']
+        else:
+            t['units'] += it['sales_value']
+        t['rest'] += it['rest_value']
+        key = it.get('category_name') or ''
+        t['by_category'][key] = round(t['by_category'].get(key, 0.0) + it['sales_value'], 2)
+    t['units'] = round(t['units'], 2)
+    t['ml'] = round(t['ml'], 2)
+    t['grand'] = round(t['units'] + t['ml'], 2)
+    t['rest'] = round(t['rest'], 2)
+    sheet = day.get('sheet_amount') if day else None
+    t['sheet'] = sheet
+    t['difference'] = round(t['grand'] - float(sheet), 2) if sheet is not None else None
+    return t
+
+
 def _bar_inv_norm_identifier(v):
     """Normalises an Item Code / ID for matching. Excel hands numeric cells
     back as floats, so a code of 1 can arrive as 1.0 and would never match
@@ -20871,7 +20908,7 @@ def bar_inventory():
     entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
     items = _bar_inv_items()
 
-    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+    day = db.execute_query("SELECT id, status, sheet_amount FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
     day = day[0] if day else None
 
     lines_by_item = {}
@@ -20901,6 +20938,7 @@ def bar_inventory():
             it['closing_balance'] = it['opening']
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
+    totals = _bar_inv_sales_totals(items, day)
 
     records = db.execute_query("""
         SELECT id, entry_date, status FROM bar_inventory_days ORDER BY entry_date DESC LIMIT 60
@@ -20911,7 +20949,62 @@ def bar_inventory():
                            today_date=date.today().strftime('%Y-%m-%d'),
                            items=items,
                            day=day,
+                           totals=totals,
+                           categories=_bar_inv_categories(),
                            records=records)
+
+
+def _bar_inv_rollforward(from_date):
+    """Re-carries balances forward after a day is edited or cleared: every
+    later day's Opening Balance is re-taken from the day before it and its
+    Total Available / Closing Balance recomputed. The quantities entered on
+    those days are never changed. Returns the number of later days touched."""
+    items = db.execute_query("SELECT id, opening_balance FROM bar_inventory_items") or []
+    last_closing = {it['id']: float(it['opening_balance'] or 0) for it in items}
+
+    prior = db.execute_query("""
+        SELECT dl.item_id, dl.closing_balance
+        FROM bar_inventory_day_lines dl
+        JOIN bar_inventory_days d ON d.id = dl.day_id
+        WHERE d.entry_date <= %s
+        ORDER BY d.entry_date
+    """, (from_date,)) or []
+    for r in prior:
+        last_closing[r['item_id']] = float(r['closing_balance'] or 0)
+
+    later = db.execute_query("""
+        SELECT dl.id, dl.day_id, dl.item_id, dl.opening_balance, dl.rf_stock,
+               dl.sales_bar_qty, dl.restaurant_sale_qty, dl.ent_qty, dl.closing_balance
+        FROM bar_inventory_day_lines dl
+        JOIN bar_inventory_days d ON d.id = dl.day_id
+        WHERE d.entry_date > %s
+        ORDER BY d.entry_date, dl.id
+    """, (from_date,)) or []
+
+    touched_days = set()
+    for ln in later:
+        opening = round(last_closing.get(ln['item_id'], 0.0), 4)
+        total_available = round(opening + float(ln['rf_stock'] or 0), 4)
+        closing = round(total_available - float(ln['sales_bar_qty'] or 0)
+                        - float(ln['restaurant_sale_qty'] or 0) - float(ln['ent_qty'] or 0), 4)
+        if (abs(float(ln['opening_balance'] or 0) - opening) > 0.00001
+                or abs(float(ln['closing_balance'] or 0) - closing) > 0.00001):
+            db.execute_query("""
+                UPDATE bar_inventory_day_lines
+                SET opening_balance = %s, total_available = %s, closing_balance = %s
+                WHERE id = %s
+            """, (opening, total_available, closing, ln['id']), commit=True)
+            touched_days.add(ln['day_id'])
+        last_closing[ln['item_id']] = closing
+    return len(touched_days)
+
+
+def _bar_inv_rollforward_note(from_date):
+    try:
+        n = _bar_inv_rollforward(from_date)
+    except Exception as e:
+        return f' (Could not update later days\' balances: {e})'
+    return f' Balances carried forward to {n} later day(s).' if n else ''
 
 
 def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
@@ -21031,7 +21124,134 @@ def bar_inventory_save():
         return redirect(url_for('bar_inventory', date=entry_date))
 
     ok, message, _saved = _bar_inv_process_day(entry_date, lines_in, verify, get_current_user_pk())
+    if ok:
+        if 'sheet_amount' in request.form:
+            raw_sheet = (request.form.get('sheet_amount') or '').strip()
+            db.execute_query("UPDATE bar_inventory_days SET sheet_amount = %s WHERE entry_date = %s",
+                             (parse_float(raw_sheet) if raw_sheet else None, entry_date), commit=True)
+        message += _bar_inv_rollforward_note(entry_date)
     flash(message, 'success' if ok else 'danger')
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/unverify', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_unverify():
+    """Unlocks a Verified day back to Draft so it can be corrected (or have
+    missing items added) and then verified again."""
+    entry_date = request.form.get('entry_date')
+    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,)) if entry_date else None
+    if not day:
+        flash('No Bar Inventory entry exists for that date.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date) if entry_date else url_for('bar_inventory'))
+    db.execute_query("""
+        UPDATE bar_inventory_days SET status = 'Draft', verified_by = NULL, verified_date = NULL
+        WHERE id = %s
+    """, (day[0]['id'],), commit=True)
+    flash(f'{entry_date} unlocked for editing (back to Draft). Make your changes, then click Save & Verify again.', 'warning')
+    return redirect(url_for('bar_inventory', date=entry_date))
+
+
+@app.route('/bar_inventory/quick_add_item', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_quick_add_item():
+    """Add an item that's missing from the list straight from the day sheet
+    (before verifying), optionally with its quantities for this day. Any
+    figures already typed into the grid are saved as Draft at the same time
+    so they aren't lost when the page reloads."""
+    entry_date = request.form.get('entry_date')
+    if not entry_date:
+        flash('Date is required.', 'danger')
+        return redirect(url_for('bar_inventory'))
+
+    day = db.execute_query("SELECT status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,)) or []
+    if day and day[0]['status'] == 'Verified':
+        flash(f'{entry_date} is verified - click "Unlock to Edit" first, then add the item.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    item_code = (request.form.get('item_code') or '').strip() or None
+    item_name = ' '.join((request.form.get('item_name') or '').split())
+    unit_type = request.form.get('unit_type') if request.form.get('unit_type') in ('UNIT', 'BOTTLE_ML', 'ML_ONLY') else 'UNIT'
+    bottle_size_ml = parse_float(request.form.get('bottle_size_ml')) or None
+    opening_balance = parse_float(request.form.get('opening_balance'))
+    unit_price = parse_float(request.form.get('unit_price'))
+    new_category = (request.form.get('new_category') or '').strip()
+    category_id = _bar_inv_category_id(new_category or request.form.get('category_id'))
+
+    if not item_name:
+        flash('Item name is required.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+    if unit_type == 'BOTTLE_ML' and not bottle_size_ml:
+        flash('Bottle size (ml) is required for a Bottle + Ml item.', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    if item_code:
+        clash = db.execute_query("SELECT item_name FROM bar_inventory_items WHERE item_code = %s AND is_active = 1",
+                                 (item_code,)) or []
+        if clash:
+            flash(f'Item Code {item_code} is already used by "{clash[0]["item_name"]}".', 'danger')
+            return redirect(url_for('bar_inventory', date=entry_date))
+
+    same_name = db.execute_query("SELECT id, is_active FROM bar_inventory_items WHERE LOWER(item_name) = LOWER(%s)",
+                                 (item_name,)) or []
+    if same_name and same_name[0]['is_active']:
+        flash(f'"{item_name}" is already in the item list - it\'s on the sheet below.', 'warning')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    try:
+        if item_code:
+            db.execute_query("UPDATE bar_inventory_items SET item_code = NULL WHERE item_code = %s AND is_active = 0",
+                             (item_code,), commit=True)
+        if same_name:
+            # A removed item with this name - bring it back rather than fail
+            # on the unique name.
+            new_id = same_name[0]['id']
+            db.execute_query("""
+                UPDATE bar_inventory_items
+                SET is_active = 1, item_code = COALESCE(%s, item_code), category_id = COALESCE(%s, category_id),
+                    unit_type = %s, bottle_size_ml = %s
+                WHERE id = %s
+            """, (item_code, category_id, unit_type, bottle_size_ml, new_id), commit=True)
+            action = 'restored'
+        else:
+            max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_items") or []
+            next_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+            new_id = db.execute_query("""
+                INSERT INTO bar_inventory_items
+                    (item_code, item_name, unit_type, bottle_size_ml, unit_price, unit_price_restaurant,
+                     opening_balance, display_order, category_id, created_by)
+                VALUES (%s, %s, %s, %s, %s, 0, %s, %s, %s, %s)
+            """, (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance,
+                  next_order, category_id, get_current_user_pk()), commit=True)
+            action = 'added'
+    except Exception as e:
+        flash(f'Error adding item: {str(e)}', 'danger')
+        return redirect(url_for('bar_inventory', date=entry_date))
+
+    # Grid figures typed but not yet saved, plus the new item's own quantities.
+    try:
+        lines_in = json.loads(request.form.get('lines_json') or '[]')
+    except (ValueError, TypeError):
+        lines_in = []
+    qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
+    if not day:
+        # Nothing saved for this day yet - don't create it just for empty rows.
+        lines_in = [ln for ln in lines_in if any(str(ln.get(k) or '').strip() not in ('', '0') for k in qty_keys)]
+    new_line = {k: request.form.get(k) for k in qty_keys}
+    if any((v or '').strip() for v in new_line.values()):
+        new_line['item_id'] = new_id
+        lines_in.append(new_line)
+
+    msg = f'"{item_name}" {action} and now on the sheet for {entry_date}.'
+    if lines_in:
+        ok, save_msg, _saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
+        if ok:
+            msg += ' Figures saved as Draft.' + _bar_inv_rollforward_note(entry_date)
+        else:
+            msg += ' ' + save_msg
+    flash(msg + ' Set its prices on Manage Items when you can.', 'success')
     return redirect(url_for('bar_inventory', date=entry_date))
 
 
@@ -21404,7 +21624,8 @@ def bar_inventory_upload_confirm():
 
     ok, message, saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
     if ok:
-        message = f'Applied {saved} item(s) to {entry_date}. Review the grid, then Save & Verify.'
+        message = (f'Applied {saved} item(s) to {entry_date}. Review the grid, then Save & Verify.'
+                   + _bar_inv_rollforward_note(entry_date))
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('bar_inventory', date=entry_date))
 
@@ -21486,10 +21707,11 @@ def bar_inventory_download_template():
 @login_required
 @has_permission('Access_Inventory')
 def bar_inventory_clear_day():
-    """Wipe a Draft day's figures completely - the escape hatch when a
-    file was uploaded against the wrong date. A Verified day is locked and
-    refuses; its lines go with it (ON DELETE CASCADE), so the following
-    days' Opening Balances fall back to the last day that still has one."""
+    """Wipe a day's figures completely - the escape hatch when a file was
+    uploaded against the wrong date. Works on Draft and Verified days (the
+    page asks for confirmation); its lines go with it (ON DELETE CASCADE),
+    and the following days' balances are re-carried from the last day that
+    still has one."""
     entry_date = request.form.get('entry_date')
     if not entry_date:
         flash('Date is required.', 'danger')
@@ -21499,12 +21721,10 @@ def bar_inventory_clear_day():
     if not day:
         flash(f'No Bar Inventory entry exists for {entry_date}.', 'danger')
         return redirect(url_for('bar_inventory', date=entry_date))
-    if day[0]['status'] == 'Verified':
-        flash(f'{entry_date} has been verified and cannot be cleared.', 'danger')
-        return redirect(url_for('bar_inventory', date=entry_date))
-
+    was_verified = day[0]['status'] == 'Verified'
     db.execute_query("DELETE FROM bar_inventory_days WHERE id = %s", (day[0]['id'],), commit=True)
-    flash(f'Cleared the Bar Inventory entry for {entry_date}.', 'success')
+    flash(f'Cleared the {"verified " if was_verified else ""}Bar Inventory entry for {entry_date}.'
+          + _bar_inv_rollforward_note(entry_date), 'success')
     return redirect(url_for('bar_inventory', date=entry_date))
 
 
@@ -21540,7 +21760,7 @@ def bar_inventory_print():
     entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
     items = _bar_inv_items()
 
-    day = db.execute_query("SELECT id, status FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
+    day = db.execute_query("SELECT id, status, sheet_amount FROM bar_inventory_days WHERE entry_date = %s", (entry_date,))
     day = day[0] if day else None
 
     lines_by_item = {}
@@ -21562,8 +21782,9 @@ def bar_inventory_print():
         it['closing_balance'] = saved.get('closing_balance', it['opening'])
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
+    totals = _bar_inv_sales_totals(items, day)
 
-    return render_template('bar_inventory_print.html', entry_date=entry_date, items=items, day=day)
+    return render_template('bar_inventory_print.html', entry_date=entry_date, items=items, day=day, totals=totals)
 
 
 @app.route('/bar_inventory/items', methods=['GET'])
