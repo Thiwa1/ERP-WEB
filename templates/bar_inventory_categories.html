@@ -1,0 +1,169 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Inventory Categories{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-tags me-2 text-primary"></i>Bar Inventory &mdash; Categories</h4>
+  <span class="d-flex gap-2">
+    <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i> Manage Items</a>
+    <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to Bar Inventory</a>
+  </span>
+</div>
+
+<div class="row g-3 mb-3">
+  {# ------------------------------------------------------------ add #}
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header fw-bold"><i class="fas fa-plus me-1 text-success"></i> Add Categories</div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('bar_inventory_categories_save') }}" class="mb-3">
+          <input type="hidden" name="next" value="categories">
+          <label class="form-label">One category</label>
+          <div class="input-group">
+            <input type="text" name="name" class="form-control" placeholder="e.g. Liqueur" required>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Add</button>
+          </div>
+        </form>
+        <form method="POST" action="{{ url_for('bar_inventory_categories_bulk_add') }}">
+          <label class="form-label">Several at once <span class="text-muted fw-normal">(one per line)</span></label>
+          <textarea name="names" class="form-control mb-2" rows="6" placeholder="Beer&#10;Arrack&#10;Gin&#10;Soft Drinks"></textarea>
+          <button type="submit" class="btn btn-outline-primary"><i class="fas fa-list me-1"></i> Add All</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# ------------------------------------------------------------ list #}
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header fw-bold"><i class="fas fa-tags me-1 text-primary"></i> Categories ({{ categories | length }})</div>
+      <div class="card-body table-responsive">
+        <p class="text-muted small mb-2">
+          Shown on the day sheet and printout in <strong>Order</strong> (lowest first). Change a name or order and press
+          <i class="fas fa-save"></i>. Deleting a category never deletes items &mdash; they just become uncategorised.
+        </p>
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead>
+            <tr><th style="width:14%">Order</th><th>Category Name</th><th style="width:12%" class="text-center">Items</th><th style="width:14%"></th></tr>
+          </thead>
+          <tbody>
+            {% for c in categories %}
+            <tr>
+              <td colspan="4" style="padding:0;">
+                <form method="POST" action="{{ url_for('bar_inventory_categories_save') }}" class="d-flex align-items-center gap-2 p-1">
+                  <input type="hidden" name="next" value="categories">
+                  <input type="hidden" name="category_id" value="{{ c.id }}">
+                  <input type="number" step="1" name="display_order" class="form-control form-control-sm" style="width:14%;" value="{{ c.display_order or 0 }}">
+                  <input type="text" name="name" class="form-control form-control-sm flex-grow-1" value="{{ c.name }}" required>
+                  <a href="{{ url_for('bar_inventory_items', category=c.id) }}" class="badge bg-light text-dark border text-decoration-none text-center" style="width:12%;" title="Show these items">{{ c.item_count }}</a>
+                  <span class="text-nowrap" style="width:14%;">
+                    <button type="submit" class="btn btn-sm btn-outline-primary" title="Save"><i class="fas fa-save"></i></button>
+                    <button type="submit" formaction="{{ url_for('bar_inventory_categories_delete', cat_id=c.id) }}"
+                            class="btn btn-sm btn-outline-danger" title="Delete category"
+                            onclick="return confirm('Delete this category? Its items will become uncategorised.');"><i class="fas fa-trash"></i></button>
+                  </span>
+                </form>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-4">No categories yet &mdash; add some on the left.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  {# ------------------------------------------------- assign by upload #}
+  <div class="col-lg-5">
+    <div class="card h-100">
+      <div class="card-header fw-bold"><i class="fas fa-file-upload me-1 text-primary"></i> Set Categories on Items from Excel/CSV</div>
+      <div class="card-body">
+        <p class="text-muted small">
+          Changes <strong>only the category</strong> of items already in your list &mdash; prices, codes, balances and
+          everything else stay as they are, and no new items are created.
+        </p>
+        <ul class="text-muted small ps-3">
+          <li>3 columns: <strong>A = Item Code, B = Item Name, C = Category</strong> (easiest: download the sheet below, fill column C, upload it back), or</li>
+          <li>2 columns: <strong>A = Item Code or Item Name, B = Category</strong>.</li>
+          <li>A blank category leaves that item unchanged. A new category name is created automatically.</li>
+        </ul>
+        <a href="{{ url_for('bar_inventory_categories_download') }}" class="btn btn-outline-secondary btn-sm mb-3">
+          <i class="fas fa-download me-1"></i> Download items with current categories
+        </a>
+        <form method="POST" action="{{ url_for('bar_inventory_categories_upload') }}" enctype="multipart/form-data">
+          <input type="file" name="file" class="form-control mb-2" accept=".xlsx,.xlsm,.csv" required>
+          <button type="submit" class="btn btn-primary"><i class="fas fa-file-upload me-1"></i> Upload Categories</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  {# --------------------------------------------- uncategorised items #}
+  <div class="col-lg-7">
+    <div class="card h-100">
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="fw-bold"><i class="fas fa-question-circle me-1 text-warning"></i> Items without a Category ({{ uncategorised | length }})</span>
+        {% if uncategorised and categories %}
+        <span class="d-flex gap-2 align-items-center">
+          <select id="bcCategory" class="form-select form-select-sm" style="width:auto;">
+            <option value="">Put ticked items in...</option>
+            {% for c in categories %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+          </select>
+          <button type="button" class="btn btn-sm btn-primary" onclick="bcAssign()"><i class="fas fa-tags me-1"></i> Apply</button>
+        </span>
+        {% endif %}
+      </div>
+      <div class="card-body table-responsive" style="max-height:460px;overflow:auto;">
+        {% if uncategorised %}
+        <table class="table table-sm table-bordered align-middle mb-0">
+          <thead><tr><th style="width:5%"><input type="checkbox" onclick="bcToggleAll(this)"></th><th style="width:15%">Code</th><th>Item Name</th></tr></thead>
+          <tbody>
+            {% for it in uncategorised %}
+            <tr>
+              <td><input type="checkbox" class="bc-item" value="{{ it.id }}"></td>
+              <td><code>{{ it.item_code or '' }}</code></td>
+              <td>{{ it.item_name }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-success py-4"><i class="fas fa-check-circle me-1"></i> Every item has a category.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="bcAssignForm" method="POST" action="{{ url_for('bar_inventory_items_set_category') }}">
+  <input type="hidden" name="next" value="categories">
+  <input type="hidden" name="category_id" id="bcAssignValue">
+</form>
+
+<script>
+function bcToggleAll(cb) {
+  document.querySelectorAll('.bc-item').forEach(function(el) { el.checked = cb.checked; });
+}
+
+function bcAssign() {
+  const sel = document.getElementById('bcCategory');
+  if (!sel.value) { alert('Choose a category first.'); return; }
+  const ticked = Array.from(document.querySelectorAll('.bc-item:checked'));
+  if (ticked.length === 0) { alert('Tick at least one item.'); return; }
+  const form = document.getElementById('bcAssignForm');
+  document.getElementById('bcAssignValue').value = sel.value;
+  ticked.forEach(function(cb) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'item_ids[]';
+    input.value = cb.value;
+    form.appendChild(input);
+  });
+  form.submit();
+}
+</script>
+{% endblock %}

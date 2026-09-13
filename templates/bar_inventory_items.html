@@ -5,7 +5,10 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <h4 class="mb-0 fw-bold"><i class="fas fa-boxes me-2 text-primary"></i>Bar Inventory &mdash; Items</h4>
+  <span class="d-flex gap-2">
+  <a href="{{ url_for('bar_inventory_categories') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-tags me-1"></i> Categories</a>
   <a href="{{ url_for('bar_inventory') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Back to Bar Inventory</a>
+  </span>
 </div>
 
 <div class="row g-3 mb-3">

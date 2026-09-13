@@ -187,6 +187,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
     {'key': 'bar_inventory',      'label': 'Bar Inventory',        'url': '/bar_inventory',           'icon': 'fas fa-beer',                'category': 'Inventory'},
     {'key': 'bar_inventory_items','label': 'Bar Inventory Items',  'url': '/bar_inventory/items',     'icon': 'fas fa-list-ul',             'category': 'Inventory'},
+    {'key': 'bar_inventory_categories','label': 'Bar Inventory Categories', 'url': '/bar_inventory/categories', 'icon': 'fas fa-tags', 'category': 'Inventory'},
     {'key': 'new_inventory_item', 'label': 'New Inventory Item',   'url': '/add_inventory_item',     'icon': 'fas fa-plus-square',         'category': 'Inventory'},
     {'key': 'grn',                'label': 'GRN',                  'url': '/grn',                    'icon': 'fas fa-truck-loading',       'category': 'Inventory'},
     {'key': 'po_generator',       'label': 'PO Generator',         'url': '/purchase_orders',        'icon': 'fas fa-file-invoice',        'category': 'Inventory'},
@@ -22230,7 +22231,7 @@ def bar_inventory_items_set_category():
     db.execute_query(f"UPDATE bar_inventory_items SET category_id = %s WHERE id IN ({placeholders})",
                      tuple([category_id] + ids), commit=True)
     flash(f'Category updated on {len(ids)} item(s).', 'success')
-    return redirect(url_for('bar_inventory_items'))
+    return _bar_inv_categories_back()
 
 
 @app.route('/bar_inventory/categories/save', methods=['POST'])
@@ -22242,7 +22243,7 @@ def bar_inventory_categories_save():
     display_order = int(parse_float(request.form.get('display_order')) or 0)
     if not name:
         flash('Category name is required.', 'danger')
-        return redirect(url_for('bar_inventory_items'))
+        return _bar_inv_categories_back()
     try:
         if cat_id.isdigit():
             db.execute_query("UPDATE bar_inventory_categories SET name = %s, display_order = %s, is_active = 1 WHERE id = %s",
@@ -22260,7 +22261,7 @@ def bar_inventory_categories_save():
             flash('A category with that name already exists.', 'danger')
         else:
             flash(f'Error saving category: {str(e)}', 'danger')
-    return redirect(url_for('bar_inventory_items'))
+    return _bar_inv_categories_back()
 
 
 @app.route('/bar_inventory/categories/delete/<int:cat_id>', methods=['POST'])
@@ -22271,7 +22272,168 @@ def bar_inventory_categories_delete(cat_id):
     db.execute_query("UPDATE bar_inventory_items SET category_id = NULL WHERE category_id = %s", (cat_id,), commit=True)
     db.execute_query("DELETE FROM bar_inventory_categories WHERE id = %s", (cat_id,), commit=True)
     flash('Category deleted. Its items are now uncategorised.', 'success')
+    return _bar_inv_categories_back()
+
+
+def _bar_inv_categories_back():
+    """Category forms live on both Manage Items and the Categories page -
+    send the user back to whichever one they came from."""
+    if (request.form.get('next') or '') == 'categories':
+        return redirect(url_for('bar_inventory_categories'))
     return redirect(url_for('bar_inventory_items'))
+
+
+@app.route('/bar_inventory/categories', methods=['GET'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories():
+    categories = _bar_inv_categories(active_only=False)
+    counts = db.execute_query("""
+        SELECT category_id, COUNT(*) AS n FROM bar_inventory_items
+        WHERE is_active = 1 AND category_id IS NOT NULL GROUP BY category_id
+    """) or []
+    count_map = {r['category_id']: r['n'] for r in counts}
+    for c in categories:
+        c['item_count'] = count_map.get(c['id'], 0)
+    uncategorised = db.execute_query("""
+        SELECT id, item_code, item_name FROM bar_inventory_items
+        WHERE is_active = 1 AND category_id IS NULL
+        ORDER BY display_order, item_name
+    """) or []
+    return render_template('bar_inventory_categories.html', categories=categories, uncategorised=uncategorised)
+
+
+@app.route('/bar_inventory/categories/bulk_add', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_bulk_add():
+    """Add several categories at once - one name per line. Names that
+    already exist are skipped."""
+    names = []
+    for line in (request.form.get('names') or '').splitlines():
+        name = ' '.join(line.split())[:100]
+        if name and name.lower() not in [n.lower() for n in names]:
+            names.append(name)
+    if not names:
+        flash('Type at least one category name.', 'danger')
+        return redirect(url_for('bar_inventory_categories'))
+
+    existing = {r['name'].lower() for r in (db.execute_query("SELECT name FROM bar_inventory_categories") or [])}
+    max_row = db.execute_query("SELECT MAX(display_order) AS m FROM bar_inventory_categories") or []
+    next_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+    added, skipped = 0, []
+    for name in names:
+        if name.lower() in existing:
+            skipped.append(name)
+            continue
+        try:
+            db.execute_query("INSERT INTO bar_inventory_categories (name, display_order) VALUES (%s, %s)",
+                             (name, next_order), commit=True)
+            next_order += 10
+            added += 1
+        except Exception:
+            skipped.append(name)
+    msg = f'Added {added} categor{"y" if added == 1 else "ies"}.'
+    if skipped:
+        msg += ' Already there: ' + ', '.join(skipped[:10]) + ('...' if len(skipped) > 10 else '')
+    flash(msg, 'success' if added else 'warning')
+    return redirect(url_for('bar_inventory_categories'))
+
+
+@app.route('/bar_inventory/categories/download')
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_download():
+    """CSV of every active item with its current category - fill in /
+    change the Category column and upload it back."""
+    items = _bar_inv_items()
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['Item Code', 'Item Name', 'Category'])
+    for it in items:
+        cw.writerow([it['item_code'] or '', it['item_name'], it['category_name'] or ''])
+    out = make_response(si.getvalue())
+    out.headers["Content-Disposition"] = "attachment; filename=bar_inventory_categories.csv"
+    out.headers["Content-type"] = "text/csv"
+    return out
+
+
+@app.route('/bar_inventory/categories/upload', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_upload():
+    """Sets ONLY the category of existing items from a file - nothing else
+    on the item changes and no items are created.
+      3 columns: A = Item Code, B = Item Name, C = Category (the download layout)
+      2 columns: A = Item Code or Item Name, B = Category
+    Items are matched by code first, then by name. A blank category cell
+    leaves that item as it is; a category name that doesn't exist yet is
+    created."""
+    f = request.files.get('file')
+    if not f or not f.filename:
+        flash('Please choose a file to upload.', 'danger')
+        return redirect(url_for('bar_inventory_categories'))
+
+    try:
+        rows = []
+        fname = f.filename.lower()
+        if fname.endswith('.xlsx') or fname.endswith('.xlsm'):
+            from openpyxl import load_workbook
+            ws = load_workbook(f, read_only=True, data_only=True).active
+            for row in ws.iter_rows(values_only=True):
+                rows.append(['' if v is None else v for v in (row or [])])
+        else:
+            text_data = f.read().decode('utf-8-sig', errors='ignore')
+            rows = [r for r in csv.reader(io.StringIO(text_data))]
+
+        # Three-column layout if any row has something in column C.
+        three_cols = any(len(r) > 2 and str(r[2]).strip() for r in rows)
+
+        items = db.execute_query("SELECT id, item_code, item_name, is_active FROM bar_inventory_items") or []
+        items.sort(key=lambda r: 0 if r['is_active'] else 1)
+        by_code, by_name = {}, {}
+        for it in items:
+            if it['item_code']:
+                by_code.setdefault(_bar_inv_norm_identifier(it['item_code']), it['id'])
+            by_name.setdefault(_bar_inv_norm_name(it['item_name']), it['id'])
+
+        updated, blank, not_found = 0, 0, []
+        for r in rows:
+            cells = list(r) + ['', '', '']
+            if three_cols:
+                code, name, category = cells[0], cells[1], cells[2]
+            else:
+                code, name, category = cells[0], cells[0], cells[1]
+            if isinstance(code, float) and code.is_integer():
+                code = int(code)
+            label = str(name or code or '').strip()
+            if not label and not str(category).strip():
+                continue
+            if label.lower() in ('item code', 'item name', 'code', 'name', 'item') or str(category).strip().lower() == 'category':
+                continue  # header row
+            item_id = by_code.get(_bar_inv_norm_identifier(code)) if str(code).strip() else None
+            if item_id is None:
+                item_id = by_name.get(_bar_inv_norm_name(name))
+            if item_id is None:
+                not_found.append(label)
+                continue
+            if not str(category).strip():
+                blank += 1
+                continue
+            category_id = _bar_inv_category_id(category)
+            db.execute_query("UPDATE bar_inventory_items SET category_id = %s WHERE id = %s",
+                             (category_id, item_id), commit=True)
+            updated += 1
+
+        msg = f'Category set on {updated} item(s).'
+        if blank:
+            msg += f' {blank} row(s) had no category and were left as they are.'
+        if not_found:
+            msg += f' Not found ({len(not_found)}): ' + ', '.join(not_found[:10]) + ('...' if len(not_found) > 10 else '')
+        flash(msg, 'success' if updated else 'warning')
+    except Exception as e:
+        flash(f'Error reading file: {str(e)}', 'danger')
+    return redirect(url_for('bar_inventory_categories'))
 
 
 def _bar_inv_parse_unit_type(raw):
