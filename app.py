@@ -22432,6 +22432,29 @@ def bar_inventory_categories():
     return render_template('bar_inventory_categories.html', categories=categories, uncategorised=uncategorised)
 
 
+@app.route('/bar_inventory/categories/reorder', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_categories_reorder():
+    """Saves the category positions from the Categories page: the ids
+    arrive in the order shown (1st, 2nd, ...) and are numbered 10, 20, 30
+    so a category added later still slots in at the end."""
+    ids = [int(x) for x in request.form.getlist('category_ids[]') if str(x).strip().isdigit()]
+    if not ids:
+        flash('Nothing to reorder.', 'warning')
+        return redirect(url_for('bar_inventory_categories'))
+    for pos, cat_id in enumerate(ids, start=1):
+        db.execute_query("UPDATE bar_inventory_categories SET display_order = %s WHERE id = %s",
+                         (pos * 10, cat_id), commit=True)
+    names = db.execute_query(
+        f"SELECT id, name FROM bar_inventory_categories WHERE id IN ({','.join(['%s'] * len(ids[:3]))})",
+        tuple(ids[:3])) or []
+    name_by_id = {r['id']: r['name'] for r in names}
+    first = ', '.join(f'{i}. {name_by_id.get(cid, "?")}' for i, cid in enumerate(ids[:3], start=1))
+    flash(f'Category order saved ({first}{", ..." if len(ids) > 3 else ""}).', 'success')
+    return redirect(url_for('bar_inventory_categories'))
+
+
 @app.route('/bar_inventory/categories/bulk_add', methods=['POST'])
 @login_required
 @has_permission('Access_Inventory')

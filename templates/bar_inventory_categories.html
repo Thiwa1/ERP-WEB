@@ -37,24 +37,42 @@
   {# ------------------------------------------------------------ list #}
   <div class="col-lg-8">
     <div class="card h-100">
-      <div class="card-header fw-bold"><i class="fas fa-tags me-1 text-primary"></i> Categories ({{ categories | length }})</div>
+      <div class="card-header d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="fw-bold"><i class="fas fa-tags me-1 text-primary"></i> Categories ({{ categories | length }})</span>
+        {% if categories | length > 1 %}
+        <span class="d-flex align-items-center gap-2">
+          <span id="bcOrderChanged" class="small text-danger fw-semibold" style="display:none;">Order changed &mdash; not saved yet</span>
+          <button type="button" id="bcSaveOrderBtn" class="btn btn-sm btn-success" onclick="bcSaveOrder()" disabled>
+            <i class="fas fa-sort-amount-down me-1"></i> Save Order
+          </button>
+        </span>
+        {% endif %}
+      </div>
       <div class="card-body table-responsive">
         <p class="text-muted small mb-2">
-          Shown on the day sheet and printout in <strong>Order</strong> (lowest first). Change a name or order and press
+          <strong>Position</strong> = where the category comes on the day sheet, printout and closing stock report
+          (1 = first). Move a category with <i class="fas fa-arrow-up"></i> <i class="fas fa-arrow-down"></i> or drag it by
+          <i class="fas fa-grip-vertical"></i>, then press <strong>Save Order</strong>. To rename, change the name and press
           <i class="fas fa-save"></i>. Deleting a category never deletes items &mdash; they just become uncategorised.
         </p>
         <table class="table table-sm table-bordered align-middle mb-0">
           <thead>
-            <tr><th style="width:14%">Order</th><th>Category Name</th><th style="width:12%" class="text-center">Items</th><th style="width:14%"></th></tr>
+            <tr><th style="width:22%">Position</th><th>Category Name</th><th style="width:12%" class="text-center">Items</th><th style="width:14%"></th></tr>
           </thead>
-          <tbody>
+          <tbody id="bcCatBody">
             {% for c in categories %}
-            <tr>
+            <tr class="bc-cat-row" data-id="{{ c.id }}" draggable="true">
               <td colspan="4" style="padding:0;">
                 <form method="POST" action="{{ url_for('bar_inventory_categories_save') }}" class="d-flex align-items-center gap-2 p-1">
                   <input type="hidden" name="next" value="categories">
                   <input type="hidden" name="category_id" value="{{ c.id }}">
-                  <input type="number" step="1" name="display_order" class="form-control form-control-sm" style="width:14%;" value="{{ c.display_order or 0 }}">
+                  <input type="hidden" name="display_order" value="{{ c.display_order or 0 }}">
+                  <span class="d-flex align-items-center gap-1 text-nowrap" style="width:22%;">
+                    <i class="fas fa-grip-vertical text-muted px-1" style="cursor:grab;" title="Drag to move"></i>
+                    <span class="badge bg-primary bc-pos" style="min-width:2.2em;">{{ loop.index }}</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Move up" onclick="bcMove(this, -1)"><i class="fas fa-arrow-up"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Move down" onclick="bcMove(this, 1)"><i class="fas fa-arrow-down"></i></button>
+                  </span>
                   <input type="text" name="name" class="form-control form-control-sm flex-grow-1" value="{{ c.name }}" required>
                   <a href="{{ url_for('bar_inventory_items', category=c.id) }}" class="badge bg-light text-dark border text-decoration-none text-center" style="width:12%;" title="Show these items">{{ c.item_count }}</a>
                   <span class="text-nowrap" style="width:14%;">
@@ -139,12 +157,83 @@
   </div>
 </div>
 
+<form id="bcOrderForm" method="POST" action="{{ url_for('bar_inventory_categories_reorder') }}"></form>
+
 <form id="bcAssignForm" method="POST" action="{{ url_for('bar_inventory_items_set_category') }}">
   <input type="hidden" name="next" value="categories">
   <input type="hidden" name="category_id" id="bcAssignValue">
 </form>
 
 <script>
+// ---- category position: up/down buttons + drag and drop, then Save Order
+function bcRenumber() {
+  document.querySelectorAll('#bcCatBody .bc-cat-row').forEach(function(tr, i) {
+    tr.querySelector('.bc-pos').textContent = i + 1;
+  });
+  const btn = document.getElementById('bcSaveOrderBtn');
+  if (btn) btn.disabled = false;
+  const note = document.getElementById('bcOrderChanged');
+  if (note) note.style.display = '';
+}
+
+function bcMove(btn, dir) {
+  const tr = btn.closest('tr');
+  const body = tr.parentNode;
+  if (dir < 0 && tr.previousElementSibling) {
+    body.insertBefore(tr, tr.previousElementSibling);
+  } else if (dir > 0 && tr.nextElementSibling) {
+    body.insertBefore(tr.nextElementSibling, tr);
+  } else {
+    return;
+  }
+  bcRenumber();
+}
+
+(function() {
+  const body = document.getElementById('bcCatBody');
+  if (!body) return;
+  let dragging = null;
+  body.addEventListener('dragstart', function(e) {
+    // Don't hijack text selection inside the name box.
+    if (e.target.tagName === 'INPUT') { e.preventDefault(); return; }
+    dragging = e.target.closest('.bc-cat-row');
+    if (dragging) { dragging.style.opacity = '0.4'; e.dataTransfer.effectAllowed = 'move'; }
+  });
+  body.addEventListener('dragend', function() {
+    if (dragging) dragging.style.opacity = '';
+    dragging = null;
+  });
+  body.addEventListener('dragover', function(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const over = e.target.closest('.bc-cat-row');
+    if (!over || over === dragging) return;
+    const rect = over.getBoundingClientRect();
+    const after = (e.clientY - rect.top) > rect.height / 2;
+    body.insertBefore(dragging, after ? over.nextElementSibling : over);
+    bcRenumber();
+  });
+})();
+
+function bcSaveOrder() {
+  const form = document.getElementById('bcOrderForm');
+  form.innerHTML = '';
+  document.querySelectorAll('#bcCatBody .bc-cat-row').forEach(function(tr) {
+    const input = document.createElement('input');
+    input.type = 'hidden';
+    input.name = 'category_ids[]';
+    input.value = tr.getAttribute('data-id');
+    form.appendChild(input);
+  });
+  form.submit();
+}
+
+window.addEventListener('beforeunload', function(e) {
+  const btn = document.getElementById('bcSaveOrderBtn');
+  if (btn && !btn.disabled && !window.bcSubmitting) { e.preventDefault(); e.returnValue = ''; }
+});
+document.addEventListener('submit', function() { window.bcSubmitting = true; }, true);
+
 function bcToggleAll(cb) {
   document.querySelectorAll('.bc-item').forEach(function(el) { el.checked = cb.checked; });
 }
