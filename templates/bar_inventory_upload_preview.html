@@ -10,12 +10,12 @@
                     display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; }
   .up-card-body { padding:16px 18px; }
   .up-table td, .up-table th { vertical-align:middle; font-size:0.8rem; }
-  .up-row-ok td { }
   .up-row-bad td { background:#fff5f5; }
-  .up-row-warn td { background:#fffaf0; }
   .up-row-skip td { background:#f6f6f6; color:#888; }
   .up-row-removed td { background:#fff4e5; }
-  .up-stat { display:inline-block; padding:6px 14px; border-radius:20px; font-size:0.8rem; font-weight:600; margin-right:8px; }
+  .up-total td { font-weight:700; background:#f3f9ff; border-top:2px solid rgba(0,103,192,0.25) !important; }
+  .up-stat { display:inline-block; padding:6px 14px; border-radius:20px; font-size:0.8rem; font-weight:600; margin:0 8px 6px 0; }
+  .up-blank { color:#adb5bd; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -23,54 +23,136 @@
   <a href="{{ url_for('bar_inventory', date=entry_date) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-times me-1"></i> Cancel</a>
 </div>
 
-{% set ok_rows     = report | selectattr('status', 'equalto', 'ok')            | list %}
-{% set bad_rows    = report | selectattr('status', 'equalto', 'not_matched')   | list %}
-{% set warn_rows   = report | selectattr('status', 'equalto', 'no_quantities') | list %}
-{% set skip_rows   = report | selectattr('status', 'equalto', 'skipped')       | list %}
-{% set ignored_rows = report | selectattr('status', 'equalto', 'ignored')      | list %}
-{% set removed_rows = report | selectattr('status', 'equalto', 'removed_item') | list %}
+{% set ok_codes      = subtotals | selectattr('status', 'equalto', 'ok')           | list %}
+{% set bad_codes     = subtotals | selectattr('status', 'equalto', 'not_matched')  | list %}
+{% set ignored_codes = subtotals | selectattr('status', 'equalto', 'ignored')      | list %}
+{% set removed_rows  = report    | selectattr('status', 'equalto', 'removed_item') | list %}
+{% set empty_rows    = report    | selectattr('status', 'equalto', 'disregarded')  | list %}
 
+{# ---------------------------------------------------------------- summary #}
 <div class="up-card">
-  <div class="up-card-header">
-    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;">Summary</h6>
-    <span class="text-muted small">{{ filename }}</span>
-  </div>
   <div class="up-card-body">
-    <div class="mb-3">
-      <span class="up-stat bg-success text-white">{{ ok_rows | length }} rows will import</span>
-      <span class="up-stat bg-danger text-white">{{ bad_rows | length }} not matched</span>
-      <span class="up-stat bg-warning text-dark">{{ warn_rows | length }} matched but zero/blank</span>
-      <span class="up-stat bg-info text-dark">{{ ignored_rows | length }} ignored (not bar items)</span>
-      <span class="up-stat bg-secondary text-white">{{ skip_rows | length }} skipped</span>
-      {% if removed_rows %}<span class="up-stat text-white" style="background:#fd7e14;">{{ removed_rows | length }} removed from item list</span>{% endif %}
+    <div class="mb-2">
+      <span class="up-stat bg-success text-white">{{ ok_codes | length }} code(s) matched &rarr; {{ applied | length }} item(s) to import</span>
+      {% if bad_codes %}<span class="up-stat bg-danger text-white">{{ bad_codes | length }} code(s) NOT matched</span>{% endif %}
+      {% if removed_rows %}<span class="up-stat text-white" style="background:#fd7e14;">removed items in file</span>{% endif %}
+      {% if ignored_codes %}<span class="up-stat bg-info text-dark">{{ ignored_codes | length }} ignored (not bar items)</span>{% endif %}
+      {% if empty_rows %}<span class="up-stat bg-light text-muted border">{{ empty_rows | length }} empty row(s) disregarded</span>{% endif %}
     </div>
-    <table class="table table-sm table-borderless mb-0" style="width:auto;">
-      <tr><td class="text-muted pe-3">Uploading for date</td><td><strong>{{ entry_date }}</strong></td></tr>
-      <tr><td class="text-muted pe-3">Matching on</td>
-          <td><strong>{{ 'Item Code / ID (Column A)' if id_layout else 'Item Name (Column A)' }}</strong>
-              <span class="text-muted">&mdash; {{ layout_reason }}</span></td></tr>
-      <tr><td class="text-muted pe-3">Items in your Bar Inventory list</td>
-          <td><strong>{{ total_items_in_system }}</strong>
-            {% if total_items_in_system == 0 %}
-              <span class="text-danger">&larr; this is why nothing matches. Add your items first on
-              <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</span>
-            {% endif %}
-          </td></tr>
-      {% if id_layout %}
-      <tr><td class="text-muted pe-3">Items with an Item Code set</td>
-          <td><strong>{{ items_with_codes }}</strong> of {{ total_items_in_system }}
-            {% if total_items_in_system and items_with_codes == 0 %}
-              <span class="text-danger">&larr; no codes are set, so Column A can only match this app's
-              internal IDs. Set your codes on
-              <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</span>
-            {% endif %}
-          </td></tr>
+    <div class="small text-muted">
+      Date: <strong class="text-dark">{{ entry_date }}</strong> &nbsp;&middot;&nbsp;
+      File: {{ filename }} &nbsp;&middot;&nbsp;
+      Matching on: <strong class="text-dark">{{ 'Item Code / ID (Column A)' if id_layout else 'Item Name (Column A)' }}</strong>
+      {% if total_items_in_system == 0 %}
+        <div class="text-danger mt-1">Your Bar Inventory item list is empty, so nothing can match &mdash; add items first on
+        <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</div>
+      {% elif id_layout and items_with_codes == 0 %}
+        <div class="text-danger mt-1">None of your items has an Item Code set, so Column A can only match this app's
+        internal IDs &mdash; set codes on <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>.</div>
       {% endif %}
-      <tr><td class="text-muted pe-3">Items that will be written</td><td><strong>{{ applied | length }}</strong></td></tr>
-    </table>
+    </div>
   </div>
 </div>
 
+{# ------------------------------------------------------ subtotal by code #}
+<div class="up-card">
+  <div class="up-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-calculator me-1 text-primary"></i>Subtotal by Code</h6>
+    <span class="text-muted small">Repeated rows for the same code are added together. A dash means that column was empty in the file &mdash; it is disregarded and won't change what's already saved.</span>
+  </div>
+  <div class="up-card-body table-responsive">
+    <table class="table table-sm table-bordered up-table mb-3">
+      <thead>
+        <tr>
+          <th style="width:3%"><input type="checkbox" checked onclick="upToggleAll(this)" title="Include / exclude all matched codes"></th>
+          <th style="width:8%">{{ 'Code' if id_layout else 'Name' }}</th>
+          <th>Name in file</th>
+          <th>Matched item</th>
+          <th class="text-end">RF.Stock</th>
+          <th class="text-end">Sales Bar</th>
+          <th class="text-end">Restaurant</th>
+          <th class="text-end">ENT</th>
+          <th class="text-center" style="width:5%">Rows</th>
+          <th style="width:14%">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% set tot = namespace(rf=0, bar=0, rest=0, ent=0) %}
+        {% for s in subtotals %}
+        <tr class="{% if s.status == 'not_matched' %}up-row-bad{% elif s.status == 'removed_item' %}up-row-removed{% elif s.status == 'ignored' %}up-row-skip{% endif %}">
+          <td>
+            {% if s.status == 'ok' %}
+              <input type="checkbox" class="up-include" value="{{ s.item_id }}" checked onchange="upRefreshCount()">
+            {% endif %}
+          </td>
+          <td><code>{{ s.code }}</code></td>
+          <td>{{ s.file_name }}</td>
+          <td>{% if s.matched_name %}<strong>{{ s.matched_name }}</strong>{% else %}&mdash;{% endif %}</td>
+          {% for k in ['rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty'] %}
+            <td class="text-end">{% if s[k] is none %}<span class="up-blank">&mdash;</span>{% else %}{{ '%g'|format(s[k]) }}{% endif %}</td>
+          {% endfor %}
+          <td class="text-center">{{ s.rows }}</td>
+          <td>
+            {% if s.status == 'ok' %}<span class="badge bg-success">OK</span>
+            {% elif s.status == 'not_matched' %}<span class="badge bg-danger">ERROR: code not matched</span>
+            {% elif s.status == 'removed_item' %}<span class="badge text-white" style="background:#fd7e14;">Removed item</span>
+            {% elif s.status == 'ignored' %}<span class="badge bg-info text-dark">Ignored</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% if s.status == 'ok' %}
+          {% set tot.rf = tot.rf + (s.rf_stock or 0) %}
+          {% set tot.bar = tot.bar + (s.sales_bar_qty or 0) %}
+          {% set tot.rest = tot.rest + (s.restaurant_sale_qty or 0) %}
+          {% set tot.ent = tot.ent + (s.ent_qty or 0) %}
+        {% endif %}
+        {% else %}
+        <tr><td colspan="10" class="text-center text-muted py-4">Every row in the file was empty &mdash; nothing to import.</td></tr>
+        {% endfor %}
+      </tbody>
+      {% if ok_codes %}
+      <tfoot>
+        <tr class="up-total">
+          <td colspan="4" class="text-end">Total of matched codes</td>
+          <td class="text-end">{{ '%g'|format(tot.rf) }}</td>
+          <td class="text-end">{{ '%g'|format(tot.bar) }}</td>
+          <td class="text-end">{{ '%g'|format(tot.rest) }}</td>
+          <td class="text-end">{{ '%g'|format(tot.ent) }}</td>
+          <td colspan="2"></td>
+        </tr>
+      </tfoot>
+      {% endif %}
+    </table>
+
+    {% if bad_codes %}
+    <div class="alert alert-danger py-2 small mb-3">
+      <i class="fas fa-exclamation-triangle me-1"></i>
+      <strong>{{ bad_codes | length }} code(s) did not match any bar item</strong> and will <strong>not</strong> be imported.
+      You can still submit the matched ones now. To fix the rest, set the right Item Code on
+      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a>, or (for food/rooms/combos) mark them
+      "not a bar item" below so they stop showing as errors.
+    </div>
+    {% endif %}
+
+    {# ------------------------------------------------------------ SUBMIT #}
+    <div class="d-flex justify-content-end align-items-center gap-2 flex-wrap">
+      <a href="{{ url_for('bar_inventory', date=entry_date) }}" class="btn btn-outline-secondary">Cancel &mdash; change nothing</a>
+      {% if applied %}
+      <form method="POST" action="{{ url_for('bar_inventory_upload_confirm') }}" onsubmit="return upBuildPayload(this)">
+        <input type="hidden" name="entry_date" value="{{ entry_date }}">
+        <input type="hidden" name="lines_json" class="up-lines-json">
+        <button type="submit" class="btn btn-primary">
+          <i class="fas fa-check me-1"></i> Submit <span class="up-included-count">{{ applied | length }}</span> item(s) to {{ entry_date }}
+        </button>
+      </form>
+      {% else %}
+      <button type="button" class="btn btn-primary" disabled>Nothing matched to submit</button>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{# ------------------------------------------------ removed items (restore) #}
 {% if removed_rows %}
 {% set unique_removed = {} %}
 {% set removed_codes = {} %}
@@ -81,9 +163,8 @@
   </div>
   <div class="up-card-body">
     <p class="text-muted small mb-2">
-      These items <strong>do</strong> exist in the system, but they were removed (deleted) from the
-      active list, so quantities can't be posted against them. Restore them and upload the same
-      file again &mdash; their rows will import normally.
+      These items exist but were removed from the active list, so their quantities can't be posted.
+      Restore them, then upload the same file again.
     </p>
     <form method="POST" action="{{ url_for('bar_inventory_items_bulk_restore') }}"
           onsubmit="return confirm('Restore {{ unique_removed | length }} item(s) to the active list?');">
@@ -104,73 +185,22 @@
       <button type="submit" class="btn btn-sm text-white" style="background:#fd7e14;">
         <i class="fas fa-undo me-1"></i> Restore all {{ unique_removed | length }} and go back to {{ entry_date }}
       </button>
-      <a href="{{ url_for('bar_inventory_items') }}" class="btn btn-sm btn-outline-secondary">Manage Items</a>
     </form>
   </div>
 </div>
 {% endif %}
 
-{% if applied %}
+{# --------------------------------------- not matched -> mark as ignored #}
+{% if bad_codes %}
 <div class="up-card">
   <div class="up-card-header">
-    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-check-circle me-1 text-success"></i>What will be written ({{ applied | length }} items, repeated rows summed)</h6>
-    <span class="text-muted small">Untick or Remove any line you don't want applied &mdash; <span id="upIncludedCount">{{ applied | length }}</span> included</span>
-  </div>
-  <div class="up-card-body table-responsive">
-    <table class="table table-sm table-bordered up-table" id="upAppliedTable">
-      <thead>
-        <tr>
-          <th style="width:3%"><input type="checkbox" checked onclick="upToggleAll(this)"></th>
-          <th>Code</th><th>Item</th><th>Unit Type</th>
-          <th class="text-end">RF.Stock</th><th class="text-end">Sales Bar</th>
-          <th class="text-end">Restaurant</th><th class="text-end">ENT</th>
-          <th style="width:6%"></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for a in applied %}
-        <tr class="up-applied-row"
-            data-item-id="{{ a.item_id }}"
-            data-rf="{{ a.rf_stock }}"
-            data-bar="{{ a.sales_bar_qty }}"
-            data-rest="{{ a.restaurant_sale_qty }}"
-            data-ent="{{ a.ent_qty }}">
-          <td><input type="checkbox" class="up-include" checked onclick="upRefreshCount()"></td>
-          <td><code>{{ a.item_code }}</code></td>
-          <td><strong>{{ a.item_name }}</strong></td>
-          <td>
-            {% if a.unit_type == 'BOTTLE_ML' %}Bottle + Ml ({{ a.bottle_size_ml or '?' }}ml)
-            {% elif a.unit_type == 'ML_ONLY' %}Ml only
-            {% else %}<span class="text-warning-emphasis">Whole Units</span>{% endif %}
-          </td>
-          <td class="text-end">{{ '%g'|format(a.rf_stock) }}</td>
-          <td class="text-end">{{ '%g'|format(a.sales_bar_qty) }}</td>
-          <td class="text-end">{{ '%g'|format(a.restaurant_sale_qty) }}</td>
-          <td class="text-end">{{ '%g'|format(a.ent_qty) }}</td>
-          <td><button type="button" class="btn btn-sm btn-outline-danger" title="Remove this line"
-                      onclick="upRemoveRow(this)"><i class="fas fa-times"></i></button></td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
-{% endif %}
-
-{% if bad_rows %}
-{% set unique_bad = {} %}
-{% for e in bad_rows %}{% if e.lookup not in unique_bad %}{% set _ = unique_bad.update({e.lookup: e.file_name}) %}{% endif %}{% endfor %}
-<div class="up-card">
-  <div class="up-card-header">
-    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-ban me-1 text-danger"></i>Not matched &mdash; {{ unique_bad | length }} code(s)</h6>
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-ban me-1 text-danger"></i>Codes not matched &mdash; {{ bad_codes | length }}</h6>
     <a href="{{ url_for('bar_inventory_ignored_codes') }}" class="btn btn-outline-secondary btn-sm">Manage ignore list</a>
   </div>
   <div class="up-card-body">
     <p class="text-muted small">
-      Tick the ones that <strong>aren't bar stock at all</strong> (food, rooms, buffet, combo deals) and
-      mark them ignored &mdash; they'll be listed as "Ignored" on every future upload instead of showing
-      up as errors. Anything you leave unticked stays an error, so you can fix its Item Code on
-      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a> instead.
+      Tick the ones that <strong>aren't bar stock</strong> (food, rooms, buffet, combo deals) and mark them ignored &mdash;
+      they'll be skipped quietly on every future upload. Leave real bar items unticked and fix their Item Code instead.
     </p>
     <form method="POST" action="{{ url_for('bar_inventory_ignore_codes') }}">
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
@@ -184,18 +214,17 @@
             </tr>
           </thead>
           <tbody>
-            {% for code, name in unique_bad.items() %}
+            {% for s in bad_codes %}
             <tr>
-              <td><input type="checkbox" class="up-ignore-cb" name="code[]" value="{{ code }}"></td>
-              <td><code>{{ code }}</code></td>
-              <td>{{ name }}<input type="hidden" name="label[]" value="{{ name }}"></td>
+              <td><input type="checkbox" class="up-ignore-cb" name="code[]" value="{{ s.code }}"></td>
+              <td><code>{{ s.code }}</code></td>
+              <td>{{ s.file_name }}<input type="hidden" name="label[]" value="{{ s.file_name }}"></td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      <button type="submit" class="btn btn-outline-danger btn-sm"
-              onclick="return upConfirmIgnore()">
+      <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return upConfirmIgnore()">
         <i class="fas fa-ban me-1"></i> Mark ticked as "not a bar item"
       </button>
     </form>
@@ -203,26 +232,26 @@
 </div>
 {% endif %}
 
-<div class="up-card">
-  <div class="up-card-header">
-    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-list-ol me-1 text-primary"></i>Line-by-line report (every row in the file)</h6>
-  </div>
+{# --------------------------------------------- full row report (folded) #}
+<details class="up-card">
+  <summary class="up-card-header" style="cursor:pointer;">
+    <span class="fw-bold" style="font-size:0.95rem;"><i class="fas fa-list-ol me-1 text-primary"></i>Line-by-line report ({{ report | length }} rows) &mdash; click to show</span>
+  </summary>
   <div class="up-card-body table-responsive">
     <table class="table table-sm table-bordered up-table">
       <thead>
         <tr>
           <th style="width:5%">Row</th>
           <th style="width:9%">{{ 'Code/ID' if id_layout else 'Name' }}</th>
-          <th style="width:18%">Name in file</th>
-          <th style="width:18%">Matched item</th>
-          <th style="width:16%">Values read</th>
-          <th style="width:8%">Status</th>
+          <th style="width:20%">Name in file</th>
+          <th style="width:20%">Matched item</th>
+          <th style="width:18%">Values read</th>
           <th>Note</th>
         </tr>
       </thead>
       <tbody>
         {% for e in report %}
-        <tr class="{% if e.status == 'ok' %}up-row-ok{% elif e.status == 'not_matched' %}up-row-bad{% elif e.status == 'no_quantities' %}up-row-warn{% elif e.status == 'removed_item' %}up-row-removed{% else %}up-row-skip{% endif %}">
+        <tr class="{% if e.status == 'not_matched' %}up-row-bad{% elif e.status == 'removed_item' %}up-row-removed{% elif e.status in ('disregarded', 'skipped', 'ignored') %}up-row-skip{% endif %}">
           <td>{{ e.row_no }}</td>
           <td><code>{{ e.lookup }}</code></td>
           <td>{{ e.file_name }}</td>
@@ -230,92 +259,70 @@
           <td>
             {% if e.status != 'skipped' %}
               <span class="text-muted" style="font-size:0.72rem;">
-                RF {{ e.raw_quantities[0] or '-' }} |
-                Bar {{ e.raw_quantities[1] or '-' }} |
-                Rest {{ e.raw_quantities[2] or '-' }} |
-                ENT {{ e.raw_quantities[3] or '-' }}
+                RF {{ e.raw_quantities[0] or '-' }} | Bar {{ e.raw_quantities[1] or '-' }} |
+                Rest {{ e.raw_quantities[2] or '-' }} | ENT {{ e.raw_quantities[3] or '-' }}
               </span>
             {% endif %}
           </td>
-          <td>
-            {% if e.status == 'ok' %}<span class="badge bg-success">OK</span>
-            {% elif e.status == 'not_matched' %}<span class="badge bg-danger">NOT MATCHED</span>
-            {% elif e.status == 'no_quantities' %}<span class="badge bg-warning text-dark">ZERO</span>
-            {% elif e.status == 'ignored' %}<span class="badge bg-info text-dark">IGNORED</span>
-            {% elif e.status == 'removed_item' %}<span class="badge text-white" style="background:#fd7e14;">REMOVED ITEM</span>
-            {% else %}<span class="badge bg-secondary">SKIPPED</span>{% endif %}
-          </td>
-          <td class="text-muted" style="font-size:0.75rem;">{{ e.note }}</td>
+          <td class="text-muted" style="font-size:0.75rem;">{{ e.note or 'OK' }}</td>
         </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
-</div>
-
-<div class="d-flex justify-content-end gap-2 mb-4">
-  <a href="{{ url_for('bar_inventory', date=entry_date) }}" class="btn btn-outline-secondary">Cancel &mdash; change nothing</a>
-  {% if applied %}
-  <form method="POST" action="{{ url_for('bar_inventory_upload_confirm') }}" id="upConfirmForm" onsubmit="return upBuildPayload()">
-    <input type="hidden" name="entry_date" value="{{ entry_date }}">
-    <input type="hidden" name="lines_json" id="upLinesJson">
-    <button type="submit" class="btn btn-primary">
-      <i class="fas fa-check me-1"></i> Confirm &amp; Apply to {{ entry_date }}
-    </button>
-  </form>
-  {% endif %}
-</div>
+</details>
 
 <script>
+// Matched, summed lines exactly as evaluated on the server. null = column
+// was empty in the file -> the save keeps whatever is already there.
+const upApplied = {{ applied | tojson }};
+
+function upToggleAll(cb) {
+  document.querySelectorAll('.up-include').forEach(function (el) { el.checked = cb.checked; });
+  upRefreshCount();
+}
+
+function upCheckedIds() {
+  const ids = new Set();
+  document.querySelectorAll('.up-include:checked').forEach(function (el) { ids.add(String(el.value)); });
+  return ids;
+}
+
+function upRefreshCount() {
+  const ids = upCheckedIds();
+  const n = upApplied.filter(function (a) { return ids.has(String(a.item_id)); }).length;
+  document.querySelectorAll('.up-included-count').forEach(function (el) { el.textContent = n; });
+}
+
+function upBuildPayload(form) {
+  const ids = upCheckedIds();
+  const lines = upApplied
+    .filter(function (a) { return ids.has(String(a.item_id)); })
+    .map(function (a) {
+      return {
+        item_id: a.item_id,
+        rf_stock: a.rf_stock,
+        sales_bar_qty: a.sales_bar_qty,
+        restaurant_sale_qty: a.restaurant_sale_qty,
+        ent_qty: a.ent_qty
+      };
+    });
+  if (lines.length === 0) {
+    alert('Nothing is ticked - tick at least one matched code, or Cancel.');
+    return false;
+  }
+  form.querySelector('.up-lines-json').value = JSON.stringify(lines);
+  return confirm('Submit ' + lines.length + ' item(s) to {{ entry_date }}?');
+}
+
 function upToggleIgnoreAll(cb) {
   document.querySelectorAll('.up-ignore-cb').forEach(function (el) { el.checked = cb.checked; });
 }
 
 function upConfirmIgnore() {
   const n = document.querySelectorAll('.up-ignore-cb:checked').length;
-  if (n === 0) {
-    alert('Tick at least one code first.');
-    return false;
-  }
+  if (n === 0) { alert('Tick at least one code first.'); return false; }
   return confirm('Mark ' + n + ' code(s) as "not a bar item"? They will be skipped quietly on future uploads.');
-}
-
-function upRefreshCount() {
-  const n = document.querySelectorAll('#upAppliedTable .up-applied-row .up-include:checked').length;
-  document.getElementById('upIncludedCount').textContent = n;
-}
-
-function upToggleAll(cb) {
-  document.querySelectorAll('#upAppliedTable .up-applied-row .up-include')
-    .forEach(function (el) { el.checked = cb.checked; });
-  upRefreshCount();
-}
-
-function upRemoveRow(btn) {
-  const tr = btn.closest('tr');
-  tr.parentNode.removeChild(tr);
-  upRefreshCount();
-}
-
-function upBuildPayload() {
-  const lines = [];
-  document.querySelectorAll('#upAppliedTable .up-applied-row').forEach(function (tr) {
-    const cb = tr.querySelector('.up-include');
-    if (!cb || !cb.checked) return;
-    lines.push({
-      item_id: tr.getAttribute('data-item-id'),
-      rf_stock: tr.getAttribute('data-rf'),
-      sales_bar_qty: tr.getAttribute('data-bar'),
-      restaurant_sale_qty: tr.getAttribute('data-rest'),
-      ent_qty: tr.getAttribute('data-ent')
-    });
-  });
-  if (lines.length === 0) {
-    alert('Nothing is included - tick at least one line, or Cancel.');
-    return false;
-  }
-  document.getElementById('upLinesJson').value = JSON.stringify(lines);
-  return confirm('Apply ' + lines.length + ' item(s) to {{ entry_date }}?');
 }
 </script>
 {% endblock %}

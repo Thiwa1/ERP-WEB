@@ -20828,6 +20828,10 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
     upload. `lines_in` is a list of dicts: {item_id, rf_stock, sales_bar_qty,
     restaurant_sale_qty, ent_qty} - only the items present are touched, so
     a partial upload safely leaves every other item's line as it was.
+    A quantity of None (JSON null) means "not given" - the value already
+    saved on that item's line for this day is kept, rather than zeroed. The
+    day grid always sends strings, so this only affects the file upload,
+    where a column left empty for an item must not wipe what's there.
     Returns (ok: bool, message: str, lines_saved: int)."""
     items = {it['id']: it for it in _bar_inv_items()}
 
@@ -20861,10 +20865,25 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
             if not item:
                 continue
 
-            rf_stock = parse_float(ln.get('rf_stock'))
-            sales_bar_qty = parse_float(ln.get('sales_bar_qty'))
-            restaurant_sale_qty = parse_float(ln.get('restaurant_sale_qty'))
-            ent_qty = parse_float(ln.get('ent_qty'))
+            qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
+            current = {}
+            if any(ln.get(k) is None for k in qty_keys):
+                cursor.execute("""
+                    SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty
+                    FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
+                """, (day_id, item_id))
+                current = cursor.fetchone() or {}
+
+            def qty_for(k):
+                v = ln.get(k)
+                if v is None:
+                    return float(current.get(k) or 0)
+                return parse_float(v)
+
+            rf_stock = qty_for('rf_stock')
+            sales_bar_qty = qty_for('sales_bar_qty')
+            restaurant_sale_qty = qty_for('restaurant_sale_qty')
+            ent_qty = qty_for('ent_qty')
 
             opening = _bar_inv_opening_balance(item, entry_date)
             total_available = round(opening + rf_stock, 4)
@@ -21072,9 +21091,15 @@ def bar_inventory_upload():
         # same item shows up many times - sometimes in different columns
         # (14 sold on one row, 3 on another, 24 received on a third). Sum
         # them per item rather than letting the last row win.
+        qty_cols = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
         totals = {}
+        given = {}    # item_id -> set of columns that had a value in ANY row
         order = []
         report = []   # one entry per data row, for the preview screen
+        # Subtotal per code as it appears in the file (matched or not), in
+        # first-seen order - the first thing the preview shows.
+        code_totals = {}
+        code_order = []
         for r in raw_rows:
             row_no, c_a, c_b, c_c, c_d, c_e, c_f = r
             if id_layout:
@@ -21101,8 +21126,15 @@ def bar_inventory_upload():
             norm_lookup = _bar_inv_norm_identifier(lookup_value)
             removed_hit = (removed_map.get(norm_lookup) if id_layout
                            else removed_by_name.get(str(lookup_value).strip().lower()))
+            has_value = [v not in (None, '') for v in raw_quantities]
 
-            if item_id is None and norm_lookup in ignored_codes:
+            if not any(qty):
+                # Nothing to import on this row - quietly disregarded, never an
+                # error, whether or not its code matches anything.
+                entry['status'] = 'disregarded'
+                entry['matched_name'] = items_by_id[item_id]['item_name'] if item_id else ''
+                entry['note'] = 'empty - disregarded'
+            elif item_id is None and norm_lookup in ignored_codes:
                 entry['status'] = 'ignored'
                 entry['matched_name'] = ''
                 entry['note'] = 'ignored - marked as not a bar item'
@@ -21114,27 +21146,43 @@ def bar_inventory_upload():
             elif item_id is None:
                 entry['status'] = 'not_matched'
                 entry['matched_name'] = ''
-                entry['note'] = ('no item has this Item Code / ID' if id_layout
-                                 else 'no item has this name')
-            elif not any(qty):
-                entry['status'] = 'no_quantities'
-                entry['matched_name'] = items_by_id[item_id]['item_name']
-                entry['note'] = 'matched, but every quantity column is blank or zero'
-                entry['item_id'] = item_id
+                entry['note'] = ('code not matched - no item has this Item Code / ID' if id_layout
+                                 else 'name not matched - no item has this name')
             else:
                 entry['status'] = 'ok'
                 entry['matched_name'] = items_by_id[item_id]['item_name']
                 entry['note'] = ''
                 entry['item_id'] = item_id
                 if item_id not in totals:
-                    totals[item_id] = {'rf_stock': 0.0, 'sales_bar_qty': 0.0,
-                                       'restaurant_sale_qty': 0.0, 'ent_qty': 0.0}
+                    totals[item_id] = {k: 0.0 for k in qty_cols}
+                    given[item_id] = set()
                     order.append(item_id)
                 t = totals[item_id]
-                t['rf_stock'] += qty[0]
-                t['sales_bar_qty'] += qty[1]
-                t['restaurant_sale_qty'] += qty[2]
-                t['ent_qty'] += qty[3]
+                for k, q, hv in zip(qty_cols, qty, has_value):
+                    t[k] += q
+                    if hv:
+                        given[item_id].add(k)
+
+            if entry['status'] != 'disregarded':
+                key = norm_lookup if id_layout else str(lookup_value).strip().lower()
+                ct = code_totals.get(key)
+                if ct is None:
+                    shown_code = lookup_value
+                    if isinstance(shown_code, float) and shown_code.is_integer():
+                        shown_code = int(shown_code)
+                    ct = code_totals[key] = {
+                        'code': '' if shown_code is None else str(shown_code).strip(),
+                        'file_name': entry['file_name'],
+                        'matched_name': entry['matched_name'], 'status': entry['status'],
+                        'item_id': entry.get('item_id'), 'rows': 0,
+                        'given': set(), **{k: 0.0 for k in qty_cols},
+                    }
+                    code_order.append(key)
+                ct['rows'] += 1
+                for k, q, hv in zip(qty_cols, qty, has_value):
+                    ct[k] += q
+                    if hv:
+                        ct['given'].add(k)
 
             report.append(entry)
 
@@ -21144,18 +21192,30 @@ def bar_inventory_upload():
                            'rf_stock': 0, 'sales_bar_qty': 0, 'restaurant_sale_qty': 0, 'ent_qty': 0})
         report.sort(key=lambda e: e['row_no'])
 
-        # What will actually be written, one line per item (summed).
+        # What will actually be written, one line per item (summed). A column
+        # that was empty on every row for that item is sent as None, so the
+        # save keeps whatever is already on that day's line for it.
         applied = []
         for i in order:
             it = items_by_id[i]
-            applied.append({
+            line = {
                 'item_id': i,
                 'item_code': it['item_code'] or '',
                 'item_name': it['item_name'],
                 'unit_type': it['unit_type'],
                 'bottle_size_ml': it['bottle_size_ml'],
-                **totals[i],
-            })
+            }
+            for k in qty_cols:
+                line[k] = totals[i][k] if k in given[i] else None
+            applied.append(line)
+
+        subtotals = []
+        for key in code_order:
+            ct = code_totals[key]
+            row = {k: v for k, v in ct.items() if k != 'given'}
+            for k in qty_cols:
+                row[k] = ct[k] if k in ct['given'] else None
+            subtotals.append(row)
 
         return render_template('bar_inventory_upload_preview.html',
                                entry_date=entry_date,
@@ -21163,6 +21223,7 @@ def bar_inventory_upload():
                                id_layout=id_layout,
                                layout_reason=layout_reason,
                                report=report,
+                               subtotals=subtotals,
                                applied=applied,
                                total_items_in_system=len(items),
                                items_with_codes=sum(1 for it in items if it['item_code']))
