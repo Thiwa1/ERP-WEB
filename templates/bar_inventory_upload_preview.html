@@ -93,7 +93,8 @@
           {% endfor %}
           <td class="text-center">{{ s.rows }}</td>
           <td>
-            {% if s.status == 'ok' %}<span class="badge bg-success">OK</span>
+            {% if s.status == 'ok' and s.by_name %}<span class="badge bg-success">OK</span> <span class="badge bg-light text-dark border" title="This code isn't set on the item yet - matched using the Item Name column">by name</span>
+            {% elif s.status == 'ok' %}<span class="badge bg-success">OK</span>
             {% elif s.status == 'not_matched' %}<span class="badge bg-danger">ERROR: code not matched</span>
             {% elif s.status == 'removed_item' %}<span class="badge text-white" style="background:#fd7e14;">Removed item</span>
             {% elif s.status == 'ignored' %}<span class="badge bg-info text-dark">Ignored</span>
@@ -152,6 +153,45 @@
   </div>
 </div>
 
+{# -------------------------------- matched by name -> set their codes #}
+{% set by_name_codes = ok_codes | selectattr('by_name') | list %}
+{% if by_name_codes %}
+<div class="up-card">
+  <div class="up-card-header">
+    <h6 class="mb-0 fw-bold" style="font-size:0.95rem;"><i class="fas fa-tag me-1 text-primary"></i>{{ by_name_codes | length }} code(s) matched by Item Name</h6>
+  </div>
+  <div class="up-card-body">
+    <p class="text-muted small mb-2">
+      These rows matched your <strong>current</strong> items using the Item Name column, because the code in the
+      file isn't set on the item yet (it may still be sitting on an old removed item). They'll import fine either way.
+      Click below to save these codes onto the current items, so future uploads match straight by code. Any code
+      left on a removed item is moved across.
+    </p>
+    <form method="POST" action="{{ url_for('bar_inventory_items_assign_codes') }}"
+          onsubmit="return confirm('Set {{ by_name_codes | length }} code(s) on your current items?');">
+      <input type="hidden" name="next_date" value="{{ entry_date }}">
+      <div class="table-responsive" style="max-height:240px;overflow:auto;">
+        <table class="table table-sm table-bordered up-table mb-2">
+          <thead><tr><th style="width:16%">Code in file</th><th>Current item it will be set on</th></tr></thead>
+          <tbody>
+            {% for s in by_name_codes %}
+            <tr>
+              <td><code>{{ s.code }}</code><input type="hidden" name="code[]" value="{{ s.code }}"></td>
+              <td>{{ s.matched_name }}<input type="hidden" name="item_id[]" value="{{ s.item_id }}"></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <button type="submit" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-tag me-1"></i> Set these codes on my current items
+      </button>
+      <span class="text-muted small ms-2">This only saves codes &mdash; submit the quantities above first if you want them saved too.</span>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {# ------------------------------------------------ removed items (restore) #}
 {% if removed_rows %}
 {% set unique_removed = {} %}
@@ -163,8 +203,10 @@
   </div>
   <div class="up-card-body">
     <p class="text-muted small mb-2">
-      These items exist but were removed from the active list, so their quantities can't be posted.
-      Restore them, then upload the same file again.
+      The code in the file belongs to an item that was deleted, and <strong>no current item</strong> has the same
+      name either &mdash; so there's nothing current to post it to. If you still stock it, restore it and upload the
+      file again. If your current item is spelled differently, set this code on it in
+      <a href="{{ url_for('bar_inventory_items') }}">Manage Items</a> instead (the code moves across automatically).
     </p>
     <form method="POST" action="{{ url_for('bar_inventory_items_bulk_restore') }}"
           onsubmit="return confirm('Restore {{ unique_removed | length }} item(s) to the active list?');">

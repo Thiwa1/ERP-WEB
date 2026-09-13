@@ -20757,6 +20757,14 @@ def _bar_inv_norm_identifier(v):
     return str(v).strip().lower()
 
 
+def _bar_inv_norm_name(v):
+    """Normalises an item name for matching: case-insensitive, and runs of
+    spaces collapsed ('WHITE LABEL ARRACK ' == 'white label  arrack')."""
+    if v is None:
+        return ''
+    return ' '.join(str(v).split()).lower()
+
+
 def _bar_inv_parse_qty(v):
     """A quantity out of an uploaded cell. The source POS export writes the
     unit into the value itself for part-bottle pours ('575ml', '100ml'), and
@@ -21032,18 +21040,37 @@ def bar_inventory_upload():
             return redirect(url_for('bar_inventory', date=entry_date))
 
         items = _bar_inv_items()
-        # One combined lookup: your own Item Code (if set) OR our internal
-        # numeric ID, either one identifies the item in column A.
-        identifier_map = {}
-        for it in items:
-            if it['item_code']:
-                identifier_map[_bar_inv_norm_identifier(it['item_code'])] = it['id']
-            identifier_map[str(it['id'])] = it['id']
-        items_by_name = {it['item_name'].strip().lower(): it['id'] for it in items}
+        items_by_name = {_bar_inv_norm_name(it['item_name']): it['id'] for it in items}
         items_by_id = {it['id']: it for it in items}
 
+        # Removed (is_active = 0) items are deliberately excluded from
+        # matching - they're only used to explain a row nothing current claims.
+        removed_rows = db.execute_query("""
+            SELECT id, item_code, item_name FROM bar_inventory_items WHERE is_active = 0
+        """) or []
+
+        # Column A lookup, CURRENT items first, in strict priority:
+        #   1. your own Item Code on a current item
+        #   2. this app's internal ID - but ONLY for a value that isn't anyone's
+        #      Item Code (current or removed). Codes from a POS are plain numbers
+        #      (1, 2, 55, 204...) and would otherwise collide with internal IDs,
+        #      so code "2" could land on whatever item happens to be ID 2.
+        # A later item can never overwrite an earlier item's code this way.
+        code_map = {}
+        for it in items:
+            if it['item_code']:
+                code_map.setdefault(_bar_inv_norm_identifier(it['item_code']), it['id'])
+        all_codes = set(code_map) | {_bar_inv_norm_identifier(r['item_code'])
+                                     for r in removed_rows if r['item_code']}
+        internal_id_map = {str(it['id']): it['id'] for it in items}
+
         def as_identifier(v):
-            return identifier_map.get(_bar_inv_norm_identifier(v))
+            key = _bar_inv_norm_identifier(v)
+            if key in code_map:
+                return code_map[key]
+            if key not in all_codes:
+                return internal_id_map.get(key)
+            return None
 
         # Codes already marked "not a bar item" - reported as Ignored rather
         # than errors, so the food/room lines in a POS export stop crying
@@ -21051,18 +21078,13 @@ def bar_inventory_upload():
         ignored_rows = db.execute_query("SELECT code, label FROM bar_inventory_ignored_codes") or []
         ignored_codes = {_bar_inv_norm_identifier(r['code']): (r['label'] or '') for r in ignored_rows}
 
-        # Removed (is_active = 0) items are deliberately excluded from
-        # matching, but "no item has this code" is a misleading way to report
-        # it - look them up separately so the row can say what's really wrong.
-        removed_rows = db.execute_query("""
-            SELECT id, item_code, item_name FROM bar_inventory_items WHERE is_active = 0
-        """) or []
+        # Only a removed item's own Item Code counts as "removed" - not its
+        # internal ID, which is just a coincidental number clash with a code.
         removed_map = {}
         for r in removed_rows:
             if r['item_code']:
-                removed_map[_bar_inv_norm_identifier(r['item_code'])] = (r['id'], r['item_name'])
-            removed_map[str(r['id'])] = (r['id'], r['item_name'])
-        removed_by_name = {r['item_name'].strip().lower(): (r['id'], r['item_name'])
+                removed_map.setdefault(_bar_inv_norm_identifier(r['item_code']), (r['id'], r['item_name']))
+        removed_by_name = {_bar_inv_norm_name(r['item_name']): (r['id'], r['item_name'])
                            for r in removed_rows}
 
         # Which column layout is this file?
@@ -21102,15 +21124,23 @@ def bar_inventory_upload():
         code_order = []
         for r in raw_rows:
             row_no, c_a, c_b, c_c, c_d, c_e, c_f = r
+            matched_by_name = False
             if id_layout:
                 lookup_value = c_a
                 file_name = c_b
                 item_id = as_identifier(c_a)
+                if item_id is None and c_b not in (None, ''):
+                    # The code isn't on any current item - but if the Item Name
+                    # in column B is one of your CURRENT items, that's the item
+                    # meant (e.g. its code is still sitting on an old removed
+                    # copy). Current items always win over removed ones.
+                    item_id = items_by_name.get(_bar_inv_norm_name(c_b))
+                    matched_by_name = item_id is not None
                 raw_quantities = (c_c, c_d, c_e, c_f)
             else:
                 lookup_value = c_a
                 file_name = c_a
-                item_id = items_by_name.get(str(c_a).strip().lower())
+                item_id = items_by_name.get(_bar_inv_norm_name(c_a))
                 raw_quantities = (c_b, c_c, c_d, c_e)
 
             qty = [_bar_inv_parse_qty(v) for v in raw_quantities]
@@ -21125,7 +21155,7 @@ def bar_inventory_upload():
 
             norm_lookup = _bar_inv_norm_identifier(lookup_value)
             removed_hit = (removed_map.get(norm_lookup) if id_layout
-                           else removed_by_name.get(str(lookup_value).strip().lower()))
+                           else removed_by_name.get(_bar_inv_norm_name(lookup_value)))
             has_value = [v not in (None, '') for v in raw_quantities]
 
             if not any(qty):
@@ -21151,8 +21181,11 @@ def bar_inventory_upload():
             else:
                 entry['status'] = 'ok'
                 entry['matched_name'] = items_by_id[item_id]['item_name']
-                entry['note'] = ''
+                entry['note'] = ('matched by Item Name - set this code on the item to match by code'
+                                 if matched_by_name else '')
                 entry['item_id'] = item_id
+                if matched_by_name:
+                    entry['name_match_code'] = entry['lookup']
                 if item_id not in totals:
                     totals[item_id] = {k: 0.0 for k in qty_cols}
                     given[item_id] = set()
@@ -21172,6 +21205,7 @@ def bar_inventory_upload():
                         shown_code = int(shown_code)
                     ct = code_totals[key] = {
                         'code': '' if shown_code is None else str(shown_code).strip(),
+                        'by_name': matched_by_name,
                         'file_name': entry['file_name'],
                         'matched_name': entry['matched_name'], 'status': entry['status'],
                         'item_id': entry.get('item_id'), 'rows': 0,
@@ -21448,6 +21482,14 @@ def bar_inventory_items_save():
             flash('Item name is required.', 'danger')
             return redirect(url_for('bar_inventory_items'))
 
+        if item_code:
+            # A code still parked on a REMOVED item shouldn't block giving it to
+            # a current one - current items always own their codes.
+            db.execute_query("""
+                UPDATE bar_inventory_items SET item_code = NULL
+                WHERE item_code = %s AND is_active = 0 AND id <> %s
+            """, (item_code, int(item_id) if item_id else 0), commit=True)
+
         if item_id:
             db.execute_query("""
                 UPDATE bar_inventory_items SET
@@ -21537,6 +21579,52 @@ def bar_inventory_items_bulk_restore():
     return redirect(url_for('bar_inventory_items'))
 
 
+@app.route('/bar_inventory/items/assign_codes', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def bar_inventory_items_assign_codes():
+    """Give file codes to the CURRENT items they were matched to by name on
+    the upload preview, so the next upload matches them straight by code.
+    A code parked on a removed item is taken off it first; a code already
+    used by a different current item is left alone and reported."""
+    codes = request.form.getlist('code[]')
+    item_ids = request.form.getlist('item_id[]')
+    next_date = (request.form.get('next_date') or '').strip()
+
+    assigned = 0
+    clashes = []
+    for code, item_id in zip(codes, item_ids):
+        code = (code or '').strip()
+        if not code or not str(item_id).strip().isdigit():
+            continue
+        item_id = int(item_id)
+        other = db.execute_query("""
+            SELECT id, item_name FROM bar_inventory_items
+            WHERE item_code = %s AND is_active = 1 AND id <> %s
+        """, (code, item_id)) or []
+        if other:
+            clashes.append(f"{code} (already on {other[0]['item_name']})")
+            continue
+        try:
+            db.execute_query("""
+                UPDATE bar_inventory_items SET item_code = NULL
+                WHERE item_code = %s AND is_active = 0 AND id <> %s
+            """, (code, item_id), commit=True)
+            db.execute_query("UPDATE bar_inventory_items SET item_code = %s WHERE id = %s AND is_active = 1",
+                             (code, item_id), commit=True)
+            assigned += 1
+        except Exception:
+            clashes.append(code)
+
+    msg = f'Set {assigned} Item Code(s) on your current items.'
+    if clashes:
+        msg += ' Not changed: ' + ', '.join(clashes[:8]) + ('...' if len(clashes) > 8 else '')
+    flash(msg, 'success' if assigned else 'warning')
+    if next_date:
+        return redirect(url_for('bar_inventory', date=next_date))
+    return redirect(url_for('bar_inventory_items'))
+
+
 def _bar_inv_parse_unit_type(raw):
     """Maps a free-text unit type cell to the stored enum. Defaults to
     'UNIT' for blank/unrecognised text (e.g. the plain name-only format)."""
@@ -21613,8 +21701,17 @@ def bar_inventory_items_upload():
             return redirect(url_for('bar_inventory_items'))
 
         existing = db.execute_query("SELECT id, item_code, item_name, is_active FROM bar_inventory_items") or []
-        existing_by_name = {r['item_name']: r['id'] for r in existing}
-        existing_by_code = {r['item_code']: r['id'] for r in existing if r['item_code']}
+        # Current (active) items are always preferred over removed copies with
+        # the same code or name - otherwise an old removed row keeps grabbing
+        # the match and gets revived instead of the item actually in use.
+        existing_sorted = sorted(existing, key=lambda r: 0 if r['is_active'] else 1)
+        existing_by_name = {}
+        existing_by_code = {}
+        for r in existing_sorted:
+            existing_by_name.setdefault(_bar_inv_norm_name(r['item_name']), r['id'])
+            if r['item_code']:
+                existing_by_code.setdefault(_bar_inv_norm_identifier(r['item_code']), r['id'])
+        active_ids = {r['id'] for r in existing if r['is_active']}
         # A previously removed item that turns up in an uploaded catalogue is
         # being re-adopted, so bring it back - otherwise it stays invisible to
         # the day grid and every quantity upload silently fails to match it.
@@ -21635,17 +21732,39 @@ def bar_inventory_items_upload():
 
             # Item Code (if given) identifies the item even across a rename;
             # otherwise fall back to matching by the current name.
-            item_code = (item_code_raw or '').strip()
-            existing_id = existing_by_code.get(item_code) if item_code else None
-            if existing_id is None:
-                existing_id = existing_by_name.get(name)
+            if isinstance(item_code_raw, float) and item_code_raw.is_integer():
+                item_code_raw = int(item_code_raw)   # Excel hands 55 back as 55.0
+            item_code = '' if item_code_raw is None else str(item_code_raw).strip()
+            code_key = _bar_inv_norm_identifier(item_code)
+            name_key = _bar_inv_norm_name(name)
+
+            by_code = existing_by_code.get(code_key) if item_code else None
+            by_name = existing_by_name.get(name_key)
+            # A current item wins: its code first, then its name, and only
+            # then a removed row holding the code or name.
+            if by_code in active_ids:
+                existing_id = by_code
+            elif by_name in active_ids:
+                existing_id = by_name
+            else:
+                existing_id = by_code or by_name
 
             try:
+                if item_code and existing_id and by_code and by_code != existing_id:
+                    # The code is parked on another (removed) item - hand it
+                    # over, or the unique code constraint silently blocks it.
+                    db.execute_query("""
+                        UPDATE bar_inventory_items SET item_code = NULL
+                        WHERE id = %s AND is_active = 0
+                    """, (by_code,), commit=True)
+                    existing_by_code[code_key] = existing_id
+
                 if existing_id:
                     if existing_id in inactive_ids:
                         db.execute_query("UPDATE bar_inventory_items SET is_active = 1 WHERE id = %s",
                                          (existing_id,), commit=True)
                         inactive_ids.discard(existing_id)
+                        active_ids.add(existing_id)
                         restored += 1
                     # Every detail field is independently optional here - a
                     # column left blank in the file (e.g. a codes-only
@@ -21676,15 +21795,16 @@ def bar_inventory_items_upload():
                     unit_price = parse_float(unit_price_raw)
                     opening_balance = parse_float(opening_balance_raw)
                     unit_price_restaurant = parse_float(unit_price_restaurant_raw)
-                    db.execute_query("""
+                    new_id = db.execute_query("""
                         INSERT INTO bar_inventory_items
                             (item_code, item_name, unit_type, bottle_size_ml, unit_price, opening_balance, unit_price_restaurant, display_order)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                     """, (item_code or None, name, unit_type, bottle_size, unit_price, opening_balance,
                           unit_price_restaurant, next_order), commit=True)
-                    existing_by_name[name] = True
+                    active_ids.add(new_id)
+                    existing_by_name[name_key] = new_id
                     if item_code:
-                        existing_by_code[item_code] = True
+                        existing_by_code[code_key] = new_id
                     next_order += 10
                     added += 1
             except Exception:
