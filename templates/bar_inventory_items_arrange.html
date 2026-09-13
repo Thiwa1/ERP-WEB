@@ -45,18 +45,18 @@
 
 <div class="row g-3">
   {% for g in groups %}
-  {% if g.items or g.id is not none %}
+  {% if g.rows or g.id is not none %}
   <div class="col-lg-6">
     <div class="ar-group">
       <div class="ar-group-head">
         <span class="fw-bold"><i class="fas fa-tag me-1 text-primary"></i>{{ g.name }}
-          <span class="badge bg-light text-dark border ms-1 ar-count">{{ g.items | length }}</span></span>
+          <span class="badge bg-light text-dark border ms-1 ar-count">{{ g.rows | length }}</span></span>
         <button type="button" class="btn btn-sm btn-outline-secondary py-0" onclick="arSortAZ(this)" title="Sort this category alphabetically">
           <i class="fas fa-sort-alpha-down me-1"></i> A&ndash;Z
         </button>
       </div>
       <ul class="ar-list" data-category-id="{{ g.id if g.id is not none else '' }}">
-        {% for it in g.items %}
+        {% for it in g.rows %}
         <li class="ar-item" draggable="true" data-id="{{ it.id }}" data-original-category="{{ g.id if g.id is not none else '' }}">
           <i class="fas fa-grip-vertical text-muted"></i>
           <span class="badge bg-primary ar-pos">{{ loop.index }}</span>

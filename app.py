@@ -22440,11 +22440,11 @@ def bar_inventory_items_arrange():
     category (and moving an item to another category)."""
     items = _bar_inv_items()
     categories = _bar_inv_categories()
-    groups = [{'id': c['id'], 'name': c['name'], 'items': []} for c in categories]
+    groups = [{'id': c['id'], 'name': c['name'], 'rows': []} for c in categories]
     by_id = {g['id']: g for g in groups}
-    uncategorised = {'id': None, 'name': 'No category', 'items': []}
+    uncategorised = {'id': None, 'name': 'No category', 'rows': []}
     for it in items:
-        by_id.get(it['category_id'], uncategorised)['items'].append(it)
+        by_id.get(it['category_id'], uncategorised)['rows'].append(it)
     groups.append(uncategorised)
     return render_template('bar_inventory_items_arrange.html', groups=groups, item_count=len(items))
 
