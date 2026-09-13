@@ -20996,6 +20996,13 @@ def bar_inventory():
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
     missing = _bar_inv_missing_entries(day)
     totals = _bar_inv_sales_totals(items, day, missing)
+    # The missing-item picker offers removed items too - recording one
+    # restores it to the active list.
+    removed_items = db.execute_query("""
+        SELECT id, item_code, item_name, unit_type, unit_price
+        FROM bar_inventory_items WHERE is_active = 0
+        ORDER BY item_name
+    """) or []
 
     records = db.execute_query("""
         SELECT id, entry_date, status FROM bar_inventory_days ORDER BY entry_date DESC LIMIT 60
@@ -21008,6 +21015,7 @@ def bar_inventory():
                            day=day,
                            totals=totals,
                            missing=missing,
+                           removed_items=removed_items,
                            categories=_bar_inv_categories(),
                            records=records)
 
@@ -21236,13 +21244,19 @@ def bar_inventory_missing_add():
     barman = (request.form.get('barman') or '').strip()[:100] or None
     remarks = (request.form.get('remarks') or '').strip()[:255] or None
     item = db.execute_query("""
-        SELECT id, item_name, unit_type, bottle_size_ml, unit_price FROM bar_inventory_items
-        WHERE id = %s AND is_active = 1
+        SELECT id, item_name, unit_type, bottle_size_ml, unit_price, is_active FROM bar_inventory_items
+        WHERE id = %s
     """, (int(item_raw),)) if item_raw.isdigit() else None
     if not item:
         flash('Choose the item from the list.', 'danger')
         return redirect(url_for('bar_inventory', date=entry_date))
     item = item[0]
+    restored_note = ''
+    if not item['is_active']:
+        # A removed item the barman still sold - bring it back so it's on
+        # the sheet and its stock is tracked again.
+        db.execute_query("UPDATE bar_inventory_items SET is_active = 1 WHERE id = %s", (item['id'],), commit=True)
+        restored_note = f' "{item["item_name"]}" was a removed item and has been restored to the active list.'
     if not qty:
         flash('Enter the missing quantity.', 'danger')
         return redirect(url_for('bar_inventory', date=entry_date))
@@ -21270,7 +21284,7 @@ def bar_inventory_missing_add():
     _bar_inv_sync_missing_line(day_id, item['id'], entry_date)
 
     flash(f'Recorded missing item: {item["item_name"]} x {qty:g} = Rs. {amount:,.2f}'
-          + (f' ({barman})' if barman else '') + '.' + _bar_inv_rollforward_note(entry_date), 'success')
+          + (f' ({barman})' if barman else '') + '.' + restored_note + _bar_inv_rollforward_note(entry_date), 'success')
     return redirect(url_for('bar_inventory', date=entry_date) + '#biMissingCard')
 
 

@@ -269,17 +269,26 @@
       <input type="hidden" name="lines_json" class="bi-miss-lines">
       <div class="col-md-4">
         <label class="form-label small mb-1">Item <span class="text-danger">*</span>
-          <span class="text-muted fw-normal">({{ items | length }} items &mdash; not listed? add it with "New Item (not in list)")</span></label>
+          <span class="text-muted fw-normal">({{ items | length }} active{% if removed_items %} + {{ removed_items | length }} removed{% endif %} &mdash; not listed? add it with "New Item (not in list)")</span></label>
         <input type="text" id="biMissSearch" class="form-control form-control-sm mb-1 no-select2" placeholder="Type name or code to search..."
                oninput="biMissFilter(this.value)" autocomplete="off">
-        <select name="item_id" id="biMissItem" class="form-select form-select-sm no-select2" size="6" onchange="biMissPreview()">
-          <option value="">Choose item...</option>
+        <select name="item_id" id="biMissItem" class="form-select form-select-sm no-select2" size="7" onchange="biMissPreview()">
           {% for it in items %}
           {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}{% if not loop.first %}</optgroup>{% endif %}<optgroup label="{{ it.category_name or 'No category' }}">{% endif %}
           <option value="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-price="{{ it.unit_price or 0 }}">{{ it.item_name }}{% if it.item_code %} ({{ it.item_code }}){% endif %}</option>
           {% if loop.last %}</optgroup>{% endif %}
           {% endfor %}
+          {% if removed_items %}
+          <optgroup label="Removed items - recording one restores it">
+            {% for it in removed_items %}
+            <option value="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-price="{{ it.unit_price or 0 }}" style="color:#b35c00;">{{ it.item_name }}{% if it.item_code %} ({{ it.item_code }}){% endif %} [removed]</option>
+            {% endfor %}
+          </optgroup>
+          {% endif %}
         </select>
+        <div id="biMissNoMatch" class="small text-danger mt-1" style="display:none;">
+          No item matches that. Check the spelling, or add it with <a href="#" onclick="biShowQuickAdd(); return false;">New Item (not in list)</a>.
+        </div>
       </div>
       <div class="col-md-2">
         <label class="form-label small mb-1">Qty <span id="biMissUnit" class="text-muted"></span> <span class="text-danger">*</span></label>
@@ -589,13 +598,21 @@ function biFilterMoved(on) {
 
 // Narrow the item list to matches (name or code); picks the first match so
 // Enter/Record works straight after typing.
+// Loose match: case, spaces and punctuation don't matter ("stout can 500ml"
+// finds "Stout Can 500 ml", "sp brew" finds "SP/Brew Bottle"), and every
+// typed word must appear somewhere in the item's name or code.
+function biMissNorm(s) {
+  return (s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
 function biMissFilter(text) {
   const sel = document.getElementById('biMissItem');
-  const q = text.trim().toLowerCase();
+  const words = biMissNorm(text).split(' ').filter(Boolean);
   let first = null;
   sel.querySelectorAll('option').forEach(function(opt) {
-    if (!opt.value) return;
-    const hit = !q || opt.textContent.toLowerCase().indexOf(q) !== -1;
+    const label = biMissNorm(opt.textContent);
+    const squashed = label.replace(/ /g, '');
+    const hit = words.every(function(w) { return label.indexOf(w) !== -1 || squashed.indexOf(w) !== -1; });
     opt.hidden = !hit;
     opt.disabled = !hit;
     if (hit && !first) first = opt;
@@ -603,9 +620,10 @@ function biMissFilter(text) {
   sel.querySelectorAll('optgroup').forEach(function(g) {
     g.hidden = !Array.from(g.querySelectorAll('option')).some(function(o) { return !o.hidden; });
   });
-  if (q) {
+  if (words.length) {
     sel.value = first ? first.value : '';
   }
+  document.getElementById('biMissNoMatch').style.display = (words.length && !first) ? '' : 'none';
   biMissPreview();
 }
 
