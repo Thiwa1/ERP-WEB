@@ -6126,7 +6126,11 @@ def warranty_save():
 @has_permission('Access_Inventory')
 def inventory_trend_analysis():
     item_name = request.args.get('item_name')
-    months_back = int(request.args.get('months', 6))
+    try:
+        months_back = int(request.args.get('months', 6))
+    except (TypeError, ValueError):
+        months_back = 6
+    view = request.args.get('view') if request.args.get('view') in ('trend', 'bincard') else 'trend'
 
     items = db.execute_query("SELECT DISTINCT inventoy_name FROM inventoy_items WHERE inventoy_name IS NOT NULL AND inventoy_name != '' ORDER BY inventoy_name")
 
@@ -6134,6 +6138,91 @@ def inventory_trend_analysis():
     trend_direction = "Stable"
     slope_val = 0
     forecast = 0
+
+    # Bin card defaults to the same window as the trend: from the 1st of the
+    # month `months_back` months ago, up to today.
+    today = date.today()
+    y, m = today.year, today.month - months_back
+    while m < 1:
+        m += 12
+        y -= 1
+    from_date = request.args.get('from_date') or date(y, m, 1).strftime('%Y-%m-%d')
+    to_date = request.args.get('to_date') or today.strftime('%Y-%m-%d')
+    if from_date > to_date:
+        from_date, to_date = to_date, from_date
+
+    item_info = None
+    bin_card = None
+    if item_name:
+        info = db.execute_query("""
+            SELECT ii.inventoy_name, ii.inventoy_code, ii.inventoy_items_messurment_unit AS unit,
+                   COALESCE(ii.min_qty, 0) AS min_qty,
+                   (SELECT COALESCE(SUM(COALESCE(r.inventory_recod_moument_in, 0)
+                                        - COALESCE(r.inventory_recod_movment_out, 0)), 0)
+                      FROM inventory_recod r WHERE r.inventoy_name = ii.inventoy_name) AS current_balance
+            FROM inventoy_items ii
+            WHERE ii.inventoy_name = %s
+            LIMIT 1
+        """, (item_name,))
+        item_info = info[0] if info else None
+
+    if item_name and item_info and view == 'bincard':
+        ob = db.execute_query("""
+            SELECT COALESCE(SUM(COALESCE(inventory_recod_moument_in, 0)
+                                - COALESCE(inventory_recod_movment_out, 0)), 0) AS bal
+            FROM inventory_recod
+            WHERE inventoy_name = %s AND inventory_recod_action_date < %s
+        """, (item_name, from_date))
+        opening_balance = float(ob[0]['bal'] or 0) if ob else 0.0
+
+        movements = db.execute_query("""
+            SELECT id, inventory_recod_action_date AS action_date,
+                   COALESCE(inventory_recod_moument_in, 0) AS in_qty,
+                   COALESCE(inventory_recod_movment_out, 0) AS out_qty,
+                   inventory_recod_unit_price AS unit_price,
+                   inventory_recod_account AS txn_type,
+                   inventory_recodcol_memo AS memo,
+                   inventory_recod_location AS location,
+                   inventory_recod_suplier_iv_no AS supplier_iv_no,
+                   inventory_recod_issue_no AS issue_no,
+                   inventory_recod_job_no AS job_no,
+                   JV_No AS jv_no
+            FROM inventory_recod
+            WHERE inventoy_name = %s AND inventory_recod_action_date BETWEEN %s AND %s
+            ORDER BY inventory_recod_action_date, id
+        """, (item_name, from_date, to_date)) or []
+
+        min_qty = float(item_info['min_qty'] or 0)
+        balance = opening_balance
+        total_in = total_out = 0.0
+        rows = []
+        for mv in movements:
+            in_qty = float(mv['in_qty'] or 0)
+            out_qty = float(mv['out_qty'] or 0)
+            balance = round(balance + in_qty - out_qty, 4)
+            total_in += in_qty
+            total_out += out_qty
+            refs = []
+            if mv['jv_no']:
+                refs.append(f"JV-{mv['jv_no']}")
+            if mv['supplier_iv_no']:
+                refs.append(f"Inv {mv['supplier_iv_no']}")
+            if mv['issue_no']:
+                refs.append(f"Issue {mv['issue_no']}")
+            if mv['job_no']:
+                refs.append(f"Job {mv['job_no']}")
+            mv['reference'] = ' / '.join(refs)
+            mv['balance'] = balance
+            mv['below_min'] = min_qty > 0 and balance < min_qty
+            rows.append(mv)
+
+        bin_card = {
+            'opening_balance': opening_balance,
+            'rows': rows,
+            'total_in': round(total_in, 4),
+            'total_out': round(total_out, 4),
+            'closing_balance': round(balance, 4),
+        }
 
     if item_name:
         # Fetch Data
@@ -6193,6 +6282,9 @@ def inventory_trend_analysis():
                     'TrendValue': round(trend_val, 2)
                 })
 
+    avg_monthly_sales = (round(sum(float(r['SalesQuantity'] or 0) for r in trend_data) / months_back, 2)
+                         if trend_data and months_back else 0)
+
     return render_template('inventory_trend_analysis.html',
                            items=items,
                            trend_data=trend_data,
@@ -6200,7 +6292,48 @@ def inventory_trend_analysis():
                            months=months_back,
                            trend_direction=trend_direction,
                            slope=slope_val,
-                           next_month_forecast=forecast)
+                           next_month_forecast=forecast,
+                           view=view,
+                           item_info=item_info,
+                           bin_card=bin_card,
+                           from_date=from_date,
+                           to_date=to_date,
+                           avg_monthly_sales=avg_monthly_sales)
+
+
+@app.route('/inventory_trend_analysis/min_qty', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def inventory_trend_analysis_min_qty():
+    """Change an item's minimum (re-order) quantity from the Trend Analysis
+    page, then return to the same item and view."""
+    item_name = (request.form.get('item_name') or '').strip()
+    raw = (request.form.get('min_qty') or '').strip()
+    back = url_for('inventory_trend_analysis', item_name=item_name or None,
+                   months=request.form.get('months') or None, view=request.form.get('view') or None,
+                   from_date=request.form.get('from_date') or None, to_date=request.form.get('to_date') or None)
+
+    if not item_name:
+        flash('Select an item first.', 'danger')
+        return redirect(back)
+    try:
+        min_qty = float(raw.replace(',', ''))
+    except ValueError:
+        flash('Enter a valid minimum quantity.', 'danger')
+        return redirect(back)
+    if min_qty < 0:
+        flash('Minimum quantity cannot be negative.', 'danger')
+        return redirect(back)
+
+    existing = db.execute_query("SELECT COALESCE(min_qty, 0) AS min_qty FROM inventoy_items WHERE inventoy_name = %s",
+                                (item_name,))
+    if not existing:
+        flash(f'Item "{item_name}" was not found.', 'danger')
+        return redirect(back)
+
+    db.execute_query("UPDATE inventoy_items SET min_qty = %s WHERE inventoy_name = %s", (min_qty, item_name), commit=True)
+    flash(f'Minimum quantity for "{item_name}" changed from {float(existing[0]["min_qty"]):g} to {min_qty:g}.', 'success')
+    return redirect(back)
 
 @app.route('/api/predict_account_type')
 @login_required
@@ -14297,7 +14430,7 @@ def dashboard_module_stats():
             cursor.execute("""
                 SELECT COUNT(*) as cnt FROM (
                     SELECT ir.inventoy_name,
-                           SUM(COALESCE(ir.inventory_recod_movment_in,0))
+                           SUM(COALESCE(ir.inventory_recod_moument_in,0))
                            - SUM(COALESCE(ir.inventory_recod_movment_out,0)) AS balance,
                            MAX(ii.min_qty) AS min_qty
                     FROM inventory_recod ir
@@ -20875,7 +21008,7 @@ def _bar_inv_sync_missing_line(day_id, item_id, entry_date):
     """, (day_id, item_id)) or []
     missing_qty = float(total[0]['q'] or 0) if total else 0.0
     line = db.execute_query("""
-        SELECT id, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty
+        SELECT id, rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty, adjustment_qty
         FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
     """, (day_id, item_id)) or []
     item = db.execute_query("SELECT id, opening_balance FROM bar_inventory_items WHERE id = %s", (item_id,))[0]
@@ -20884,7 +21017,7 @@ def _bar_inv_sync_missing_line(day_id, item_id, entry_date):
         ln = line[0]
         total_available = round(opening + float(ln['rf_stock'] or 0), 4)
         closing = round(total_available - float(ln['sales_bar_qty'] or 0) - float(ln['restaurant_sale_qty'] or 0)
-                        - float(ln['ent_qty'] or 0) - missing_qty, 4)
+                        - float(ln['ent_qty'] or 0) - missing_qty + float(ln['adjustment_qty'] or 0), 4)
         db.execute_query("""
             UPDATE bar_inventory_day_lines
             SET opening_balance = %s, total_available = %s, missing_qty = %s, closing_balance = %s
@@ -20989,7 +21122,8 @@ def bar_inventory():
     if day:
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
-                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty, closing_balance
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
+                   adjustment_qty, adjustment_note, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
@@ -21003,6 +21137,8 @@ def bar_inventory():
             it['restaurant_sale_qty'] = saved['restaurant_sale_qty']
             it['ent_qty'] = saved['ent_qty']
             it['missing_qty'] = saved['missing_qty']
+            it['adjustment_qty'] = saved['adjustment_qty']
+            it['adjustment_note'] = saved['adjustment_note']
             it['closing_balance'] = saved['closing_balance']
         else:
             it['opening'] = _bar_inv_opening_balance(it, entry_date)
@@ -21011,6 +21147,8 @@ def bar_inventory():
             it['restaurant_sale_qty'] = 0
             it['ent_qty'] = 0
             it['missing_qty'] = 0
+            it['adjustment_qty'] = 0
+            it['adjustment_note'] = ''
             it['closing_balance'] = it['opening']
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
@@ -21060,7 +21198,8 @@ def _bar_inv_rollforward(from_date):
 
     later = db.execute_query("""
         SELECT dl.id, dl.day_id, dl.item_id, dl.opening_balance, dl.rf_stock,
-               dl.sales_bar_qty, dl.restaurant_sale_qty, dl.ent_qty, dl.missing_qty, dl.closing_balance
+               dl.sales_bar_qty, dl.restaurant_sale_qty, dl.ent_qty, dl.missing_qty,
+               dl.adjustment_qty, dl.closing_balance
         FROM bar_inventory_day_lines dl
         JOIN bar_inventory_days d ON d.id = dl.day_id
         WHERE d.entry_date > %s
@@ -21073,7 +21212,7 @@ def _bar_inv_rollforward(from_date):
         total_available = round(opening + float(ln['rf_stock'] or 0), 4)
         closing = round(total_available - float(ln['sales_bar_qty'] or 0)
                         - float(ln['restaurant_sale_qty'] or 0) - float(ln['ent_qty'] or 0)
-                        - float(ln['missing_qty'] or 0), 4)
+                        - float(ln['missing_qty'] or 0) + float(ln['adjustment_qty'] or 0), 4)
         if (abs(float(ln['opening_balance'] or 0) - opening) > 0.00001
                 or abs(float(ln['closing_balance'] or 0) - closing) > 0.00001):
             db.execute_query("""
@@ -21141,7 +21280,8 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
             # kept in sync from bar_inventory_missing_items) must still be
             # deducted from the closing balance.
             cursor.execute("""
-                SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty
+                SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
+                       adjustment_qty, adjustment_note
                 FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
             """, (day_id, item_id))
             current = cursor.fetchone() or {}
@@ -21157,23 +21297,36 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
             sales_bar_qty = qty_for('sales_bar_qty')
             restaurant_sale_qty = qty_for('restaurant_sale_qty')
             ent_qty = qty_for('ent_qty')
+            # Uploads never send an adjustment, so it's kept (None) rather
+            # than wiped; the day grid always sends it.
+            adjustment_qty = qty_for('adjustment_qty')
+            if ln.get('adjustment_note') is None:
+                adjustment_note = current.get('adjustment_note')
+            else:
+                adjustment_note = str(ln.get('adjustment_note')).strip()[:255] or None
+            if not adjustment_qty:
+                adjustment_note = None
 
             opening = _bar_inv_opening_balance(item, entry_date)
             total_available = round(opening + rf_stock, 4)
-            closing_balance = round(total_available - sales_bar_qty - restaurant_sale_qty - ent_qty - missing_qty, 4)
+            closing_balance = round(total_available - sales_bar_qty - restaurant_sale_qty - ent_qty
+                                    - missing_qty + adjustment_qty, 4)
 
             cursor.execute("""
                 INSERT INTO bar_inventory_day_lines (
                     day_id, item_id, opening_balance, rf_stock, total_available,
-                    sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    sales_bar_qty, restaurant_sale_qty, ent_qty, adjustment_qty, adjustment_note,
+                    closing_balance
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     opening_balance=VALUES(opening_balance), rf_stock=VALUES(rf_stock),
                     total_available=VALUES(total_available), sales_bar_qty=VALUES(sales_bar_qty),
                     restaurant_sale_qty=VALUES(restaurant_sale_qty), ent_qty=VALUES(ent_qty),
+                    adjustment_qty=VALUES(adjustment_qty), adjustment_note=VALUES(adjustment_note),
                     closing_balance=VALUES(closing_balance)
             """, (day_id, item_id, opening, rf_stock, total_available,
-                  sales_bar_qty, restaurant_sale_qty, ent_qty, closing_balance))
+                  sales_bar_qty, restaurant_sale_qty, ent_qty, adjustment_qty, adjustment_note,
+                  closing_balance))
             saved += 1
 
         if verify:
@@ -21287,7 +21440,7 @@ def bar_inventory_missing_add():
     except (ValueError, TypeError):
         lines_in = []
     if not day:
-        qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
+        qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty', 'adjustment_qty')
         lines_in = [ln for ln in lines_in if any(str(ln.get(k) or '').strip() not in ('', '0') for k in qty_keys)]
     ok, save_msg, _saved = _bar_inv_process_day(entry_date, lines_in, False, get_current_user_pk())
     if not ok:
@@ -21413,7 +21566,7 @@ def bar_inventory_quick_add_item():
         lines_in = json.loads(request.form.get('lines_json') or '[]')
     except (ValueError, TypeError):
         lines_in = []
-    qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty')
+    qty_keys = ('rf_stock', 'sales_bar_qty', 'restaurant_sale_qty', 'ent_qty', 'adjustment_qty')
     if not day:
         # Nothing saved for this day yet - don't create it just for empty rows.
         lines_in = [ln for ln in lines_in if any(str(ln.get(k) or '').strip() not in ('', '0') for k in qty_keys)]
@@ -22047,13 +22200,16 @@ def bar_inventory_print():
     if day:
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
-                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty, closing_balance
+                   sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
+                   adjustment_qty, adjustment_note, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
 
     for it in items:
         saved = lines_by_item.get(it['id']) or {}
+        it['adjustment_qty'] = saved.get('adjustment_qty', 0)
+        it['adjustment_note'] = saved.get('adjustment_note') or ''
         it['opening'] = saved.get('opening_balance', _bar_inv_opening_balance(it, entry_date))
         it['rf_stock'] = saved.get('rf_stock', 0)
         it['sales_bar_qty'] = saved.get('sales_bar_qty', 0)

@@ -36,6 +36,8 @@
   .bi-mv-restaurant, td.bi-mv-restaurant, td.bi-mv-restaurant input { background:#eadcff !important; }
   .bi-mv-ent, td.bi-mv-ent, td.bi-mv-ent input { background:#ffe8c7 !important; }
   .bi-mv-missing, td.bi-mv-missing { background:#ffd6d6 !important; color:#b02a37; font-weight:700; }
+  .bi-mv-adj, td.bi-mv-adj, td.bi-mv-adj input { background:#fff3a8 !important; }
+  .bi-table input.bi-adj-note { text-align:left; font-size:10px; }
   tr.bi-moved > td:first-child { border-left:4px solid #0d6efd !important; background:#f3f8ff; }
   .bi-mv-missing-row td { color:#b02a37; }
   .bi-totals .bi-grand td { font-weight:700; background:#e8f3ff; border-top:2px solid rgba(0,103,192,0.3) !important; }
@@ -128,6 +130,7 @@
         <span class="bi-legend bi-mv-restaurant">Restaurant sales</span>
         <span class="bi-legend bi-mv-ent">ENT</span>
         <span class="bi-legend bi-mv-missing">Missing (not entered)</span>
+        <span class="bi-legend bi-mv-adj">Adjustment</span>
         <span class="bi-legend" style="border-left:4px solid #0d6efd;">Row with any movement</span>
         <label class="ms-auto d-flex align-items-center gap-1 mb-0" style="cursor:pointer;">
           <input type="checkbox" id="biOnlyMoved" onchange="biFilterMoved(this.checked)"> Show only moved items
@@ -144,6 +147,7 @@
               <th style="width:8%">Restaurant Sale Qty</th>
               <th style="width:6%">ENT Qty</th>
               <th style="width:6%" class="text-end" title="Sold by the barman but not entered into the POS - recorded below">Missing</th>
+              <th style="width:7%" title="+ adds to stock (found, count over)&#10;- deducts from stock (breakage, spillage, count short)&#10;Ml items: enter ml">Adjustment (+/&minus;)</th>
               <th style="width:11%" class="text-end">Closing Balance</th>
               <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Unit Price</th>
               <th style="width:10%" class="text-end">Sales Value</th>
@@ -156,7 +160,7 @@
             {% for it in items %}
             {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
             <tr class="bi-cat-row">
-              <td colspan="9" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
+              <td colspan="10" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
               <td class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
               <td colspan="2" style="background:#eaf2fb;"></td>
               <td class="text-end fw-bold bi-cat-stock" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.stock_by_category.get(it.category_name or '', 0)) }}</td>
@@ -171,6 +175,13 @@
               <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
               <td class="text-end bi-missing" data-value="{{ it.missing_qty or 0 }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
+              <td>
+                <input type="number" step="any" class="form-control form-control-sm bi-adj" value="{{ '%g'|format(it.adjustment_qty) if it.adjustment_qty else '' }}"
+                       placeholder="+/-" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}>
+                <input type="text" maxlength="255" class="form-control form-control-sm bi-adj-note mt-1" value="{{ it.adjustment_note or '' }}"
+                       placeholder="Reason" title="{{ it.adjustment_note or 'Reason for the adjustment' }}"
+                       {% if not it.adjustment_qty %}style="display:none;"{% endif %} {% if readonly %}disabled{% endif %}>
+              </td>
               <td class="text-end bi-readonly-cell bi-closing" data-value="{{ it.closing_balance or 0 }}">{{ it.closing_display }}</td>
               <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
               <td class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
@@ -179,40 +190,40 @@
               <td class="text-end bi-readonly-cell bi-closing-value">{{ '{:,.2f}'.format(it.closing_value) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="13" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            <tr><td colspan="14" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
             {% endfor %}
           </tbody>
           {% if items %}
           <tfoot class="bi-totals">
             <tr>
-              <td colspan="9" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
+              <td colspan="10" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
               <td class="text-end" id="biTotUnits">{{ '{:,.2f}'.format(totals.units) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="9" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
+              <td colspan="10" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
               <td class="text-end" id="biTotMl">{{ '{:,.2f}'.format(totals.ml) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr class="bi-grand">
-              <td colspan="9" class="text-end">Grand Total Sales Value (Bar)</td>
+              <td colspan="10" class="text-end">Grand Total Sales Value (Bar)</td>
               <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
               <td class="text-end small">Restaurant</td>
               <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
               <td></td>
             </tr>
             <tr class="bi-mv-missing-row">
-              <td colspan="9" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
+              <td colspan="10" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
               <td class="text-end" id="biTotMissing">{{ '{:,.2f}'.format(totals.missing) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="9" class="text-end">Total incl. Missing Items</td>
+              <td colspan="10" class="text-end">Total incl. Missing Items</td>
               <td class="text-end" id="biTotWithMissing">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="9" class="text-end">Sheet (sales as per POS / sales sheet)</td>
+              <td colspan="10" class="text-end">Sheet (sales as per POS / sales sheet)</td>
               <td class="text-end">
                 <input type="number" step="0.01" name="sheet_amount" id="biSheet" class="form-control form-control-sm text-end"
                        value="{{ '%.2f'|format(totals.sheet) if totals.sheet is not none else '' }}" oninput="biRecalcTotals()" {% if readonly %}disabled{% endif %}>
@@ -220,20 +231,20 @@
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="9" class="text-end">Difference (Grand Total &minus; Sheet)</td>
+              <td colspan="10" class="text-end">Difference (Grand Total &minus; Sheet)</td>
               <td class="text-end" id="biTotDiff">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td>
               <td colspan="3"></td>
             </tr>
             <tr class="bi-stock-row">
-              <td colspan="12" class="text-end">Closing Stock Value &mdash; Unit items</td>
+              <td colspan="13" class="text-end">Closing Stock Value &mdash; Unit items</td>
               <td class="text-end" id="biStockUnits">{{ '{:,.2f}'.format(totals.stock_units) }}</td>
             </tr>
             <tr class="bi-stock-row">
-              <td colspan="12" class="text-end">Closing Stock Value &mdash; Ml items</td>
+              <td colspan="13" class="text-end">Closing Stock Value &mdash; Ml items</td>
               <td class="text-end" id="biStockMl">{{ '{:,.2f}'.format(totals.stock_ml) }}</td>
             </tr>
             <tr class="bi-grand">
-              <td colspan="12" class="text-end">Total Closing Stock Value &mdash; <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}">full closing stock report</a></td>
+              <td colspan="13" class="text-end">Total Closing Stock Value &mdash; <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}">full closing stock report</a></td>
               <td class="text-end" id="biStockTotal">{{ '{:,.2f}'.format(totals.stock_total) }}</td>
             </tr>
           </tfoot>
@@ -527,7 +538,11 @@ function biRecalcRow(input) {
   const restaurant = parseFloat(tr.querySelector('.bi-restaurant').value) || 0;
   const ent = parseFloat(tr.querySelector('.bi-ent').value) || 0;
   const missingQty = parseFloat(tr.querySelector('.bi-missing').getAttribute('data-value')) || 0;
-  const closing = opening + rf - sales - restaurant - ent - missingQty;
+  const adj = parseFloat(tr.querySelector('.bi-adj').value) || 0;
+  // Reason box only matters once there's an adjustment to explain.
+  const note = tr.querySelector('.bi-adj-note');
+  if (note) note.style.display = adj !== 0 ? '' : 'none';
+  const closing = opening + rf - sales - restaurant - ent - missingQty + adj;
   tr.querySelector('.bi-closing').setAttribute('data-value', closing);
   tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
   biRecalcTotals();
@@ -607,7 +622,9 @@ function biCollectLines() {
       rf_stock: tr.querySelector('.bi-rf').value,
       sales_bar_qty: tr.querySelector('.bi-sales').value,
       restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
-      ent_qty: tr.querySelector('.bi-ent').value
+      ent_qty: tr.querySelector('.bi-ent').value,
+      adjustment_qty: tr.querySelector('.bi-adj').value,
+      adjustment_note: tr.querySelector('.bi-adj-note').value
     });
   });
   return lines;
@@ -620,7 +637,7 @@ function biMarkMovement() {
   const onlyMoved = document.getElementById('biOnlyMoved');
   document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
     let moved = false;
-    [['.bi-rf', 'bi-mv-rf'], ['.bi-sales', 'bi-mv-sales'], ['.bi-restaurant', 'bi-mv-restaurant'], ['.bi-ent', 'bi-mv-ent']].forEach(function(p) {
+    [['.bi-rf', 'bi-mv-rf'], ['.bi-sales', 'bi-mv-sales'], ['.bi-restaurant', 'bi-mv-restaurant'], ['.bi-ent', 'bi-mv-ent'], ['.bi-adj', 'bi-mv-adj']].forEach(function(p) {
       const input = tr.querySelector(p[0]);
       const has = (parseFloat(input.value) || 0) !== 0;
       input.closest('td').classList.toggle(p[1], has);
@@ -720,7 +737,9 @@ function biSubmit(verify) {
       rf_stock: tr.querySelector('.bi-rf').value,
       sales_bar_qty: tr.querySelector('.bi-sales').value,
       restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
-      ent_qty: tr.querySelector('.bi-ent').value
+      ent_qty: tr.querySelector('.bi-ent').value,
+      adjustment_qty: tr.querySelector('.bi-adj').value,
+      adjustment_note: tr.querySelector('.bi-adj-note').value
     });
   });
   document.getElementById('biLinesJson').value = JSON.stringify(lines);

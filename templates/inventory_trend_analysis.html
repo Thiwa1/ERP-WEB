@@ -1,38 +1,97 @@
 {% extends "base.html" %}
 
 {% block content %}
+<style>
+    .ta-card { border-radius:12px; border:1px solid #e2e8f0; box-shadow:0 2px 8px rgba(0,0,0,.07); background:#fff; }
+    .ta-card-title { font-size:.7rem; font-weight:700; letter-spacing:.8px; text-transform:uppercase; color:#605E5C; }
+    .ta-label { font-size:.8rem; font-weight:600; color:#323130; }
+    .ta-input { font-size:.85rem; border-radius:8px; border-color:#e2e8f0; }
+    .ta-tab { display:inline-flex; align-items:center; gap:.45rem; padding:.45rem 1.1rem; border-radius:8px;
+              font-size:.85rem; font-weight:600; text-decoration:none; border:1px solid #d9b8ee; color:#5E2D7A; background:#fff; }
+    .ta-tab.active { background:#7B3F9E; border-color:#7B3F9E; color:#fff; }
+    .ta-tab.disabled { opacity:.5; pointer-events:none; }
+    .ta-th { font-size:.72rem; text-transform:uppercase; font-weight:700; color:#605E5C; }
+    .bc-table td, .bc-table th { font-size:.82rem; vertical-align:middle; }
+    .bc-table td.num, .bc-table th.num { text-align:right; font-family:monospace; white-space:nowrap; }
+    .bc-open td, .bc-close td { background:#f8f9fa; font-weight:700; }
+    .bc-low td.bc-bal { background:#fde8e8; color:#b02a37; }
+    .stat-tile { border-radius:10px; padding:.6rem .9rem; border:1px solid #e2e8f0; background:#f8fafc; height:100%; }
+    .stat-tile .k { font-size:.66rem; text-transform:uppercase; font-weight:700; letter-spacing:.6px; color:#605E5C; }
+    .stat-tile .v { font-size:1rem; font-weight:700; color:#1a1a2e; font-family:monospace; }
+    @media print {
+        .bc-print-head { display:block !important; }
+        .ta-card { box-shadow:none; border:none; }
+    }
+</style>
+
 <div class="container-fluid py-4">
 
     <!-- Page Header -->
-    <div class="d-flex align-items-center gap-3 mb-4">
-        <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7B3F9E,#5E2D7A);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
-            <i class="fas fa-chart-line"></i>
+    <div class="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 no-print">
+        <div class="d-flex align-items-center gap-3">
+            <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#7B3F9E,#5E2D7A);display:flex;align-items:center;justify-content:center;color:#fff;font-size:1.1rem;box-shadow:0 4px 12px rgba(0,0,0,.15);flex-shrink:0;">
+                <i class="fas {{ 'fa-clipboard-list' if view == 'bincard' else 'fa-chart-line' }}"></i>
+            </div>
+            <div>
+                <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">{{ 'Bin Card' if view == 'bincard' else 'Trend Analysis' }}</h5>
+                <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory Reports</div>
+            </div>
         </div>
-        <div>
-            <h5 class="mb-0 fw-700" style="color:#1a1a2e;letter-spacing:-.2px;">Trend Analysis</h5>
-            <div style="font-size:.75rem;color:#605E5C;margin-top:1px;">Inventory Reports</div>
+        <div class="d-flex gap-2">
+            <a class="ta-tab {{ 'active' if view == 'trend' else '' }}"
+               href="{{ url_for('inventory_trend_analysis', item_name=selected_item or None, months=months, view='trend') }}">
+                <i class="fas fa-chart-line"></i> Trend
+            </a>
+            <a class="ta-tab {{ 'active' if view == 'bincard' else '' }}"
+               href="{{ url_for('inventory_trend_analysis', item_name=selected_item or None, months=months, view='bincard') }}">
+                <i class="fas fa-clipboard-list"></i> Bin Card
+            </a>
         </div>
     </div>
 
     <!-- Controls Card -->
-    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+    <div class="ta-card mb-4 no-print">
         <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
-            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Analysis Controls</div>
+            <div class="ta-card-title">{{ 'Bin Card Controls' if view == 'bincard' else 'Analysis Controls' }}</div>
         </div>
         <div class="px-4 py-4">
             <form method="GET" action="{{ url_for('inventory_trend_analysis') }}" class="row g-3 align-items-end">
+                <input type="hidden" name="view" value="{{ view }}">
                 <div class="col-md-4">
-                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Select Inventory Item</label>
-                    <select class="form-select" name="item_name" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
+                    <label class="form-label ta-label">Select Inventory Item</label>
+                    <select class="form-select ta-input" name="item_name">
                         <option value="">Select item...</option>
                         {% for item in items %}
                         <option value="{{ item.inventoy_name }}" {% if selected_item == item.inventoy_name %}selected{% endif %}>{{ item.inventoy_name }}</option>
                         {% endfor %}
                     </select>
                 </div>
+                {% if view == 'bincard' %}
+                <input type="hidden" name="months" value="{{ months }}">
+                <div class="col-md-2">
+                    <label class="form-label ta-label">From</label>
+                    <input type="date" class="form-control ta-input" name="from_date" value="{{ from_date }}">
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label ta-label">To</label>
+                    <input type="date" class="form-control ta-input" name="to_date" value="{{ to_date }}">
+                </div>
+                <div class="col-md-4 d-flex gap-2 align-items-end">
+                    <button type="submit"
+                            style="background:var(--accent-color,#7B3F9E);border:none;border-radius:8px;font-weight:600;font-size:.85rem;padding:.52rem 1.4rem;color:#fff;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-clipboard-list" style="font-size:.8rem;"></i> View Bin Card
+                    </button>
+                    {% if bin_card %}
+                    <button type="button" onclick="window.print()"
+                            style="background:#f3eaf8;border:1px solid #d9b8ee;border-radius:8px;font-weight:600;font-size:.85rem;padding:.52rem 1.4rem;color:#5E2D7A;display:inline-flex;align-items:center;gap:.5rem;">
+                        <i class="fas fa-print" style="font-size:.8rem;"></i> Print
+                    </button>
+                    {% endif %}
+                </div>
+                {% else %}
                 <div class="col-md-3">
-                    <label class="form-label" style="font-size:.8rem;font-weight:600;color:#323130;">Analysis Period</label>
-                    <select class="form-select" name="months" style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;">
+                    <label class="form-label ta-label">Analysis Period</label>
+                    <select class="form-select ta-input" name="months">
                         <option value="6" {% if months == 6 %}selected{% endif %}>6 Months</option>
                         <option value="12" {% if months == 12 %}selected{% endif %}>12 Months</option>
                         <option value="24" {% if months == 24 %}selected{% endif %}>24 Months</option>
@@ -48,66 +107,201 @@
                         <i class="fas fa-magic" style="font-size:.8rem;"></i> Generate Forecast
                     </button>
                 </div>
+                {% endif %}
             </form>
-
-            {% if trend_data %}
-            <!-- Stat Indicators -->
-            <div class="row g-3 mt-2">
-                <div class="col-md-4">
-                    <div style="border-radius:10px;border:1px solid #BBF7D0;background:#DCFCE7;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
-                        <div style="width:32px;height:32px;border-radius:8px;background:#107C41;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fas fa-arrow-trend-up" style="color:#fff;font-size:.75rem;"></i>
-                        </div>
-                        <div>
-                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#166534;">Trend Direction</div>
-                            <div style="font-size:.95rem;font-weight:700;color:#166534;">{{ trend_direction }}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div style="border-radius:10px;border:1px solid #BFDBFE;background:#DBEAFE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
-                        <div style="width:32px;height:32px;border-radius:8px;background:#0078D4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fas fa-chart-bar" style="color:#fff;font-size:.75rem;"></i>
-                        </div>
-                        <div>
-                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#1E40AF;">Slope</div>
-                            <div style="font-size:.95rem;font-weight:700;color:#1E40AF;font-family:monospace;">{{ slope }}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div style="border-radius:10px;border:1px solid #DDD6FE;background:#EDE9FE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
-                        <div style="width:32px;height:32px;border-radius:8px;background:#7B3F9E;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                            <i class="fas fa-forward" style="color:#fff;font-size:.75rem;"></i>
-                        </div>
-                        <div>
-                            <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#5E2D7A;">Next Month Forecast</div>
-                            <div style="font-size:.95rem;font-weight:700;color:#5E2D7A;font-family:monospace;">{{ next_month_forecast }}</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
 
-    {% if trend_data %}
+    {% if item_info %}
+    {% set cur_bal = item_info.current_balance | float %}
+    {% set min_q = item_info.min_qty | float %}
+    <!-- Item Stock & Minimum Quantity -->
+    <div class="ta-card mb-4 no-print">
+        <div class="px-4 py-3 d-flex align-items-center justify-content-between flex-wrap gap-2" style="border-bottom:1px solid #f1f3f5;">
+            <div class="ta-card-title">Stock Level &amp; Minimum Quantity &mdash; {{ item_info.inventoy_name }}</div>
+            {% if min_q <= 0 %}
+                <span class="badge bg-secondary">No minimum set</span>
+            {% elif cur_bal <= 0 %}
+                <span class="badge bg-danger">Out of stock</span>
+            {% elif cur_bal < min_q %}
+                <span class="badge bg-danger">Below minimum &mdash; re-order</span>
+            {% else %}
+                <span class="badge bg-success">Above minimum</span>
+            {% endif %}
+        </div>
+        <div class="px-4 py-3">
+            <div class="row g-3 align-items-stretch">
+                <div class="col-6 col-md-2">
+                    <div class="stat-tile"><div class="k">Code</div><div class="v">{{ item_info.inventoy_code or '—' }}</div></div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-tile"><div class="k">Current Balance</div>
+                        <div class="v" {% if min_q > 0 and cur_bal < min_q %}style="color:#b02a37;"{% endif %}>{{ '{:,.2f}'.format(cur_bal) }} <small class="text-muted" style="font-family:inherit;font-weight:400;">{{ item_info.unit or '' }}</small></div>
+                    </div>
+                </div>
+                <div class="col-6 col-md-2">
+                    <div class="stat-tile"><div class="k">Avg Monthly Sales{% if trend_data %} ({{ months }}M){% endif %}</div>
+                        <div class="v">{{ '{:,.2f}'.format(avg_monthly_sales) if trend_data else '—' }}</div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <form method="POST" action="{{ url_for('inventory_trend_analysis_min_qty') }}"
+                          class="stat-tile d-flex align-items-end gap-2 flex-wrap" style="background:#f3eaf8;border-color:#d9b8ee;">
+                        <input type="hidden" name="item_name" value="{{ item_info.inventoy_name }}">
+                        <input type="hidden" name="months" value="{{ months }}">
+                        <input type="hidden" name="view" value="{{ view }}">
+                        <input type="hidden" name="from_date" value="{{ from_date }}">
+                        <input type="hidden" name="to_date" value="{{ to_date }}">
+                        <div>
+                            <label class="k d-block mb-1" for="taMinQty">Minimum Quantity (re-order level)</label>
+                            <input type="number" step="any" min="0" name="min_qty" id="taMinQty"
+                                   class="form-control form-control-sm text-end" style="width:140px;font-family:monospace;"
+                                   value="{{ '%g'|format(min_q) }}" required>
+                        </div>
+                        <button type="submit" class="btn btn-sm text-white" style="background:#7B3F9E;">
+                            <i class="fas fa-save me-1"></i> Change
+                        </button>
+                        <div class="small text-muted w-100" style="font-size:.72rem;">
+                            Current: <strong>{{ '%g'|format(min_q) }}</strong>. Used by the low-stock alerts; set 0 to turn the alert off for this item.
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    {% if view == 'bincard' %}
+
+        {% if bin_card %}
+        <div class="ta-card mb-4" style="overflow:hidden;">
+            <div class="bc-print-head px-4 pt-3" style="display:none;">
+                <h5 class="mb-1">Bin Card &mdash; {{ item_info.inventoy_name }}</h5>
+                <div class="small">Code: {{ item_info.inventoy_code or '—' }} &nbsp;|&nbsp; Unit: {{ item_info.unit or '—' }}
+                    &nbsp;|&nbsp; Minimum Qty: {{ '%g'|format(item_info.min_qty | float) }}
+                    &nbsp;|&nbsp; Period: {{ from_date }} to {{ to_date }}</div>
+            </div>
+            <div class="px-4 py-3 d-flex justify-content-between flex-wrap gap-2" style="border-bottom:1px solid #f1f3f5;">
+                <div class="ta-card-title">Bin Card &mdash; {{ from_date }} to {{ to_date }} ({{ bin_card.rows | length }} movement{{ '' if bin_card.rows | length == 1 else 's' }})</div>
+                {% if (item_info.min_qty | float) > 0 %}
+                <div class="small no-print"><span class="badge" style="background:#fde8e8;color:#b02a37;">&nbsp;</span> balance below minimum ({{ '%g'|format(item_info.min_qty | float) }})</div>
+                {% endif %}
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-bordered mb-0 bc-table">
+                    <thead>
+                        <tr style="background:#f8f9fa;">
+                            <th class="ta-th px-3" style="width:9%">Date</th>
+                            <th class="ta-th" style="width:15%">Reference</th>
+                            <th class="ta-th">Type</th>
+                            <th class="ta-th">Memo</th>
+                            <th class="ta-th" style="width:9%">Location</th>
+                            <th class="ta-th num" style="width:8%">Unit Price</th>
+                            <th class="ta-th num" style="width:9%">In</th>
+                            <th class="ta-th num" style="width:9%">Out</th>
+                            <th class="ta-th num" style="width:10%">Balance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="bc-open">
+                            <td class="px-3">{{ from_date }}</td>
+                            <td colspan="7">Opening Balance (brought forward)</td>
+                            <td class="num">{{ '{:,.2f}'.format(bin_card.opening_balance) }}</td>
+                        </tr>
+                        {% for r in bin_card.rows %}
+                        <tr class="{{ 'bc-low' if r.below_min else '' }}">
+                            <td class="px-3" style="white-space:nowrap;">{{ r.action_date }}</td>
+                            <td style="font-family:monospace;">{{ r.reference or '—' }}</td>
+                            <td>{{ r.txn_type or '' }}</td>
+                            <td>{{ r.memo or '' }}</td>
+                            <td>{{ r.location or '' }}</td>
+                            <td class="num text-muted">{{ '{:,.2f}'.format(r.unit_price) if r.unit_price is not none else '' }}</td>
+                            <td class="num" style="color:#107C41;">{{ '{:,.2f}'.format(r.in_qty) if r.in_qty else '' }}</td>
+                            <td class="num" style="color:#b02a37;">{{ '{:,.2f}'.format(r.out_qty) if r.out_qty else '' }}</td>
+                            <td class="num bc-bal fw-semibold">{{ '{:,.2f}'.format(r.balance) }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="9" class="text-center text-muted py-4">No stock movements for this item between {{ from_date }} and {{ to_date }}.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="bc-close">
+                            <td class="px-3">{{ to_date }}</td>
+                            <td colspan="5">Totals &amp; Closing Balance</td>
+                            <td class="num" style="color:#107C41;">{{ '{:,.2f}'.format(bin_card.total_in) }}</td>
+                            <td class="num" style="color:#b02a37;">{{ '{:,.2f}'.format(bin_card.total_out) }}</td>
+                            <td class="num">{{ '{:,.2f}'.format(bin_card.closing_balance) }}</td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+        {% elif selected_item and not item_info %}
+        <div class="alert alert-warning">Item "{{ selected_item }}" was not found.</div>
+        {% else %}
+        <div class="ta-card" style="padding:3rem;text-align:center;">
+            <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#f3eaf8,#e9d8f5);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
+                <i class="fas fa-clipboard-list" style="font-size:1.4rem;color:#7B3F9E;opacity:.6;"></i>
+            </div>
+            <div style="font-size:.95rem;font-weight:600;color:#605E5C;">Select an item and click View Bin Card</div>
+            <div style="font-size:.82rem;color:#A0A0A0;margin-top:.35rem;">Every stock in / out for the item with a running balance.</div>
+        </div>
+        {% endif %}
+
+    {% elif trend_data %}
+
+    <!-- Stat Indicators -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div style="border-radius:10px;border:1px solid #BBF7D0;background:#DCFCE7;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                <div style="width:32px;height:32px;border-radius:8px;background:#107C41;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-arrow-trend-up" style="color:#fff;font-size:.75rem;"></i>
+                </div>
+                <div>
+                    <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#166534;">Trend Direction</div>
+                    <div style="font-size:.95rem;font-weight:700;color:#166534;">{{ trend_direction }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div style="border-radius:10px;border:1px solid #BFDBFE;background:#DBEAFE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                <div style="width:32px;height:32px;border-radius:8px;background:#0078D4;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-chart-bar" style="color:#fff;font-size:.75rem;"></i>
+                </div>
+                <div>
+                    <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#1E40AF;">Slope</div>
+                    <div style="font-size:.95rem;font-weight:700;color:#1E40AF;font-family:monospace;">{{ slope }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div style="border-radius:10px;border:1px solid #DDD6FE;background:#EDE9FE;padding:.75rem 1rem;display:flex;align-items:center;gap:.75rem;">
+                <div style="width:32px;height:32px;border-radius:8px;background:#7B3F9E;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                    <i class="fas fa-forward" style="color:#fff;font-size:.75rem;"></i>
+                </div>
+                <div>
+                    <div style="font-size:.68rem;text-transform:uppercase;font-weight:700;letter-spacing:.6px;color:#5E2D7A;">Next Month Forecast</div>
+                    <div style="font-size:.95rem;font-weight:700;color:#5E2D7A;font-family:monospace;">{{ next_month_forecast }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Data Grid Card -->
-    <div class="mb-4" style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;overflow:hidden;">
+    <div class="ta-card mb-4" style="overflow:hidden;">
         <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
-            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Trend Data</div>
+            <div class="ta-card-title">Trend Data</div>
         </div>
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead>
                     <tr style="background:#f8f9fa;border-bottom:2px solid #e2e8f0;">
-                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Period</th>
-                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Year</th>
-                        <th class="py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Month</th>
-                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Sales Qty</th>
-                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Moving Avg (3M)</th>
-                        <th class="text-end py-3 px-4" style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Trend Value</th>
+                        <th class="py-3 px-4 ta-th">Period</th>
+                        <th class="py-3 px-4 ta-th">Year</th>
+                        <th class="py-3 px-4 ta-th">Month</th>
+                        <th class="text-end py-3 px-4 ta-th">Sales Qty</th>
+                        <th class="text-end py-3 px-4 ta-th">Moving Avg (3M)</th>
+                        <th class="text-end py-3 px-4 ta-th">Trend Value</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -129,9 +323,9 @@
     </div>
 
     <!-- Chart Card -->
-    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;">
+    <div class="ta-card">
         <div class="px-4 py-3" style="border-bottom:1px solid #f1f3f5;">
-            <div style="font-size:.7rem;font-weight:700;letter-spacing:.8px;text-transform:uppercase;color:#605E5C;">Trend Chart</div>
+            <div class="ta-card-title">Trend Chart</div>
         </div>
         <div class="px-4 py-4">
             <canvas id="trendChart" style="max-height:400px;"></canvas>
@@ -185,12 +379,17 @@
     </script>
 
     {% else %}
-    <div style="border-radius:12px;border:1px solid #e2e8f0;box-shadow:0 2px 8px rgba(0,0,0,.07);background:#fff;padding:3rem;text-align:center;">
+    <div class="ta-card" style="padding:3rem;text-align:center;">
         <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#f3eaf8,#e9d8f5);display:flex;align-items:center;justify-content:center;margin:0 auto 1rem;">
             <i class="fas fa-chart-line" style="font-size:1.4rem;color:#7B3F9E;opacity:.6;"></i>
         </div>
+        {% if selected_item %}
+        <div style="font-size:.95rem;font-weight:600;color:#605E5C;">No sales for "{{ selected_item }}" in the last {{ months }} months</div>
+        <div style="font-size:.82rem;color:#A0A0A0;margin-top:.35rem;">Try a longer period, or open the <a href="{{ url_for('inventory_trend_analysis', item_name=selected_item, months=months, view='bincard') }}">Bin Card</a> to see every movement.</div>
+        {% else %}
         <div style="font-size:.95rem;font-weight:600;color:#605E5C;">Select an item and click Analyze Trends</div>
         <div style="font-size:.82rem;color:#A0A0A0;margin-top:.35rem;">The chart and data table will appear here after analysis.</div>
+        {% endif %}
     </div>
     {% endif %}
 
