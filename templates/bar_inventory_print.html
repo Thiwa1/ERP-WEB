@@ -77,7 +77,6 @@
                     <th class="num">Missing</th>
                     <th class="num">Adjustment</th>
                     <th class="num">Closing</th>
-                    <th class="num">Balance Qty</th>
                     <th class="num">Unit Price</th>
                     <th class="num">Sales Value</th>
                     <th class="num">Rest. Value</th>
@@ -86,7 +85,7 @@
             <tbody>
                 {% for it in items %}
                 {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
-                <tr class="cat-row"><td colspan="11"><strong>{{ it.category_name or 'No category' }}</strong></td><td class="num"><strong>{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</strong></td><td></td></tr>
+                <tr class="cat-row"><td colspan="10"><strong>{{ it.category_name or 'No category' }}</strong></td><td class="num"><strong>{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</strong></td><td></td></tr>
                 {% endif %}
                 {% set mv = (it.rf_stock or 0) or (it.sales_bar_qty or 0) or (it.restaurant_sale_qty or 0) or (it.ent_qty or 0) or (it.missing_qty or 0) or (it.adjustment_qty or 0) %}
                 <tr class="{{ 'moved' if mv else '' }}">
@@ -99,7 +98,6 @@
                     <td class="num {{ 'mv-miss' if it.missing_qty else '' }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
                     <td class="num {{ 'mv-adj' if it.adjustment_qty else '' }}">{{ '%+g'|format(it.adjustment_qty) if it.adjustment_qty else '' }}{% if it.adjustment_note %}<div class="adj-note">{{ it.adjustment_note }}</div>{% endif %}</td>
                     <td class="num">{{ it.closing_display }}</td>
-                    <td class="num">{{ '{:,.2f}'.format(it.closing_balance or 0).rstrip('0').rstrip('.') }}{% if it.unit_type != 'UNIT' %} ml{% endif %}</td>
                     <td class="num">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
                     <td class="num">{{ '{:,.2f}'.format(it.sales_value) }}</td>
                     <td class="num">{{ '{:,.2f}'.format(it.rest_value) }}</td>
@@ -107,16 +105,16 @@
                 {% endfor %}
             </tbody>
             <tfoot>
-                <tr class="tot"><td colspan="11" class="num">Total &mdash; Unit items</td><td class="num">{{ '{:,.2f}'.format(totals.units) }}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Total &mdash; Ml items</td><td class="num">{{ '{:,.2f}'.format(totals.ml) }}</td><td></td></tr>
-                <tr class="grand"><td colspan="11" class="num">Grand Total Sales Value (Bar)</td><td class="num">{{ '{:,.2f}'.format(totals.grand) }}</td><td class="num">{{ '{:,.2f}'.format(totals.rest) }}</td></tr>
-                <tr class="tot miss"><td colspan="11" class="num">Missing Items (not entered by barman)</td><td class="num">{{ '{:,.2f}'.format(totals.missing) }}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Total incl. Missing Items</td><td class="num">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Sheet</td><td class="num">{% if totals.sheet is not none %}{{ '{:,.2f}'.format(totals.sheet) }}{% else %}&mdash;{% endif %}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Difference</td><td class="num">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Closing Stock Value &mdash; Unit items</td><td class="num">{{ '{:,.2f}'.format(totals.stock_units) }}</td><td></td></tr>
-                <tr class="tot"><td colspan="11" class="num">Closing Stock Value &mdash; Ml items</td><td class="num">{{ '{:,.2f}'.format(totals.stock_ml) }}</td><td></td></tr>
-                <tr class="grand"><td colspan="11" class="num">Total Closing Stock Value</td><td class="num">{{ '{:,.2f}'.format(totals.stock_total) }}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Total &mdash; Unit items</td><td class="num">{{ '{:,.2f}'.format(totals.units) }}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Total &mdash; Ml items</td><td class="num">{{ '{:,.2f}'.format(totals.ml) }}</td><td></td></tr>
+                <tr class="grand"><td colspan="10" class="num">Grand Total Sales Value (Bar)</td><td class="num">{{ '{:,.2f}'.format(totals.grand) }}</td><td class="num">{{ '{:,.2f}'.format(totals.rest) }}</td></tr>
+                <tr class="tot miss"><td colspan="10" class="num">Missing Items (not entered by barman)</td><td class="num">{{ '{:,.2f}'.format(totals.missing) }}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Total incl. Missing Items</td><td class="num">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Sheet</td><td class="num">{% if totals.sheet is not none %}{{ '{:,.2f}'.format(totals.sheet) }}{% else %}&mdash;{% endif %}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Difference</td><td class="num">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Closing Stock Value &mdash; Unit items</td><td class="num">{{ '{:,.2f}'.format(totals.stock_units) }}</td><td></td></tr>
+                <tr class="tot"><td colspan="10" class="num">Closing Stock Value &mdash; Ml items</td><td class="num">{{ '{:,.2f}'.format(totals.stock_ml) }}</td><td></td></tr>
+                <tr class="grand"><td colspan="10" class="num">Total Closing Stock Value</td><td class="num">{{ '{:,.2f}'.format(totals.stock_total) }}</td><td></td></tr>
             </tfoot>
         </table>
         {% if missing %}
