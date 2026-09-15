@@ -45,7 +45,7 @@
       <input type="number" min="0" name="room_count_{{ r.id }}" value="{{ r.room_count if r.room_count is not none else '' }}"
              class="form-control form-control-sm" style="width:90px;" placeholder="e.g. 20">
       {% endif %}
-      <span class="small text-muted ms-auto">{{ r.keys | length }} line(s)</span>
+      <span class="small text-muted ms-auto">{{ r.row_keys | length }} line(s)</span>
       <button type="submit" formaction="{{ url_for('daily_sales_report_mapping_delete', row_id=r.id) }}" formnovalidate
               class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this row from the report?');"><i class="fas fa-trash"></i></button>
     </div>
@@ -54,11 +54,11 @@
         {% for c in categories %}
         <div class="col-md-4 col-lg-3">
           <label class="rm-cat">
-            <input type="checkbox" name="cats_{{ r.id }}" value="{{ c.category_key }}" {{ 'checked' if c.category_key in r.keys }}>
+            <input type="checkbox" name="cats_{{ r.id }}" value="{{ c.category_key }}" {{ 'checked' if c.category_key in r.row_keys }}>
             <span>
               {{ c.description }}{% if c.particulars %} &ndash; {{ c.particulars }}{% endif %}{% if c.entry_side == 'DR' %} <span class="text-danger">(deduct)</span>{% endif %}
               <br><span class="gl {{ 'missing' if not c.gl_account_name }}">{{ c.gl_account_name or 'no GL account' }}</span>
-              {% if r.row_type == 'REVENUE' and c.category_key in r.keys and (used.get(c.category_key, []) | length) > 1 %}
+              {% if r.row_type == 'REVENUE' and c.category_key in r.row_keys and (used.get(c.category_key, []) | length) > 1 %}
                 <br><span class="rm-used">also in: {{ used[c.category_key] | reject('equalto', r.label) | join(', ') }}</span>
               {% endif %}
             </span>

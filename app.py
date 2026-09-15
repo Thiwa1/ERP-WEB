@@ -21428,12 +21428,12 @@ def daily_sales_report_mapping():
         FROM daily_sales_report_rows WHERE report = 'R1' ORDER BY display_order, id
     """) or []
     for r in rows:
-        r['keys'] = [k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()]
+        r['row_keys'] = [k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()]
     categories = [c for c in _daily_sales_categories() if c['category_group'] == 'SALES']
     used = {}
     for r in rows:
         if r['row_type'] == 'REVENUE':
-            for k in r['keys']:
+            for k in r['row_keys']:
                 used.setdefault(k, []).append(r['label'])
     return render_template('daily_sales_report_mapping.html', rows=rows, categories=categories, used=used)
 
