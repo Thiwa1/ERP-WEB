@@ -20950,6 +20950,30 @@ def _bar_inv_opening_balance(item, entry_date):
     return item['opening_balance'] or 0
 
 
+def _bar_inv_parse_count(raw, item):
+    """A manually counted stock figure -> the item's base unit.
+    Bottle + Ml items accept "bottles-ml": "4-325" = 4 x bottle size + 325
+    (also "4 325", "4/325", or "4-" for full bottles only); a plain number
+    is taken as total ml. Unit / Ml-only items take a plain number.
+    Blank -> None (not counted)."""
+    if raw is None:
+        return None
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    s = str(raw).strip().replace(',', '')
+    if not s:
+        return None
+    m = re.match(r'^(\d+(?:\.\d+)?)\s*[-/ ]\s*(\d+(?:\.\d+)?)?$', s)
+    if m and item.get('unit_type') == 'BOTTLE_ML' and item.get('bottle_size_ml'):
+        bottles = float(m.group(1))
+        ml = float(m.group(2) or 0)
+        return round(bottles * float(item['bottle_size_ml']) + ml, 4)
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
 def _bar_inv_ml_total(qty):
     """83800.0 -> '83,800'; 1250.5 -> '1,250.5'."""
     qty = round(float(qty or 0), 2)
@@ -21123,7 +21147,7 @@ def bar_inventory():
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
                    sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
-                   adjustment_qty, adjustment_note, closing_balance
+                   adjustment_qty, adjustment_note, counted_qty, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
@@ -21139,6 +21163,7 @@ def bar_inventory():
             it['missing_qty'] = saved['missing_qty']
             it['adjustment_qty'] = saved['adjustment_qty']
             it['adjustment_note'] = saved['adjustment_note']
+            it['counted_qty'] = saved['counted_qty']
             it['closing_balance'] = saved['closing_balance']
         else:
             it['opening'] = _bar_inv_opening_balance(it, entry_date)
@@ -21149,6 +21174,7 @@ def bar_inventory():
             it['missing_qty'] = 0
             it['adjustment_qty'] = 0
             it['adjustment_note'] = ''
+            it['counted_qty'] = None
             it['closing_balance'] = it['opening']
         it['opening_display'] = _bar_inv_format_balance(it, it['opening'])
         it['closing_display'] = _bar_inv_format_balance(it, it['closing_balance'])
@@ -21281,7 +21307,7 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
             # deducted from the closing balance.
             cursor.execute("""
                 SELECT rf_stock, sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
-                       adjustment_qty, adjustment_note
+                       adjustment_qty, adjustment_note, counted_qty
                 FROM bar_inventory_day_lines WHERE day_id = %s AND item_id = %s
             """, (day_id, item_id))
             current = cursor.fetchone() or {}
@@ -21306,6 +21332,12 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
                 adjustment_note = str(ln.get('adjustment_note')).strip()[:255] or None
             if not adjustment_qty:
                 adjustment_note = None
+            # Counted stock: None (uploads) keeps what is saved, blank clears it,
+            # "4-325" on a Bottle+Ml item = 4 x bottle size + 325 ml.
+            if ln.get('counted_qty') is None:
+                counted_qty = current.get('counted_qty')
+            else:
+                counted_qty = _bar_inv_parse_count(ln.get('counted_qty'), item)
 
             opening = _bar_inv_opening_balance(item, entry_date)
             total_available = round(opening + rf_stock, 4)
@@ -21316,17 +21348,18 @@ def _bar_inv_process_day(entry_date, lines_in, verify, current_user_pk):
                 INSERT INTO bar_inventory_day_lines (
                     day_id, item_id, opening_balance, rf_stock, total_available,
                     sales_bar_qty, restaurant_sale_qty, ent_qty, adjustment_qty, adjustment_note,
-                    closing_balance
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    counted_qty, closing_balance
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     opening_balance=VALUES(opening_balance), rf_stock=VALUES(rf_stock),
                     total_available=VALUES(total_available), sales_bar_qty=VALUES(sales_bar_qty),
                     restaurant_sale_qty=VALUES(restaurant_sale_qty), ent_qty=VALUES(ent_qty),
                     adjustment_qty=VALUES(adjustment_qty), adjustment_note=VALUES(adjustment_note),
+                    counted_qty=VALUES(counted_qty),
                     closing_balance=VALUES(closing_balance)
             """, (day_id, item_id, opening, rf_stock, total_available,
                   sales_bar_qty, restaurant_sale_qty, ent_qty, adjustment_qty, adjustment_note,
-                  closing_balance))
+                  counted_qty, closing_balance))
             saved += 1
 
         if verify:
@@ -22201,7 +22234,7 @@ def bar_inventory_print():
         rows = db.execute_query("""
             SELECT item_id, opening_balance, rf_stock, total_available,
                    sales_bar_qty, restaurant_sale_qty, ent_qty, missing_qty,
-                   adjustment_qty, adjustment_note, closing_balance
+                   adjustment_qty, adjustment_note, counted_qty, closing_balance
             FROM bar_inventory_day_lines WHERE day_id = %s
         """, (day['id'],)) or []
         lines_by_item = {r['item_id']: r for r in rows}
@@ -22210,6 +22243,13 @@ def bar_inventory_print():
         saved = lines_by_item.get(it['id']) or {}
         it['adjustment_qty'] = saved.get('adjustment_qty', 0)
         it['adjustment_note'] = saved.get('adjustment_note') or ''
+        it['counted_qty'] = saved.get('counted_qty')
+        if it['counted_qty'] is not None:
+            it['counted_display'] = _bar_inv_format_balance(it, it['counted_qty'])
+            it['variance'] = round(float(it['counted_qty']) - float(saved.get('closing_balance', 0) or 0), 2)
+        else:
+            it['counted_display'] = ''
+            it['variance'] = None
         it['opening'] = saved.get('opening_balance', _bar_inv_opening_balance(it, entry_date))
         it['rf_stock'] = saved.get('rf_stock', 0)
         it['sales_bar_qty'] = saved.get('sales_bar_qty', 0)

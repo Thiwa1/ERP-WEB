@@ -44,6 +44,13 @@
   tr.bi-moved > td:first-child { border-left:4px solid #0d6efd !important; background:#f3f8ff; }
   .bi-mv-missing-row td { color:#b02a37; }
   .bi-totals .bi-grand td { font-weight:700; background:#e8f3ff; border-top:2px solid rgba(0,103,192,0.3) !important; }
+  /* manual counted stock */
+  .bi-table input.bi-count { text-align:right; min-width:58px; }
+  .bi-count-hint { font-size:9.5px; color:#6c757d; text-align:right; white-space:nowrap; line-height:1.1; }
+  .bi-count-hint.bi-count-bad { color:#b02a37; }
+  td.bi-variance.bi-var-neg { color:#b02a37; font-weight:700; background:#fff0f0; }
+  td.bi-variance.bi-var-pos { color:#198754; font-weight:700; background:#eefaf2; }
+  td.bi-variance.bi-var-ok { color:#198754; }
 
   /* ================= MOBILE ONLY (phones) - desktop above is untouched ================= */
   @media (max-width: 767.98px) {
@@ -90,6 +97,8 @@
     .bi-sheet-wrap tr.bi-line-row td.bi-m-wide { grid-column:1 / -1; font-size:14px; }
     .bi-sheet-wrap tr.bi-line-row td.bi-m-adj { grid-column:1 / -1; flex-wrap:wrap; }
     .bi-sheet-wrap tr.bi-line-row td.bi-m-adj .bi-adj-note { flex:1 1 100%; margin-top:4px !important; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-count { grid-column:1 / -1; flex-wrap:wrap; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-count .bi-count-hint { flex:1 1 100%; font-size:12px; }
     /* bigger touch-friendly inputs; 16px stops iPhone zooming in */
     .bi-sheet-wrap .bi-table input.form-control-sm, .bi-card .bi-sheet-wrap table.table .form-control-sm {
       font-size:16px; height:34px; min-height:34px; line-height:32px; padding:0 8px; width:110px; max-width:55%;
@@ -217,6 +226,8 @@
               <th style="width:6%" class="text-end" title="Sold by the barman but not entered into the POS - recorded below">Missing</th>
               <th style="width:7%" title="+ adds to stock (found, count over)&#10;- deducts from stock (breakage, spillage, count short)&#10;Ml items: enter ml">Adjustment (+/&minus;)</th>
               <th style="width:11%" class="text-end" title="Bottle + Ml items show bottles + ml with the total ml in brackets">Closing Balance (Qty)</th>
+              <th style="width:8%" class="text-end" title="Manually counted stock.&#10;Bottle + Ml items: type bottles-ml, e.g. 4-325 = 4 x bottle size + 325 ml (saved as ml).&#10;A plain number = total ml. Leave blank if not counted.">Counted Stock (btl-ml)</th>
+              <th style="width:7%" class="text-end" title="Counted Stock minus Closing Balance: minus = short, plus = over">Variance</th>
               <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Unit Price</th>
               <th style="width:10%" class="text-end">Sales Value</th>
               <th style="width:7%" class="text-end" title="Ml items: price per 100 ml">Rest. Price</th>
@@ -228,7 +239,7 @@
             {% for it in items %}
             {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
             <tr class="bi-cat-row">
-              <td colspan="10" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
+              <td colspan="12" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
               <td data-label="Sales" class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
               <td colspan="2" style="background:#eaf2fb;"></td>
               <td data-label="Stock" class="text-end fw-bold bi-cat-stock" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.stock_by_category.get(it.category_name or '', 0)) }}</td>
@@ -251,6 +262,14 @@
                        {% if not it.adjustment_qty %}style="display:none;"{% endif %} {% if readonly %}disabled{% endif %}>
               </td>
               <td data-label="Closing Balance" class="text-end bi-readonly-cell bi-closing bi-m-wide" data-value="{{ it.closing_balance or 0 }}">{{ it.closing_display }}</td>
+              <td data-label="Counted (btl-ml)" class="text-end bi-m-count">
+                <input type="text" autocomplete="off" class="form-control form-control-sm bi-count"
+                       value="{{ '{:.4f}'.format(it.counted_qty).rstrip('0').rstrip('.') if it.counted_qty is not none else '' }}"
+                       placeholder="{{ 'btl-ml' if it.unit_type == 'BOTTLE_ML' else ('ml' if it.unit_type == 'ML_ONLY' else 'qty') }}"
+                       onchange="biCountChanged(this)" oninput="biCountPreview(this)" {% if readonly %}disabled{% endif %}>
+                <div class="bi-count-hint"></div>
+              </td>
+              <td data-label="Variance" class="text-end bi-variance"></td>
               <td data-label="Unit Price" class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
               <td data-label="Sales Value" class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
               <td data-label="Rest. Price" class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price_restaurant or 0) }}</td>
@@ -258,40 +277,40 @@
               <td data-label="Stock Value" class="text-end bi-readonly-cell bi-closing-value">{{ '{:,.2f}'.format(it.closing_value) }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="14" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
+            <tr><td colspan="16" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
             {% endfor %}
           </tbody>
           {% if items %}
           <tfoot class="bi-totals">
             <tr>
-              <td colspan="10" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
+              <td colspan="12" class="text-end">Total &mdash; Unit items (beer, soft drinks, snacks...)</td>
               <td class="text-end" id="biTotUnits">{{ '{:,.2f}'.format(totals.units) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="10" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
+              <td colspan="12" class="text-end">Total &mdash; Ml items (arrack, gin, brandy, whisky, rum, vodka, wine)</td>
               <td class="text-end" id="biTotMl">{{ '{:,.2f}'.format(totals.ml) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr class="bi-grand">
-              <td colspan="10" class="text-end">Grand Total Sales Value (Bar)</td>
+              <td colspan="12" class="text-end">Grand Total Sales Value (Bar)</td>
               <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
               <td class="text-end small bi-m-label">Restaurant</td>
               <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
               <td></td>
             </tr>
             <tr class="bi-mv-missing-row">
-              <td colspan="10" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
+              <td colspan="12" class="text-end">Missing Items (sold, not entered by barman) &mdash; <a href="#biMissingCard">{{ missing | length }} entr{{ 'y' if missing | length == 1 else 'ies' }}</a></td>
               <td class="text-end" id="biTotMissing">{{ '{:,.2f}'.format(totals.missing) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="10" class="text-end">Total incl. Missing Items</td>
+              <td colspan="12" class="text-end">Total incl. Missing Items</td>
               <td class="text-end" id="biTotWithMissing">{{ '{:,.2f}'.format(totals.grand_with_missing) }}</td>
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="10" class="text-end">Sheet (sales as per POS / sales sheet)</td>
+              <td colspan="12" class="text-end">Sheet (sales as per POS / sales sheet)</td>
               <td class="text-end">
                 <input type="number" step="0.01" name="sheet_amount" id="biSheet" class="form-control form-control-sm text-end"
                        value="{{ '%.2f'|format(totals.sheet) if totals.sheet is not none else '' }}" oninput="biRecalcTotals()" {% if readonly %}disabled{% endif %}>
@@ -299,20 +318,20 @@
               <td colspan="3"></td>
             </tr>
             <tr>
-              <td colspan="10" class="text-end">Difference (Grand Total &minus; Sheet)</td>
+              <td colspan="12" class="text-end">Difference (Grand Total &minus; Sheet)</td>
               <td class="text-end" id="biTotDiff">{% if totals.difference is not none %}{{ '{:,.2f}'.format(totals.difference) }}{% else %}&mdash;{% endif %}</td>
               <td colspan="3"></td>
             </tr>
             <tr class="bi-stock-row">
-              <td colspan="13" class="text-end">Closing Stock Value &mdash; Unit items</td>
+              <td colspan="15" class="text-end">Closing Stock Value &mdash; Unit items</td>
               <td class="text-end" id="biStockUnits">{{ '{:,.2f}'.format(totals.stock_units) }}</td>
             </tr>
             <tr class="bi-stock-row">
-              <td colspan="13" class="text-end">Closing Stock Value &mdash; Ml items</td>
+              <td colspan="15" class="text-end">Closing Stock Value &mdash; Ml items</td>
               <td class="text-end" id="biStockMl">{{ '{:,.2f}'.format(totals.stock_ml) }}</td>
             </tr>
             <tr class="bi-grand">
-              <td colspan="13" class="text-end">Total Closing Stock Value &mdash; <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}">full closing stock report</a></td>
+              <td colspan="15" class="text-end">Total Closing Stock Value &mdash; <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}">full closing stock report</a></td>
               <td class="text-end" id="biStockTotal">{{ '{:,.2f}'.format(totals.stock_total) }}</td>
             </tr>
           </tfoot>
@@ -613,6 +632,7 @@ function biRecalcRow(input) {
   const closing = opening + rf - sales - restaurant - ent - missingQty + adj;
   tr.querySelector('.bi-closing').setAttribute('data-value', closing);
   tr.querySelector('.bi-closing').textContent = biFormatBalance(unitType, bottleSize, closing);
+  biUpdateVariance(tr);
   biRecalcTotals();
 }
 
@@ -692,11 +712,79 @@ function biCollectLines() {
       restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
       ent_qty: tr.querySelector('.bi-ent').value,
       adjustment_qty: tr.querySelector('.bi-adj').value,
-      adjustment_note: tr.querySelector('.bi-adj-note').value
+      adjustment_note: tr.querySelector('.bi-adj-note').value,
+      counted_qty: biCountValue(tr)
     });
   });
   return lines;
 }
+
+// ---- Manual counted stock ------------------------------------------------
+// Bottle + Ml items: "4-325" (or "4 325", "4/325", "4-") = 4 x bottle size + 325 ml.
+// A plain number is the total (ml for Bottle + Ml / Ml items, units otherwise).
+// Returns the base-unit number, null for blank, or NaN if it can't be read.
+function biParseCount(raw, unitType, bottleSize) {
+  const s = String(raw || '').trim().replace(/,/g, '');
+  if (!s) return null;
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*[-\/ ]\s*(\d+(?:\.\d+)?)?$/);
+  if (m && unitType === 'BOTTLE_ML' && bottleSize) {
+    return Math.round((parseFloat(m[1]) * bottleSize + parseFloat(m[2] || 0)) * 10000) / 10000;
+  }
+  return /^-?\d+(\.\d+)?$/.test(s) ? parseFloat(s) : NaN;
+}
+
+function biCountValue(tr) {
+  const input = tr.querySelector('.bi-count');
+  if (!input) return '';
+  const v = biParseCount(input.value, tr.getAttribute('data-unit-type'), parseFloat(tr.getAttribute('data-bottle-size')) || 0);
+  return (v === null || isNaN(v)) ? '' : String(v);
+}
+
+function biCountPreview(input) {
+  const tr = input.closest('tr');
+  const unitType = tr.getAttribute('data-unit-type');
+  const bottleSize = parseFloat(tr.getAttribute('data-bottle-size')) || 0;
+  const hint = tr.querySelector('.bi-count-hint');
+  const v = biParseCount(input.value, unitType, bottleSize);
+  hint.classList.toggle('bi-count-bad', v !== null && isNaN(v));
+  if (v === null) {
+    hint.textContent = '';
+  } else if (isNaN(v)) {
+    hint.textContent = unitType === 'BOTTLE_ML' ? 'type bottles-ml, e.g. 4-325' : 'numbers only';
+  } else if (unitType === 'BOTTLE_ML' && bottleSize) {
+    hint.textContent = biFormatBalance(unitType, bottleSize, v);
+  } else {
+    hint.textContent = '';
+  }
+  biUpdateVariance(tr);
+}
+
+// On leaving the box, "4-325" is replaced by the ml figure that gets saved (3325).
+function biCountChanged(input) {
+  const tr = input.closest('tr');
+  const v = biParseCount(input.value, tr.getAttribute('data-unit-type'), parseFloat(tr.getAttribute('data-bottle-size')) || 0);
+  if (v !== null && !isNaN(v)) input.value = String(v);
+  biCountPreview(input);
+}
+
+function biUpdateVariance(tr) {
+  const cell = tr.querySelector('.bi-variance');
+  if (!cell) return;
+  const unitType = tr.getAttribute('data-unit-type');
+  const bottleSize = parseFloat(tr.getAttribute('data-bottle-size')) || 0;
+  const v = biParseCount(tr.querySelector('.bi-count').value, unitType, bottleSize);
+  cell.classList.remove('bi-var-neg', 'bi-var-pos', 'bi-var-ok');
+  if (v === null || isNaN(v)) { cell.textContent = ''; return; }
+  const closing = parseFloat(tr.querySelector('.bi-closing').getAttribute('data-value')) || 0;
+  const diff = Math.round((v - closing) * 100) / 100;
+  const unit = unitType === 'UNIT' ? '' : ' ml';
+  cell.textContent = (diff > 0 ? '+' : '') + diff.toLocaleString('en-US', { maximumFractionDigits: 2 }) + unit;
+  cell.classList.add(diff < 0 ? 'bi-var-neg' : (diff > 0 ? 'bi-var-pos' : 'bi-var-ok'));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('#biForm .bi-count').forEach(function(input) { biCountPreview(input); });
+});
 
 const BI_MISSING_TOTAL = {{ totals.missing | default(0) | float }};
 
@@ -807,7 +895,8 @@ function biSubmit(verify) {
       restaurant_sale_qty: tr.querySelector('.bi-restaurant').value,
       ent_qty: tr.querySelector('.bi-ent').value,
       adjustment_qty: tr.querySelector('.bi-adj').value,
-      adjustment_note: tr.querySelector('.bi-adj-note').value
+      adjustment_note: tr.querySelector('.bi-adj-note').value,
+      counted_qty: biCountValue(tr)
     });
   });
   document.getElementById('biLinesJson').value = JSON.stringify(lines);

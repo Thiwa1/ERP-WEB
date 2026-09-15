@@ -65,6 +65,7 @@ def run_migrations(conn):
         _migrate_bar_inventory_sheet_amount(cursor)
         _migrate_bar_inventory_missing_items(cursor)
         _migrate_bar_inventory_adjustment(cursor)
+        _migrate_bar_inventory_counted_qty(cursor)
 
         conn.commit()
         cursor.close()
@@ -1208,6 +1209,22 @@ def _migrate_bar_inventory_adjustment(cursor):
         cursor.execute("SHOW COLUMNS FROM bar_inventory_day_lines LIKE 'adjustment_note'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE bar_inventory_day_lines ADD COLUMN adjustment_note VARCHAR(255) NULL")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_inventory_counted_qty(cursor):
+    """Physical (manual) stock count per item per day, stored in the item's
+    base unit (ml for Bottle+Ml / Ml items). NULL = not counted that day.
+    Shown against the calculated closing balance as a variance."""
+    try:
+        cursor.execute("SHOW COLUMNS FROM bar_inventory_day_lines LIKE 'counted_qty'")
+        if not cursor.fetchone():
+            print("Migrating: Adding counted_qty to bar_inventory_day_lines")
+            cursor.execute("ALTER TABLE bar_inventory_day_lines ADD COLUMN counted_qty DOUBLE NULL")
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
