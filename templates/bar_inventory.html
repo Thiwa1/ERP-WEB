@@ -44,11 +44,76 @@
   tr.bi-moved > td:first-child { border-left:4px solid #0d6efd !important; background:#f3f8ff; }
   .bi-mv-missing-row td { color:#b02a37; }
   .bi-totals .bi-grand td { font-weight:700; background:#e8f3ff; border-top:2px solid rgba(0,103,192,0.3) !important; }
+
+  /* ================= MOBILE ONLY (phones) - desktop above is untouched ================= */
+  @media (max-width: 767.98px) {
+    .bi-top-actions { flex-wrap:nowrap; overflow-x:auto; width:100%; padding-bottom:4px; -webkit-overflow-scrolling:touch; }
+    .bi-top-actions .btn { white-space:nowrap; flex:0 0 auto; }
+    .bi-card { border-radius:8px; margin-bottom:12px; }
+    .bi-card-header { padding:10px 12px; }
+    .bi-card-body { padding:10px; }
+    .bi-date-nav { width:100%; }
+    .bi-date-nav input[type=date] { flex:1 1 auto; width:auto !important; }
+    .bi-card form input[type=date], .bi-card form input[type=file] { width:100% !important; max-width:100% !important; }
+    .bi-card form > div { flex:1 1 100%; }
+    .bi-legend { font-size:10px; padding:1px 6px; }
+
+    /* Sheet becomes one card per item */
+    .bi-sheet-wrap { max-height:none; overflow:visible; border:0; }
+    .bi-sheet-wrap table.bi-table, .bi-sheet-wrap table.bi-table tbody,
+    .bi-sheet-wrap table.bi-table tfoot { display:block; width:100%; border:0; }
+    .bi-sheet-wrap table.bi-table thead { display:none; }
+    .bi-card table.bi-table { font-family:inherit; font-size:13px; }
+    .bi-sheet-wrap table.bi-table > :not(caption) > * > * { border:0; padding:3px 0; background:transparent; }
+
+    /* category heading */
+    .bi-sheet-wrap tr.bi-cat-row { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px;
+                                   background:#eaf2fb; border-radius:6px; padding:6px 10px; margin:14px 0 6px; }
+    .bi-sheet-wrap tr.bi-cat-row td { display:block; background:transparent !important; font-size:14px; }
+    .bi-sheet-wrap tr.bi-cat-row td:first-child { flex:1 1 100%; }
+    .bi-sheet-wrap tr.bi-cat-row td:empty { display:none; }
+    .bi-sheet-wrap tr.bi-cat-row td[data-label] { font-size:12px; }
+    .bi-sheet-wrap tr.bi-cat-row td[data-label]::before { content:attr(data-label) ": "; font-weight:400; color:#555; }
+
+    /* item card */
+    .bi-sheet-wrap tr.bi-line-row { display:grid; grid-template-columns:1fr 1fr; gap:0 12px;
+                                    background:#fff; border:1px solid #dcdcdc; border-radius:8px;
+                                    padding:6px 10px 8px; margin:0 0 8px; box-shadow:0 1px 3px rgba(0,0,0,0.05); }
+    .bi-sheet-wrap tr.bi-line-row.bi-moved { border-left:4px solid #0d6efd; }
+    .bi-sheet-wrap tr.bi-moved > td:first-child { border-left:0 !important; background:transparent; }
+    .bi-sheet-wrap tr.bi-line-row td { display:flex; align-items:center; justify-content:space-between; gap:6px;
+                                       min-height:34px; border-bottom:1px dashed #eee !important; text-align:right; }
+    .bi-sheet-wrap tr.bi-line-row td[data-label]::before { content:attr(data-label); font-size:11px; color:#6c757d;
+                                                           font-weight:400; text-align:left; white-space:nowrap; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-name { grid-column:1 / -1; justify-content:flex-start; font-size:15px;
+                                                 min-height:0; padding-bottom:4px; border-bottom:1px solid #e5e5e5 !important; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-wide { grid-column:1 / -1; font-size:14px; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-adj { grid-column:1 / -1; flex-wrap:wrap; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-m-adj .bi-adj-note { flex:1 1 100%; margin-top:4px !important; }
+    /* bigger touch-friendly inputs; 16px stops iPhone zooming in */
+    .bi-sheet-wrap .bi-table input.form-control-sm, .bi-card .bi-sheet-wrap table.table .form-control-sm {
+      font-size:16px; height:34px; min-height:34px; line-height:32px; padding:0 8px; width:110px; max-width:55%;
+      border-radius:6px; border-color:#ced4da; }
+    .bi-sheet-wrap .bi-table input.bi-adj-note { width:100%; max-width:100%; font-size:14px; }
+    .bi-sheet-wrap tr.bi-line-row td.bi-mv-rf, .bi-sheet-wrap tr.bi-line-row td.bi-mv-sales,
+    .bi-sheet-wrap tr.bi-line-row td.bi-mv-restaurant, .bi-sheet-wrap tr.bi-line-row td.bi-mv-ent,
+    .bi-sheet-wrap tr.bi-line-row td.bi-mv-missing, .bi-sheet-wrap tr.bi-line-row td.bi-mv-adj { border-radius:4px; padding:3px 4px; }
+
+    /* totals: label left, amount right */
+    .bi-sheet-wrap tfoot tr { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center;
+                              gap:2px 10px; padding:6px 10px; border-bottom:1px solid #e5e5e5; background:#f8fafc; }
+    .bi-sheet-wrap tfoot tr.bi-grand { background:#e8f3ff; border-radius:6px; margin:4px 0; }
+    .bi-sheet-wrap tfoot td { display:block; font-size:13px; }
+    .bi-sheet-wrap tfoot td:first-child { text-align:left !important; flex:1 1 60%; }
+    .bi-sheet-wrap tfoot td:empty { display:none; }
+    .bi-sheet-wrap tfoot td.bi-m-label { flex:1 1 60%; text-align:left !important; }
+    .bi-sheet-wrap tfoot #biSheet { font-size:16px; height:34px; width:140px; }
+  }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <h4 class="mb-0 fw-bold"><i class="fas fa-beer me-2 text-primary"></i>Bar Inventory</h4>
-  <div class="d-flex gap-2">
+  <div class="d-flex gap-2 bi-top-actions">
     <a href="{{ url_for('bar_inventory_records') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-list me-1"></i> Records</a>
     <a href="{{ url_for('bar_inventory_print', date=entry_date) }}" target="_blank" class="btn btn-outline-secondary btn-sm"><i class="fas fa-print me-1"></i> Print</a>
     <a href="{{ url_for('bar_inventory_closing_stock', date=entry_date) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-warehouse me-1"></i> Closing Stock</a>
@@ -164,33 +229,33 @@
             {% if loop.first or it.category_name != items[loop.index0 - 1].category_name %}
             <tr class="bi-cat-row">
               <td colspan="10" class="fw-bold" style="background:#eaf2fb;"><i class="fas fa-tag me-1 text-primary"></i>{{ it.category_name or 'No category' }}</td>
-              <td class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
+              <td data-label="Sales" class="text-end fw-bold bi-cat-total" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.by_category.get(it.category_name or '', 0)) }}</td>
               <td colspan="2" style="background:#eaf2fb;"></td>
-              <td class="text-end fw-bold bi-cat-stock" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.stock_by_category.get(it.category_name or '', 0)) }}</td>
+              <td data-label="Stock" class="text-end fw-bold bi-cat-stock" data-category="{{ it.category_name or '' }}" style="background:#eaf2fb;">{{ '{:,.2f}'.format(totals.stock_by_category.get(it.category_name or '', 0)) }}</td>
             </tr>
             {% endif %}
             <tr class="bi-line-row" data-item-id="{{ it.id }}" data-unit-type="{{ it.unit_type }}" data-bottle-size="{{ it.bottle_size_ml or '' }}"
                 data-price="{{ it.unit_price or 0 }}" data-price-rest="{{ it.unit_price_restaurant or 0 }}" data-category="{{ it.category_name or '' }}">
-              <td><strong>{{ it.item_name }}</strong></td>
-              <td class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-sales" value="{{ it.sales_bar_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
-              <td class="text-end bi-missing" data-value="{{ it.missing_qty or 0 }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
-              <td>
+              <td class="bi-m-name"><strong>{{ it.item_name }}</strong></td>
+              <td data-label="Opening" class="text-end bi-readonly-cell bi-opening" data-value="{{ it.opening }}">{{ it.opening_display }}</td>
+              <td data-label="RF.Stock"><input type="number" step="any" class="form-control form-control-sm bi-rf" value="{{ it.rf_stock or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td data-label="Sales Bar"><input type="number" step="any" class="form-control form-control-sm bi-sales" value="{{ it.sales_bar_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td data-label="Restaurant"><input type="number" step="any" class="form-control form-control-sm bi-restaurant" value="{{ it.restaurant_sale_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td data-label="ENT"><input type="number" step="any" class="form-control form-control-sm bi-ent" value="{{ it.ent_qty or '' }}" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}></td>
+              <td data-label="Missing" class="text-end bi-missing" data-value="{{ it.missing_qty or 0 }}">{{ '%g'|format(it.missing_qty) if it.missing_qty else '' }}</td>
+              <td data-label="Adjustment +/-" class="bi-m-adj">
                 <input type="number" step="any" class="form-control form-control-sm bi-adj" value="{{ '%g'|format(it.adjustment_qty) if it.adjustment_qty else '' }}"
                        placeholder="+/-" oninput="biRecalcRow(this)" {% if readonly %}disabled{% endif %}>
                 <input type="text" maxlength="255" class="form-control form-control-sm bi-adj-note mt-1" value="{{ it.adjustment_note or '' }}"
                        placeholder="Reason" title="{{ it.adjustment_note or 'Reason for the adjustment' }}"
                        {% if not it.adjustment_qty %}style="display:none;"{% endif %} {% if readonly %}disabled{% endif %}>
               </td>
-              <td class="text-end bi-readonly-cell bi-closing" data-value="{{ it.closing_balance or 0 }}">{{ it.closing_display }}</td>
-              <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
-              <td class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
-              <td class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price_restaurant or 0) }}</td>
-              <td class="text-end bi-rest-value">{{ '{:,.2f}'.format(it.rest_value) }}</td>
-              <td class="text-end bi-readonly-cell bi-closing-value">{{ '{:,.2f}'.format(it.closing_value) }}</td>
+              <td data-label="Closing Balance" class="text-end bi-readonly-cell bi-closing bi-m-wide" data-value="{{ it.closing_balance or 0 }}">{{ it.closing_display }}</td>
+              <td data-label="Unit Price" class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price or 0) }}</td>
+              <td data-label="Sales Value" class="text-end bi-readonly-cell bi-sales-value">{{ '{:,.2f}'.format(it.sales_value) }}</td>
+              <td data-label="Rest. Price" class="text-end text-muted">{{ '{:,.2f}'.format(it.unit_price_restaurant or 0) }}</td>
+              <td data-label="Rest. Value" class="text-end bi-rest-value">{{ '{:,.2f}'.format(it.rest_value) }}</td>
+              <td data-label="Stock Value" class="text-end bi-readonly-cell bi-closing-value">{{ '{:,.2f}'.format(it.closing_value) }}</td>
             </tr>
             {% else %}
             <tr><td colspan="14" class="text-center text-muted py-4">No bar items yet — <a href="{{ url_for('bar_inventory_items') }}">add some</a> to get started.</td></tr>
@@ -211,7 +276,7 @@
             <tr class="bi-grand">
               <td colspan="10" class="text-end">Grand Total Sales Value (Bar)</td>
               <td class="text-end" id="biTotGrand">{{ '{:,.2f}'.format(totals.grand) }}</td>
-              <td class="text-end small">Restaurant</td>
+              <td class="text-end small bi-m-label">Restaurant</td>
               <td class="text-end" id="biTotRest">{{ '{:,.2f}'.format(totals.rest) }}</td>
               <td></td>
             </tr>
