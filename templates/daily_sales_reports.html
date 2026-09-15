@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Revenue &amp; Cash Book - {{ as_of }}{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+<style>
+  .rp-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:18px; overflow:hidden; }
+  .rp-card-body { padding:14px 16px; }
+  .rp-title { font-weight:800; font-size:1rem; margin-bottom:2px; }
+  .rp-sub { font-size:0.78rem; color:#6c757d; margin-bottom:10px; }
+  table.rp { width:100%; border-collapse:collapse; font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:12px; }
+  table.rp th, table.rp td { border:1px solid #d4d4d4; padding:3px 6px; }
+  table.rp th { background:#f2f2f2; font-weight:700; }
+  table.rp td.num, table.rp th.num { text-align:right; white-space:nowrap; }
+  table.rp tr.rp-sec td { background:#e8f0fb; font-weight:700; }
+  table.rp tr.rp-total td { background:#e8f3ff; font-weight:800; border-top:2px solid #0078D4; }
+  table.rp tr.rp-muted td { color:#6c757d; }
+  .rp-col-label { width:46%; }
+  .rp-nav .btn { padding:5px 10px; }
+  @media print {
+    .no-print, .sidebar, nav, .navbar, header { display:none !important; }
+    .rp-card { box-shadow:none; border:0; page-break-inside:avoid; }
+    .rp-print-both .tab-pane { display:block !important; opacity:1 !important; }
+    body { background:#fff !important; }
+  }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-chart-bar me-2 text-primary"></i>Daily Revenue Report &amp; Cash Book</h4>
+  <div class="d-flex gap-2 flex-wrap align-items-center rp-nav">
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpGo(-1)"><i class="fas fa-chevron-left"></i></button>
+    <input type="date" class="form-control form-control-sm" style="width:160px" value="{{ as_of }}" max="{{ today_date }}"
+           onchange="rpJump(this.value)">
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpGo(1)"><i class="fas fa-chevron-right"></i></button>
+    <button type="button" class="btn btn-outline-primary btn-sm" onclick="rpJump('{{ today_date }}')">Today</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    <a href="{{ url_for('daily_sales_outstanding', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-search-dollar me-1"></i> Outstanding</a>
+    <a href="{{ url_for('daily_sales_report_mapping') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sitemap me-1"></i> Row Mapping</a>
+    <a href="{{ url_for('daily_sales_entry', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-cash-register me-1"></i> Entry</a>
+  </div>
+</div>
+
+<div class="small text-muted mb-2">
+  <strong class="text-dark">To Day</strong> = {{ as_of }} &nbsp;&middot;&nbsp;
+  <strong class="text-dark">Month To Date</strong> = {{ d.month_start.strftime('%Y-%m-%d') }} to {{ as_of }} ({{ d.days }} day{{ '' if d.days == 1 else 's' }})
+  &nbsp;&middot;&nbsp; {{ d.entries_count }} day(s) entered this month{% if d.parked_count %}, {{ d.parked_count }} not yet posted (included){% endif %}.
+  {% if not d.today_entry %}<span class="text-danger ms-1"><i class="fas fa-exclamation-triangle"></i> No Daily Sales Entry saved for {{ as_of }}.</span>{% endif %}
+</div>
+
+<ul class="nav nav-tabs mb-3 no-print" role="tablist">
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab != 'r2' }}" data-bs-toggle="tab" data-bs-target="#rpR1" type="button">R1 &mdash; Daily Revenue Report</button></li>
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'r2' }}" data-bs-toggle="tab" data-bs-target="#rpR2" type="button">R2 &mdash; Cash Book</button></li>
+</ul>
+
+<div class="tab-content rp-print-both">
+  {# ============================================================ R1 #}
+  <div class="tab-pane fade {{ 'show active' if tab != 'r2' }}" id="rpR1">
+    <div class="rp-card"><div class="rp-card-body">
+      <div class="rp-title">Daily Revenue Report</div>
+      <div class="rp-sub">Date: {{ as_of }}</div>
+      <div class="table-responsive">
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label"></th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            {% for s in d.r1_stats %}
+            <tr>
+              <td>{{ s.label }}{% if s.type == 'OCCUPANCY' %} <span class="text-muted small">({{ s.rooms or 'set room count' }} rooms)</span>{% endif %}</td>
+              {% if s.type == 'OCCUPANCY' %}
+                <td class="num">{% if s.today is not none %}{{ '%.2f'|format(s.today) }}% <span class="text-muted small">({{ '%g'|format(s.today_nos) }})</span>{% else %}&mdash;{% endif %}</td>
+                <td class="num">{% if s.mtd is not none %}{{ '%.2f'|format(s.mtd) }}% <span class="text-muted small">({{ '%g'|format(s.mtd_nos) }})</span>{% else %}&mdash;{% endif %}</td>
+              {% else %}
+                <td class="num">{{ '%g'|format(s.today) }}</td>
+                <td class="num">{{ '%g'|format(s.mtd) }}</td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <table class="rp">
+          <thead><tr><th class="rp-col-label">Revenue</th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            {% for r in d.r1_revenue %}
+            <tr><td>{{ r.label }}</td><td class="num">{{ money(r.today) }}</td><td class="num">{{ money(r.mtd) }}</td></tr>
+            {% endfor %}
+            <tr class="rp-total"><td>Total Revenue</td><td class="num">{{ money(d.r1_total[0]) }}</td><td class="num">{{ money(d.r1_total[1]) }}</td></tr>
+            {% if d.r1_unmapped %}
+            <tr class="rp-sec"><td colspan="3">Other Daily Sales lines not in the report rows</td></tr>
+            {% for u in d.r1_unmapped %}
+            <tr class="rp-muted"><td>{{ '(Less) ' if u.deduct }}{{ u.label }}</td><td class="num">{{ money(u.today) }}</td><td class="num">{{ money(u.mtd) }}</td></tr>
+            {% endfor %}
+            <tr class="rp-muted"><td>Total Income as per Daily Sales Entry</td><td class="num">{{ money(d.total_income[0]) }}</td><td class="num">{{ money(d.total_income[1]) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+      </div>
+    </div></div>
+  </div>
+
+  {# ============================================================ R2 #}
+  <div class="tab-pane fade {{ 'show active' if tab == 'r2' }}" id="rpR2">
+    <div class="rp-card"><div class="rp-card-body">
+      <div class="rp-title">Cash Book Record</div>
+      <div class="rp-sub">Date: {{ as_of }}</div>
+      <div class="table-responsive">
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Payment Method</th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            <tr><td>Cash</td><td class="num">{{ money(d.cash[0]) }}</td><td class="num">{{ money(d.cash[1]) }}</td></tr>
+            <tr><td>Credit Card &mdash; Sampath Bank</td><td class="num">{{ money(d.sampath[0]) }}</td><td class="num">{{ money(d.sampath[1]) }}</td></tr>
+            <tr><td>Credit Card &mdash; HNB Bank</td><td class="num">{{ money(d.hnb[0]) }}</td><td class="num">{{ money(d.hnb[1]) }}</td></tr>
+            <tr><td>Bank</td><td class="num">{{ money(d.bank[0]) }}</td><td class="num">{{ money(d.bank[1]) }}</td></tr>
+            <tr class="rp-total"><td>Total Collections</td><td class="num">{{ money(d.collections[0]) }}</td><td class="num">{{ money(d.collections[1]) }}</td></tr>
+          </tbody>
+        </table>
+
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Name Debtors <span class="fw-normal">(Credit Given)</span></th><th>Invoice No</th>
+            <th class="num">To Day</th><th class="num">Month To Date</th><th class="num">Outstanding</th></tr></thead>
+          <tbody>
+            {% for r in d.debtors %}
+            <tr><td>{{ r.name }}</td><td class="small">{{ r.refs | join(', ') }}</td><td class="num">{{ money(r.today) }}</td>
+              <td class="num">{{ money(r.mtd) }}</td><td class="num">{{ money(r.balance) }}</td></tr>
+            {% else %}
+            <tr class="rp-muted"><td colspan="5">No credit given.</td></tr>
+            {% endfor %}
+            {% if d.debtors %}
+            <tr class="rp-total"><td colspan="2">Total</td>
+              <td class="num">{{ money(d.debtors | sum(attribute='today')) }}</td>
+              <td class="num">{{ money(d.debtors | sum(attribute='mtd')) }}</td>
+              <td class="num">{{ money(d.debtors | sum(attribute='balance')) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Name Creditors <span class="fw-normal">(Credit Received / Set-off)</span></th><th>Ref No</th>
+            <th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            {% for r in d.creditors %}
+            <tr><td>{{ r.name }}</td><td class="small">{{ r.refs | join(', ') }}</td><td class="num">{{ money(r.today) }}</td><td class="num">{{ money(r.mtd) }}</td></tr>
+            {% else %}
+            <tr class="rp-muted"><td colspan="4">No credit received.</td></tr>
+            {% endfor %}
+            {% if d.creditors %}
+            <tr class="rp-total"><td colspan="2">Total</td>
+              <td class="num">{{ money(d.creditors | sum(attribute='today')) }}</td>
+              <td class="num">{{ money(d.creditors | sum(attribute='mtd')) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Petty Cash Expenses</th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            {% for p in d.petty %}
+            <tr><td>{{ p.label }}</td><td class="num">{{ money(p.today) }}</td><td class="num">{{ money(p.mtd) }}</td></tr>
+            {% else %}
+            <tr class="rp-muted"><td colspan="3">No petty cash expenses.</td></tr>
+            {% endfor %}
+            {% if d.petty %}
+            <tr class="rp-total"><td>Total</td><td class="num">{{ money(d.petty | sum(attribute='today')) }}</td><td class="num">{{ money(d.petty | sum(attribute='mtd')) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+
+        {% for title, rows in [('Advance Debtors (Advance Given)', d.adv_debtors), ('Advance Creditors (Advance Received)', d.adv_creditors)] %}
+        <table class="rp mb-3">
+          <thead>
+            <tr><th style="width:26%">{{ title }}</th><th>Receipt No</th><th>Date</th>
+              <th class="num">To Day</th><th class="num">Month To Date</th>
+              <th class="num">Settled To Day</th><th class="num">Settled MTD</th><th class="num">Balance</th></tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>{{ r.name }}</td><td>{{ r.receipt_no }}</td><td class="small">{{ r.date }}</td>
+              <td class="num">{{ money(r.today) }}</td><td class="num">{{ money(r.mtd) }}</td>
+              <td class="num">{{ money(r.settled_today) }}</td><td class="num">{{ money(r.settled_mtd) }}</td>
+              <td class="num fw-bold">{{ money(r.balance) }}</td>
+            </tr>
+            {% else %}
+            <tr class="rp-muted"><td colspan="8">None this month and nothing outstanding.</td></tr>
+            {% endfor %}
+            {% if rows %}
+            <tr class="rp-total"><td colspan="3">Total</td>
+              <td class="num">{{ money(rows | sum(attribute='today')) }}</td><td class="num">{{ money(rows | sum(attribute='mtd')) }}</td>
+              <td class="num">{{ money(rows | sum(attribute='settled_today')) }}</td><td class="num">{{ money(rows | sum(attribute='settled_mtd')) }}</td>
+              <td class="num">{{ money(rows | sum(attribute='balance')) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+        {% endfor %}
+      </div>
+    </div></div>
+  </div>
+</div>
+
+<script>
+function rpJump(val) {
+  if (!val) return;
+  const tab = document.querySelector('#rpR2.active') ? 'r2' : 'r1';
+  window.location.href = "{{ url_for('daily_sales_reports') }}?date=" + val + "&tab=" + tab;
+}
+function rpGo(offset) {
+  const d = new Date("{{ as_of }}T00:00:00");
+  d.setDate(d.getDate() + offset);
+  rpJump(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+}
+</script>
+{% endblock %}

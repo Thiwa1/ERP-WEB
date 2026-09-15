@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Outstanding Credit &amp; Advances{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+{% macro mode_label(m) %}{{ {'SETOFF': 'Set-off', 'REFUND': 'Refunded', 'RECOVERED': 'Recovered (cash)', 'CASH': 'Cash received'}.get(m or 'CASH', m) }}{% endmacro %}
+<style>
+  .os-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:18px; overflow:hidden; }
+  .os-head { padding:10px 16px; border-bottom:1px solid rgba(0,0,0,0.06); display:flex;
+             justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; }
+  .os-body { padding:10px 16px; }
+  table.os { width:100%; border-collapse:collapse; font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:12px; }
+  table.os th, table.os td { border:1px solid #d4d4d4; padding:3px 6px; vertical-align:top; }
+  table.os th { background:#f2f2f2; }
+  table.os .num { text-align:right; white-space:nowrap; }
+  table.os tr.os-total td { background:#e8f3ff; font-weight:800; }
+  .os-hist { font-size:11px; color:#555; }
+  .os-bal-open { color:#b02a37; font-weight:700; }
+  .os-bal-closed { color:#198754; }
+  @media print { .no-print, .sidebar, nav, .navbar { display:none !important; } .os-card { box-shadow:none; } }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-search-dollar me-2 text-primary"></i>Outstanding Credit &amp; Advances</h4>
+  <form method="GET" class="d-flex gap-2 align-items-center flex-wrap no-print">
+    <label class="small text-muted mb-0">As at</label>
+    <input type="date" name="date" value="{{ as_of }}" max="{{ today_date }}" class="form-control form-control-sm" style="width:160px" onchange="this.form.submit()">
+    <select name="show" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+      <option value="open" {{ 'selected' if not show_all }}>Outstanding only</option>
+      <option value="all" {{ 'selected' if show_all }}>All (incl. fully settled)</option>
+    </select>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    <a href="{{ url_for('daily_sales_reports', date=as_of, tab='r2') }}" class="btn btn-outline-secondary btn-sm">Cash Book</a>
+    <a href="{{ url_for('daily_sales_entry', date=as_of) }}" class="btn btn-outline-secondary btn-sm">Entry</a>
+  </form>
+</div>
+
+<div class="row g-2 mb-3">
+  <div class="col-md-4"><div class="os-card mb-0"><div class="os-body"><div class="small text-muted">Debtors (Credit Given) outstanding</div><div class="fs-5 fw-bold">{{ money(totals.credits) }}</div></div></div></div>
+  <div class="col-md-4"><div class="os-card mb-0"><div class="os-body"><div class="small text-muted">Advance Creditors (Advance Received) outstanding</div><div class="fs-5 fw-bold">{{ money(totals.adv_received) }}</div></div></div></div>
+  <div class="col-md-4"><div class="os-card mb-0"><div class="os-body"><div class="small text-muted">Advance Debtors (Advance Given) outstanding</div><div class="fs-5 fw-bold">{{ money(totals.adv_given) }}</div></div></div></div>
+</div>
+
+{# ------------------------------------------------------------ credits #}
+<div class="os-card">
+  <div class="os-head"><strong><i class="fas fa-file-invoice me-1 text-primary"></i> Debtors &mdash; Credit Given</strong>
+    <span class="small text-muted">settled by Credit Received rows linked to them</span></div>
+  <div class="os-body table-responsive">
+    <table class="os">
+      <thead><tr><th style="width:9%">Date</th><th style="width:11%">Invoice No</th><th>Name</th>
+        <th class="num" style="width:10%">Amount</th><th>Settlements</th><th class="num" style="width:10%">Settled</th><th class="num" style="width:10%">Balance</th></tr></thead>
+      <tbody>
+        {% for c in out.credits %}
+        <tr>
+          <td><a href="{{ url_for('daily_sales_entry', date=c.entry_date) }}">{{ c.entry_date }}</a></td>
+          <td>{{ c.invoice_no or '' }}</td><td>{{ c.party_name or '(no name)' }}</td>
+          <td class="num">{{ money(c.amount) }}</td>
+          <td class="os-hist">
+            {% for s in c.settlements %}<div>{{ s.entry_date }} &middot; {{ mode_label(s.settle_mode) }}{% if s.invoice_no %} &middot; {{ s.invoice_no }}{% endif %} &middot; {{ money(s.amount) }}</div>{% endfor %}
+          </td>
+          <td class="num">{{ money(c.settled) }}</td>
+          <td class="num {{ 'os-bal-open' if c.balance > 0.005 else 'os-bal-closed' }}">{{ money(c.balance) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">Nothing outstanding.</td></tr>
+        {% endfor %}
+        {% if out.credits %}
+        <tr class="os-total"><td colspan="3">Total</td><td class="num">{{ money(out.credits | sum(attribute='amount')) }}</td><td></td>
+          <td class="num">{{ money(out.credits | sum(attribute='settled')) }}</td><td class="num">{{ money(totals.credits) }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+    {% if out.unlinked_receipts %}
+    <div class="small text-muted mt-2"><i class="fas fa-info-circle"></i> {{ out.unlinked_receipts | length }} Credit Received row(s) are not linked to a Credit Given
+      (entered before tracking, or typed by name only) and are not deducted above:
+      {% for r in out.unlinked_receipts[:12] %}{{ r.entry_date }} {{ r.party_name or '' }} {{ money(r.amount) }}{{ '; ' if not loop.last }}{% endfor %}{{ ' ...' if out.unlinked_receipts | length > 12 }}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ----------------------------------------------------------- advances #}
+{% for title, icon, rows, total in [('Advance Creditors &mdash; Advance Received', 'fa-hand-holding-usd', out.adv_received, totals.adv_received),
+                                    ('Advance Debtors &mdash; Advance Given', 'fa-money-check-alt', out.adv_given, totals.adv_given)] %}
+<div class="os-card">
+  <div class="os-head"><strong><i class="fas {{ icon }} me-1 text-primary"></i> {{ title | safe }}</strong></div>
+  <div class="os-body table-responsive">
+    <table class="os">
+      <thead><tr><th style="width:9%">Date</th><th style="width:11%">Receipt No</th><th>Name</th>
+        <th class="num" style="width:10%">Amount</th><th>Settlements</th><th class="num" style="width:10%">Settled</th><th class="num" style="width:10%">Balance</th></tr></thead>
+      <tbody>
+        {% for a in rows %}
+        <tr>
+          <td><a href="{{ url_for('daily_sales_entry', date=a.entry_date) }}">{{ a.entry_date }}</a></td>
+          <td>{{ a.receipt_no or '' }}</td><td>{{ a.party_name or '(no name)' }}</td>
+          <td class="num">{{ money(a.amount) }}</td>
+          <td class="os-hist">
+            {% for s in a.settlements %}<div>{{ s.entry_date }} &middot; {{ mode_label(s.settle_mode) }}{% if s.bill_no %} &middot; bill {{ s.bill_no }}{% endif %} &middot; {{ money(s.amount) }}</div>{% endfor %}
+          </td>
+          <td class="num">{{ money(a.settled) }}</td>
+          <td class="num {{ 'os-bal-open' if a.balance > 0.005 else 'os-bal-closed' }}">{{ money(a.balance) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">Nothing outstanding.</td></tr>
+        {% endfor %}
+        {% if rows %}
+        <tr class="os-total"><td colspan="3">Total</td><td class="num">{{ money(rows | sum(attribute='amount')) }}</td><td></td>
+          <td class="num">{{ money(rows | sum(attribute='settled')) }}</td><td class="num">{{ money(total) }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endfor %}
+{% endblock %}

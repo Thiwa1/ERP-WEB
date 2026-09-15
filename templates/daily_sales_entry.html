@@ -26,6 +26,11 @@
 
   .dse-date-nav .btn { padding:6px 10px !important; }
   .dse-credit-remove { cursor:pointer; color:#c0392b; }
+  .dse-reg-box { background:#faf9f8; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding:10px 12px; height:100%; }
+  .dse-reg-title { font-size:0.82rem; }
+  .dse-reg-box .form-select-sm, .dse-reg-box .form-control-sm { font-size:0.78rem; }
+  .dse-reg-hint { font-size:0.7rem; color:#6c757d; }
+  .dse-reg-hint.bad { color:#c0392b; font-weight:600; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -66,6 +71,8 @@
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
       <input type="hidden" name="lines_json" id="dseLinesJson">
       <input type="hidden" name="credit_lines_json" id="dseCreditLinesJson">
+      <input type="hidden" name="advances_json" id="dseAdvancesJson">
+      <input type="hidden" name="settlements_json" id="dseSettlementsJson">
 
       <div class="mb-3">
         <label class="form-label fw-semibold">Narration / Notes</label>
@@ -154,32 +161,92 @@
         </table>
       </div>
 
-      <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-handshake me-1 text-primary"></i>Credit Received / Credit Given</h6>
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="fw-bold mb-0" style="font-size:0.9rem;"><i class="fas fa-handshake me-1 text-primary"></i>Credit (Debtors) &amp; Advances</h6>
+        <a href="{{ url_for('daily_sales_outstanding', date=entry_date) }}" class="btn btn-sm btn-outline-secondary" target="_blank">
+          <i class="fas fa-search-dollar me-1"></i> Outstanding Credit &amp; Advances
+        </a>
+      </div>
       <div class="alert alert-light border small">
-        <i class="fas fa-info-circle me-1"></i> Recorded for reference only &mdash; does not post to the General Ledger.
+        <i class="fas fa-info-circle me-1"></i> Tracked with running balances (see Outstanding) and included in the Expected Receipt &mdash;
+        not posted to the General Ledger. To settle an earlier credit or advance, pick it from the list &mdash; only what is still outstanding is shown.
       </div>
-      <div class="row g-3 mb-4">
-        <div class="col-md-6">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong style="font-size:0.85rem;">Credit Received</strong>
-            {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditRow('RECEIVED')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+      <div class="row g-3 mb-2">
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Credit Given <span class="text-muted fw-normal">(bill left on credit &rarr; debtor)</span></strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditGiven()"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th style="width:28%">Invoice No</th><th>Name</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseCreditGivenBody"></tbody>
+            </table>
           </div>
-          <table class="table table-bordered table-sm dse-table">
-            <thead><tr><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th><th></th></tr></thead>
-            <tbody id="dseCreditReceivedBody"></tbody>
-          </table>
         </div>
-        <div class="col-md-6">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <strong style="font-size:0.85rem;">Credit Given</strong>
-            {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditRow('GIVEN')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Credit Received / Set-off <span class="text-muted fw-normal">(debtor settles)</span></strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditReceived()"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th>Credit being settled</th><th style="width:20%">Mode</th><th style="width:18%">Ref No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseCreditReceivedBody"></tbody>
+            </table>
           </div>
-          <table class="table table-bordered table-sm dse-table">
-            <thead><tr><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th><th></th></tr></thead>
-            <tbody id="dseCreditGivenBody"></tbody>
-          </table>
+        </div>
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Advance Received <span class="text-muted fw-normal">(from guest &rarr; advance creditor)</span></strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddAdvance('RECEIVED')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th>Name</th><th style="width:26%">Receipt No</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseAdvReceivedBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Advance Received &mdash; Settlement</strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('RECEIVED')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseSetReceivedBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Advance Given <span class="text-muted fw-normal">(paid out &rarr; advance debtor)</span></strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddAdvance('GIVEN')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th>Name</th><th style="width:26%">Receipt No</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseAdvGivenBody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="dse-reg-box">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <strong class="dse-reg-title">Advance Given &mdash; Settlement</strong>
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('GIVEN')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+            </div>
+            <table class="table table-bordered table-sm dse-table mb-0">
+              <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
+              <tbody id="dseSetGivenBody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
+      <div id="dseRegWarning" class="alert alert-danger small py-2" style="display:none;"></div>
+      <div class="mb-4"></div>
 
       <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-book me-1 text-primary"></i>Income &amp; Expenditure Summary</h6>
       <div class="alert alert-light border small">
@@ -195,18 +262,16 @@
                 <input type="text" class="form-control form-control-sm" id="dseTotalSalesDisplay" readonly>
               </div>
               <div class="col-6">
-                <label class="form-label">Credit Received</label>
+                <label class="form-label">Credit Received (cash)</label>
                 <input type="text" class="form-control form-control-sm" id="dseCreditReceivedTotal" readonly>
               </div>
-              <div class="col-3">
+              <div class="col-6">
                 <label class="form-label">Advance Received</label>
-                <input type="number" step="0.01" name="advance_received" id="dseAdvanceReceived" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.advance_received or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" class="form-control form-control-sm" id="dseAdvanceReceivedTotal" readonly>
               </div>
-              <div class="col-3">
-                <label class="form-label">Bill No</label>
-                <input type="text" name="advance_received_bill_no" class="form-control form-control-sm"
-                       value="{{ header.advance_received_bill_no or '' if header else '' }}" {% if readonly %}disabled{% endif %}>
+              <div class="col-6">
+                <label class="form-label">Advance Given &mdash; Recovered</label>
+                <input type="text" class="form-control form-control-sm" id="dseAdvanceRecoveredTotal" readonly>
               </div>
             </div>
           </div>
@@ -229,15 +294,13 @@
                 <input type="number" step="0.01" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
                        value="{{ '%.2f'|format(header.petty_cash or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
-              <div class="col-3">
+              <div class="col-6">
                 <label class="form-label">Advance Given</label>
-                <input type="number" step="0.01" name="advance_given" id="dseAdvanceGiven" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.advance_given or 0) if header else '0.00' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" class="form-control form-control-sm" id="dseAdvanceGivenTotal" readonly>
               </div>
-              <div class="col-3">
-                <label class="form-label">Bill No</label>
-                <input type="text" name="advance_given_bill_no" class="form-control form-control-sm"
-                       value="{{ header.advance_given_bill_no or '' if header else '' }}" {% if readonly %}disabled{% endif %}>
+              <div class="col-6">
+                <label class="form-label">Advance Set-off / Refund</label>
+                <input type="text" class="form-control form-control-sm" id="dseAdvanceSettledTotal" readonly>
               </div>
               {% for n in [1,2,3] %}
               <div class="col-6">
@@ -282,8 +345,9 @@
               </div>
             </div>
             <div class="mt-2 text-muted" style="font-size:0.72rem;">
-              Expected Receipt = Total Sales + Advance Received + Credit Received
-              &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+              Expected Receipt = Total Sales + Advance Received &minus; Advance Set-off/Refund + Advance Recovered
+              + Credit Received (cash) &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+              <br>A credit or advance <em>set-off</em> (no cash) doesn't change the Expected Receipt.
             </div>
           </div>
         </div>
@@ -326,6 +390,9 @@
 
       {% if not readonly %}
       <div class="d-flex justify-content-end gap-2 mt-4">
+        <a href="{{ url_for('daily_sales_reports', date=entry_date) }}" class="btn btn-outline-secondary">
+          <i class="fas fa-chart-bar me-1"></i> Daily Revenue &amp; Cash Book Report
+        </a>
         <button type="button" class="btn btn-primary" onclick="dseSubmit()">
           <i class="fas fa-save me-1"></i> Save
         </button>
@@ -370,22 +437,201 @@
 
 <script>
 const dseReadonly = {{ 'true' if readonly else 'false' }};
-const dseExistingCreditLines = {{ credit_lines|default([])|tojson }};
+const dseSavedCredit = {{ credit_lines|default([])|tojson }};
+const dseSavedAdvances = {{ advances|default([])|tojson }};
+const dseSavedSettlements = {{ settlements|default([])|tojson }};
+const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_given': []})|tojson }};
 
-function dseCreditRowHtml(type, invoiceNo, partyName, amount) {
-  const dis = dseReadonly ? 'disabled' : '';
-  const removeBtn = dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" onclick="this.closest(\'tr\').remove(); dseRecalc();"></i>';
-  return '<tr class="dse-credit-row" data-credit-type="' + type + '">' +
-    '<td><input type="text" class="form-control form-control-sm dse-credit-invoice" value="' + (invoiceNo || '') + '" ' + dis + '></td>' +
-    '<td><input type="text" class="form-control form-control-sm dse-credit-name" value="' + (partyName || '') + '" ' + dis + '></td>' +
-    '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-credit-amount" value="' + (amount || '') + '" onchange="dseRecalc()" ' + dis + '></td>' +
-    '<td>' + removeBtn + '</td>' +
-  '</tr>';
+function dseEsc(v) {
+  return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+function dseMoney(v) { return (Math.round((v || 0) * 100) / 100).toFixed(2); }
+function dseNum(el) { return el ? (parseFloat(el.value) || 0) : 0; }
+function dseRemoveBtn() {
+  return dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" title="Remove" onclick="this.closest(\'tr\').remove(); dseRecalc();"></i>';
 }
 
-function dseAddCreditRow(type, invoiceNo, partyName, amount) {
-  const bodyId = type === 'GIVEN' ? 'dseCreditGivenBody' : 'dseCreditReceivedBody';
-  document.getElementById(bodyId).insertAdjacentHTML('beforeend', dseCreditRowHtml(type, invoiceNo, partyName, amount));
+// ---- Credit Given -------------------------------------------------------------
+function dseAddCreditGiven(row) {
+  row = row || {};
+  const dis = dseReadonly ? 'disabled' : '';
+  document.getElementById('dseCreditGivenBody').insertAdjacentHTML('beforeend',
+    '<tr class="dse-cg-row" data-id="' + dseEsc(row.id || '') + '">' +
+      '<td><input type="text" class="form-control form-control-sm dse-cg-invoice" value="' + dseEsc(row.invoice_no) + '" ' + dis + '></td>' +
+      '<td><input type="text" class="form-control form-control-sm dse-cg-name" value="' + dseEsc(row.party_name) + '" ' + dis + '></td>' +
+      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-cg-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+}
+
+// ---- Credit Received / Set-off --------------------------------------------------
+function dseCreditOptions(selectedId) {
+  let html = '<option value="">- not linked (type the name) -</option>';
+  dseOpen.credits.forEach(function(c) {
+    if (c.balance <= 0.005 && String(c.id) !== String(selectedId)) return;
+    html += '<option value="' + c.id + '"' + (String(c.id) === String(selectedId) ? ' selected' : '') + '>' +
+      dseEsc(c.entry_date + ' | ' + (c.invoice_no || '-') + ' | ' + (c.party_name || '(no name)') + ' | bal ' + dseMoney(c.balance)) + '</option>';
+  });
+  return html;
+}
+
+function dseAddCreditReceived(row) {
+  row = row || {};
+  const dis = dseReadonly ? 'disabled' : '';
+  const linked = !!row.settles_credit_id;
+  document.getElementById('dseCreditReceivedBody').insertAdjacentHTML('beforeend',
+    '<tr class="dse-cr-row" data-id="' + dseEsc(row.id || '') + '">' +
+      '<td><select class="form-select form-select-sm dse-cr-link" onchange="dseCrLinkChanged(this)" ' + dis + '>' + dseCreditOptions(row.settles_credit_id) + '</select>' +
+        '<input type="text" class="form-control form-control-sm mt-1 dse-cr-name" placeholder="Name" value="' + dseEsc(row.party_name) + '" ' +
+          (linked ? 'style="display:none;"' : '') + ' ' + dis + '>' +
+        '<div class="dse-reg-hint dse-cr-hint"></div></td>' +
+      '<td><select class="form-select form-select-sm dse-cr-mode" onchange="dseRecalc()" ' + dis + '>' +
+        '<option value="CASH"' + (row.settle_mode !== 'SETOFF' ? ' selected' : '') + '>Cash received</option>' +
+        '<option value="SETOFF"' + (row.settle_mode === 'SETOFF' ? ' selected' : '') + '>Set-off (no cash)</option></select></td>' +
+      '<td><input type="text" class="form-control form-control-sm dse-cr-invoice" value="' + dseEsc(row.invoice_no) + '" ' + dis + '></td>' +
+      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-cr-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+}
+
+function dseCrLinkChanged(sel) {
+  const tr = sel.closest('tr');
+  tr.querySelector('.dse-cr-name').style.display = sel.value ? 'none' : '';
+  const amt = tr.querySelector('.dse-cr-amount');
+  if (sel.value && !amt.value) {
+    const c = dseOpen.credits.find(function(x) { return String(x.id) === sel.value; });
+    if (c) amt.value = dseMoney(c.balance);
+  }
+  dseRecalc();
+}
+
+// ---- Advances ---------------------------------------------------------------------
+function dseAddAdvance(type, row) {
+  row = row || {};
+  const dis = dseReadonly ? 'disabled' : '';
+  const bodyId = type === 'GIVEN' ? 'dseAdvGivenBody' : 'dseAdvReceivedBody';
+  document.getElementById(bodyId).insertAdjacentHTML('beforeend',
+    '<tr class="dse-adv-row" data-type="' + type + '" data-id="' + dseEsc(row.id || '') + '">' +
+      '<td><input type="text" class="form-control form-control-sm dse-adv-name" value="' + dseEsc(row.party_name) + '" ' + dis + '></td>' +
+      '<td><input type="text" class="form-control form-control-sm dse-adv-receipt" value="' + dseEsc(row.receipt_no) + '" ' + dis + '></td>' +
+      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-adv-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+}
+
+function dseAdvanceOptions(type, selectedId) {
+  const list = type === 'GIVEN' ? dseOpen.adv_given : dseOpen.adv_received;
+  let html = '<option value="">- choose advance -</option>';
+  list.forEach(function(a) {
+    if (a.balance <= 0.005 && String(a.id) !== String(selectedId)) return;
+    html += '<option value="' + a.id + '"' + (String(a.id) === String(selectedId) ? ' selected' : '') + '>' +
+      dseEsc(a.entry_date + ' | ' + (a.receipt_no || '-') + ' | ' + (a.party_name || '(no name)') + ' | bal ' + dseMoney(a.balance)) + '</option>';
+  });
+  return html;
+}
+
+function dseAddSettlement(type, row) {
+  row = row || {};
+  const dis = dseReadonly ? 'disabled' : '';
+  const bodyId = type === 'GIVEN' ? 'dseSetGivenBody' : 'dseSetReceivedBody';
+  const modes = type === 'GIVEN'
+    ? [['RECOVERED', 'Recovered (cash)'], ['SETOFF', 'Set-off (no cash)']]
+    : [['SETOFF', 'Set off against bill'], ['REFUND', 'Refunded to guest']];
+  let modeHtml = '';
+  modes.forEach(function(m) {
+    modeHtml += '<option value="' + m[0] + '"' + (row.settle_mode === m[0] ? ' selected' : '') + '>' + m[1] + '</option>';
+  });
+  document.getElementById(bodyId).insertAdjacentHTML('beforeend',
+    '<tr class="dse-set-row" data-type="' + type + '">' +
+      '<td><select class="form-select form-select-sm dse-set-advance" onchange="dseSetAdvanceChanged(this)" ' + dis + '>' + dseAdvanceOptions(type, row.advance_id) + '</select>' +
+        '<div class="dse-reg-hint dse-set-hint"></div></td>' +
+      '<td><select class="form-select form-select-sm dse-set-mode" onchange="dseRecalc()" ' + dis + '>' + modeHtml + '</select></td>' +
+      '<td><input type="text" class="form-control form-control-sm dse-set-bill" value="' + dseEsc(row.bill_no) + '" ' + dis + '></td>' +
+      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-set-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+}
+
+function dseSetAdvanceChanged(sel) {
+  const tr = sel.closest('tr');
+  const amt = tr.querySelector('.dse-set-amount');
+  if (sel.value && !amt.value) {
+    const list = tr.getAttribute('data-type') === 'GIVEN' ? dseOpen.adv_given : dseOpen.adv_received;
+    const a = list.find(function(x) { return String(x.id) === sel.value; });
+    if (a) amt.value = dseMoney(a.balance);
+  }
+  dseRecalc();
+}
+
+// ---- Totals / checks ------------------------------------------------------------
+function dseRegisterTotals() {
+  const t = { advReceived: 0, advGiven: 0, advReceivedSettled: 0, advGivenRecovered: 0,
+              creditGiven: 0, creditReceivedCash: 0, problems: [] };
+
+  document.querySelectorAll('#dseCreditGivenBody .dse-cg-amount').forEach(function(i) { t.creditGiven += dseNum(i); });
+
+  // Credit settlements: never more than what's outstanding on that credit
+  const usedCredit = {};
+  document.querySelectorAll('#dseCreditReceivedBody .dse-cr-row').forEach(function(tr) {
+    const amt = dseNum(tr.querySelector('.dse-cr-amount'));
+    if (tr.querySelector('.dse-cr-mode').value !== 'SETOFF') t.creditReceivedCash += amt;
+    const id = tr.querySelector('.dse-cr-link').value;
+    if (id) usedCredit[id] = (usedCredit[id] || 0) + amt;
+  });
+  document.querySelectorAll('#dseCreditReceivedBody .dse-cr-row').forEach(function(tr) {
+    const id = tr.querySelector('.dse-cr-link').value;
+    const hint = tr.querySelector('.dse-cr-hint');
+    hint.textContent = ''; hint.classList.remove('bad');
+    if (!id) return;
+    const c = dseOpen.credits.find(function(x) { return String(x.id) === id; });
+    if (!c) return;
+    // A credit given earlier on this same day may have been edited on the page
+    const pageRow = document.querySelector('#dseCreditGivenBody .dse-cg-row[data-id="' + id + '"]');
+    const amount = pageRow ? dseNum(pageRow.querySelector('.dse-cg-amount')) : c.amount;
+    const available = Math.round((amount - c.settled) * 100) / 100;
+    const left = Math.round((available - usedCredit[id]) * 100) / 100;
+    hint.textContent = 'Outstanding ' + dseMoney(available) + ' → after this ' + dseMoney(left);
+    if (left < -0.005) {
+      hint.classList.add('bad');
+      t.problems.push('Credit ' + (c.invoice_no || '') + ' ' + (c.party_name || '') + ': settled ' + dseMoney(usedCredit[id]) + ' but only ' + dseMoney(available) + ' is outstanding.');
+    }
+  });
+
+  document.querySelectorAll('.dse-adv-row').forEach(function(tr) {
+    const amt = dseNum(tr.querySelector('.dse-adv-amount'));
+    if (tr.getAttribute('data-type') === 'GIVEN') t.advGiven += amt; else t.advReceived += amt;
+  });
+
+  const usedAdv = {};
+  document.querySelectorAll('.dse-set-row').forEach(function(tr) {
+    const amt = dseNum(tr.querySelector('.dse-set-amount'));
+    const type = tr.getAttribute('data-type');
+    const mode = tr.querySelector('.dse-set-mode').value;
+    if (type === 'GIVEN') { if (mode === 'RECOVERED') t.advGivenRecovered += amt; }
+    else t.advReceivedSettled += amt;
+    const id = tr.querySelector('.dse-set-advance').value;
+    if (id) usedAdv[id] = (usedAdv[id] || 0) + amt;
+    else if (amt) t.problems.push('Choose which advance each settlement row is for.');
+  });
+  document.querySelectorAll('.dse-set-row').forEach(function(tr) {
+    const id = tr.querySelector('.dse-set-advance').value;
+    const hint = tr.querySelector('.dse-set-hint');
+    hint.textContent = ''; hint.classList.remove('bad');
+    if (!id) return;
+    const list = tr.getAttribute('data-type') === 'GIVEN' ? dseOpen.adv_given : dseOpen.adv_received;
+    const a = list.find(function(x) { return String(x.id) === id; });
+    if (!a) return;
+    const pageRow = document.querySelector('.dse-adv-row[data-id="' + id + '"]');
+    const amount = pageRow ? dseNum(pageRow.querySelector('.dse-adv-amount')) : a.amount;
+    const available = Math.round((amount - a.settled) * 100) / 100;
+    const left = Math.round((available - usedAdv[id]) * 100) / 100;
+    hint.textContent = 'Outstanding ' + dseMoney(available) + ' → after this ' + dseMoney(left);
+    if (left < -0.005) {
+      hint.classList.add('bad');
+      t.problems.push('Advance ' + (a.receipt_no || '') + ' ' + (a.party_name || '') + ': settled ' + dseMoney(usedAdv[id]) + ' but only ' + dseMoney(available) + ' is outstanding.');
+    }
+  });
+  return t;
 }
 
 function dseRecalc() {
@@ -402,24 +648,27 @@ function dseRecalc() {
   const exp = parseFloat(document.getElementById('dseExpenditure').value) || 0;
   document.getElementById('dseBalance').value = (total - exp).toFixed(2);
 
-  let creditReceived = 0;
-  document.querySelectorAll('#dseCreditReceivedBody .dse-credit-amount').forEach(function(inp) { creditReceived += parseFloat(inp.value) || 0; });
-  document.getElementById('dseCreditReceivedTotal').value = creditReceived.toFixed(2);
+  const t = dseRegisterTotals();
+  document.getElementById('dseCreditReceivedTotal').value = dseMoney(t.creditReceivedCash);
+  document.getElementById('dseCreditGivenTotal').value = dseMoney(t.creditGiven);
+  document.getElementById('dseAdvanceReceivedTotal').value = dseMoney(t.advReceived);
+  document.getElementById('dseAdvanceGivenTotal').value = dseMoney(t.advGiven);
+  document.getElementById('dseAdvanceSettledTotal').value = dseMoney(t.advReceivedSettled);
+  document.getElementById('dseAdvanceRecoveredTotal').value = dseMoney(t.advGivenRecovered);
 
-  let creditGiven = 0;
-  document.querySelectorAll('#dseCreditGivenBody .dse-credit-amount').forEach(function(inp) { creditGiven += parseFloat(inp.value) || 0; });
-  document.getElementById('dseCreditGivenTotal').value = creditGiven.toFixed(2);
+  const warn = document.getElementById('dseRegWarning');
+  const uniqueProblems = t.problems.filter(function(p, i) { return t.problems.indexOf(p) === i; });
+  warn.style.display = uniqueProblems.length ? '' : 'none';
+  warn.innerHTML = uniqueProblems.map(dseEsc).join('<br>');
 
   const telephone = parseFloat(document.getElementById('dseTelephone').value) || 0;
-  const advanceReceived = parseFloat(document.getElementById('dseAdvanceReceived').value) || 0;
-  const advanceGiven = parseFloat(document.getElementById('dseAdvanceGiven').value) || 0;
   const pettyCash = parseFloat(document.getElementById('dsePettyCash').value) || 0;
   let miscTotal = 0;
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += parseFloat(inp.value) || 0; });
 
   const expectedReceived = Math.round((
-    total + advanceReceived + creditReceived
-    - creditGiven - advanceGiven - telephone - pettyCash - miscTotal - exp
+    total + t.advReceived - t.advReceivedSettled + t.advGivenRecovered + t.creditReceivedCash
+    - t.creditGiven - t.advGiven - telephone - pettyCash - miscTotal - exp
   ) * 100) / 100;
   document.getElementById('dseExpectedReceived').value = expectedReceived.toFixed(2);
 
@@ -436,9 +685,15 @@ function dseRecalc() {
   } else {
     checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (expectedReceived - pmTotal).toFixed(2) + '</span>';
   }
+  return uniqueProblems;
 }
 
 function dseSubmit() {
+  const problems = dseRecalc();
+  if (problems.length) {
+    alert('Please fix before saving:\n\n' + problems.join('\n'));
+    return;
+  }
   const lines = [];
   document.querySelectorAll('#dseForm .dse-line-row').forEach(function(tr) {
     lines.push({
@@ -451,15 +706,49 @@ function dseSubmit() {
   document.getElementById('dseLinesJson').value = JSON.stringify(lines);
 
   const creditLines = [];
-  document.querySelectorAll('#dseForm .dse-credit-row').forEach(function(tr) {
+  document.querySelectorAll('#dseCreditGivenBody .dse-cg-row').forEach(function(tr) {
     creditLines.push({
-      credit_type: tr.getAttribute('data-credit-type'),
-      invoice_no: tr.querySelector('.dse-credit-invoice').value,
-      party_name: tr.querySelector('.dse-credit-name').value,
-      amount: tr.querySelector('.dse-credit-amount').value
+      id: tr.getAttribute('data-id'), credit_type: 'GIVEN',
+      invoice_no: tr.querySelector('.dse-cg-invoice').value,
+      party_name: tr.querySelector('.dse-cg-name').value,
+      amount: tr.querySelector('.dse-cg-amount').value
+    });
+  });
+  document.querySelectorAll('#dseCreditReceivedBody .dse-cr-row').forEach(function(tr) {
+    const linkId = tr.querySelector('.dse-cr-link').value;
+    const c = linkId ? dseOpen.credits.find(function(x) { return String(x.id) === linkId; }) : null;
+    creditLines.push({
+      id: tr.getAttribute('data-id'), credit_type: 'RECEIVED',
+      settles_credit_id: linkId,
+      settle_mode: tr.querySelector('.dse-cr-mode').value,
+      invoice_no: tr.querySelector('.dse-cr-invoice').value,
+      party_name: c ? (c.party_name || '') : tr.querySelector('.dse-cr-name').value,
+      amount: tr.querySelector('.dse-cr-amount').value
     });
   });
   document.getElementById('dseCreditLinesJson').value = JSON.stringify(creditLines);
+
+  const advances = [];
+  document.querySelectorAll('.dse-adv-row').forEach(function(tr) {
+    advances.push({
+      id: tr.getAttribute('data-id'), adv_type: tr.getAttribute('data-type'),
+      party_name: tr.querySelector('.dse-adv-name').value,
+      receipt_no: tr.querySelector('.dse-adv-receipt').value,
+      amount: tr.querySelector('.dse-adv-amount').value
+    });
+  });
+  document.getElementById('dseAdvancesJson').value = JSON.stringify(advances);
+
+  const settlements = [];
+  document.querySelectorAll('.dse-set-row').forEach(function(tr) {
+    settlements.push({
+      advance_id: tr.querySelector('.dse-set-advance').value,
+      settle_mode: tr.querySelector('.dse-set-mode').value,
+      bill_no: tr.querySelector('.dse-set-bill').value,
+      amount: tr.querySelector('.dse-set-amount').value
+    });
+  });
+  document.getElementById('dseSettlementsJson').value = JSON.stringify(settlements);
 
   document.getElementById('dseForm').submit();
 }
@@ -479,9 +768,11 @@ function dseGoToDate(offsetDays) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-  dseExistingCreditLines.forEach(function(cl) {
-    dseAddCreditRow(cl.credit_type, cl.invoice_no, cl.party_name, cl.amount);
+  dseSavedCredit.forEach(function(cl) {
+    if (cl.credit_type === 'GIVEN') dseAddCreditGiven(cl); else dseAddCreditReceived(cl);
   });
+  dseSavedAdvances.forEach(function(a) { dseAddAdvance(a.adv_type, a); });
+  dseSavedSettlements.forEach(function(s) { dseAddSettlement(s.adv_type === 'GIVEN' ? 'GIVEN' : 'RECEIVED', s); });
   dseRecalc();
 });
 </script>

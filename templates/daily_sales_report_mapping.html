@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+
+{% block title %}Daily Revenue Report - Row Mapping{% endblock %}
+
+{% block content %}
+<style>
+  .rm-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:16px; overflow:hidden; }
+  .rm-head { padding:8px 14px; background:#f3f7fc; border-bottom:1px solid rgba(0,0,0,0.06);
+             display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .rm-body { padding:10px 14px; }
+  .rm-cat { display:flex; align-items:flex-start; gap:6px; font-size:0.8rem; padding:3px 6px; border-radius:4px; }
+  .rm-cat:hover { background:#f6f9ff; }
+  .rm-cat .gl { font-size:0.72rem; color:#6c757d; }
+  .rm-cat .gl.missing { color:#c0392b; }
+  .rm-used { font-size:0.68rem; color:#fd7e14; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-sitemap me-2 text-primary"></i>Daily Revenue Report &mdash; Row Mapping</h4>
+  <span class="d-flex gap-2">
+    <a href="{{ url_for('daily_sales_gl_mapping') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sitemap me-1"></i> GL Mapping</a>
+    <a href="{{ url_for('daily_sales_reports') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-chart-bar me-1"></i> Reports</a>
+  </span>
+</div>
+
+<div class="alert alert-light border small">
+  Tick the Daily Sales lines that make up each report row. Each line shows the <strong>GL account</strong> it posts to
+  (set on <a href="{{ url_for('daily_sales_gl_mapping') }}">GL Mapping</a> &mdash; a red "no GL account" means it still needs one).
+  <strong>Occupancy</strong> rows add up the <em>Nos</em> of the ticked room lines and divide by the room count;
+  <strong>Nos</strong> rows add up <em>Nos</em>; <strong>Revenue</strong> rows add up amounts. A line ticked in two revenue rows is counted twice (shown in orange).
+</div>
+
+<form method="POST">
+  {% for r in rows %}
+  <input type="hidden" name="row_id[]" value="{{ r.id }}">
+  <div class="rm-card">
+    <div class="rm-head">
+      <span class="badge {{ 'bg-success' if r.row_type == 'REVENUE' else ('bg-info text-dark' if r.row_type == 'NOS' else 'bg-warning text-dark') }}">
+        {{ {'REVENUE': 'Revenue', 'NOS': 'Nos', 'OCCUPANCY': 'Occupancy %'}.get(r.row_type, r.row_type) }}</span>
+      <input type="number" name="order_{{ r.id }}" value="{{ r.display_order }}" class="form-control form-control-sm" style="width:80px;" title="Order">
+      <input type="text" name="label_{{ r.id }}" value="{{ r.label }}" class="form-control form-control-sm" style="max-width:340px;" required>
+      {% if r.row_type == 'OCCUPANCY' %}
+      <label class="small mb-0 ms-2">Total rooms</label>
+      <input type="number" min="0" name="room_count_{{ r.id }}" value="{{ r.room_count if r.room_count is not none else '' }}"
+             class="form-control form-control-sm" style="width:90px;" placeholder="e.g. 20">
+      {% endif %}
+      <span class="small text-muted ms-auto">{{ r.keys | length }} line(s)</span>
+      <button type="submit" formaction="{{ url_for('daily_sales_report_mapping_delete', row_id=r.id) }}" formnovalidate
+              class="btn btn-sm btn-outline-danger" onclick="return confirm('Remove this row from the report?');"><i class="fas fa-trash"></i></button>
+    </div>
+    <div class="rm-body">
+      <div class="row g-1">
+        {% for c in categories %}
+        <div class="col-md-4 col-lg-3">
+          <label class="rm-cat">
+            <input type="checkbox" name="cats_{{ r.id }}" value="{{ c.category_key }}" {{ 'checked' if c.category_key in r.keys }}>
+            <span>
+              {{ c.description }}{% if c.particulars %} &ndash; {{ c.particulars }}{% endif %}{% if c.entry_side == 'DR' %} <span class="text-danger">(deduct)</span>{% endif %}
+              <br><span class="gl {{ 'missing' if not c.gl_account_name }}">{{ c.gl_account_name or 'no GL account' }}</span>
+              {% if r.row_type == 'REVENUE' and c.category_key in r.keys and (used.get(c.category_key, []) | length) > 1 %}
+                <br><span class="rm-used">also in: {{ used[c.category_key] | reject('equalto', r.label) | join(', ') }}</span>
+              {% endif %}
+            </span>
+          </label>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+
+  <div class="rm-card">
+    <div class="rm-head"><strong>Add a row</strong></div>
+    <div class="rm-body d-flex gap-2 flex-wrap align-items-center">
+      <input type="text" name="new_label" class="form-control form-control-sm" style="max-width:320px;" placeholder="Row label, e.g. Laundry Revenue">
+      <select name="new_type" class="form-select form-select-sm" style="width:auto;">
+        <option value="REVENUE">Revenue</option>
+        <option value="NOS">Nos</option>
+        <option value="OCCUPANCY">Occupancy %</option>
+      </select>
+      <span class="small text-muted">Save, then tick its lines.</span>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end mb-4">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save Mapping</button>
+  </div>
+</form>
+{% endblock %}

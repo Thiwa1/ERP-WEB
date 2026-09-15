@@ -205,6 +205,9 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'daily_sales_entry',  'label': 'Daily Sales Entry',    'url': '/daily_sales_entry',      'icon': 'fas fa-cash-register',       'category': 'Restaurant'},
     {'key': 'daily_sales_post',   'label': 'Daily Sales - Post to GL', 'url': '/daily_sales_entry/post', 'icon': 'fas fa-check-double',    'category': 'Core Accounting'},
     {'key': 'daily_sales_gl_mapping', 'label': 'Daily Sales - GL Mapping', 'url': '/daily_sales_entry/gl_mapping', 'icon': 'fas fa-sitemap', 'category': 'Daily Sales Setup'},
+    {'key': 'daily_sales_reports', 'label': 'Daily Revenue & Cash Book', 'url': '/daily_sales_entry/reports', 'icon': 'fas fa-chart-bar', 'category': 'Restaurant'},
+    {'key': 'daily_sales_outstanding', 'label': 'Outstanding Credit & Advances', 'url': '/daily_sales_entry/outstanding', 'icon': 'fas fa-search-dollar', 'category': 'Restaurant'},
+    {'key': 'daily_sales_report_mapping', 'label': 'Daily Sales - Report Row Mapping', 'url': '/daily_sales_entry/report_mapping', 'icon': 'fas fa-project-diagram', 'category': 'Daily Sales Setup'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -20293,17 +20296,127 @@ def _daily_sales_expected_received(total_income, total_expenditure, telephone_ex
     )
 
 
+# ---- Advance / credit registers ---------------------------------------------
+# Advance Received  (+ cash)  a guest pays in advance    -> an "advance creditor"
+#   settlement SETOFF/REFUND (- cash): used against a bill, or paid back
+# Advance Given     (- cash)  money paid out in advance  -> an "advance debtor"
+#   settlement RECOVERED (+ cash) / SETOFF (no cash)
+# Credit Given      (- cash)  a bill left on credit      -> a debtor
+# Credit Received   CASH (+ cash) / SETOFF (no cash), linked to the Credit
+#                   Given row it settles (settles_credit_id).
+
+def _daily_sales_register_rows(entry_id):
+    """(advances, settlements, credit_lines) saved for one day."""
+    if not entry_id:
+        return [], [], []
+    advances = db.execute_query("""
+        SELECT id, adv_type, party_name, receipt_no, amount, remarks
+        FROM daily_sales_advances WHERE entry_id = %s ORDER BY id
+    """, (entry_id,)) or []
+    settlements = db.execute_query("""
+        SELECT s.id, s.advance_id, s.amount, s.bill_no, s.settle_mode, s.remarks,
+               a.adv_type, a.party_name, a.receipt_no, a.entry_date AS advance_date
+        FROM daily_sales_advance_settlements s
+        LEFT JOIN daily_sales_advances a ON a.id = s.advance_id
+        WHERE s.entry_id = %s ORDER BY s.id
+    """, (entry_id,)) or []
+    credit_lines = db.execute_query("""
+        SELECT c.id, c.credit_type, c.invoice_no, c.party_name, c.amount, c.settles_credit_id, c.settle_mode,
+               g.invoice_no AS settles_invoice_no, g.party_name AS settles_party_name
+        FROM daily_sales_credit_lines c
+        LEFT JOIN daily_sales_credit_lines g ON g.id = c.settles_credit_id
+        WHERE c.entry_id = %s ORDER BY c.id
+    """, (entry_id,)) or []
+    for rows in (advances, settlements, credit_lines):
+        for r in rows:
+            for k, v in list(r.items()):
+                if hasattr(v, 'strftime'):
+                    r[k] = v.strftime('%Y-%m-%d')
+    return advances, settlements, credit_lines
+
+
+def _daily_sales_register_totals(advances, settlements, credit_lines):
+    """Cash effect of a day's registers. Works on saved rows or on the
+    cleaned rows about to be saved (same keys)."""
+    t = {'adv_received': 0.0, 'adv_received_settled': 0.0, 'adv_given': 0.0,
+         'adv_given_recovered': 0.0, 'adv_given_setoff': 0.0,
+         'credit_given': 0.0, 'credit_received_cash': 0.0, 'credit_setoff': 0.0}
+    for a in advances:
+        t['adv_received' if a['adv_type'] == 'RECEIVED' else 'adv_given'] += float(a['amount'] or 0)
+    for s in settlements:
+        amt = float(s['amount'] or 0)
+        if s.get('adv_type') == 'GIVEN':
+            t['adv_given_recovered' if s['settle_mode'] == 'RECOVERED' else 'adv_given_setoff'] += amt
+        else:
+            t['adv_received_settled'] += amt
+    for c in credit_lines:
+        amt = float(c['amount'] or 0)
+        if c['credit_type'] == 'GIVEN':
+            t['credit_given'] += amt
+        elif c.get('settle_mode') == 'SETOFF':
+            t['credit_setoff'] += amt
+        else:
+            t['credit_received_cash'] += amt
+    return {k: round(v, 2) for k, v in t.items()}
+
+
+def _daily_sales_expected_from_registers(total_income, total_expenditure, telephone, petty_cash, misc_expenses, t):
+    """Expected Receipt with the registers folded in - see the cash effects above."""
+    return _daily_sales_expected_received(
+        total_income, total_expenditure, telephone,
+        t['adv_received'] - t['adv_received_settled'] + t['adv_given_recovered'],
+        t['adv_given'], petty_cash, misc_expenses,
+        t['credit_received_cash'], t['credit_given'])
+
+
+def _daily_sales_open_items(entry_date, entry_id=None):
+    """Outstanding Credit Given and advances on or before entry_date, for the
+    settlement pickers. balance excludes settlements made on this same entry
+    (those are shown/edited on the form), so it's what's available to settle."""
+    ex = entry_id or 0
+    credits = db.execute_query("""
+        SELECT g.id, g.invoice_no, g.party_name, g.amount, e.entry_date,
+               COALESCE((SELECT SUM(r.amount) FROM daily_sales_credit_lines r
+                         WHERE r.settles_credit_id = g.id AND r.entry_id <> %s), 0) AS settled
+        FROM daily_sales_credit_lines g
+        JOIN daily_sales_entries e ON e.id = g.entry_id
+        WHERE g.credit_type = 'GIVEN' AND e.entry_date <= %s
+        ORDER BY e.entry_date, g.id
+    """, (ex, entry_date)) or []
+    advances = db.execute_query("""
+        SELECT a.id, a.adv_type, a.party_name, a.receipt_no, a.amount, a.entry_date,
+               COALESCE((SELECT SUM(s.amount) FROM daily_sales_advance_settlements s
+                         WHERE s.advance_id = a.id AND s.entry_id <> %s), 0) AS settled
+        FROM daily_sales_advances a
+        WHERE a.entry_date <= %s
+        ORDER BY a.entry_date, a.id
+    """, (ex, entry_date)) or []
+    out = {'credits': [], 'adv_received': [], 'adv_given': []}
+    for c in credits:
+        c['balance'] = round(float(c['amount'] or 0) - float(c['settled'] or 0), 2)
+        c['entry_date'] = c['entry_date'].strftime('%Y-%m-%d') if hasattr(c['entry_date'], 'strftime') else str(c['entry_date'])
+        out['credits'].append(c)
+    for a in advances:
+        a['balance'] = round(float(a['amount'] or 0) - float(a['settled'] or 0), 2)
+        a['entry_date'] = a['entry_date'].strftime('%Y-%m-%d') if hasattr(a['entry_date'], 'strftime') else str(a['entry_date'])
+        out['adv_received' if a['adv_type'] == 'RECEIVED' else 'adv_given'].append(a)
+    return out
+
+
 def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditure, cash_float,
                                 cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
                                 telephone_income, advance_received, advance_received_bill_no,
                                 advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-                                credit_lines_in, action, current_user_pk):
+                                credit_lines_in, action, current_user_pk, registers_in=None):
     """Core Park/Post logic shared by the front office Save button and the
     accountant's Post button. `action` is always decided by the caller
     ('park' or 'post') - never trusted from the request directly.
     `misc_expenses` is a list of up to 3 (label, amount) tuples.
-    `credit_lines_in` is a list of dicts: {credit_type, invoice_no, party_name, amount}
-    - recorded for reference only, never posted to the GL (see module docstring).
+    `credit_lines_in` is a list of dicts: {id, credit_type, invoice_no, party_name,
+    amount, settles_credit_id, settle_mode}; None = leave the saved credit
+    lines untouched (the accountant's Post screen doesn't edit them).
+    `registers_in` is {'advances': [...], 'settlements': [...]} or None (untouched).
+    Registers are recorded for tracking only, never posted to the GL.
     Returns (ok: bool, message: str, jv_no: int|None)."""
     categories = {c['id']: c for c in _daily_sales_categories()}
 
@@ -20349,25 +20462,84 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
     total_income = round(total_income, 2)
     balance = round(total_income - total_expenditure, 2)
 
-    clean_credit_lines = []  # (credit_type, invoice_no, party_name, amount)
-    credit_received_total = 0.0
-    credit_given_total = 0.0
-    for cl in (credit_lines_in or []):
-        amount = parse_float(cl.get('amount'))
-        invoice_no = (cl.get('invoice_no') or '').strip() or None
-        party_name = (cl.get('party_name') or '').strip() or None
-        credit_type = 'GIVEN' if cl.get('credit_type') == 'GIVEN' else 'RECEIVED'
-        if credit_type == 'GIVEN':
-            credit_given_total += amount
-        else:
-            credit_received_total += amount
-        if amount or invoice_no or party_name:
-            clean_credit_lines.append((credit_type, invoice_no, party_name, amount))
+    def _row_id(v):
+        return int(v) if str(v or '').strip().isdigit() else None
+
+    existing_entry = db.execute_query("SELECT id FROM daily_sales_entries WHERE entry_date = %s", (entry_date,)) or []
+    existing_entry_id = existing_entry[0]['id'] if existing_entry else None
+    saved_advances, saved_settlements, saved_credit_lines = _daily_sales_register_rows(existing_entry_id)
+
+    # Credit lines (None = keep what's saved)
+    if credit_lines_in is None:
+        clean_credit_lines = None
+        credit_rows_for_totals = saved_credit_lines
+    else:
+        clean_credit_lines = []
+        for cl in credit_lines_in:
+            amount = parse_float(cl.get('amount'))
+            invoice_no = (cl.get('invoice_no') or '').strip()[:100] or None
+            party_name = (cl.get('party_name') or '').strip()[:200] or None
+            credit_type = 'GIVEN' if cl.get('credit_type') == 'GIVEN' else 'RECEIVED'
+            settles_credit_id = _row_id(cl.get('settles_credit_id')) if credit_type == 'RECEIVED' else None
+            settle_mode = ('SETOFF' if cl.get('settle_mode') == 'SETOFF' else 'CASH') if credit_type == 'RECEIVED' else None
+            if amount or invoice_no or party_name or settles_credit_id:
+                clean_credit_lines.append({'id': _row_id(cl.get('id')), 'credit_type': credit_type,
+                                           'invoice_no': invoice_no, 'party_name': party_name, 'amount': amount,
+                                           'settles_credit_id': settles_credit_id, 'settle_mode': settle_mode})
+        credit_rows_for_totals = clean_credit_lines
+
+    # Advances + settlements (None = keep what's saved)
+    if registers_in is None:
+        clean_advances = None
+        clean_settlements = None
+        adv_rows_for_totals, set_rows_for_totals = saved_advances, saved_settlements
+    else:
+        clean_advances = []
+        for a in registers_in.get('advances') or []:
+            amount = parse_float(a.get('amount'))
+            party_name = (a.get('party_name') or '').strip()[:200] or None
+            receipt_no = (a.get('receipt_no') or '').strip()[:100] or None
+            if amount or party_name or receipt_no:
+                clean_advances.append({'id': _row_id(a.get('id')),
+                                       'adv_type': 'GIVEN' if a.get('adv_type') == 'GIVEN' else 'RECEIVED',
+                                       'party_name': party_name, 'receipt_no': receipt_no, 'amount': amount,
+                                       'remarks': (a.get('remarks') or '').strip()[:255] or None})
+        # A settlement's type comes from the advance it settles, never the request.
+        open_now = _daily_sales_open_items(entry_date, existing_entry_id)
+        adv_type_by_id = {x['id']: x['adv_type'] for x in open_now['adv_received'] + open_now['adv_given']}
+        clean_settlements = []
+        for s in registers_in.get('settlements') or []:
+            advance_id = _row_id(s.get('advance_id'))
+            amount = parse_float(s.get('amount'))
+            if not advance_id or not amount:
+                continue
+            adv_type = adv_type_by_id.get(advance_id)
+            if not adv_type:
+                continue
+            mode = (s.get('settle_mode') or '').upper()
+            if adv_type == 'GIVEN':
+                mode = 'RECOVERED' if mode == 'RECOVERED' else 'SETOFF'
+            else:
+                mode = 'REFUND' if mode == 'REFUND' else 'SETOFF'
+            clean_settlements.append({'advance_id': advance_id, 'adv_type': adv_type, 'amount': amount,
+                                      'bill_no': (s.get('bill_no') or '').strip()[:100] or None,
+                                      'settle_mode': mode,
+                                      'remarks': (s.get('remarks') or '').strip()[:255] or None})
+        adv_rows_for_totals, set_rows_for_totals = clean_advances, clean_settlements
+
+    reg_totals = _daily_sales_register_totals(adv_rows_for_totals, set_rows_for_totals, credit_rows_for_totals)
+    if registers_in is not None:
+        # The header's single Advance Received / Given figures now mirror the register.
+        advance_received = reg_totals['adv_received']
+        advance_given = reg_totals['adv_given']
+        advance_received_bill_no = ', '.join(a['receipt_no'] for a in clean_advances
+                                             if a['adv_type'] == 'RECEIVED' and a['receipt_no'])[:100] or None
+        advance_given_bill_no = ', '.join(a['receipt_no'] for a in clean_advances
+                                          if a['adv_type'] == 'GIVEN' and a['receipt_no'])[:100] or None
 
     actual_received = cash_amount + credit_card_sampath_amount + credit_card_hnb_amount + bank_transfer_amount
-    expected_received = _daily_sales_expected_received(
-        total_income, total_expenditure, telephone_income, advance_received,
-        advance_given, petty_cash, misc_expenses, credit_received_total, credit_given_total)
+    expected_received = _daily_sales_expected_from_registers(
+        total_income, total_expenditure, telephone_income, petty_cash, misc_expenses, reg_totals)
 
     warning = None
     if action == 'post':
@@ -20377,8 +20549,9 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             action = 'park'  # fall back to saving as Parked so nothing is lost
         elif abs(actual_received - expected_received) > 0.01:
             warning = (f'Cannot post: Cash + Credit Card (Sampath + HNB) + Bank Transfer ({actual_received:,.2f}) '
-                       f'must equal Total Income + Telephone + Advance Received + Credit Received '
-                       f'- Credit Given - Petty Cash - Misc Expenses - Total Expenditure ({expected_received:,.2f}). '
+                       f'must equal the Expected Receipt ({expected_received:,.2f}) = Total Income + Advance Received '
+                       f'- Advance Set-off/Refund + Advance Recovered + Credit Received (cash) - Credit Given - Advance Given '
+                       f'- Telephone - Petty Cash - Misc Expenses - Total Expenditure. '
                        f'Adjust the breakdown before posting - ask front office to correct it if the figures themselves are wrong.')
             action = 'park'
 
@@ -20419,7 +20592,6 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                   misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
                   current_user_pk, entry_id))
             cursor.execute("DELETE FROM daily_sales_entry_lines WHERE entry_id = %s", (entry_id,))
-            cursor.execute("DELETE FROM daily_sales_credit_lines WHERE entry_id = %s", (entry_id,))
         else:
             cursor.execute("""
                 INSERT INTO daily_sales_entries (
@@ -20451,11 +20623,109 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
             """, (entry_id, cat_id, nos, bill_no, amount, gl_account, sub_account_code))
 
-        for credit_type, invoice_no, party_name, amount in clean_credit_lines:
+        # ---- Credit Given / Credit Received (ids kept stable: receipts on
+        # other days point at Credit Given rows by id)
+        if clean_credit_lines is not None:
+            cursor.execute("SELECT id, credit_type, amount, invoice_no, party_name FROM daily_sales_credit_lines WHERE entry_id = %s", (entry_id,))
+            old_rows = {r['id']: r for r in cursor.fetchall()}
+            keep_ids = {c['id'] for c in clean_credit_lines if c['id'] in old_rows}
+            for old_id, old in old_rows.items():
+                if old_id in keep_ids:
+                    continue
+                cursor.execute("""SELECT COUNT(*) AS n FROM daily_sales_credit_lines
+                                  WHERE settles_credit_id = %s AND entry_id <> %s""", (old_id, entry_id))
+                if old['credit_type'] == 'GIVEN' and cursor.fetchone()['n']:
+                    raise ValueError(f"Credit Given {old['invoice_no'] or ''} {old['party_name'] or ''} has been settled on "
+                                     f"another day, so it can't be removed. Remove that settlement first.")
+                cursor.execute("DELETE FROM daily_sales_credit_lines WHERE id = %s", (old_id,))
+            for c in clean_credit_lines:
+                if c['id'] in keep_ids:
+                    cursor.execute("""
+                        UPDATE daily_sales_credit_lines SET credit_type=%s, invoice_no=%s, party_name=%s, amount=%s,
+                            settles_credit_id=%s, settle_mode=%s
+                        WHERE id=%s AND entry_id=%s
+                    """, (c['credit_type'], c['invoice_no'], c['party_name'], c['amount'],
+                          c['settles_credit_id'], c['settle_mode'], c['id'], entry_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO daily_sales_credit_lines (entry_id, credit_type, invoice_no, party_name, amount, settles_credit_id, settle_mode)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (entry_id, c['credit_type'], c['invoice_no'], c['party_name'], c['amount'],
+                          c['settles_credit_id'], c['settle_mode']))
+            # No Credit Given may end up settled for more than it's worth.
             cursor.execute("""
-                INSERT INTO daily_sales_credit_lines (entry_id, credit_type, invoice_no, party_name, amount)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (entry_id, credit_type, invoice_no, party_name, amount))
+                SELECT g.id, g.invoice_no, g.party_name, g.amount,
+                       COALESCE(SUM(r.amount), 0) AS settled
+                FROM daily_sales_credit_lines g
+                JOIN daily_sales_credit_lines r ON r.settles_credit_id = g.id
+                WHERE g.id IN (SELECT settles_credit_id FROM daily_sales_credit_lines WHERE entry_id = %s AND settles_credit_id IS NOT NULL)
+                   OR g.entry_id = %s
+                GROUP BY g.id, g.invoice_no, g.party_name, g.amount
+            """, (entry_id, entry_id))
+            for g in cursor.fetchall():
+                if float(g['settled'] or 0) - float(g['amount'] or 0) > 0.01:
+                    raise ValueError(f"Credit {g['invoice_no'] or ''} {g['party_name'] or ''} is {float(g['amount']):,.2f} "
+                                     f"but {float(g['settled']):,.2f} has been settled against it.")
+            cursor.execute("""
+                SELECT r.id FROM daily_sales_credit_lines r
+                LEFT JOIN daily_sales_credit_lines g ON g.id = r.settles_credit_id AND g.credit_type = 'GIVEN'
+                WHERE r.entry_id = %s AND r.settles_credit_id IS NOT NULL AND g.id IS NULL
+            """, (entry_id,))
+            if cursor.fetchall():
+                raise ValueError('A Credit Received row points at a Credit Given that no longer exists - pick it again.')
+
+        # ---- Advances (ids kept stable: settlements point at them)
+        if clean_advances is not None:
+            cursor.execute("SELECT id, adv_type, party_name, receipt_no FROM daily_sales_advances WHERE entry_id = %s", (entry_id,))
+            old_adv = {r['id']: r for r in cursor.fetchall()}
+            keep_adv = {a['id'] for a in clean_advances if a['id'] in old_adv}
+            for old_id, old in old_adv.items():
+                if old_id in keep_adv:
+                    continue
+                cursor.execute("SELECT COUNT(*) AS n FROM daily_sales_advance_settlements WHERE advance_id = %s AND entry_id <> %s",
+                               (old_id, entry_id))
+                if cursor.fetchone()['n']:
+                    raise ValueError(f"Advance {old['receipt_no'] or ''} {old['party_name'] or ''} has been settled on another "
+                                     f"day, so it can't be removed. Remove that settlement first.")
+                cursor.execute("DELETE FROM daily_sales_advance_settlements WHERE advance_id = %s", (old_id,))
+                cursor.execute("DELETE FROM daily_sales_advances WHERE id = %s", (old_id,))
+            for a in clean_advances:
+                if a['id'] in keep_adv:
+                    cursor.execute("""
+                        UPDATE daily_sales_advances SET adv_type=%s, party_name=%s, receipt_no=%s, amount=%s, remarks=%s, entry_date=%s
+                        WHERE id=%s AND entry_id=%s
+                    """, (a['adv_type'], a['party_name'], a['receipt_no'], a['amount'], a['remarks'], entry_date,
+                          a['id'], entry_id))
+                else:
+                    cursor.execute("""
+                        INSERT INTO daily_sales_advances (entry_id, entry_date, adv_type, party_name, receipt_no, amount, remarks)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """, (entry_id, entry_date, a['adv_type'], a['party_name'], a['receipt_no'], a['amount'], a['remarks']))
+
+        if clean_settlements is not None:
+            cursor.execute("DELETE FROM daily_sales_advance_settlements WHERE entry_id = %s", (entry_id,))
+            for s in clean_settlements:
+                cursor.execute("SELECT id FROM daily_sales_advances WHERE id = %s", (s['advance_id'],))
+                if not cursor.fetchone():
+                    raise ValueError('A settlement points at an advance that no longer exists - pick it again.')
+                cursor.execute("""
+                    INSERT INTO daily_sales_advance_settlements (entry_id, entry_date, advance_id, amount, bill_no, settle_mode, remarks)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """, (entry_id, entry_date, s['advance_id'], s['amount'], s['bill_no'], s['settle_mode'], s['remarks']))
+
+        if clean_advances is not None or clean_settlements is not None:
+            cursor.execute("""
+                SELECT a.id, a.party_name, a.receipt_no, a.amount, COALESCE(SUM(s.amount), 0) AS settled
+                FROM daily_sales_advances a
+                JOIN daily_sales_advance_settlements s ON s.advance_id = a.id
+                WHERE a.entry_id = %s
+                   OR a.id IN (SELECT advance_id FROM daily_sales_advance_settlements WHERE entry_id = %s)
+                GROUP BY a.id, a.party_name, a.receipt_no, a.amount
+            """, (entry_id, entry_id))
+            for a in cursor.fetchall():
+                if float(a['settled'] or 0) - float(a['amount'] or 0) > 0.01:
+                    raise ValueError(f"Advance {a['receipt_no'] or ''} {a['party_name'] or ''} is {float(a['amount']):,.2f} "
+                                     f"but {float(a['settled']):,.2f} has been settled against it.")
 
         jv_no = None
         if action == 'post':
@@ -20563,7 +20833,9 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
 @has_permission('Access_Daily_Sales')
 def daily_sales_entry():
     entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
-    header, categories, credit_lines = _daily_sales_load_entry(entry_date)
+    header, categories, _credit_lines = _daily_sales_load_entry(entry_date)
+    advances, settlements, credit_lines = _daily_sales_register_rows(header['id'] if header else None)
+    open_items = _daily_sales_open_items(entry_date, header['id'] if header else None)
 
     # Day-wise records list (most recent 60 days) for the "Records" panel
     records = db.execute_query("""
@@ -20579,6 +20851,9 @@ def daily_sales_entry():
                            categories=categories,
                            header=header,
                            credit_lines=credit_lines,
+                           advances=advances,
+                           settlements=settlements,
+                           open_items=open_items,
                            records=records)
 
 
@@ -20624,13 +20899,19 @@ def daily_sales_entry_save():
         credit_lines_in = json.loads(credit_lines_json) if credit_lines_json else []
     except (ValueError, TypeError):
         credit_lines_in = []
+    try:
+        registers_in = {'advances': json.loads(request.form.get('advances_json') or '[]'),
+                        'settlements': json.loads(request.form.get('settlements_json') or '[]')}
+    except (ValueError, TypeError):
+        flash('Invalid advance data submitted.', 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
 
     ok, message, _jv = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-        credit_lines_in, 'park', get_current_user_pk())
+        credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in)
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('daily_sales_entry', date=entry_date))
 
@@ -20644,7 +20925,8 @@ def daily_sales_entry_post():
     if the figures themselves are wrong, send it back to front office to
     correct while it's still Parked) then Post to the GL."""
     entry_date = request.args.get('date') or date.today().strftime('%Y-%m-%d')
-    header, categories, credit_lines = _daily_sales_load_entry(entry_date)
+    header, categories, _credit_lines = _daily_sales_load_entry(entry_date)
+    advances, settlements, credit_lines = _daily_sales_register_rows(header['id'] if header else None)
 
     accounts = db.execute_query("""
         SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name
@@ -20665,18 +20947,16 @@ def daily_sales_entry_post():
     if header:
         actual_received = ((header.get('cash_amount') or 0) + (header.get('credit_card_sampath_amount') or 0) +
                             (header.get('credit_card_hnb_amount') or 0) + (header.get('bank_transfer_amount') or 0))
-        credit_received_total = sum(c['amount'] or 0 for c in credit_lines if c['credit_type'] == 'RECEIVED')
-        credit_given_total = sum(c['amount'] or 0 for c in credit_lines if c['credit_type'] == 'GIVEN')
         misc_expenses = [
             (header.get('misc_expense_1_label'), header.get('misc_expense_1_amount')),
             (header.get('misc_expense_2_label'), header.get('misc_expense_2_amount')),
             (header.get('misc_expense_3_label'), header.get('misc_expense_3_amount')),
         ]
-        expected_received = _daily_sales_expected_received(
+        reg_totals = _daily_sales_register_totals(advances, settlements, credit_lines)
+        expected_received = _daily_sales_expected_from_registers(
             header.get('total_income') or 0, header.get('total_expenditure') or 0,
-            header.get('telephone_income') or 0, header.get('advance_received') or 0,
-            header.get('advance_given') or 0, header.get('petty_cash') or 0,
-            misc_expenses, credit_received_total, credit_given_total)
+            header.get('telephone_income') or 0, header.get('petty_cash') or 0,
+            misc_expenses, reg_totals)
         pm_matches = abs(actual_received - expected_received) <= 0.01
 
     return render_template('daily_sales_entry_post.html',
@@ -20689,6 +20969,8 @@ def daily_sales_entry_post():
                            accounts=accounts,
                            header=header,
                            credit_lines=credit_lines,
+                           advances=advances,
+                           settlements=settlements,
                            queue=queue,
                            last_jv=request.args.get('last_jv'))
 
@@ -20745,7 +21027,7 @@ def daily_sales_entry_post_save():
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-        credit_lines_in, action, get_current_user_pk())
+        None, action, get_current_user_pk(), registers_in=None)  # registers are front office's - kept as saved
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('daily_sales_entry_post', date=entry_date, last_jv=(jv_no if ok and jv_no else None)))
 
@@ -20828,6 +21110,341 @@ def daily_sales_gl_mapping_save():
         flash(f'Error saving GL mapping: {str(e)}', 'danger')
 
     return redirect(url_for('daily_sales_gl_mapping'))
+
+
+# ---- MD reports: Daily Revenue Report (R1) + Cash Book (R2) -----------------
+# Every figure has a "To Day" (the selected date) and "Month To Date" (1st of
+# that month .. selected date) column, so the month restarts on the 1st.
+
+def _dse_parse_date(raw):
+    try:
+        return datetime.strptime((raw or '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        return date.today()
+
+
+def _dse_name_key(v):
+    return ' '.join(str(v or '').split()).lower()
+
+
+def _daily_sales_outstanding(as_of):
+    """Every Credit Given and advance up to as_of with its settlements
+    (dated on or before as_of) and remaining balance."""
+    credits = db.execute_query("""
+        SELECT g.id, g.invoice_no, g.party_name, g.amount, e.entry_date
+        FROM daily_sales_credit_lines g JOIN daily_sales_entries e ON e.id = g.entry_id
+        WHERE g.credit_type = 'GIVEN' AND e.entry_date <= %s
+        ORDER BY e.entry_date, g.id
+    """, (as_of,)) or []
+    receipts = db.execute_query("""
+        SELECT r.id, r.settles_credit_id, r.amount, r.settle_mode, r.invoice_no, r.party_name, e.entry_date
+        FROM daily_sales_credit_lines r JOIN daily_sales_entries e ON e.id = r.entry_id
+        WHERE r.credit_type = 'RECEIVED' AND e.entry_date <= %s
+        ORDER BY e.entry_date, r.id
+    """, (as_of,)) or []
+    advances = db.execute_query("""
+        SELECT id, adv_type, party_name, receipt_no, amount, entry_date, remarks
+        FROM daily_sales_advances WHERE entry_date <= %s
+        ORDER BY entry_date, id
+    """, (as_of,)) or []
+    settlements = db.execute_query("""
+        SELECT id, advance_id, amount, bill_no, settle_mode, remarks, entry_date
+        FROM daily_sales_advance_settlements WHERE entry_date <= %s
+        ORDER BY entry_date, id
+    """, (as_of,)) or []
+
+    by_credit = {}
+    unlinked_receipts = []
+    for r in receipts:
+        if r['settles_credit_id']:
+            by_credit.setdefault(r['settles_credit_id'], []).append(r)
+        else:
+            unlinked_receipts.append(r)
+    for c in credits:
+        c['settlements'] = by_credit.get(c['id'], [])
+        c['settled'] = round(sum(float(s['amount'] or 0) for s in c['settlements']), 2)
+        c['balance'] = round(float(c['amount'] or 0) - c['settled'], 2)
+
+    by_adv = {}
+    for s in settlements:
+        by_adv.setdefault(s['advance_id'], []).append(s)
+    for a in advances:
+        a['settlements'] = by_adv.get(a['id'], [])
+        a['settled'] = round(sum(float(s['amount'] or 0) for s in a['settlements']), 2)
+        a['balance'] = round(float(a['amount'] or 0) - a['settled'], 2)
+
+    return {
+        'credits': credits,
+        'unlinked_receipts': unlinked_receipts,
+        'adv_received': [a for a in advances if a['adv_type'] == 'RECEIVED'],
+        'adv_given': [a for a in advances if a['adv_type'] == 'GIVEN'],
+    }
+
+
+def _daily_sales_report_data(as_of):
+    month_start = as_of.replace(day=1)
+    days_in_period = as_of.day
+
+    entries = db.execute_query("""
+        SELECT id, entry_date, status, total_income, cash_amount, credit_card_sampath_amount,
+               credit_card_hnb_amount, bank_transfer_amount, petty_cash, telephone_income,
+               misc_expense_1_label, misc_expense_1_amount, misc_expense_2_label, misc_expense_2_amount,
+               misc_expense_3_label, misc_expense_3_amount
+        FROM daily_sales_entries WHERE entry_date BETWEEN %s AND %s
+        ORDER BY entry_date
+    """, (month_start, as_of)) or []
+    today_entry = next((e for e in entries if e['entry_date'] == as_of), None)
+
+    lines = db.execute_query("""
+        SELECT c.category_key, c.description, c.particulars, c.category_group, c.entry_side,
+               c.gl_account_name, l.nos, l.amount, e.entry_date
+        FROM daily_sales_entry_lines l
+        JOIN daily_sales_entries e ON e.id = l.entry_id
+        JOIN daily_sales_categories c ON c.id = l.category_id
+        WHERE e.entry_date BETWEEN %s AND %s
+    """, (month_start, as_of)) or []
+
+    def sums(keys, field):
+        t = m = 0.0
+        for ln in lines:
+            if ln['category_key'] in keys:
+                v = float(ln[field] or 0)
+                m += v
+                if ln['entry_date'] == as_of:
+                    t += v
+        return round(t, 2), round(m, 2)
+
+    # ---------------- R1
+    rows = db.execute_query("""
+        SELECT id, row_key, label, row_type, category_keys, room_count, display_order
+        FROM daily_sales_report_rows WHERE report = 'R1' ORDER BY display_order, id
+    """) or []
+    r1_stats, r1_revenue = [], []
+    mapped_revenue_keys = set()
+    tot_today = tot_mtd = 0.0
+    for r in rows:
+        keys = {k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()}
+        if r['row_type'] == 'REVENUE':
+            t, m = sums(keys, 'amount')
+            mapped_revenue_keys |= keys
+            tot_today += t
+            tot_mtd += m
+            r1_revenue.append({'label': r['label'], 'today': t, 'mtd': m})
+        elif r['row_type'] == 'OCCUPANCY':
+            t, m = sums(keys, 'nos')
+            rooms = int(r['room_count'] or 0)
+            r1_stats.append({'label': r['label'], 'type': 'OCCUPANCY', 'rooms': rooms,
+                             'today_nos': t, 'mtd_nos': m,
+                             'today': round(t / rooms * 100, 2) if rooms else None,
+                             'mtd': round(m / (rooms * days_in_period) * 100, 2) if rooms else None})
+        else:
+            t, m = sums(keys, 'nos')
+            r1_stats.append({'label': r['label'], 'type': 'NOS', 'today': t, 'mtd': m})
+
+    # Sales lines with an amount that no revenue row picks up - so the report
+    # always reconciles to the day's Total Income.
+    unmapped = {}
+    for ln in lines:
+        if ln['category_group'] != 'SALES' or ln['category_key'] in mapped_revenue_keys or not ln['amount']:
+            continue
+        label = ln['description'] + (f" - {ln['particulars']}" if ln['particulars'] else '')
+        sign = -1 if ln['entry_side'] == 'DR' else 1
+        u = unmapped.setdefault(label, {'label': label, 'today': 0.0, 'mtd': 0.0, 'deduct': sign < 0})
+        u['mtd'] += sign * float(ln['amount'] or 0)
+        if ln['entry_date'] == as_of:
+            u['today'] += sign * float(ln['amount'] or 0)
+
+    total_income_today = round(float(today_entry['total_income'] or 0), 2) if today_entry else 0.0
+    total_income_mtd = round(sum(float(e['total_income'] or 0) for e in entries), 2)
+
+    # ---------------- R2
+    def e_sum(field):
+        return (round(float(today_entry[field] or 0), 2) if today_entry else 0.0,
+                round(sum(float(e[field] or 0) for e in entries), 2))
+
+    cash = e_sum('cash_amount')
+    sampath = e_sum('credit_card_sampath_amount')
+    hnb = e_sum('credit_card_hnb_amount')
+    bank = e_sum('bank_transfer_amount')
+    collections = (round(cash[0] + sampath[0] + hnb[0] + bank[0], 2), round(cash[1] + sampath[1] + hnb[1] + bank[1], 2))
+
+    petty = {}
+    def add_petty(label, amount, is_today):
+        if not amount:
+            return
+        p = petty.setdefault(_dse_name_key(label), {'label': label, 'today': 0.0, 'mtd': 0.0})
+        p['mtd'] += float(amount)
+        if is_today:
+            p['today'] += float(amount)
+    for e in entries:
+        is_today = e['entry_date'] == as_of
+        add_petty('Petty Cash', e['petty_cash'], is_today)
+        add_petty('Telephone', e['telephone_income'], is_today)
+        for n in (1, 2, 3):
+            add_petty(e[f'misc_expense_{n}_label'] or f'Misc Expense {n}', e[f'misc_expense_{n}_amount'], is_today)
+
+    out = _daily_sales_outstanding(as_of)
+
+    def group_by_name(items, name_of, amount_of=lambda x: x['amount']):
+        g = {}
+        for it in items:
+            d = it['entry_date']
+            if d < month_start:
+                continue
+            name = name_of(it) or '(no name)'
+            row = g.setdefault(_dse_name_key(name), {'name': name, 'today': 0.0, 'mtd': 0.0, 'refs': []})
+            row['mtd'] += float(amount_of(it) or 0)
+            if d == as_of:
+                row['today'] += float(amount_of(it) or 0)
+            ref = it.get('invoice_no') or it.get('receipt_no')
+            if ref and ref not in row['refs']:
+                row['refs'].append(ref)
+        return list(g.values())
+
+    debtors = group_by_name(out['credits'], lambda x: x['party_name'])
+    # Outstanding per debtor name, as at the date (all history)
+    debtor_balance = {}
+    for c in out['credits']:
+        k = _dse_name_key(c['party_name'] or '(no name)')
+        debtor_balance[k] = debtor_balance.get(k, 0.0) + c['balance']
+    for d in debtors:
+        d['balance'] = round(debtor_balance.get(_dse_name_key(d['name']), 0.0), 2)
+    # Older debtors still owing but with nothing new this month
+    seen = {_dse_name_key(d['name']) for d in debtors}
+    for k, bal in debtor_balance.items():
+        if k not in seen and abs(bal) > 0.005:
+            name = next((c['party_name'] for c in out['credits'] if _dse_name_key(c['party_name'] or '(no name)') == k), k)
+            debtors.append({'name': name or '(no name)', 'today': 0.0, 'mtd': 0.0, 'refs': [], 'balance': round(bal, 2)})
+
+    credit_by_id = {c['id']: c for c in out['credits']}
+    all_receipts = [s for c in out['credits'] for s in c['settlements']] + out['unlinked_receipts']
+    creditors = group_by_name(
+        all_receipts,
+        lambda r: (credit_by_id[r['settles_credit_id']]['party_name'] if r.get('settles_credit_id') in credit_by_id else None)
+                  or r['party_name'])
+
+    def advance_rows(advs):
+        res = []
+        for a in advs:
+            in_month = a['entry_date'] >= month_start
+            settled_mtd = sum(float(s['amount'] or 0) for s in a['settlements'] if s['entry_date'] >= month_start)
+            if not in_month and abs(a['balance']) <= 0.005 and not settled_mtd:
+                continue
+            res.append({'name': a['party_name'] or '(no name)', 'receipt_no': a['receipt_no'] or '',
+                        'date': a['entry_date'],
+                        'today': float(a['amount'] or 0) if a['entry_date'] == as_of else 0.0,
+                        'mtd': float(a['amount'] or 0) if in_month else 0.0,
+                        'settled_today': round(sum(float(s['amount'] or 0) for s in a['settlements'] if s['entry_date'] == as_of), 2),
+                        'settled_mtd': round(settled_mtd, 2),
+                        'balance': a['balance']})
+        return res
+
+    return {
+        'as_of': as_of, 'month_start': month_start, 'days': days_in_period,
+        'entries_count': len(entries), 'parked_count': sum(1 for e in entries if e['status'] != 'Posted'),
+        'today_entry': today_entry,
+        'r1_stats': r1_stats, 'r1_revenue': r1_revenue,
+        'r1_total': (round(tot_today, 2), round(tot_mtd, 2)),
+        'r1_unmapped': list(unmapped.values()),
+        'total_income': (total_income_today, total_income_mtd),
+        'collections': collections, 'cash': cash, 'sampath': sampath, 'hnb': hnb, 'bank': bank,
+        'debtors': debtors, 'creditors': creditors,
+        'petty': list(petty.values()),
+        'adv_debtors': advance_rows(out['adv_given']),
+        'adv_creditors': advance_rows(out['adv_received']),
+    }
+
+
+@app.route('/daily_sales_entry/reports', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Reports')
+def daily_sales_reports():
+    as_of = _dse_parse_date(request.args.get('date'))
+    data = _daily_sales_report_data(as_of)
+    return render_template('daily_sales_reports.html', d=data,
+                           as_of=as_of.strftime('%Y-%m-%d'),
+                           today_date=date.today().strftime('%Y-%m-%d'),
+                           tab=request.args.get('tab') or 'r1')
+
+
+@app.route('/daily_sales_entry/outstanding', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Reports')
+def daily_sales_outstanding():
+    as_of = _dse_parse_date(request.args.get('date'))
+    show_all = request.args.get('show') == 'all'
+    out = _daily_sales_outstanding(as_of)
+    if not show_all:
+        out['credits'] = [c for c in out['credits'] if abs(c['balance']) > 0.005]
+        out['adv_received'] = [a for a in out['adv_received'] if abs(a['balance']) > 0.005]
+        out['adv_given'] = [a for a in out['adv_given'] if abs(a['balance']) > 0.005]
+    totals = {k: round(sum(x['balance'] for x in out[k]), 2) for k in ('credits', 'adv_received', 'adv_given')}
+    return render_template('daily_sales_outstanding.html', out=out, totals=totals,
+                           as_of=as_of.strftime('%Y-%m-%d'), show_all=show_all,
+                           today_date=date.today().strftime('%Y-%m-%d'))
+
+
+@app.route('/daily_sales_entry/report_mapping', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Daily_Sales_Mapping')
+def daily_sales_report_mapping():
+    """Which Daily Sales lines feed each row of the Daily Revenue Report (R1),
+    plus the room count behind each occupancy rate."""
+    if request.method == 'POST':
+        try:
+            valid_keys = {c['category_key'] for c in _daily_sales_categories()}
+            for rid in request.form.getlist('row_id[]'):
+                if not str(rid).isdigit():
+                    continue
+                label = (request.form.get(f'label_{rid}') or '').strip()[:150]
+                keys = [k for k in request.form.getlist(f'cats_{rid}') if k in valid_keys]
+                room_raw = (request.form.get(f'room_count_{rid}') or '').strip()
+                order_raw = (request.form.get(f'order_{rid}') or '').strip()
+                if not label:
+                    continue
+                db.execute_query("""
+                    UPDATE daily_sales_report_rows
+                    SET label = %s, category_keys = %s, room_count = %s, display_order = COALESCE(%s, display_order)
+                    WHERE id = %s
+                """, (label, ','.join(keys), int(room_raw) if room_raw.isdigit() else None,
+                      int(order_raw) if order_raw.lstrip('-').isdigit() else None, int(rid)), commit=True)
+
+            new_label = (request.form.get('new_label') or '').strip()[:150]
+            if new_label:
+                new_type = request.form.get('new_type') if request.form.get('new_type') in ('REVENUE', 'NOS', 'OCCUPANCY') else 'REVENUE'
+                max_row = db.execute_query("SELECT MAX(display_order) AS m FROM daily_sales_report_rows") or []
+                next_order = ((max_row[0]['m'] or 0) if max_row else 0) + 10
+                db.execute_query("""
+                    INSERT INTO daily_sales_report_rows (report, row_key, label, row_type, category_keys, display_order)
+                    VALUES ('R1', %s, %s, %s, '', %s)
+                """, (f"CUSTOM_{int(datetime.now().timestamp())}", new_label, new_type, next_order), commit=True)
+            flash('Report row mapping saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving report mapping: {str(e)}', 'danger')
+        return redirect(url_for('daily_sales_report_mapping'))
+
+    rows = db.execute_query("""
+        SELECT id, row_key, label, row_type, category_keys, room_count, display_order
+        FROM daily_sales_report_rows WHERE report = 'R1' ORDER BY display_order, id
+    """) or []
+    for r in rows:
+        r['keys'] = [k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()]
+    categories = [c for c in _daily_sales_categories() if c['category_group'] == 'SALES']
+    used = {}
+    for r in rows:
+        if r['row_type'] == 'REVENUE':
+            for k in r['keys']:
+                used.setdefault(k, []).append(r['label'])
+    return render_template('daily_sales_report_mapping.html', rows=rows, categories=categories, used=used)
+
+
+@app.route('/daily_sales_entry/report_mapping/delete/<int:row_id>', methods=['POST'])
+@login_required
+@has_permission('Access_Daily_Sales_Mapping')
+def daily_sales_report_mapping_delete(row_id):
+    db.execute_query("DELETE FROM daily_sales_report_rows WHERE id = %s", (row_id,), commit=True)
+    flash('Report row removed.', 'success')
+    return redirect(url_for('daily_sales_report_mapping'))
 
 
 # ================================================================

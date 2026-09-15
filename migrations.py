@@ -58,6 +58,7 @@ def run_migrations(conn):
         _migrate_daily_sales_sheet10(cursor)
         _migrate_daily_sales_card_banks(cursor)
         _migrate_daily_sales_sub_accounts(cursor)
+        _migrate_daily_sales_advances_reports(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1225,6 +1226,151 @@ def _migrate_bar_inventory_counted_qty(cursor):
         if not cursor.fetchone():
             print("Migrating: Adding counted_qty to bar_inventory_day_lines")
             cursor.execute("ALTER TABLE bar_inventory_day_lines ADD COLUMN counted_qty DOUBLE NULL")
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_advances_reports(cursor):
+    """Advance and credit tracking + the MD's Daily Revenue Report (R1) /
+    Cash Book (R2) on Daily Sales Entry.
+
+      daily_sales_advances             - Advance Received (from guests: an
+                                         "advance creditor") and Advance Given
+                                         (paid out: an "advance debtor"), one
+                                         row per advance with name + receipt no.
+      daily_sales_advance_settlements  - later set-off / refund / recovery of
+                                         an advance, linked to it, so every
+                                         advance has a running balance.
+      daily_sales_credit_lines         - Credit Received rows can point at the
+                                         Credit Given row they settle
+                                         (settles_credit_id) and say whether
+                                         it was cash received or a set-off.
+      daily_sales_report_rows          - which Daily Sales lines feed each row
+                                         of the Daily Revenue Report (editable
+                                         on the Report Row Mapping screen).
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_advances'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_advances table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_advances (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_id BIGINT NOT NULL,
+                  entry_date DATE NOT NULL,
+                  adv_type VARCHAR(10) NOT NULL,
+                  party_name VARCHAR(200) NULL,
+                  receipt_no VARCHAR(100) NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  remarks VARCHAR(255) NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  INDEX idx_dsa_entry (entry_id),
+                  INDEX idx_dsa_date (entry_date, adv_type),
+                  CONSTRAINT fk_dsa_entry FOREIGN KEY (entry_id)
+                    REFERENCES daily_sales_entries(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            # Carry the old single Advance Received / Advance Given figures
+            # into the new register so history isn't lost.
+            cursor.execute("""
+                INSERT INTO daily_sales_advances (entry_id, entry_date, adv_type, party_name, receipt_no, amount)
+                SELECT id, entry_date, 'RECEIVED', NULL, advance_received_bill_no, advance_received
+                FROM daily_sales_entries WHERE advance_received <> 0
+            """)
+            cursor.execute("""
+                INSERT INTO daily_sales_advances (entry_id, entry_date, adv_type, party_name, receipt_no, amount)
+                SELECT id, entry_date, 'GIVEN', NULL, advance_given_bill_no, advance_given
+                FROM daily_sales_entries WHERE advance_given <> 0
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_advance_settlements'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_advance_settlements table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_advance_settlements (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_id BIGINT NOT NULL,
+                  entry_date DATE NOT NULL,
+                  advance_id BIGINT NOT NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  bill_no VARCHAR(100) NULL,
+                  settle_mode VARCHAR(10) NOT NULL DEFAULT 'SETOFF',
+                  remarks VARCHAR(255) NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (id),
+                  INDEX idx_dsas_entry (entry_id),
+                  INDEX idx_dsas_advance (advance_id),
+                  CONSTRAINT fk_dsas_entry FOREIGN KEY (entry_id)
+                    REFERENCES daily_sales_entries(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW COLUMNS FROM daily_sales_credit_lines LIKE 'settles_credit_id'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_credit_lines ADD COLUMN settles_credit_id BIGINT NULL")
+        cursor.execute("SHOW COLUMNS FROM daily_sales_credit_lines LIKE 'settle_mode'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_credit_lines ADD COLUMN settle_mode VARCHAR(10) NULL")
+
+        # New revenue lines the MD's report needs that the sales sheet lacked.
+        for key, desc, order in (('BAR_REVENUE', 'Bar Revenue', 244), ('BAR_FOOD_REVENUE', 'Bar Food Revenue', 246)):
+            cursor.execute("SELECT id FROM daily_sales_categories WHERE category_key = %s", (key,))
+            if not cursor.fetchone():
+                cursor.execute("""
+                    INSERT INTO daily_sales_categories (category_key, description, particulars, display_order, entry_side)
+                    VALUES (%s, %s, NULL, %s, 'CR')
+                """, (key, desc, order))
+
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_report_rows'")
+        if not cursor.fetchone():
+            print("Migrating: Creating daily_sales_report_rows table")
+            cursor.execute("""
+                CREATE TABLE daily_sales_report_rows (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  report VARCHAR(10) NOT NULL DEFAULT 'R1',
+                  row_key VARCHAR(50) NOT NULL,
+                  label VARCHAR(150) NOT NULL,
+                  row_type VARCHAR(12) NOT NULL DEFAULT 'REVENUE',
+                  category_keys VARCHAR(1000) NULL,
+                  room_count INT NULL,
+                  display_order INT NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY row_key_UNIQUE (row_key)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            # row_type: OCCUPANCY (sum of Nos / rooms), NOS (sum of Nos),
+            # REVENUE (sum of amounts). Total Revenue is computed.
+            seed = [
+                ('OCC_NONAC', 'Room Occupancy Rate (Non A/C)', 'OCCUPANCY', 'ROOM1_NORMAL,ROOM1_WEDDING,ROOM1_FOREIGN', 10),
+                ('OCC_AC', 'AC Room Occupancy Rate', 'OCCUPANCY', 'ROOM2_NORMAL,ROOM2_WEDDING,ROOM2_FOREIGN', 20),
+                ('NOS_BREAKFAST', "B'Buffet Nos", 'NOS', 'BUFFET_BREAKFAST', 30),
+                ('NOS_LUNCH', 'Lunch Buffet Nos', 'NOS', 'BUFFET_LUNCH', 40),
+                ('REV_NONAC_ROOMS', 'Non AC Rooms Revenue', 'REVENUE', 'ROOM1_NORMAL,ROOM1_WEDDING,ROOM1_EXTRABED,ROOM1_FOREIGN', 110),
+                ('REV_AC_ROOMS', 'AC Room Revenue', 'REVENUE', 'ROOM2_NORMAL,ROOM2_WEDDING,ROOM2_EXTRABED,ROOM2_FOREIGN', 120),
+                ('REV_ROOM_FOOD', 'Room Food Revenue', 'REVENUE', 'ROOM_FOOD_SALE', 130),
+                ('REV_REST_FOOD', 'Restaurant Food Revenue', 'REVENUE', 'RESTAURANT_FOOD_SALES', 140),
+                ('REV_DESSERT', 'Dessert Revenue', 'REVENUE', 'DESSERT_DESSERT', 150),
+                ('REV_DESSERT_FRUIT', 'Dessert Fruit Revenue', 'REVENUE', 'DESSERT_FRUITS', 160),
+                ('REV_BEVERAGE', 'Beverage Revenue', 'REVENUE', 'BEVERAGE_SALE', 170),
+                ('REV_REST_BAR', 'Restaurant Bar Revenue', 'REVENUE', 'RESTAURANT_SALES', 180),
+                ('REV_LOTUS', 'Lotus Food & Liquor Revenue', 'REVENUE', 'LOTUS_FOOD,LOTUS_LIQUOR', 190),
+                ('REV_BUFFET_BREAKFAST', 'Buffet Breakfast Revenue', 'REVENUE', 'BUFFET_BREAKFAST', 200),
+                ('REV_BUFFET_LUNCH', 'Buffet Lunch Revenue', 'REVENUE', 'BUFFET_LUNCH', 210),
+                ('REV_TAKE_AWAY', 'Take Away Food Revenue', 'REVENUE', 'TAKE_AWAY_SALES', 220),
+                ('REV_PICK_ME', 'Pick Me Food Revenue', 'REVENUE', 'PICK_ME_SALES', 230),
+                ('REV_FOOD_HUT', 'Food Hut Revenue', 'REVENUE', 'FOOD_HUT_SALES', 240),
+                ('REV_BAR', 'Bar Revenue', 'REVENUE', 'BAR_REVENUE', 250),
+                ('REV_BAR_FOOD', 'Bar Food Revenue', 'REVENUE', 'BAR_FOOD_REVENUE', 260),
+                ('REV_SERVICE_CHARGE', 'Service Charges', 'REVENUE', 'SERVICE_CHARGE', 270),
+            ]
+            cursor.executemany("""
+                INSERT INTO daily_sales_report_rows (report, row_key, label, row_type, category_keys, display_order)
+                VALUES ('R1', %s, %s, %s, %s, %s)
+            """, seed)
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

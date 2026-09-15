@@ -204,18 +204,43 @@
             </table>
           </div>
 
-          {% if credit_lines %}
-          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Credit Received / Credit Given <span class="badge bg-secondary fw-normal">reference only</span></h6>
+          {% if credit_lines or advances or settlements %}
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;">Credit &amp; Advances <span class="badge bg-secondary fw-normal">tracked, not posted</span>
+            <a href="{{ url_for('daily_sales_outstanding', date=entry_date) }}" target="_blank" class="small ms-2">Outstanding</a></h6>
           <div class="table-responsive mb-3">
             <table class="table table-bordered table-sm dse-table">
-              <thead><tr><th>Type</th><th>Invoice No</th><th>Name</th><th class="text-end">Amount</th></tr></thead>
+              <thead><tr><th>Type</th><th>Ref / Receipt No</th><th>Name</th><th>Details</th><th class="text-end">Amount</th></tr></thead>
               <tbody>
                 {% for cl in credit_lines %}
                 <tr>
-                  <td>{{ 'Received' if cl.credit_type == 'RECEIVED' else 'Given' }}</td>
+                  <td>{{ 'Credit Received' if cl.credit_type == 'RECEIVED' else 'Credit Given' }}</td>
                   <td>{{ cl.invoice_no or '' }}</td>
-                  <td>{{ cl.party_name or '' }}</td>
+                  <td>{{ cl.settles_party_name or cl.party_name or '' }}</td>
+                  <td class="small text-muted">
+                    {% if cl.credit_type == 'RECEIVED' %}
+                      {{ 'Set-off (no cash)' if cl.settle_mode == 'SETOFF' else 'Cash received' }}{% if cl.settles_invoice_no %} &middot; settles {{ cl.settles_invoice_no }}{% endif %}
+                    {% endif %}
+                  </td>
                   <td class="text-end">{{ '%.2f'|format(cl.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+                {% for a in advances %}
+                <tr>
+                  <td>{{ 'Advance Received' if a.adv_type == 'RECEIVED' else 'Advance Given' }}</td>
+                  <td>{{ a.receipt_no or '' }}</td>
+                  <td>{{ a.party_name or '' }}</td>
+                  <td></td>
+                  <td class="text-end">{{ '%.2f'|format(a.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+                {% for s in settlements %}
+                <tr>
+                  <td>{{ 'Advance Received' if s.adv_type == 'RECEIVED' else 'Advance Given' }} &ndash; Settlement</td>
+                  <td>{{ s.bill_no or '' }}</td>
+                  <td>{{ s.party_name or '' }}</td>
+                  <td class="small text-muted">{{ {'SETOFF': 'Set-off', 'REFUND': 'Refunded', 'RECOVERED': 'Recovered (cash)'}.get(s.settle_mode, s.settle_mode) }}
+                    &middot; advance {{ s.receipt_no or '' }} of {{ s.advance_date or '' }}</td>
+                  <td class="text-end">{{ '%.2f'|format(s.amount or 0) }}</td>
                 </tr>
                 {% endfor %}
               </tbody>

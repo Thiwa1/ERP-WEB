@@ -5,9 +5,14 @@
 {% block content %}
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <h4 class="mb-0 fw-bold"><i class="fas fa-sitemap me-2 text-primary"></i>Daily Sales Entry &mdash; GL Account Mapping</h4>
-  <a href="{{ url_for('daily_sales_entry') }}" class="btn btn-outline-secondary btn-sm">
-    <i class="fas fa-arrow-left me-1"></i> Back to Daily Sales Entry
-  </a>
+  <span class="d-flex gap-2">
+    <a href="{{ url_for('daily_sales_report_mapping') }}" class="btn btn-outline-primary btn-sm">
+      <i class="fas fa-project-diagram me-1"></i> Report Row Mapping (Daily Revenue Report)
+    </a>
+    <a href="{{ url_for('daily_sales_entry') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fas fa-arrow-left me-1"></i> Back to Daily Sales Entry
+    </a>
+  </span>
 </div>
 
 <div class="alert alert-info">
