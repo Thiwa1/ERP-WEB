@@ -59,6 +59,7 @@ def run_migrations(conn):
         _migrate_daily_sales_card_banks(cursor)
         _migrate_daily_sales_sub_accounts(cursor)
         _migrate_daily_sales_advances_reports(cursor)
+        _migrate_daily_sales_report_extrabed(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1371,6 +1372,38 @@ def _migrate_daily_sales_advances_reports(cursor):
                 INSERT INTO daily_sales_report_rows (report, row_key, label, row_type, category_keys, display_order)
                 VALUES ('R1', %s, %s, %s, %s, %s)
             """, seed)
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_report_extrabed(cursor):
+    """Daily Revenue Report: show Extra Bed income on its own rows (Non A/C
+    and A/C), the way the GL shows it, instead of inside the room revenue
+    rows. Runs once - skipped when the Extra Bed rows already exist."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_report_rows'")
+        if not cursor.fetchone():
+            return
+        for room_row, extra_key, extra_row, label, order in (
+            ('REV_NONAC_ROOMS', 'ROOM1_EXTRABED', 'REV_NONAC_EXTRABED', 'Non AC Extra Bed Revenue', 115),
+            ('REV_AC_ROOMS', 'ROOM2_EXTRABED', 'REV_AC_EXTRABED', 'AC Extra Bed Revenue', 125),
+        ):
+            cursor.execute("SELECT id FROM daily_sales_report_rows WHERE row_key = %s", (extra_row,))
+            if cursor.fetchone():
+                continue
+            cursor.execute("SELECT id, category_keys FROM daily_sales_report_rows WHERE row_key = %s", (room_row,))
+            row = cursor.fetchone()
+            if row:
+                keys = [k.strip() for k in (row[1] or '').split(',') if k.strip() and k.strip() != extra_key]
+                cursor.execute("UPDATE daily_sales_report_rows SET category_keys = %s WHERE id = %s",
+                               (','.join(keys), row[0]))
+            cursor.execute("""
+                INSERT INTO daily_sales_report_rows (report, row_key, label, row_type, category_keys, display_order)
+                VALUES ('R1', %s, %s, 'REVENUE', %s, %s)
+            """, (extra_row, label, extra_key, order))
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
