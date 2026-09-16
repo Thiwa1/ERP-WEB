@@ -98,11 +98,11 @@
             </td>
             <td>
               <input type="hidden" name="category_id[]" value="{{ c.id }}">
-              <input type="text" class="form-control form-control-sm dsegl-account" list="dseglAccountList" name="gl_account[]"
+              <input type="text" class="form-control form-control-sm dsegl-account" list="dseglAccountList" name="gl_account_{{ c.id }}"
                      value="{{ c.gl_account_name or '' }}" placeholder="Select account..." onchange="dseglRefreshSub(this)">
             </td>
             <td>
-              <select class="form-select form-select-sm dsegl-sub" name="sub_account_code[]" {% if not c.sub_account_options %}disabled{% endif %}>
+              <select class="form-select form-select-sm dsegl-sub" name="sub_account_code_{{ c.id }}" {% if not c.sub_account_options %}disabled{% endif %}>
                 <option value="">-</option>
                 {% for opt in c.sub_account_options %}
                 <option value="{{ opt.sub_account_code }}" {% if c.gl_sub_account_code == opt.sub_account_code %}selected{% endif %}>{{ opt.sub_sub_accaount_name }}</option>
@@ -135,11 +135,11 @@
             <td>{{ c.particulars or '' }}</td>
             <td>
               <input type="hidden" name="category_id[]" value="{{ c.id }}">
-              <input type="text" class="form-control form-control-sm dsegl-account" list="dseglAccountList" name="gl_account[]"
+              <input type="text" class="form-control form-control-sm dsegl-account" list="dseglAccountList" name="gl_account_{{ c.id }}"
                      value="{{ c.gl_account_name or '' }}" placeholder="Select account..." onchange="dseglRefreshSub(this)">
             </td>
             <td>
-              <select class="form-select form-select-sm dsegl-sub" name="sub_account_code[]" {% if not c.sub_account_options %}disabled{% endif %}>
+              <select class="form-select form-select-sm dsegl-sub" name="sub_account_code_{{ c.id }}" {% if not c.sub_account_options %}disabled{% endif %}>
                 <option value="">-</option>
                 {% for opt in c.sub_account_options %}
                 <option value="{{ opt.sub_account_code }}" {% if c.gl_sub_account_code == opt.sub_account_code %}selected{% endif %}>{{ opt.sub_sub_accaount_name }}</option>

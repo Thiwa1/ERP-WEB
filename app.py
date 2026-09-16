@@ -21089,12 +21089,15 @@ def daily_sales_gl_mapping():
 @has_permission('Access_Daily_Sales_Mapping')
 def daily_sales_gl_mapping_save():
     try:
-        cat_ids = request.form.getlist('category_id[]')
-        gl_accounts = request.form.getlist('gl_account[]')
-        sub_accounts = request.form.getlist('sub_account_code[]')
-        for i, cat_id in enumerate(cat_ids):
-            acc = gl_accounts[i] if i < len(gl_accounts) else ''
-            sub_raw = sub_accounts[i] if i < len(sub_accounts) else ''
+        # Fields are named per category id, not as parallel [] lists: a
+        # sub-account dropdown is disabled when its account has no
+        # sub-accounts, browsers don't submit disabled fields, and the
+        # shorter list shifted every later row's sub-account onto the wrong
+        # category (which is how Complimentary sub-accounts got lost).
+        cat_ids = [c for c in request.form.getlist('category_id[]') if c.strip().isdigit()]
+        for cat_id in cat_ids:
+            acc = request.form.get(f'gl_account_{cat_id}') or ''
+            sub_raw = request.form.get(f'sub_account_code_{cat_id}') or ''
             sub_code = int(sub_raw) if sub_raw.strip().isdigit() else None
             db.execute_query("UPDATE daily_sales_categories SET gl_account_name = %s, gl_sub_account_code = %s WHERE id = %s",
                              (acc.strip() or None, sub_code, cat_id), commit=True)
