@@ -403,6 +403,14 @@
           <i class="fas fa-save me-1"></i> Save
         </button>
       </div>
+      {% if header and check_permission("Access_Accounting") %}
+      <div class="d-flex justify-content-end mt-2">
+        <a href="{{ url_for('daily_sales_entry_post', date=entry_date) }}" class="btn btn-success">
+          <i class="fas fa-check-double me-1"></i> Go to Post this day to GL
+        </a>
+      </div>
+      <div class="text-end small text-muted mt-1">Save first &mdash; the Post screen uses the last saved figures.</div>
+      {% endif %}
       {% else %}
       <div class="alert alert-secondary mt-4 mb-0">
         <i class="fas fa-info-circle me-1"></i> This day has already been posted to the GL and is locked for editing.
