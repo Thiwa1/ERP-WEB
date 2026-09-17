@@ -14,6 +14,7 @@
   .dse-table input.form-control, .dse-table input.form-control-sm { font-size:0.8rem; padding:4px 8px; }
   .dse-table td, .dse-table th { vertical-align:middle; }
   .dse-amount-input { text-align:right; }
+  input[data-money] { text-align:right; font-variant-numeric:tabular-nums; }
   .dse-total-row td { font-weight:700; background:#f3f9ff; border-top:2px solid rgba(0,103,192,0.25) !important; }
   .dse-subheader-row td { background:#eef1f4; font-weight:700; font-size:0.72rem; text-transform:uppercase; letter-spacing:0.3px; color:#605e5c; }
 
@@ -118,8 +119,8 @@
                        value="{{ c.bill_no or '' }}" {% if readonly %}disabled{% endif %}>
               </td>
               <td>
-                <input type="number" step="0.01" class="form-control form-control-sm dse-amount dse-amount-input"
-                       value="{{ '%.2f'|format(c.amount) if c.amount else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm dse-amount dse-amount-input"
+                       value="{{ '{:,.2f}'.format(c.amount) if c.amount else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </td>
             </tr>
             {% endfor %}
@@ -158,8 +159,8 @@
                        value="{{ c.bill_no or '' }}" {% if readonly %}disabled{% endif %}>
               </td>
               <td>
-                <input type="number" step="0.01" class="form-control form-control-sm dse-amount dse-amount-input"
-                       value="{{ '%.2f'|format(c.amount) if c.amount else '' }}" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm dse-amount dse-amount-input"
+                       value="{{ '{:,.2f}'.format(c.amount) if c.amount else '' }}" {% if readonly %}disabled{% endif %}>
               </td>
             </tr>
             {% endfor %}
@@ -292,13 +293,13 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Telephone</label>
-                <input type="number" step="0.01" name="telephone_income" id="dseTelephone" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.telephone_income) if header and header.telephone_income else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="telephone_income" id="dseTelephone" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.telephone_income) if header and header.telephone_income else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
                 <label class="form-label">Petty Cash</label>
-                <input type="number" step="0.01" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.petty_cash) if header and header.petty_cash else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
                 <label class="form-label">Advance Given</label>
@@ -316,8 +317,8 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Misc {{ n }} - Amount</label>
-                <input type="number" step="0.01" name="misc_expense_{{ n }}_amount" class="form-control form-control-sm dse-misc-amount"
-                       value="{{ '%.2f'|format(header['misc_expense_' ~ n ~ '_amount']) if header and header['misc_expense_' ~ n ~ '_amount'] else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="misc_expense_{{ n }}_amount" class="form-control form-control-sm dse-misc-amount"
+                       value="{{ '{:,.2f}'.format(header['misc_expense_' ~ n ~ '_amount']) if header and header['misc_expense_' ~ n ~ '_amount'] else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               {% endfor %}
             </div>
@@ -336,8 +337,8 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Total Expenditure</label>
-                <input type="number" step="0.01" name="total_expenditure" id="dseExpenditure" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.total_expenditure) if header and header.total_expenditure else '' }}"
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="total_expenditure" id="dseExpenditure" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.total_expenditure) if header and header.total_expenditure else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
@@ -346,8 +347,8 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Cash Float</label>
-                <input type="number" step="0.01" name="cash_float" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.cash_float) if header and header.cash_float else '' }}" {% if readonly %}disabled{% endif %}>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="cash_float" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.cash_float) if header and header.cash_float else '' }}" {% if readonly %}disabled{% endif %}>
               </div>
             </div>
             <div class="mt-2 text-muted" style="font-size:0.72rem;">
@@ -363,26 +364,26 @@
             <div class="row g-2">
               <div class="col-3">
                 <label class="form-label">Cash</label>
-                <input type="number" step="0.01" name="cash_amount" id="dseCash" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.cash_amount) if header and header.cash_amount else '' }}"
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="cash_amount" id="dseCash" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.cash_amount) if header and header.cash_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-3">
                 <label class="form-label">Card - Sampath</label>
-                <input type="number" step="0.01" name="credit_card_sampath_amount" id="dseCardSampath" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.credit_card_sampath_amount) if header and header.credit_card_sampath_amount else '' }}"
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="credit_card_sampath_amount" id="dseCardSampath" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.credit_card_sampath_amount) if header and header.credit_card_sampath_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-3">
                 <label class="form-label">Card - HNB</label>
-                <input type="number" step="0.01" name="credit_card_hnb_amount" id="dseCardHnb" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.credit_card_hnb_amount) if header and header.credit_card_hnb_amount else '' }}"
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="credit_card_hnb_amount" id="dseCardHnb" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.credit_card_hnb_amount) if header and header.credit_card_hnb_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-3">
                 <label class="form-label">Bank Transfer</label>
-                <input type="number" step="0.01" name="bank_transfer_amount" id="dseBank" class="form-control form-control-sm"
-                       value="{{ '%.2f'|format(header.bank_transfer_amount) if header and header.bank_transfer_amount else '' }}"
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="bank_transfer_amount" id="dseBank" class="form-control form-control-sm"
+                       value="{{ '{:,.2f}'.format(header.bank_transfer_amount) if header and header.bank_transfer_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6 offset-3">
@@ -436,7 +437,7 @@
         {% for r in records %}
         <tr>
           <td>{{ r.entry_date }}</td>
-          <td class="text-end">{{ '%.2f'|format(r.total_income or 0) }}</td>
+          <td class="text-end">{{ '{:,.2f}'.format(r.total_income or 0) }}</td>
           <td>
             {% if r.status == 'Posted' %}
               <span class="badge bg-success">Posted</span>
@@ -464,8 +465,10 @@ const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_g
 function dseEsc(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
-function dseMoney(v) { return (Math.round((v || 0) * 100) / 100).toFixed(2); }
-function dseNum(el) { return el ? (parseFloat(el.value) || 0) : 0; }
+function dseParse(s) { return parseFloat(String(s == null ? '' : s).replace(/,/g, '')) || 0; }
+function dseFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function dseMoney(v) { return dseFmt(v); }
+function dseNum(el) { return el ? (dseParse(el.value)) : 0; }
 function dseRemoveBtn() {
   return dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" title="Remove" onclick="this.closest(\'tr\').remove(); dseRecalc();"></i>';
 }
@@ -478,7 +481,7 @@ function dseAddCreditGiven(row) {
     '<tr class="dse-cg-row" data-id="' + dseEsc(row.id || '') + '">' +
       '<td><input type="text" class="form-control form-control-sm dse-cg-invoice" value="' + dseEsc(row.invoice_no) + '" ' + dis + '></td>' +
       '<td><input type="text" class="form-control form-control-sm dse-cg-name" value="' + dseEsc(row.party_name) + '" ' + dis + '></td>' +
-      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-cg-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-cg-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
       '<td>' + dseRemoveBtn() + '</td>' +
     '</tr>');
 }
@@ -508,7 +511,7 @@ function dseAddCreditReceived(row) {
         '<option value="CASH"' + (row.settle_mode !== 'SETOFF' ? ' selected' : '') + '>Cash received</option>' +
         '<option value="SETOFF"' + (row.settle_mode === 'SETOFF' ? ' selected' : '') + '>Set-off (no cash)</option></select></td>' +
       '<td><input type="text" class="form-control form-control-sm dse-cr-invoice" value="' + dseEsc(row.invoice_no) + '" ' + dis + '></td>' +
-      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-cr-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-cr-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
       '<td>' + dseRemoveBtn() + '</td>' +
     '</tr>');
 }
@@ -533,7 +536,7 @@ function dseAddAdvance(type, row) {
     '<tr class="dse-adv-row" data-type="' + type + '" data-id="' + dseEsc(row.id || '') + '">' +
       '<td><input type="text" class="form-control form-control-sm dse-adv-name" value="' + dseEsc(row.party_name) + '" ' + dis + '></td>' +
       '<td><input type="text" class="form-control form-control-sm dse-adv-receipt" value="' + dseEsc(row.receipt_no) + '" ' + dis + '></td>' +
-      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-adv-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-adv-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
       '<td>' + dseRemoveBtn() + '</td>' +
     '</tr>');
 }
@@ -566,7 +569,7 @@ function dseAddSettlement(type, row) {
         '<div class="dse-reg-hint dse-set-hint"></div></td>' +
       '<td><select class="form-select form-select-sm dse-set-mode" onchange="dseRecalc()" ' + dis + '>' + modeHtml + '</select></td>' +
       '<td><input type="text" class="form-control form-control-sm dse-set-bill" value="' + dseEsc(row.bill_no) + '" ' + dis + '></td>' +
-      '<td><input type="number" step="0.01" class="form-control form-control-sm text-end dse-set-amount" value="' + dseEsc(row.amount != null ? row.amount : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-set-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
       '<td>' + dseRemoveBtn() + '</td>' +
     '</tr>');
 }
@@ -657,15 +660,15 @@ function dseRecalc() {
   let total = 0;
   document.querySelectorAll('#dseForm .dse-sales-row').forEach(function(tr) {
     const side = tr.getAttribute('data-side');
-    const amt = parseFloat(tr.querySelector('.dse-amount').value) || 0;
+    const amt = dseParse(tr.querySelector('.dse-amount').value);
     total += (side === 'DR') ? -amt : amt;
   });
   total = Math.round(total * 100) / 100;
-  document.getElementById('dseTotalIncome').textContent = total.toFixed(2);
-  document.getElementById('dseTotalSalesDisplay').value = total.toFixed(2);
+  document.getElementById('dseTotalIncome').textContent = dseFmt(total);
+  document.getElementById('dseTotalSalesDisplay').value = dseFmt(total);
 
-  const exp = parseFloat(document.getElementById('dseExpenditure').value) || 0;
-  document.getElementById('dseBalance').value = (total - exp).toFixed(2);
+  const exp = dseParse(document.getElementById('dseExpenditure').value);
+  document.getElementById('dseBalance').value = dseFmt(total - exp);
 
   const t = dseRegisterTotals();
   document.getElementById('dseCreditReceivedTotal').value = dseMoney(t.creditReceivedCash);
@@ -680,30 +683,30 @@ function dseRecalc() {
   warn.style.display = uniqueProblems.length ? '' : 'none';
   warn.innerHTML = uniqueProblems.map(dseEsc).join('<br>');
 
-  const telephone = parseFloat(document.getElementById('dseTelephone').value) || 0;
-  const pettyCash = parseFloat(document.getElementById('dsePettyCash').value) || 0;
+  const telephone = dseParse(document.getElementById('dseTelephone').value);
+  const pettyCash = dseParse(document.getElementById('dsePettyCash').value);
   let miscTotal = 0;
-  document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += parseFloat(inp.value) || 0; });
+  document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += dseParse(inp.value); });
 
   const expectedReceived = Math.round((
     total + t.advReceived - t.advReceivedSettled + t.advGivenRecovered + t.creditReceivedCash
     - t.creditGiven - t.advGiven - telephone - pettyCash - miscTotal - exp
   ) * 100) / 100;
-  document.getElementById('dseExpectedReceived').value = expectedReceived.toFixed(2);
+  document.getElementById('dseExpectedReceived').value = dseFmt(expectedReceived);
 
-  const cash = parseFloat(document.getElementById('dseCash').value) || 0;
-  const cardSampath = parseFloat(document.getElementById('dseCardSampath').value) || 0;
-  const cardHnb = parseFloat(document.getElementById('dseCardHnb').value) || 0;
-  const bank = parseFloat(document.getElementById('dseBank').value) || 0;
+  const cash = dseParse(document.getElementById('dseCash').value);
+  const cardSampath = dseParse(document.getElementById('dseCardSampath').value);
+  const cardHnb = dseParse(document.getElementById('dseCardHnb').value);
+  const bank = dseParse(document.getElementById('dseBank').value);
   const pmTotal = Math.round((cash + cardSampath + cardHnb + bank) * 100) / 100;
-  document.getElementById('dsePmTotal').textContent = pmTotal.toFixed(2);
+  document.getElementById('dsePmTotal').textContent = dseFmt(pmTotal);
   document.getElementById('dseCardTotal').value = (Math.round((cardSampath + cardHnb) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const checkEl = document.getElementById('dsePmCheck');
   if (Math.abs(pmTotal - expectedReceived) < 0.01) {
     checkEl.innerHTML = '<i class="fas fa-check-circle dse-check-ok"></i> <span class="dse-check-ok">Matches Expected Receipt</span>';
   } else {
-    checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + (expectedReceived - pmTotal).toFixed(2) + '</span>';
+    checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + dseFmt(expectedReceived - pmTotal) + '</span>';
   }
   return uniqueProblems;
 }
@@ -831,13 +834,41 @@ document.addEventListener('wheel', function(e) {
     window.scrollBy({ top: e.deltaY, left: e.deltaX });
   }
 }, { passive: false });
+// ---- Thousand separators on amount boxes (everything except Nos) ------------------
+// While typing the box shows the plain number (12500.5); on leaving it shows 12,500.50.
+// The server strips the commas when saving.
+document.addEventListener('focusin', function(e) {
+  const t = e.target;
+  if (!t || !t.dataset || !t.dataset.money || t.readOnly || t.disabled) return;
+  if (t.value) t.value = String(t.value).replace(/,/g, '');
+  setTimeout(function() { try { t.select(); } catch (err) {} }, 0);
+});
+document.addEventListener('focusout', function(e) {
+  const t = e.target;
+  if (!t || !t.dataset || !t.dataset.money) return;
+  const raw = String(t.value || '').replace(/,/g, '').trim();
+  if (raw === '') return;
+  const n = parseFloat(raw);
+  t.value = isNaN(n) ? '' : dseFmt(n);
+});
+document.addEventListener('input', function(e) {
+  const t = e.target;
+  if (!t || !t.dataset || !t.dataset.money) return;
+  // digits, one dot, leading minus only
+  let v = t.value.replace(/[^0-9.\-]/g, '');
+  v = v.replace(/(?!^)-/g, '');
+  const firstDot = v.indexOf('.');
+  if (firstDot !== -1) v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+  if (v !== t.value) t.value = v;
+});
+
 // Arrow Up/Down in a number box also steps the value - move to the next/previous box instead.
 document.addEventListener('keydown', function(e) {
   const t = e.target;
-  if (!t || t.tagName !== 'INPUT' || t.type !== 'number') return;
+  if (!t || t.tagName !== 'INPUT' || (t.type !== 'number' && !(t.dataset && t.dataset.money))) return;
   if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
   e.preventDefault();
-  const boxes = Array.from(document.querySelectorAll('#dseForm input[type=number]:not([disabled])'))
+  const boxes = Array.from(document.querySelectorAll('#dseForm input[type=number]:not([disabled]), #dseForm input[data-money]:not([disabled])'))
     .filter(function(el) { return el.offsetParent !== null && el.classList.contains(t.classList[t.classList.length - 1]); });
   const i = boxes.indexOf(t);
   const next = boxes[i + (e.key === 'ArrowDown' ? 1 : -1)];
