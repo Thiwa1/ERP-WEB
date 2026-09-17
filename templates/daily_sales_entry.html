@@ -385,6 +385,11 @@
                        value="{{ '%.2f'|format(header.bank_transfer_amount) if header and header.bank_transfer_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
+              <div class="col-6 offset-3">
+                <label class="form-label">Total Credit Card <span class="fw-normal text-muted">(Sampath + HNB)</span></label>
+                <input type="text" class="form-control form-control-sm text-end fw-bold" id="dseCardTotal" value="0.00" readonly
+                       style="background:#eef6ff;">
+              </div>
             </div>
             <div class="mt-2" style="font-size:0.8rem;">
               Total Received: <span id="dsePmTotal">0.00</span>
@@ -692,6 +697,7 @@ function dseRecalc() {
   const bank = parseFloat(document.getElementById('dseBank').value) || 0;
   const pmTotal = Math.round((cash + cardSampath + cardHnb + bank) * 100) / 100;
   document.getElementById('dsePmTotal').textContent = pmTotal.toFixed(2);
+  document.getElementById('dseCardTotal').value = (Math.round((cardSampath + cardHnb) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const checkEl = document.getElementById('dsePmCheck');
   if (Math.abs(pmTotal - expectedReceived) < 0.01) {
