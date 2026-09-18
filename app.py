@@ -21550,12 +21550,34 @@ BAR_SALES_RECORD_LINES = [
 
 
 def _bar_sales_gl_settings():
-    keys = [f'bar_sales_gl_{s}_{p}' for s, _ in BAR_SALES_SECTIONS for p, _ in BAR_SALES_GL_PARTS]
+    """{'bar_sales_gl_bar_sales': account, 'bar_sales_gl_bar_sales_sub': sub-account code, ...}"""
+    keys = []
+    for s, _ in BAR_SALES_SECTIONS:
+        for p, _ in BAR_SALES_GL_PARTS:
+            keys += [f'bar_sales_gl_{s}_{p}', f'bar_sales_gl_{s}_{p}_sub']
     placeholders = ','.join(['%s'] * len(keys))
     rows = db.execute_query(f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
                             tuple(keys)) or []
     got = {r['setting_key']: (r['setting_value'] or '').strip() for r in rows}
     return {k: got.get(k, '') for k in keys}
+
+
+def _bar_sales_set_setting(key, value):
+    if db.execute_query("SELECT id FROM system_settings WHERE setting_key = %s", (key,)):
+        db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s", (value, key), commit=True)
+    else:
+        db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, %s, %s)",
+                         (key, value, 'Bar Sales Record GL mapping'), commit=True)
+
+
+def _bar_sales_sub_name(account, code):
+    if not account or not str(code or '').isdigit():
+        return ''
+    r = db.execute_query("""
+        SELECT sub_sub_accaount_name FROM sub_accont_for_new_account
+        WHERE sub_new_account = %s AND sub_account_code = %s
+    """, (account, int(code))) or []
+    return r[0]['sub_sub_accaount_name'] if r else ''
 
 
 def _bar_sales_check(day):
@@ -21579,10 +21601,14 @@ def _bar_sales_check(day):
             if not (dr or cr):
                 continue
             acct = gl.get(f'bar_sales_gl_{sec}_{part}')
+            sub = gl.get(f'bar_sales_gl_{sec}_{part}_sub')
+            sub_code = int(sub) if str(sub or '').isdigit() else 0
             label = dict(BAR_SALES_GL_PARTS)[part]
             if not acct:
                 problems.append(f'{sec_label}: no GL account set for "{label}" - set it on Bar Sales GL Mapping.')
-            preview.append({'section': sec_label, 'part': label, 'account': acct or '(not set)', 'dr': dr, 'cr': cr})
+            preview.append({'section': sec_label, 'part': label, 'account': acct or '(not set)',
+                            'sub_code': sub_code, 'sub_name': _bar_sales_sub_name(acct, sub_code) if sub_code else '',
+                            'dr': dr, 'cr': cr})
     return problems, preview
 
 
@@ -21707,10 +21733,10 @@ def bar_sales_post():
             cursor.execute("""
                 INSERT INTO entry_details (
                     account_name, enty_values_DR, enty_values_CR, entry_effective_date,
-                    entry_create_date, entry_naration, entry_create_user, entry_jv
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (p['account'], p['dr'], p['cr'], entry_date, date.today(),
-                  f"{p['section']} - {p['part']} {entry_date}", uid, jv_no))
+                  f"{p['section']} - {p['part']} {entry_date}", uid, jv_no, p['sub_code'] or 0))
         cursor.execute("UPDATE bar_sales_days SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW() WHERE id=%s",
                        (jv_no, uid, day['id']))
         conn.commit()
@@ -21732,15 +21758,23 @@ def bar_sales_gl_mapping():
     if request.method == 'POST':
         try:
             for key in _bar_sales_gl_settings():
-                db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
-                                 ((request.form.get(key) or '').strip(), key), commit=True)
+                val = (request.form.get(key) or '').strip()
+                if key.endswith('_sub') and not val.isdigit():
+                    val = ''
+                _bar_sales_set_setting(key, val)
             flash('Bar Sales GL mapping saved.', 'success')
         except Exception as e:
             flash(f'Error saving mapping: {str(e)}', 'danger')
         return redirect(url_for('bar_sales_gl_mapping'))
     accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
-    return render_template('bar_sales_gl_mapping.html', settings=_bar_sales_gl_settings(), accounts=accounts,
-                           sections=BAR_SALES_SECTIONS, parts=BAR_SALES_GL_PARTS)
+    settings = _bar_sales_gl_settings()
+    sub_options = {}
+    for s, _ in BAR_SALES_SECTIONS:
+        for p, _ in BAR_SALES_GL_PARTS:
+            key = f'bar_sales_gl_{s}_{p}'
+            sub_options[key] = _daily_sales_sub_accounts_for(settings.get(key))
+    return render_template('bar_sales_gl_mapping.html', settings=settings, accounts=accounts,
+                           sections=BAR_SALES_SECTIONS, parts=BAR_SALES_GL_PARTS, sub_options=sub_options)
 
 
 # ================================================================

@@ -25,10 +25,22 @@
         <div class="card-body">
           {% for part, part_label in parts %}
           {% set key = 'bar_sales_gl_' ~ sec ~ '_' ~ part %}
-          <div class="mb-3">
+          <div class="mb-3 bsgl-row">
             <label class="form-label">{{ part_label }}</label>
-            <input type="text" class="form-control {{ '' if settings[key] else 'border-danger' }}" list="bsglAccountList"
-                   name="{{ key }}" value="{{ settings[key] }}" placeholder="Select account...">
+            <div class="row g-2">
+              <div class="col-7">
+                <input type="text" class="form-control {{ '' if settings[key] else 'border-danger' }}" list="bsglAccountList"
+                       name="{{ key }}" value="{{ settings[key] }}" placeholder="Select account..." onchange="bsglRefreshSub(this)">
+              </div>
+              <div class="col-5">
+                <select class="form-select bsgl-sub" name="{{ key }}_sub" title="Sub-account (optional)" {{ 'disabled' if not sub_options[key] }}>
+                  <option value="">{{ '- Sub-account -' if sub_options[key] else 'No sub-accounts' }}</option>
+                  {% for opt in sub_options[key] %}
+                  <option value="{{ opt.sub_account_code }}" {{ 'selected' if settings[key ~ '_sub'] == opt.sub_account_code|string }}>{{ opt.sub_sub_accaount_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
           </div>
           {% endfor %}
         </div>
@@ -43,4 +55,28 @@
     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save Mapping</button>
   </div>
 </form>
+
+<script>
+// Changing the account reloads that account's sub-accounts (same list Journal Entry uses).
+function bsglRefreshSub(accountInput) {
+  const sel = accountInput.closest('.bsgl-row').querySelector('.bsgl-sub');
+  sel.innerHTML = '<option value="">No sub-accounts</option>';
+  sel.disabled = true;
+  if (!accountInput.value) return;
+  fetch('/api/get_sub_accounts?account_name=' + encodeURIComponent(accountInput.value))
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+      if (data && data.length) {
+        sel.innerHTML = '<option value="">- Sub-account -</option>';
+        sel.disabled = false;
+        data.forEach(function(item) {
+          const opt = document.createElement('option');
+          opt.value = item.code;
+          opt.text = item.name;
+          sel.add(opt);
+        });
+      }
+    });
+}
+</script>
 {% endblock %}

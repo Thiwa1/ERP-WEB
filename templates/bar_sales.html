@@ -188,7 +188,7 @@
         {% for p in preview %}
         <tr>
           <td>{{ p.section }}</td><td>{{ p.part }}</td>
-          <td class="{{ 'text-danger fw-bold' if p.account == '(not set)' }}">{{ p.account }}</td>
+          <td class="{{ 'text-danger fw-bold' if p.account == '(not set)' }}">{{ p.account }}{% if p.sub_name %} <span class="text-muted small">&rsaquo; {{ p.sub_name }}</span>{% endif %}</td>
           <td class="num">{{ '{:,.2f}'.format(p.dr) if p.dr else '' }}</td>
           <td class="num">{{ '{:,.2f}'.format(p.cr) if p.cr else '' }}</td>
         </tr>

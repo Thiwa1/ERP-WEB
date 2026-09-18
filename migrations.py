@@ -1497,6 +1497,11 @@ def _migrate_bar_sales_record(cursor):
                         cursor.execute(
                             "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
                             (key, f'Bar Sales Record: GL account for {sec_label} - {part_label}'))
+                    cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key + '_sub',))
+                    if not cursor.fetchone():
+                        cursor.execute(
+                            "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                            (key + '_sub', f'Bar Sales Record: sub-account for {sec_label} - {part_label}'))
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
