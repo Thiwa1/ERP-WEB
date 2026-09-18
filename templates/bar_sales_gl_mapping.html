@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Sales - GL Mapping{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-sitemap me-2 text-primary"></i>Bar Sales Record &mdash; GL Mapping</h4>
+  <a href="{{ url_for('bar_sales') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Bar Sales Record</a>
+</div>
+
+<div class="alert alert-info small">
+  <i class="fas fa-info-circle me-1"></i>
+  Only these lines of the Bar Sales Record post to the GL. For each section the entry is:
+  <strong>Cr</strong> Sales &nbsp;&middot;&nbsp; <strong>Dr</strong> Cash &nbsp;&middot;&nbsp;
+  <strong>Dr</strong> Credit Card (card amount less commission) &nbsp;&middot;&nbsp; <strong>Dr</strong> Card Commission expense.
+  Everything else on the sheet (issues to Management / Entertainment, keg and rooms breakdown) is kept for the record only.
+</div>
+
+<form method="POST">
+  <div class="row g-3">
+    {% for sec, sec_label in sections %}
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header fw-bold">{{ sec_label }}</div>
+        <div class="card-body">
+          {% for part, part_label in parts %}
+          {% set key = 'bar_sales_gl_' ~ sec ~ '_' ~ part %}
+          <div class="mb-3">
+            <label class="form-label">{{ part_label }}</label>
+            <input type="text" class="form-control {{ '' if settings[key] else 'border-danger' }}" list="bsglAccountList"
+                   name="{{ key }}" value="{{ settings[key] }}" placeholder="Select account...">
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <datalist id="bsglAccountList">
+    {% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}
+  </datalist>
+  <div class="d-flex justify-content-end mt-3 mb-4">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save Mapping</button>
+  </div>
+</form>
+{% endblock %}

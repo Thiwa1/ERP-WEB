@@ -60,6 +60,7 @@ def run_migrations(conn):
         _migrate_daily_sales_sub_accounts(cursor)
         _migrate_daily_sales_advances_reports(cursor)
         _migrate_daily_sales_report_extrabed(cursor)
+        _migrate_bar_sales_record(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1404,6 +1405,98 @@ def _migrate_daily_sales_report_extrabed(cursor):
                 INSERT INTO daily_sales_report_rows (report, row_key, label, row_type, category_keys, display_order)
                 VALUES ('R1', %s, %s, 'REVENUE', %s, %s)
             """, (extra_row, label, extra_key, order))
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_bar_sales_record(cursor):
+    """Bar Sales Record - one sheet per day (the front office's "Recording
+    of Bar Sales" Excel sheet).
+
+      bar_sales_days   - Bar Sales and Bar Food Sales: Sales / Cash / Credit
+                         Card / Card Commission. ONLY these post to the GL
+                         (Cr Sales, Dr Cash, Dr Card net of commission,
+                         Dr Commission expense).
+      bar_sales_lines  - record-only breakdown (Bar Sales, Keg Pitchers / Mug,
+                         Restaurant Keg Pitchers / Towers / Mug, Rooms &
+                         Restaurant Sales) with Qty + Income.
+      bar_sales_issues - record-only Issues to Management / Entertainment.
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'bar_sales_days'")
+        if not cursor.fetchone():
+            print("Migrating: Creating bar_sales_days table")
+            cursor.execute("""
+                CREATE TABLE bar_sales_days (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  entry_date DATE NOT NULL,
+                  narration VARCHAR(300) NULL,
+                  commission_rate DOUBLE NOT NULL DEFAULT 10,
+                  bar_sales DOUBLE NOT NULL DEFAULT 0,
+                  bar_cash DOUBLE NOT NULL DEFAULT 0,
+                  bar_card DOUBLE NOT NULL DEFAULT 0,
+                  bar_commission DOUBLE NOT NULL DEFAULT 0,
+                  food_sales DOUBLE NOT NULL DEFAULT 0,
+                  food_cash DOUBLE NOT NULL DEFAULT 0,
+                  food_card DOUBLE NOT NULL DEFAULT 0,
+                  food_commission DOUBLE NOT NULL DEFAULT 0,
+                  status VARCHAR(10) NOT NULL DEFAULT 'Parked',
+                  jv_id BIGINT NULL,
+                  created_by INT NULL,
+                  created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                  updated_by INT NULL,
+                  updated_date DATETIME NULL,
+                  posted_by INT NULL,
+                  posted_date DATETIME NULL,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY entry_date_UNIQUE (entry_date)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'bar_sales_lines'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE bar_sales_lines (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  day_id BIGINT NOT NULL,
+                  line_key VARCHAR(40) NOT NULL,
+                  qty DOUBLE NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY day_line_UNIQUE (day_id, line_key),
+                  CONSTRAINT fk_bsl_day FOREIGN KEY (day_id) REFERENCES bar_sales_days(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'bar_sales_issues'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE bar_sales_issues (
+                  id BIGINT NOT NULL AUTO_INCREMENT,
+                  day_id BIGINT NOT NULL,
+                  issue_type VARCHAR(20) NOT NULL,
+                  description VARCHAR(200) NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  INDEX idx_bsi_day (day_id),
+                  CONSTRAINT fk_bsi_day FOREIGN KEY (day_id) REFERENCES bar_sales_days(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+        cursor.execute("SHOW TABLES LIKE 'system_settings'")
+        if cursor.fetchone():
+            for sec, sec_label in (('bar', 'Bar Sales'), ('food', 'Bar Food Sales')):
+                for part, part_label in (('sales', 'Sales (credited)'), ('cash', 'Cash'),
+                                         ('card', 'Credit Card (net of commission)'), ('commission', 'Card Commission expense')):
+                    key = f'bar_sales_gl_{sec}_{part}'
+                    cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", (key,))
+                    if not cursor.fetchone():
+                        cursor.execute(
+                            "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                            (key, f'Bar Sales Record: GL account for {sec_label} - {part_label}'))
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):

@@ -208,6 +208,8 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'daily_sales_reports', 'label': 'Daily Revenue & Cash Book', 'url': '/daily_sales_entry/reports', 'icon': 'fas fa-chart-bar', 'category': 'Restaurant'},
     {'key': 'daily_sales_outstanding', 'label': 'Outstanding Credit & Advances', 'url': '/daily_sales_entry/outstanding', 'icon': 'fas fa-search-dollar', 'category': 'Restaurant'},
     {'key': 'daily_sales_report_mapping', 'label': 'Daily Sales - Report Row Mapping', 'url': '/daily_sales_entry/report_mapping', 'icon': 'fas fa-project-diagram', 'category': 'Daily Sales Setup'},
+    {'key': 'bar_sales', 'label': 'Bar Sales Record', 'url': '/bar_sales', 'icon': 'fas fa-glass-martini-alt', 'category': 'Restaurant'},
+    {'key': 'bar_sales_gl_mapping', 'label': 'Bar Sales - GL Mapping', 'url': '/bar_sales/gl_mapping', 'icon': 'fas fa-sitemap', 'category': 'Daily Sales Setup'},
     # HR & Payroll
     {'key': 'employees',          'label': 'Employees',            'url': '/employees',              'icon': 'fas fa-users',               'category': 'HR & Payroll'},
     {'key': 'leave_applications', 'label': 'Leave Applications',   'url': '/leave_application',      'icon': 'fas fa-calendar-check',      'category': 'HR & Payroll'},
@@ -21517,6 +21519,228 @@ def daily_sales_report_mapping_delete(row_id):
     db.execute_query("DELETE FROM daily_sales_report_rows WHERE id = %s", (row_id,), commit=True)
     flash('Report row removed.', 'success')
     return redirect(url_for('daily_sales_report_mapping'))
+
+
+# ================================================================
+# ── BAR SALES RECORD ────────────────────────────────────────────
+# Digitises the front office's "Recording of Bar Sales" sheet. Only the
+# Bar Sales / Bar Food Sales money lines post to the GL; everything else
+# (issues to Management / Entertainment, keg and rooms breakdown) is kept
+# for the record only.
+#   Per section:  Cr Sales            = Sales
+#                 Dr Cash             = Cash
+#                 Dr Card account     = Credit Card - Commission
+#                 Dr Commission exp.  = Commission
+#   Cash + Credit Card must equal Sales before it can be posted.
+# ================================================================
+
+BAR_SALES_SECTIONS = (('bar', 'Bar Sales'), ('food', 'Bar Food Sales'))
+BAR_SALES_GL_PARTS = (('sales', 'Sales (credited)'), ('cash', 'Cash'),
+                      ('card', 'Credit Card (net of commission)'), ('commission', 'Card Commission expense'))
+# (key, label, group, has_qty) - record-only breakdown, same order as the sheet
+BAR_SALES_RECORD_LINES = [
+    ('BAR_SALES', 'Bar Sales', 'Bar', False),
+    ('KEG_PITCHERS', 'Keg Pitchers', 'Bar', True),
+    ('KEG_MUG', 'Keg Mug', 'Bar', True),
+    ('REST_KEG_PITCHERS', 'Pitchers', 'Restaurant Keg', True),
+    ('REST_KEG_TOWERS', 'Towers', 'Restaurant Keg', True),
+    ('REST_KEG_MUG', 'Mug', 'Restaurant Keg', True),
+    ('ROOMS_REST_SALES', 'Rooms & Restaurant Sales', 'Rooms & Restaurant', False),
+]
+
+
+def _bar_sales_gl_settings():
+    keys = [f'bar_sales_gl_{s}_{p}' for s, _ in BAR_SALES_SECTIONS for p, _ in BAR_SALES_GL_PARTS]
+    placeholders = ','.join(['%s'] * len(keys))
+    rows = db.execute_query(f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
+                            tuple(keys)) or []
+    got = {r['setting_key']: (r['setting_value'] or '').strip() for r in rows}
+    return {k: got.get(k, '') for k in keys}
+
+
+def _bar_sales_check(day):
+    """Per-section checks + the GL lines that posting would create."""
+    gl = _bar_sales_gl_settings()
+    problems, preview = [], []
+    for sec, sec_label in BAR_SALES_SECTIONS:
+        sales = round(float(day.get(f'{sec}_sales') or 0), 2)
+        cash = round(float(day.get(f'{sec}_cash') or 0), 2)
+        card = round(float(day.get(f'{sec}_card') or 0), 2)
+        comm = round(float(day.get(f'{sec}_commission') or 0), 2)
+        if not (sales or cash or card or comm):
+            continue
+        if abs(cash + card - sales) > 0.01:
+            problems.append(f'{sec_label}: Cash {cash:,.2f} + Credit Card {card:,.2f} = {cash + card:,.2f}, '
+                            f'but Sales is {sales:,.2f} (difference {sales - cash - card:,.2f}).')
+        if comm - card > 0.01:
+            problems.append(f'{sec_label}: Commission {comm:,.2f} is more than the Credit Card amount {card:,.2f}.')
+        lines = [('sales', 0, sales), ('cash', cash, 0), ('card', round(card - comm, 2), 0), ('commission', comm, 0)]
+        for part, dr, cr in lines:
+            if not (dr or cr):
+                continue
+            acct = gl.get(f'bar_sales_gl_{sec}_{part}')
+            label = dict(BAR_SALES_GL_PARTS)[part]
+            if not acct:
+                problems.append(f'{sec_label}: no GL account set for "{label}" - set it on Bar Sales GL Mapping.')
+            preview.append({'section': sec_label, 'part': label, 'account': acct or '(not set)', 'dr': dr, 'cr': cr})
+    return problems, preview
+
+
+@app.route('/bar_sales', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
+def bar_sales():
+    entry_date = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    day = db.execute_query("SELECT * FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
+    day = day[0] if day else None
+    lines, issues = {}, []
+    if day:
+        for r in db.execute_query("SELECT line_key, qty, amount FROM bar_sales_lines WHERE day_id = %s", (day['id'],)) or []:
+            lines[r['line_key']] = r
+        issues = db.execute_query("""
+            SELECT issue_type, description, amount FROM bar_sales_issues WHERE day_id = %s ORDER BY id
+        """, (day['id'],)) or []
+    problems, preview = _bar_sales_check(day) if day else ([], [])
+    records = db.execute_query("""
+        SELECT entry_date, bar_sales, food_sales, status, jv_id FROM bar_sales_days ORDER BY entry_date DESC LIMIT 60
+    """) or []
+    return render_template('bar_sales.html', entry_date=entry_date, today_date=date.today().strftime('%Y-%m-%d'),
+                           day=day, lines=lines, issues=issues, record_lines=BAR_SALES_RECORD_LINES,
+                           sections=BAR_SALES_SECTIONS, problems=problems, preview=preview, records=records,
+                           can_post=check_permission('Access_Accounting'))
+
+
+@app.route('/bar_sales/save', methods=['POST'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
+def bar_sales_save():
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    existing = db.execute_query("SELECT id, status FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
+    if existing and existing[0]['status'] == 'Posted':
+        flash(f'Bar sales for {entry_date} are already posted to the GL and locked.', 'danger')
+        return redirect(url_for('bar_sales', date=entry_date))
+
+    f = request.form
+    vals = {'narration': (f.get('narration') or '').strip()[:300] or None,
+            'commission_rate': parse_float(f.get('commission_rate')) or 0}
+    for sec, _ in BAR_SALES_SECTIONS:
+        for part in ('sales', 'cash', 'card', 'commission'):
+            vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
+    cols = list(vals.keys())
+    user = get_current_user_pk()
+    try:
+        if existing:
+            day_id = existing[0]['id']
+            db.execute_query(f"UPDATE bar_sales_days SET {', '.join(c + '=%s' for c in cols)}, updated_by=%s, updated_date=NOW() WHERE id=%s",
+                             tuple(vals[c] for c in cols) + (user, day_id), commit=True)
+        else:
+            day_id = db.execute_query(
+                f"INSERT INTO bar_sales_days (entry_date, {', '.join(cols)}, created_by) VALUES (%s, {', '.join(['%s'] * len(cols))}, %s)",
+                (entry_date,) + tuple(vals[c] for c in cols) + (user,), commit=True)
+
+        db.execute_query("DELETE FROM bar_sales_lines WHERE day_id = %s", (day_id,), commit=True)
+        for key, _label, _group, has_qty in BAR_SALES_RECORD_LINES:
+            qty_raw = (f.get(f'qty_{key}') or '').strip()
+            amount = parse_float(f.get(f'amt_{key}'))
+            qty = parse_float(qty_raw) if (has_qty and qty_raw) else None
+            if amount or qty:
+                db.execute_query("INSERT INTO bar_sales_lines (day_id, line_key, qty, amount) VALUES (%s, %s, %s, %s)",
+                                 (day_id, key, qty, amount), commit=True)
+
+        db.execute_query("DELETE FROM bar_sales_issues WHERE day_id = %s", (day_id,), commit=True)
+        for issue_type in ('MANAGEMENT', 'ENTERTAINMENT'):
+            descs = f.getlist(f'issue_{issue_type}_desc[]')
+            amts = f.getlist(f'issue_{issue_type}_amt[]')
+            for i, desc in enumerate(descs):
+                desc = (desc or '').strip()[:200]
+                amt = parse_float(amts[i] if i < len(amts) else 0)
+                if desc or amt:
+                    db.execute_query("INSERT INTO bar_sales_issues (day_id, issue_type, description, amount) VALUES (%s, %s, %s, %s)",
+                                     (day_id, issue_type, desc or None, amt), commit=True)
+
+        day = db.execute_query("SELECT * FROM bar_sales_days WHERE id = %s", (day_id,))[0]
+        problems, _preview = _bar_sales_check(day)
+        if problems:
+            flash('Saved (Parked). Before it can be posted: ' + ' '.join(problems), 'warning')
+        else:
+            flash(f'Bar sales for {entry_date} saved (Parked) - ready to post to the GL.', 'success')
+    except Exception as e:
+        flash(f'Error saving bar sales: {str(e)}', 'danger')
+    return redirect(url_for('bar_sales', date=entry_date))
+
+
+@app.route('/bar_sales/post', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bar_sales_post():
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    day = db.execute_query("SELECT * FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
+    if not day:
+        flash('Save the day first.', 'danger')
+        return redirect(url_for('bar_sales', date=entry_date))
+    day = day[0]
+    if day['status'] == 'Posted':
+        flash(f'Already posted (JV {day["jv_id"]}).', 'warning')
+        return redirect(url_for('bar_sales', date=entry_date))
+    problems, preview = _bar_sales_check(day)
+    if problems:
+        flash('Cannot post: ' + ' '.join(problems), 'danger')
+        return redirect(url_for('bar_sales', date=entry_date))
+    if not preview:
+        flash('Nothing to post - all amounts are zero.', 'warning')
+        return redirect(url_for('bar_sales', date=entry_date))
+
+    conn = cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+        cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
+        wf = cursor.fetchone()
+        jv_status = 0 if (wf and wf['setting_value'] == '1') else 1
+        narration = day['narration'] or f'Bar Sales {entry_date}'
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, %s)",
+                       ('JV FROM BAR SALES', narration, jv_status))
+        jv_no = cursor.lastrowid
+        uid = get_current_user_pk()
+        for p in preview:
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                    entry_create_date, entry_naration, entry_create_user, entry_jv
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (p['account'], p['dr'], p['cr'], entry_date, date.today(),
+                  f"{p['section']} - {p['part']} {entry_date}", uid, jv_no))
+        cursor.execute("UPDATE bar_sales_days SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW() WHERE id=%s",
+                       (jv_no, uid, day['id']))
+        conn.commit()
+        flash(f'Bar sales for {entry_date} posted to the GL. JV: {jv_no}', 'success')
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Error posting bar sales: {str(e)}', 'danger')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    return redirect(url_for('bar_sales', date=entry_date))
+
+
+@app.route('/bar_sales/gl_mapping', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Daily_Sales_Mapping')
+def bar_sales_gl_mapping():
+    if request.method == 'POST':
+        try:
+            for key in _bar_sales_gl_settings():
+                db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
+                                 ((request.form.get(key) or '').strip(), key), commit=True)
+            flash('Bar Sales GL mapping saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving mapping: {str(e)}', 'danger')
+        return redirect(url_for('bar_sales_gl_mapping'))
+    accounts = db.execute_query("SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
+    return render_template('bar_sales_gl_mapping.html', settings=_bar_sales_gl_settings(), accounts=accounts,
+                           sections=BAR_SALES_SECTIONS, parts=BAR_SALES_GL_PARTS)
 
 
 # ================================================================

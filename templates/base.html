@@ -883,6 +883,7 @@
                 <div class="menu-category">Daily Sales Setup</div>
                 {% if 'daily_sales_gl_mapping' not in menu_disabled %}<a href="/daily_sales_entry/gl_mapping" class="nav-link"><i class="fas fa-sitemap"></i> <span class="nav-text">Daily Sales - GL Mapping</span></a>{% endif %}
                 {% if 'daily_sales_report_mapping' not in menu_disabled %}<a href="/daily_sales_entry/report_mapping" class="nav-link"><i class="fas fa-project-diagram"></i> <span class="nav-text">Daily Sales - Report Row Mapping</span></a>{% endif %}
+                {% if 'bar_sales_gl_mapping' not in menu_disabled %}<a href="/bar_sales/gl_mapping" class="nav-link"><i class="fas fa-sitemap"></i> <span class="nav-text">Bar Sales - GL Mapping</span></a>{% endif %}
                 {% endif %}
 
                 <!-- Reversals & Adjustments -->
@@ -926,6 +927,7 @@
                 {% if 'daily_sales_entry' not in menu_disabled and check_permission("Access_Daily_Sales") %}<a href="/daily_sales_entry" class="nav-link"><i class="fas fa-cash-register"></i> <span class="nav-text">Daily Sales Entry</span></a>{% endif %}
                 {% if 'daily_sales_reports' not in menu_disabled and check_permission("Access_Daily_Sales") %}<a href="/daily_sales_entry/reports" class="nav-link"><i class="fas fa-chart-bar"></i> <span class="nav-text">Daily Revenue &amp; Cash Book</span></a>{% endif %}
                 {% if 'daily_sales_outstanding' not in menu_disabled and check_permission("Access_Daily_Sales") %}<a href="/daily_sales_entry/outstanding" class="nav-link"><i class="fas fa-search-dollar"></i> <span class="nav-text">Outstanding Credit &amp; Advances</span></a>{% endif %}
+                {% if 'bar_sales' not in menu_disabled and check_permission("Access_Daily_Sales") %}<a href="/bar_sales" class="nav-link"><i class="fas fa-glass-martini-alt"></i> <span class="nav-text">Bar Sales Record</span></a>{% endif %}
                 {% endif %}
 
                 <!-- HR & Payroll -->

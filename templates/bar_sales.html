@@ -1,0 +1,342 @@
+{% extends "base.html" %}
+
+{% block title %}Bar Sales Record - {{ entry_date }}{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{{ '{:,.2f}'.format(v) if v else '' }}{% endmacro %}
+{% set locked = day and day.status == 'Posted' %}
+<style>
+  .bs-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:18px; overflow:hidden; }
+  .bs-head { padding:10px 16px; border-bottom:1px solid rgba(0,0,0,0.06); display:flex;
+             align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; }
+  .bs-body { padding:14px 16px; }
+  .bs-sec { background:#faf9f8; border:1px solid rgba(0,0,0,0.06); border-radius:8px; padding:12px 14px; height:100%; }
+  .bs-sec h6 { font-weight:800; font-size:0.9rem; margin-bottom:10px; }
+  .bs-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:6px; }
+  .bs-row label { font-size:0.82rem; font-weight:600; color:#5a5a5a; margin:0; }
+  .bs-row input { max-width:170px; }
+  input[data-money] { text-align:right; font-variant-numeric:tabular-nums; }
+  .bs-total { border-top:2px solid rgba(0,103,192,0.3); padding-top:6px; margin-top:6px; font-weight:800; }
+  .bs-ok { color:#107c10; font-size:0.78rem; font-weight:600; }
+  .bs-bad { color:#c0392b; font-size:0.78rem; font-weight:600; }
+  .bs-gl-badge { font-size:0.68rem; background:#e8f3ff; color:#0b5cad; border-radius:10px; padding:1px 8px; font-weight:700; }
+  .bs-rec-badge { font-size:0.68rem; background:#eee; color:#555; border-radius:10px; padding:1px 8px; font-weight:700; }
+  table.bs { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  table.bs th, table.bs td { border:1px solid #e0e0e0; padding:4px 6px; vertical-align:middle; }
+  table.bs th { background:#f2f2f2; }
+  table.bs tr.bs-grp td { background:#eef4fb; font-weight:700; }
+  table.bs tr.bs-sub td { background:#f8fafc; font-weight:700; }
+  table.bs .num { text-align:right; white-space:nowrap; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-glass-martini-alt me-2 text-primary"></i>Bar Sales Record</h4>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if check_permission("Access_Daily_Sales_Mapping") %}
+    <a href="{{ url_for('bar_sales_gl_mapping') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sitemap me-1"></i> GL Mapping</a>
+    {% endif %}
+    <a href="{{ url_for('daily_sales_entry', date=entry_date) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-cash-register me-1"></i> Daily Sales Entry</a>
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head">
+    <strong><i class="fas fa-calendar-day me-1 text-primary"></i> {{ entry_date }}
+      {% if day %}
+        {% if locked %}<span class="badge bg-success ms-2"><i class="fas fa-lock me-1"></i>Posted to GL &middot; JV {{ day.jv_id }}</span>
+        {% else %}<span class="badge bg-warning text-dark ms-2">Parked (not posted)</span>{% endif %}
+      {% else %}<span class="badge bg-light text-muted border ms-2">New</span>{% endif %}
+    </strong>
+    <div class="d-flex align-items-center gap-2">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="bsGo(-1)"><i class="fas fa-chevron-left"></i></button>
+      <input type="date" class="form-control form-control-sm" style="width:160px" value="{{ entry_date }}" max="{{ today_date }}" onchange="bsJump(this.value)">
+      <button type="button" class="btn btn-outline-secondary btn-sm" onclick="bsGo(1)"><i class="fas fa-chevron-right"></i></button>
+      <button type="button" class="btn btn-outline-primary btn-sm" onclick="bsJump('{{ today_date }}')">Today</button>
+    </div>
+  </div>
+
+  <div class="bs-body">
+  <form method="POST" action="{{ url_for('bar_sales_save') }}" id="bsForm">
+    <input type="hidden" name="entry_date" value="{{ entry_date }}">
+    <div class="row g-2 mb-3">
+      <div class="col-md-9">
+        <label class="form-label small fw-semibold mb-1">Narration</label>
+        <input type="text" name="narration" class="form-control form-control-sm" value="{{ day.narration or '' if day else '' }}"
+               placeholder="e.g. Bar sales {{ entry_date }}" {{ 'disabled' if locked }}>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Credit Card Commission %</label>
+        <input type="text" inputmode="decimal" name="commission_rate" id="bsRate" class="form-control form-control-sm text-end"
+               value="{{ '%g'|format(day.commission_rate) if day else '10' }}" oninput="bsRecalc(true)" {{ 'disabled' if locked }}>
+      </div>
+    </div>
+
+    {# ------------------------------------------------ posted to GL #}
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <span class="bs-gl-badge"><i class="fas fa-book me-1"></i>POSTS TO GL</span>
+      <span class="small text-muted">Cash + Credit Card must equal Sales. Commission is worked out at the % above &mdash; overwrite it if the bank charged a different figure.</span>
+    </div>
+    <div class="row g-3 mb-3">
+      {% for sec, sec_label in sections %}
+      <div class="col-lg-6">
+        <div class="bs-sec" data-sec="{{ sec }}">
+          <h6>{{ sec_label }}</h6>
+          <div class="bs-row"><label>Sales</label>
+            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_sales" class="form-control form-control-sm bs-sales"
+                   value="{{ money(day[sec ~ '_sales']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row"><label>Cash</label>
+            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_cash" class="form-control form-control-sm bs-cash"
+                   value="{{ money(day[sec ~ '_cash']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row"><label>Credit Card</label>
+            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_card" class="form-control form-control-sm bs-card"
+                   value="{{ money(day[sec ~ '_card']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row"><label>Credit Card Commission <span class="fw-normal bs-rate-label"></span></label>
+            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_commission" class="form-control form-control-sm bs-comm"
+                   value="{{ money(day[sec ~ '_commission']) if day else '' }}" oninput="this.dataset.manual='1'; bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row bs-total"><label>Total (Cash + Credit Card)</label><span class="bs-total-val">0.00</span></div>
+          <div class="bs-check small"></div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {# ------------------------------------------------ record only #}
+    <div class="d-flex align-items-center gap-2 mb-2 mt-2">
+      <span class="bs-rec-badge"><i class="fas fa-clipboard me-1"></i>RECORD ONLY</span>
+      <span class="small text-muted">Kept for reference &mdash; not posted to the GL.</span>
+    </div>
+    <div class="row g-3 mb-3">
+      {% for itype, ilabel in [('MANAGEMENT', 'Issues To Management'), ('ENTERTAINMENT', 'Issues To Entertainment')] %}
+      <div class="col-lg-3 col-md-6">
+        <div class="bs-sec">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">{{ ilabel }}</h6>
+            {% if not locked %}<button type="button" class="btn btn-sm btn-outline-primary py-0" onclick="bsAddIssue('{{ itype }}')"><i class="fas fa-plus"></i></button>{% endif %}
+          </div>
+          <table class="bs"><thead><tr><th>Item</th><th class="num" style="width:40%">Rs</th><th style="width:8%"></th></tr></thead>
+            <tbody id="bsIssues{{ itype }}">
+              {% for i in issues if i.issue_type == itype %}
+              <tr>
+                <td><input type="text" name="issue_{{ itype }}_desc[]" class="form-control form-control-sm" value="{{ i.description or '' }}" {{ 'disabled' if locked }}></td>
+                <td><input type="text" inputmode="decimal" data-money="1" name="issue_{{ itype }}_amt[]" class="form-control form-control-sm" value="{{ money(i.amount) }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></td>
+                <td>{% if not locked %}<i class="fas fa-times text-danger" style="cursor:pointer;" onclick="this.closest('tr').remove(); bsRecalc();"></i>{% endif %}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot><tr class="bs-sub"><td>Total</td><td class="num bs-issue-total" data-type="{{ itype }}">0.00</td><td></td></tr></tfoot>
+          </table>
+        </div>
+      </div>
+      {% endfor %}
+
+      <div class="col-lg-6">
+        <div class="bs-sec">
+          <h6>Sales Breakdown</h6>
+          <table class="bs">
+            <thead><tr><th>Item</th><th class="num" style="width:18%">Qty</th><th class="num" style="width:32%">Income</th></tr></thead>
+            <tbody>
+              {% set ns = namespace(group='') %}
+              {% for key, label, group, has_qty in record_lines %}
+                {% if group != ns.group %}
+                  <tr class="bs-grp"><td colspan="3">{{ group }}</td></tr>
+                  {% set ns.group = group %}
+                {% endif %}
+                {% set ln = lines.get(key) %}
+                <tr>
+                  <td>{{ label }}</td>
+                  <td>{% if has_qty %}<input type="number" step="any" name="qty_{{ key }}" class="form-control form-control-sm text-end"
+                         value="{{ '%g'|format(ln.qty) if ln and ln.qty else '' }}" {{ 'disabled' if locked }}>{% endif %}</td>
+                  <td><input type="text" inputmode="decimal" data-money="1" name="amt_{{ key }}" class="form-control form-control-sm bs-rec-amt"
+                             data-group="{{ group }}" value="{{ money(ln.amount) if ln else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></td>
+                </tr>
+              {% endfor %}
+            </tbody>
+            <tfoot>
+              <tr class="bs-sub"><td colspan="2">Bar total (Bar Sales + Keg)</td><td class="num" id="bsBarGroupTotal">0.00</td></tr>
+              <tr class="bs-sub"><td colspan="2">Restaurant Keg + Rooms &amp; Restaurant</td><td class="num" id="bsRestGroupTotal">0.00</td></tr>
+              <tr class="bs-sub"><td colspan="2">Total Sales</td><td class="num" id="bsRecTotal">0.00</td></tr>
+            </tfoot>
+          </table>
+          <div class="small mt-1" id="bsBarGroupCheck"></div>
+        </div>
+      </div>
+    </div>
+
+    {% if not locked %}
+    <div class="d-flex justify-content-end gap-2">
+      <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i> Save</button>
+    </div>
+    {% endif %}
+  </form>
+
+  {# ------------------------------------------------ posting #}
+  {% if day %}
+  <hr>
+  <h6 class="fw-bold"><i class="fas fa-book me-1 text-primary"></i> GL Posting {{ '(posted)' if locked else 'preview (last saved figures)' }}</h6>
+  {% if problems and not locked %}
+  <div class="alert alert-warning small py-2 mb-2">
+    <strong>Fix before posting:</strong>
+    <ul class="mb-0">{% for p in problems %}<li>{{ p }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  {% if preview %}
+  <div class="table-responsive">
+    <table class="bs mb-2" style="max-width:820px;">
+      <thead><tr><th>Section</th><th>Line</th><th>GL Account</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+      <tbody>
+        {% for p in preview %}
+        <tr>
+          <td>{{ p.section }}</td><td>{{ p.part }}</td>
+          <td class="{{ 'text-danger fw-bold' if p.account == '(not set)' }}">{{ p.account }}</td>
+          <td class="num">{{ '{:,.2f}'.format(p.dr) if p.dr else '' }}</td>
+          <td class="num">{{ '{:,.2f}'.format(p.cr) if p.cr else '' }}</td>
+        </tr>
+        {% endfor %}
+        <tr class="bs-sub"><td colspan="3">Total</td>
+          <td class="num">{{ '{:,.2f}'.format(preview | sum(attribute='dr')) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(preview | sum(attribute='cr')) }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+  {% if not locked %}
+    {% if can_post %}
+    <form method="POST" action="{{ url_for('bar_sales_post') }}" class="d-flex justify-content-end"
+          onsubmit="return confirm('Post bar sales for {{ entry_date }} to the GL? The day will be locked.');">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <button type="submit" class="btn btn-success" {{ 'disabled' if problems or not preview }}>
+        <i class="fas fa-check-double me-1"></i> Post to GL
+      </button>
+    </form>
+    <div class="text-end small text-muted mt-1">Save first &mdash; posting uses the last saved figures.</div>
+    {% else %}
+    <div class="small text-muted">Saved as Parked &mdash; the accountant posts it to the GL.</div>
+    {% endif %}
+  {% endif %}
+  {% endif %}
+  </div>
+</div>
+
+<div class="bs-card">
+  <div class="bs-head"><strong><i class="fas fa-history me-1 text-primary"></i> Recent Days</strong></div>
+  <div class="bs-body table-responsive">
+    <table class="bs">
+      <thead><tr><th>Date</th><th class="num">Bar Sales</th><th class="num">Bar Food Sales</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+        {% for r in records %}
+        <tr>
+          <td>{{ r.entry_date }}</td>
+          <td class="num">{{ '{:,.2f}'.format(r.bar_sales or 0) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(r.food_sales or 0) }}</td>
+          <td>{% if r.status == 'Posted' %}<span class="badge bg-success">Posted &middot; JV {{ r.jv_id }}</span>{% else %}<span class="badge bg-warning text-dark">Parked</span>{% endif %}</td>
+          <td><a href="{{ url_for('bar_sales', date=r.entry_date) }}" class="btn btn-sm btn-outline-primary py-0">Open</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-3">No days recorded yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function bsParse(v) { return parseFloat(String(v == null ? '' : v).replace(/,/g, '')) || 0; }
+function bsFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+
+function bsRecalc(rateChanged) {
+  const rate = bsParse(document.getElementById('bsRate').value);
+  document.querySelectorAll('.bs-rate-label').forEach(function(s) { s.textContent = '(' + rate + '%)'; });
+  document.querySelectorAll('.bs-sec[data-sec]').forEach(function(box) {
+    const sales = bsParse(box.querySelector('.bs-sales').value);
+    const cash = bsParse(box.querySelector('.bs-cash').value);
+    const card = bsParse(box.querySelector('.bs-card').value);
+    const commEl = box.querySelector('.bs-comm');
+    // Commission follows the card amount until someone types their own figure
+    if (commEl.dataset.manual !== '1' && !commEl.disabled && document.activeElement !== commEl) {
+      const c = Math.round(card * rate) / 100;
+      commEl.value = card ? bsFmt(c) : '';
+    }
+    const total = Math.round((cash + card) * 100) / 100;
+    box.querySelector('.bs-total-val').textContent = bsFmt(total);
+    const chk = box.querySelector('.bs-check');
+    if (!sales && !cash && !card) { chk.innerHTML = ''; return; }
+    if (Math.abs(total - sales) < 0.01) {
+      chk.innerHTML = '<span class="bs-ok"><i class="fas fa-check-circle"></i> Total matches Sales</span>';
+    } else {
+      chk.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Total differs from Sales by ' + bsFmt(sales - total) + '</span>';
+    }
+  });
+
+  document.querySelectorAll('.bs-issue-total').forEach(function(td) {
+    let t = 0;
+    document.querySelectorAll('#bsIssues' + td.dataset.type + ' input[data-money]').forEach(function(i) { t += bsParse(i.value); });
+    td.textContent = bsFmt(t);
+  });
+
+  let barG = 0, restG = 0;
+  document.querySelectorAll('.bs-rec-amt').forEach(function(i) {
+    if (i.dataset.group === 'Bar') barG += bsParse(i.value); else restG += bsParse(i.value);
+  });
+  document.getElementById('bsBarGroupTotal').textContent = bsFmt(barG);
+  document.getElementById('bsRestGroupTotal').textContent = bsFmt(restG);
+  document.getElementById('bsRecTotal').textContent = bsFmt(barG + restG);
+  const barSales = bsParse(document.querySelector('.bs-sec[data-sec="bar"] .bs-sales').value);
+  const gc = document.getElementById('bsBarGroupCheck');
+  if (!barG || !barSales) gc.innerHTML = '';
+  else if (Math.abs(barG - barSales) < 0.01) gc.innerHTML = '<span class="bs-ok"><i class="fas fa-check-circle"></i> Bar total matches Bar Sales above</span>';
+  else gc.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Bar total differs from Bar Sales above by ' + bsFmt(barSales - barG) + '</span>';
+}
+
+function bsAddIssue(type) {
+  document.getElementById('bsIssues' + type).insertAdjacentHTML('beforeend',
+    '<tr><td><input type="text" name="issue_' + type + '_desc[]" class="form-control form-control-sm"></td>' +
+    '<td><input type="text" inputmode="decimal" data-money="1" name="issue_' + type + '_amt[]" class="form-control form-control-sm" oninput="bsRecalc()"></td>' +
+    '<td><i class="fas fa-times text-danger" style="cursor:pointer;" onclick="this.closest(\'tr\').remove(); bsRecalc();"></i></td></tr>');
+}
+
+// Thousand separators: plain number while typing, 12,500.00 when you leave the box
+document.addEventListener('focusin', function(e) {
+  const t = e.target;
+  if (t.dataset && t.dataset.money && !t.disabled && t.value) { t.value = t.value.replace(/,/g, ''); setTimeout(function() { t.select(); }, 0); }
+});
+document.addEventListener('focusout', function(e) {
+  const t = e.target;
+  if (!t.dataset || !t.dataset.money) return;
+  const raw = t.value.replace(/,/g, '').trim();
+  if (raw !== '') { const n = parseFloat(raw); t.value = isNaN(n) ? '' : bsFmt(n); }
+  bsRecalc();
+});
+document.addEventListener('input', function(e) {
+  const t = e.target;
+  if (!t.dataset || !t.dataset.money) return;
+  let v = t.value.replace(/[^0-9.\-]/g, '').replace(/(?!^)-/g, '');
+  const d = v.indexOf('.');
+  if (d !== -1) v = v.slice(0, d + 1) + v.slice(d + 1).replace(/\./g, '');
+  if (v !== t.value) t.value = v;
+});
+document.addEventListener('wheel', function(e) {
+  const t = e.target;
+  if (t && t.tagName === 'INPUT' && t.type === 'number' && document.activeElement === t) { e.preventDefault(); window.scrollBy(0, e.deltaY); }
+}, { passive: false });
+
+function bsJump(v) { if (v) window.location.href = "{{ url_for('bar_sales') }}?date=" + v; }
+function bsGo(off) {
+  const d = new Date("{{ entry_date }}T00:00:00");
+  d.setDate(d.getDate() + off);
+  bsJump(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  // A saved commission that isn't simply card x rate was typed by hand - keep it.
+  const rate = bsParse(document.getElementById('bsRate').value);
+  document.querySelectorAll('.bs-sec[data-sec]').forEach(function(box) {
+    const card = bsParse(box.querySelector('.bs-card').value);
+    const commEl = box.querySelector('.bs-comm');
+    const comm = bsParse(commEl.value);
+    if (commEl.value && Math.abs(comm - Math.round(card * rate) / 100) > 0.005) commEl.dataset.manual = '1';
+  });
+  bsRecalc();
+});
+</script>
+{% endblock %}
