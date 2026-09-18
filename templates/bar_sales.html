@@ -66,7 +66,7 @@
                placeholder="e.g. Bar sales {{ entry_date }}" {{ 'disabled' if locked }}>
       </div>
       <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Credit Card Commission %</label>
+        <label class="form-label small fw-semibold mb-1">Credit Card Service Charge %</label>
         <input type="text" inputmode="decimal" name="commission_rate" id="bsRate" class="form-control form-control-sm text-end"
                value="{{ '%g'|format(day.commission_rate) if day else '10' }}" oninput="bsRecalc(true)" {{ 'disabled' if locked }}>
       </div>
@@ -75,7 +75,7 @@
     {# ------------------------------------------------ posted to GL #}
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="bs-gl-badge"><i class="fas fa-book me-1"></i>POSTS TO GL</span>
-      <span class="small text-muted">Cash + Credit Card must equal Sales. Commission is worked out at the % above &mdash; overwrite it if the bank charged a different figure.</span>
+      <span class="small text-muted">Cash + Credit Card must equal Sales. Service Charge is worked out at the % above &mdash; overwrite it if needed. The full card amount goes to the Credit Card control account; the service charge goes to the Service Charge account.</span>
     </div>
     <div class="row g-3 mb-3">
       {% for sec, sec_label in sections %}
@@ -91,7 +91,7 @@
           <div class="bs-row"><label>Credit Card</label>
             <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_card" class="form-control form-control-sm bs-card"
                    value="{{ money(day[sec ~ '_card']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
-          <div class="bs-row"><label>Credit Card Commission <span class="fw-normal bs-rate-label"></span></label>
+          <div class="bs-row"><label>Credit Card Service Charge <span class="fw-normal bs-rate-label"></span></label>
             <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_commission" class="form-control form-control-sm bs-comm"
                    value="{{ money(day[sec ~ '_commission']) if day else '' }}" oninput="this.dataset.manual='1'; bsRecalc()" {{ 'disabled' if locked }}></div>
           <div class="bs-row bs-total"><label>Total (Cash + Credit Card)</label><span class="bs-total-val">0.00</span></div>
@@ -99,6 +99,22 @@
         </div>
       </div>
       {% endfor %}
+    </div>
+
+    {# ------------------------------------------------ cash handed over #}
+    <div class="row g-3 mb-3">
+      <div class="col-lg-6">
+        <div class="bs-sec" style="background:#f3f8ff;">
+          <h6><i class="fas fa-hand-holding-usd me-1 text-primary"></i> Cash Received to Management
+            <span class="bs-rec-badge ms-1">RECORD ONLY</span></h6>
+          <div class="bs-row"><label>Total Cash (Bar + Bar Food)</label><span class="fw-bold" id="bsCashTotal">0.00</span></div>
+          <div class="bs-row"><label>Cash Received to Management</label>
+            <input type="text" inputmode="decimal" data-money="1" name="cash_to_management" id="bsCashMgmt" class="form-control form-control-sm"
+                   value="{{ '{:,.2f}'.format(day.cash_to_management) if day and day.cash_to_management is not none else '' }}"
+                   oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row bs-total"><label id="bsCashDiffLabel">Difference</label><span id="bsCashDiff">&mdash;</span></div>
+        </div>
+      </div>
     </div>
 
     {# ------------------------------------------------ record only #}
@@ -222,18 +238,20 @@
   <div class="bs-head"><strong><i class="fas fa-history me-1 text-primary"></i> Recent Days</strong></div>
   <div class="bs-body table-responsive">
     <table class="bs">
-      <thead><tr><th>Date</th><th class="num">Bar Sales</th><th class="num">Bar Food Sales</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Date</th><th class="num">Bar Sales</th><th class="num">Bar Food Sales</th><th class="num">Cash to Management</th><th class="num">Short / Excess</th><th>Status</th><th></th></tr></thead>
       <tbody>
         {% for r in records %}
         <tr>
           <td>{{ r.entry_date }}</td>
           <td class="num">{{ '{:,.2f}'.format(r.bar_sales or 0) }}</td>
           <td class="num">{{ '{:,.2f}'.format(r.food_sales or 0) }}</td>
+          <td class="num">{{ '{:,.2f}'.format(r.cash_to_management) if r.cash_to_management is not none else '&mdash;' | safe }}</td>
+          <td class="num">{% if r.cash_to_management is not none %}{% set d = (r.cash_to_management or 0) - (r.bar_cash or 0) - (r.food_cash or 0) %}{% if d < -0.005 %}<span class="bs-bad">Short {{ '{:,.2f}'.format(-d) }}</span>{% elif d > 0.005 %}<span class="bs-ok">Excess {{ '{:,.2f}'.format(d) }}</span>{% else %}<span class="bs-ok">Balanced</span>{% endif %}{% else %}&mdash;{% endif %}</td>
           <td>{% if r.status == 'Posted' %}<span class="badge bg-success">Posted &middot; JV {{ r.jv_id }}</span>{% else %}<span class="badge bg-warning text-dark">Parked</span>{% endif %}</td>
           <td><a href="{{ url_for('bar_sales', date=r.entry_date) }}" class="btn btn-sm btn-outline-primary py-0">Open</a></td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="text-center text-muted py-3">No days recorded yet.</td></tr>
+        <tr><td colspan="7" class="text-center text-muted py-3">No days recorded yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -267,6 +285,34 @@ function bsRecalc(rateChanged) {
       chk.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Total differs from Sales by ' + bsFmt(sales - total) + '</span>';
     }
   });
+
+  // Cash handed to management vs the day's cash sales: short or excess
+  let cashTotal = 0;
+  document.querySelectorAll('.bs-sec[data-sec] .bs-cash').forEach(function(i) { cashTotal += bsParse(i.value); });
+  document.getElementById('bsCashTotal').textContent = bsFmt(cashTotal);
+  const mgmtEl = document.getElementById('bsCashMgmt');
+  const diffEl = document.getElementById('bsCashDiff');
+  const diffLbl = document.getElementById('bsCashDiffLabel');
+  if (mgmtEl.value.trim() === '') {
+    diffLbl.textContent = 'Difference';
+    diffEl.innerHTML = '&mdash;';
+    diffEl.className = '';
+  } else {
+    const diff = Math.round((bsParse(mgmtEl.value) - cashTotal) * 100) / 100;
+    if (Math.abs(diff) < 0.005) {
+      diffLbl.textContent = 'Difference';
+      diffEl.textContent = 'Balanced (0.00)';
+      diffEl.className = 'bs-ok';
+    } else if (diff < 0) {
+      diffLbl.textContent = 'Cash Short';
+      diffEl.textContent = bsFmt(-diff);
+      diffEl.className = 'bs-bad';
+    } else {
+      diffLbl.textContent = 'Cash Excess';
+      diffEl.textContent = bsFmt(diff);
+      diffEl.className = 'bs-ok';
+    }
+  }
 
   document.querySelectorAll('.bs-issue-total').forEach(function(td) {
     let t = 0;

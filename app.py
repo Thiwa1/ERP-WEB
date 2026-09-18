@@ -21536,7 +21536,7 @@ def daily_sales_report_mapping_delete(row_id):
 
 BAR_SALES_SECTIONS = (('bar', 'Bar Sales'), ('food', 'Bar Food Sales'))
 BAR_SALES_GL_PARTS = (('sales', 'Sales (credited)'), ('cash', 'Cash'),
-                      ('card', 'Credit Card (net of commission)'), ('commission', 'Card Commission expense'))
+                      ('card', 'Credit Card control account'), ('commission', 'Card Service Charge account'))
 # (key, label, group, has_qty) - record-only breakdown, same order as the sheet
 BAR_SALES_RECORD_LINES = [
     ('BAR_SALES', 'Bar Sales', 'Bar', False),
@@ -21595,20 +21595,25 @@ def _bar_sales_check(day):
             problems.append(f'{sec_label}: Cash {cash:,.2f} + Credit Card {card:,.2f} = {cash + card:,.2f}, '
                             f'but Sales is {sales:,.2f} (difference {sales - cash - card:,.2f}).')
         if comm - card > 0.01:
-            problems.append(f'{sec_label}: Commission {comm:,.2f} is more than the Credit Card amount {card:,.2f}.')
-        lines = [('sales', 0, sales), ('cash', cash, 0), ('card', round(card - comm, 2), 0), ('commission', comm, 0)]
-        for part, dr, cr in lines:
+            problems.append(f'{sec_label}: Service Charge {comm:,.2f} is more than the Credit Card amount {card:,.2f}.')
+        # Full card amount to the Credit Card control account; the service
+        # charge (e.g. 10%) is then moved out of it to the Service Charge
+        # account, so the control account ends at what the bank will pay.
+        lines = [('sales', 0, sales, None), ('cash', cash, 0, None), ('card', card, 0, None),
+                 ('commission', comm, 0, None), ('card', 0, comm, 'Service charge on credit card')]
+        for part, dr, cr, note in lines:
             if not (dr or cr):
                 continue
             acct = gl.get(f'bar_sales_gl_{sec}_{part}')
             sub = gl.get(f'bar_sales_gl_{sec}_{part}_sub')
             sub_code = int(sub) if str(sub or '').isdigit() else 0
-            label = dict(BAR_SALES_GL_PARTS)[part]
+            label = note or dict(BAR_SALES_GL_PARTS)[part]
             if not acct:
                 problems.append(f'{sec_label}: no GL account set for "{label}" - set it on Bar Sales GL Mapping.')
             preview.append({'section': sec_label, 'part': label, 'account': acct or '(not set)',
                             'sub_code': sub_code, 'sub_name': _bar_sales_sub_name(acct, sub_code) if sub_code else '',
                             'dr': dr, 'cr': cr})
+    problems = list(dict.fromkeys(problems))
     return problems, preview
 
 
@@ -21628,7 +21633,8 @@ def bar_sales():
         """, (day['id'],)) or []
     problems, preview = _bar_sales_check(day) if day else ([], [])
     records = db.execute_query("""
-        SELECT entry_date, bar_sales, food_sales, status, jv_id FROM bar_sales_days ORDER BY entry_date DESC LIMIT 60
+        SELECT entry_date, bar_sales, food_sales, bar_cash, food_cash, cash_to_management, status, jv_id
+        FROM bar_sales_days ORDER BY entry_date DESC LIMIT 60
     """) or []
     return render_template('bar_sales.html', entry_date=entry_date, today_date=date.today().strftime('%Y-%m-%d'),
                            day=day, lines=lines, issues=issues, record_lines=BAR_SALES_RECORD_LINES,
@@ -21652,6 +21658,8 @@ def bar_sales_save():
     for sec, _ in BAR_SALES_SECTIONS:
         for part in ('sales', 'cash', 'card', 'commission'):
             vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
+    ctm_raw = (f.get('cash_to_management') or '').replace(',', '').strip()
+    vals['cash_to_management'] = round(parse_float(ctm_raw), 2) if ctm_raw else None
     cols = list(vals.keys())
     user = get_current_user_pk()
     try:

@@ -1456,6 +1456,12 @@ def _migrate_bar_sales_record(cursor):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 
+        # Cash actually handed to management - compared with the day's cash sales
+        # to show a Cash Short / Cash Excess (record only, not posted).
+        cursor.execute("SHOW COLUMNS FROM bar_sales_days LIKE 'cash_to_management'")
+        if not cursor.fetchone():
+            cursor.execute("ALTER TABLE bar_sales_days ADD COLUMN cash_to_management DOUBLE NULL")
+
         cursor.execute("SHOW TABLES LIKE 'bar_sales_lines'")
         if not cursor.fetchone():
             cursor.execute("""
