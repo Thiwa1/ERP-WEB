@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+
+{% block title %}Management Account - {{ cur.month_label }}{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{% if v is none %}&mdash;{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+{% macro pct(v) %}{% if v is none %}&mdash;{% else %}{{ '%.2f'|format(v) }}%{% endif %}{% endmacro %}
+{% set t = cur.t %}{% set pt = prev.t %}
+<style>
+  .ma-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:18px; overflow:hidden; }
+  .ma-body { padding:14px 18px; }
+  .ma-title { text-align:center; margin-bottom:12px; }
+  .ma-title .co { font-weight:800; font-size:1.05rem; }
+  .ma-title .rt { font-weight:700; font-size:0.9rem; color:#555; }
+  table.ma { width:100%; border-collapse:collapse; font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:12.5px; }
+  table.ma th, table.ma td { padding:4px 8px; border-bottom:1px solid #eee; }
+  table.ma th { background:#f2f2f2; border-bottom:1px solid #ccc; font-weight:700; }
+  table.ma .num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  table.ma .note { text-align:center; color:#888; width:60px; }
+  table.ma tr.sec td { font-weight:800; background:#f8fafc; }
+  table.ma tr.sub td { font-weight:700; border-top:1px solid #999; }
+  table.ma tr.gp td { font-weight:800; background:#eaf6ea; border-top:2px solid #107c10; }
+  table.ma tr.np td { font-weight:800; font-size:13.5px; background:#e8f3ff; border-top:2px solid #0078D4; border-bottom:3px double #0078D4; }
+  table.ma tr.muted td { color:#6c757d; }
+  table.ma td.ind { padding-left:26px; }
+  table.ma td.prev { color:#7a7a7a; }
+  .ma-bar { height:10px; background:#0d6efd; border-radius:3px; }
+  .ma-flag { font-size:0.75rem; }
+  @media print {
+    .no-print, .sidebar, nav, .navbar, header { display:none !important; }
+    .ma-card { box-shadow:none; border:0; page-break-inside:avoid; }
+    .tab-pane { display:block !important; opacity:1 !important; margin-bottom:20px; }
+    body { background:#fff !important; }
+  }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-file-invoice-dollar me-2 text-primary"></i>Management Account</h4>
+  <div class="d-flex gap-2 flex-wrap align-items-center">
+    <form method="GET" class="d-flex gap-2 align-items-center">
+      <input type="month" name="month" value="{{ cur.period }}" class="form-control form-control-sm" style="width:170px" onchange="this.form.submit()">
+      <input type="hidden" name="tab" value="{{ tab }}">
+    </form>
+    <a href="{{ url_for('management_account_export', month=cur.period) }}" class="btn btn-outline-success btn-sm"><i class="fas fa-file-excel me-1"></i> Excel</a>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    {% if can_edit %}<a href="{{ url_for('management_account_mapping', month=cur.period) }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-sitemap me-1"></i> Mapping</a>{% endif %}
+  </div>
+</div>
+
+{% if cur.unmapped or cur.duplicates or not (cur.stock.bar.closing_set and cur.stock.food.closing_set) %}
+<div class="alert alert-warning small no-print">
+  <i class="fas fa-exclamation-triangle me-1"></i> <strong>Check before relying on this month:</strong>
+  <ul class="mb-0">
+    {% if not (cur.stock.bar.closing_set and cur.stock.food.closing_set) %}
+    <li>Closing stock not entered yet for {{ cur.month_label }} &mdash; enter it on the <a href="?month={{ cur.period }}&tab=note3">Note 3</a> tab.</li>
+    {% endif %}
+    {% if cur.unmapped %}
+    <li>{{ cur.unmapped | length }} income / expense account(s) have movements this month but aren't on any line
+      (total {{ money(cur.unmapped | sum(attribute='amount')) }}) &mdash; see the <a href="?month={{ cur.period }}&tab=unmapped">Not Mapped</a> tab.</li>
+    {% endif %}
+    {% for d in cur.duplicates %}<li>Counted on more than one line: {{ d }}</li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+<ul class="nav nav-tabs mb-3 no-print">
+  {% for key, label in [('pl', 'P&L'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+{# ================================================================ P&L #}
+<div class="tab-pane fade {{ 'show active' if tab == 'pl' }}" id="ma_pl">
+  <div class="ma-card"><div class="ma-body">
+    <div class="ma-title"><div class="co">{{ company_name if company_name is defined else '' }}</div>
+      <div class="rt">TRADING PROFIT &amp; LOSS ACCOUNT FOR THE MONTH OF {{ cur.month_label | upper }}</div></div>
+    <div class="table-responsive">
+    <table class="ma">
+      <thead><tr><th>Description</th><th class="note">Note</th><th class="num">Rs</th><th class="num">Rs</th><th class="num">{{ prev.month_label }}</th></tr></thead>
+      <tbody>
+        <tr class="sec"><td colspan="5">Sales</td></tr>
+        <tr><td class="ind">Room &amp; Restaurant Revenue</td><td class="note">1</td><td class="num">{{ money(t.sales_rr) }}</td><td></td><td class="num prev">{{ money(pt.sales_rr) }}</td></tr>
+        <tr><td class="ind">Bar Sales</td><td class="note">2</td><td class="num">{{ money(t.sales_bar) }}</td><td class="num fw-bold">{{ money(t.sales) }}</td><td class="num prev">{{ money(pt.sales_bar) }}</td></tr>
+        <tr class="sec"><td colspan="5">Less: Cost of Sales</td></tr>
+        <tr><td class="ind">Bar</td><td class="note">3</td><td class="num">{{ money(t.cogs_bar) }}</td><td></td><td class="num prev">{{ money(pt.cogs_bar) }}</td></tr>
+        <tr><td class="ind">Food</td><td class="note">3</td><td class="num">{{ money(t.cogs_food) }}</td><td class="num">{{ money(t.cogs) }}</td><td class="num prev">{{ money(pt.cogs_food) }}</td></tr>
+        <tr class="gp"><td>Gross Profit</td><td></td><td></td><td class="num">{{ money(t.gross_profit) }}</td><td class="num prev">{{ money(pt.gross_profit) }}</td></tr>
+        <tr><td>Add: Service Charges</td><td></td><td></td><td class="num">{{ money(t.service) }}</td><td class="num prev">{{ money(pt.service) }}</td></tr>
+        <tr class="sub"><td></td><td></td><td></td><td class="num">{{ money(t.after_service) }}</td><td class="num prev">{{ money(pt.after_service) }}</td></tr>
+        <tr class="sec"><td colspan="5">Less: Expenses</td></tr>
+        {% for n, lbl, note in [('NOTE4', 'Administration Expenses', 4), ('NOTE5', 'Selling & Distribution Expenses', 5), ('NOTE6', 'VAT', 6), ('NOTE7', 'Finance Expenses', 7), ('NOTE8', 'Additional Expenses', 8)] %}
+        <tr><td class="ind">{{ lbl }}</td><td class="note">{{ note }}</td><td class="num">{{ money(t[n]) }}</td>
+          <td class="num">{% if loop.last %}{{ money(t.expenses) }}{% endif %}</td><td class="num prev">{{ money(pt[n]) }}</td></tr>
+        {% endfor %}
+        <tr class="np"><td>Net Profit</td><td></td><td></td><td class="num">{{ money(t.net_profit) }}</td><td class="num prev">{{ money(pt.net_profit) }}</td></tr>
+        <tr class="muted"><td>Gross Profit Margin</td><td></td><td></td><td class="num">{{ pct(t.gp_margin) }}</td><td class="num prev">{{ pct(pt.gp_margin) }}</td></tr>
+        <tr class="muted"><td>Net Profit Margin</td><td></td><td></td><td class="num">{{ pct(t.np_margin) }}</td><td class="num prev">{{ pct(pt.np_margin) }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div></div>
+</div>
+
+{# ================================================================ Notes #}
+<div class="tab-pane fade {{ 'show active' if tab == 'notes' }}" id="ma_notes">
+  <div class="row g-3">
+  {% for sec, label, kind in sections if not sec.startswith('PURCH') %}
+    {% set rows = cur.sections[sec] %}
+    <div class="col-xl-6">
+    <div class="ma-card"><div class="ma-body">
+      <div class="fw-bold mb-2">{{ label | upper }}</div>
+      <table class="ma">
+        <thead><tr><th>Description</th><th class="num">{{ cur.month_label }}</th><th class="num">{{ prev.month_label }}</th></tr></thead>
+        <tbody>
+          {% for l in rows %}
+          <tr class="{{ 'muted' if not l.amount }}">
+            <td>{{ l.label }}{% if l.is_manual %} <span class="badge bg-light text-dark border">manual</span>{% elif not l.sources %} <span class="badge bg-warning text-dark ma-flag">not mapped</span>{% endif %}</td>
+            <td class="num">{{ money(l.amount) if l.amount else '' }}</td>
+            <td class="num prev">{{ money(prev_amounts.get(l.id)) if prev_amounts.get(l.id) else '' }}</td>
+          </tr>
+          {% else %}
+          <tr class="muted"><td colspan="3">No lines &mdash; add them on the Mapping screen.</td></tr>
+          {% endfor %}
+          <tr class="sub"><td>TOTAL</td><td class="num">{{ money(rows | sum(attribute='amount')) }}</td>
+            <td class="num prev">{{ money(prev.sections[sec] | sum(attribute='amount')) }}</td></tr>
+        </tbody>
+      </table>
+    </div></div>
+    </div>
+  {% endfor %}
+  </div>
+  {% if can_edit %}
+  {% set manual_lines = [] %}
+  {% for sec, label, kind in sections %}{% for l in cur.sections[sec] if l.is_manual %}{% set _ = manual_lines.append(l) %}{% endfor %}{% endfor %}
+  {% if manual_lines %}
+  <div class="ma-card no-print"><div class="ma-body">
+    <div class="fw-bold mb-2"><i class="fas fa-keyboard me-1"></i> Manual amounts for {{ cur.month_label }}</div>
+    <form method="POST" action="{{ url_for('management_account_save') }}">
+      <input type="hidden" name="month" value="{{ cur.period }}"><input type="hidden" name="tab" value="notes">
+      {% for k in ['opening_bar', 'opening_food', 'opening_hk', 'closing_bar', 'closing_food', 'closing_hk'] %}
+        {% set sk = k.split('_') %}{% set s = cur.stock[sk[1]] %}
+        <input type="hidden" name="{{ k }}" value="{{ (s.opening if s.opening_set and not s.opening_from_prev else '') if sk[0] == 'opening' else (s.closing if s.closing_set else '') }}">
+      {% endfor %}
+      <input type="hidden" name="remarks" value="{{ cur.remarks }}">
+      <div class="row g-2">
+        {% for l in manual_lines %}
+        <div class="col-md-4"><label class="form-label small mb-0">{{ l.label }} <span class="text-muted">({{ section_label[l.section] }})</span></label>
+          <input type="text" inputmode="decimal" name="manual_{{ l.id }}" class="form-control form-control-sm text-end" value="{{ '%.2f'|format(l.amount) if l.amount else '' }}"></div>
+        {% endfor %}
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm mt-2"><i class="fas fa-save me-1"></i> Save manual amounts</button>
+    </form>
+  </div></div>
+  {% endif %}
+  {% endif %}
+</div>
+
+{# ================================================================ Note 3 #}
+<div class="tab-pane fade {{ 'show active' if tab == 'note3' }}" id="ma_note3">
+  <div class="ma-card"><div class="ma-body">
+    <div class="fw-bold mb-2">NOTE 3 &mdash; COST OF SALES &mdash; {{ cur.month_label | upper }}</div>
+    <form method="POST" action="{{ url_for('management_account_save') }}">
+      <input type="hidden" name="month" value="{{ cur.period }}"><input type="hidden" name="tab" value="note3">
+      {% for sec, label, kind in sections %}{% for l in cur.sections[sec] if l.is_manual %}
+      <input type="hidden" name="manual_{{ l.id }}" value="{{ l.amount }}">{% endfor %}{% endfor %}
+      <div class="table-responsive">
+      <table class="ma">
+        <thead><tr><th>Description</th><th class="num">Bar</th><th class="num">Food</th><th class="num">Housekeeping</th></tr></thead>
+        <tbody>
+          <tr><td>Opening Stock as at {{ cur.start.strftime('%d/%m/%Y') }}</td>
+            {% for k in ['bar', 'food', 'hk'] %}{% set s = cur.stock[k] %}
+            <td class="num">
+              {% if can_edit %}
+              <input type="text" inputmode="decimal" name="opening_{{ k }}" class="form-control form-control-sm text-end d-inline-block" style="max-width:150px;"
+                     value="{{ '%.2f'|format(s.opening) if s.opening_set and not s.opening_from_prev else '' }}"
+                     placeholder="{{ '%.2f'|format(s.opening) if s.opening_from_prev else '0.00' }}">
+              {% if s.opening_from_prev %}<div class="small text-muted">last month's closing</div>{% endif %}
+              {% else %}{{ money(s.opening) }}{% endif %}
+            </td>{% endfor %}</tr>
+          <tr><td>Add: Purchases</td><td class="num">{{ money(t.purch_bar) }}</td><td class="num">{{ money(t.purch_food) }}</td><td class="num">{{ money(t.purch_hk) }}</td></tr>
+          <tr><td>Less: Closing Stock as at {{ cur.end.strftime('%d/%m/%Y') }}</td>
+            {% for k in ['bar', 'food', 'hk'] %}{% set s = cur.stock[k] %}
+            <td class="num">
+              {% if can_edit %}
+              <input type="text" inputmode="decimal" name="closing_{{ k }}" class="form-control form-control-sm text-end d-inline-block {{ '' if s.closing_set else 'border-danger' }}" style="max-width:150px;"
+                     value="{{ '%.2f'|format(s.closing) if s.closing_set else '' }}" placeholder="enter">
+              {% else %}{{ money(s.closing) }}{% endif %}
+            </td>{% endfor %}</tr>
+          <tr class="sub"><td>Cost Of Sales</td><td class="num">{{ money(t.cogs_bar) }}</td><td class="num">{{ money(t.cogs_food) }}</td><td class="num">{{ money(t.cogs_hk) }}</td></tr>
+          <tr class="muted"><td>Sales</td><td class="num">{{ money(t.base_bar) }}</td><td class="num">{{ money(t.base_food) }}</td><td></td></tr>
+          <tr class="gp"><td>Cost %</td><td class="num">{{ pct(t.cost_pct_bar) }}</td><td class="num">{{ pct(t.cost_pct_food) }}</td><td></td></tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="small text-muted mt-2">
+        Purchases come from supplier invoices by Main Category (and any GL lines added) &mdash; see the breakdown below.
+        Housekeeping is shown here but, as in the workbook, isn't part of Cost of Sales on the P&amp;L.
+        Sales for Cost % = Note 1 / Note 2 lines marked Bar or Food on the Mapping screen.
+      </div>
+      {% if can_edit %}
+      <div class="row g-2 mt-2 align-items-end">
+        <div class="col-md-8"><label class="form-label small mb-0">Remarks</label>
+          <input type="text" name="remarks" class="form-control form-control-sm" value="{{ cur.remarks }}"></div>
+        <div class="col-md-4 text-end"><button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i> Save stock</button></div>
+      </div>
+      {% endif %}
+    </form>
+
+    <div class="row g-3 mt-2">
+      {% for sec in ['PURCH_BAR', 'PURCH_FOOD', 'PURCH_HK'] %}
+      <div class="col-md-4">
+        <table class="ma">
+          <thead><tr><th>{{ section_label[sec] }}</th><th class="num">Rs</th></tr></thead>
+          <tbody>
+            {% for l in cur.sections[sec] %}<tr><td>{{ l.label }}</td><td class="num">{{ money(l.amount) }}</td></tr>
+            {% else %}<tr class="muted"><td colspan="2">No lines</td></tr>{% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+  </div></div>
+</div>
+
+{# ================================================================ Sales % #}
+<div class="tab-pane fade {{ 'show active' if tab == 'pct' }}" id="ma_pct">
+  <div class="ma-card"><div class="ma-body">
+    <div class="fw-bold mb-2">SALES PERCENTAGE ANALYSING REPORT &mdash; {{ cur.month_label | upper }}</div>
+    <table class="ma">
+      <thead><tr><th>Sales Location</th><th class="num">Total Revenue</th><th class="num">%</th><th style="width:30%"></th></tr></thead>
+      <tbody>
+        {% for s in cur.sales_pct | sort(attribute='amount', reverse=True) if s.amount %}
+        <tr><td>{{ s.label }} <span class="text-muted small">({{ 'Note 1' if s.section == 'NOTE1' else 'Note 2' }})</span></td>
+          <td class="num">{{ money(s.amount) }}</td><td class="num">{{ '%.2f'|format(s.pct) }}%</td>
+          <td><div class="ma-bar" style="width:{{ [s.pct, 100] | min }}%;"></div></td></tr>
+        {% endfor %}
+        <tr class="sub"><td>TOTAL</td><td class="num">{{ money(t.sales) }}</td><td class="num">{{ '100.00%' if t.sales else '' }}</td><td></td></tr>
+      </tbody>
+    </table>
+  </div></div>
+</div>
+
+{# ================================================================ Not mapped #}
+<div class="tab-pane fade {{ 'show active' if tab == 'unmapped' }}" id="ma_unmapped">
+  <div class="ma-card"><div class="ma-body">
+    <div class="fw-bold mb-1">Income / expense accounts with movements in {{ cur.month_label }} that aren't on any line</div>
+    <div class="small text-muted mb-2">These are left out of the report. Link each one to a line on the
+      {% if can_edit %}<a href="{{ url_for('management_account_mapping', month=cur.period) }}">Mapping</a>{% else %}Mapping{% endif %} screen.</div>
+    <table class="ma">
+      <thead><tr><th>Account</th><th>Sub-account</th><th>Type</th><th class="num">Amount</th></tr></thead>
+      <tbody>
+        {% for u in cur.unmapped %}
+        <tr><td>{{ u.account }}</td><td>{{ u.sub_name or ('code ' ~ u.sub_code if u.sub_code else '(none)') }}</td>
+          <td>{{ u.kind | title }}</td><td class="num">{{ money(u.amount) }}</td></tr>
+        {% else %}
+        <tr class="muted"><td colspan="4"><i class="fas fa-check-circle text-success me-1"></i> Everything is mapped.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+</div>
+</div>
+{% endblock %}

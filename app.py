@@ -235,6 +235,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'custom_balance_sheet','label': 'Custom Balance Sheet','url': '/balance_sheet_custom',   'icon': 'fas fa-balance-scale',       'category': 'Reports'},
     {'key': 'profit_loss',        'label': 'Profit & Loss',        'url': '/profit_loss',            'icon': 'fas fa-chart-pie',           'category': 'Reports'},
     {'key': 'custom_profit_loss', 'label': 'Custom Profit & Loss', 'url': '/profit_loss_custom',     'icon': 'fas fa-chart-pie',           'category': 'Reports'},
+    {'key': 'management_account', 'label': 'Management Account', 'url': '/management_account', 'icon': 'fas fa-file-invoice-dollar', 'category': 'Reports'},
     {'key': 'cash_flow',          'label': 'Cash Flow Statement',  'url': '/cash_flow',              'icon': 'fas fa-water',               'category': 'Reports'},
     {'key': 'job_profit_analysis','label': 'Job Profit Analysis',  'url': '/job_profit_analysis',    'icon': 'fas fa-briefcase',           'category': 'Reports'},
     # Settings
@@ -21519,6 +21520,403 @@ def daily_sales_report_mapping_delete(row_id):
     db.execute_query("DELETE FROM daily_sales_report_rows WHERE id = %s", (row_id,), commit=True)
     flash('Report row removed.', 'success')
     return redirect(url_for('daily_sales_report_mapping'))
+
+
+# ================================================================
+# ── MANAGEMENT ACCOUNT (monthly P&L with Notes 1-8) ─────────────
+# Mirrors the accountant's "Management Account" workbook. Every line is
+# fed from the GL (an account, or one sub-account of it) or from supplier
+# purchases by Main Category, as linked on the Mapping screen; opening /
+# closing stock is typed in each month.
+#   Sales (Note 1 + Note 2) - Cost of Sales (Bar + Food: opening + purchases
+#   - closing) = Gross Profit; + Service Charges - Notes 4-8 = Net Profit.
+# ================================================================
+
+MGMT_SECTIONS = [
+    ('NOTE1', 'Note 1 - Room & Restaurant Sales', 'income'),
+    ('NOTE2', 'Note 2 - Bar Sales', 'income'),
+    ('SERVICE', 'Service Charges', 'income'),
+    ('PURCH_BAR', 'Purchases - Bar (Note 3)', 'expense'),
+    ('PURCH_FOOD', 'Purchases - Food (Note 3)', 'expense'),
+    ('PURCH_HK', 'Purchases - Housekeeping (Note 3)', 'expense'),
+    ('NOTE4', 'Note 4 - Administration Expenses', 'expense'),
+    ('NOTE5', 'Note 5 - Selling & Distribution Expenses', 'expense'),
+    ('NOTE6', 'Note 6 - VAT', 'expense'),
+    ('NOTE7', 'Note 7 - Finance Expenses', 'expense'),
+    ('NOTE8', 'Note 8 - Additional Expenses', 'expense'),
+]
+MGMT_SECTION_LABEL = {k: l for k, l, _ in MGMT_SECTIONS}
+MGMT_SECTION_KIND = {k: kind for k, _, kind in MGMT_SECTIONS}
+
+
+def _mgmt_period(raw):
+    """'2026-08' -> ('2026-08', first day, last day, previous period)."""
+    try:
+        start = datetime.strptime((raw or '').strip()[:7] + '-01', '%Y-%m-%d').date()
+    except ValueError:
+        start = date.today().replace(day=1)
+    nxt = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    end = nxt - timedelta(days=1)
+    prev = (start - timedelta(days=1)).strftime('%Y-%m')
+    return start.strftime('%Y-%m'), start, end, prev
+
+
+def _mgmt_lines(active_only=True):
+    where = "WHERE is_active = 1" if active_only else ""
+    lines = db.execute_query(f"""
+        SELECT id, section, label, display_order, cost_base, is_manual, is_active
+        FROM mgmt_acc_lines {where} ORDER BY display_order, id
+    """) or []
+    sources = db.execute_query("""
+        SELECT id, line_id, source_type, gl_account, sub_account_code, purchase_category, sign
+        FROM mgmt_acc_sources ORDER BY id
+    """) or []
+    by_line = {}
+    for s in sources:
+        by_line.setdefault(s['line_id'], []).append(s)
+    for ln in lines:
+        ln['sources'] = by_line.get(ln['id'], [])
+    return lines
+
+
+def _mgmt_compute(period_raw):
+    period, start, end, prev_period = _mgmt_period(period_raw)
+    lines = _mgmt_lines()
+
+    # GL movements for the month, per account and sub-account
+    gl_pair, gl_acct = {}, {}
+    for r in db.execute_query("""
+        SELECT account_name, COALESCE(entry_sub_account_code, 0) AS sub,
+               COALESCE(SUM(enty_values_DR), 0) AS dr, COALESCE(SUM(enty_values_CR), 0) AS cr
+        FROM entry_details
+        WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+        GROUP BY account_name, COALESCE(entry_sub_account_code, 0)
+    """, (start, end)) or []:
+        key = ' '.join(str(r['account_name'] or '').split()).lower()
+        dr, cr = float(r['dr'] or 0), float(r['cr'] or 0)
+        gl_pair[(key, int(r['sub'] or 0))] = (dr, cr, r['account_name'])
+        a = gl_acct.setdefault(key, [0.0, 0.0, r['account_name']])
+        a[0] += dr
+        a[1] += cr
+
+    purch = {}
+    try:
+        prow, _t = _supplier_purchasing_rows(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'), None)
+        for r in prow:
+            k = str(r['category'] or '').strip().lower()
+            purch[k] = purch.get(k, 0.0) + float(r['gross'] or 0)
+    except Exception:
+        prow = []
+
+    manual = {r['line_id']: float(r['amount'] or 0) for r in (
+        db.execute_query("SELECT line_id, amount FROM mgmt_acc_manual WHERE period = %s", (period,)) or [])}
+
+    mapped_whole, mapped_pairs, used = set(), set(), {}
+    sections = {k: [] for k, _, _ in MGMT_SECTIONS}
+    for ln in lines:
+        kind = MGMT_SECTION_KIND.get(ln['section'], 'expense')
+        amount = 0.0
+        if ln['is_manual']:
+            amount = manual.get(ln['id'], 0.0)
+        else:
+            for s in ln['sources']:
+                sign = -1 if int(s['sign'] or 1) < 0 else 1
+                if s['source_type'] == 'PURCH':
+                    amount += sign * purch.get(str(s['purchase_category'] or '').strip().lower(), 0.0)
+                    continue
+                key = ' '.join(str(s['gl_account'] or '').split()).lower()
+                if not key:
+                    continue
+                if s['sub_account_code']:
+                    pair = (key, int(s['sub_account_code']))
+                    dr, cr = gl_pair.get(pair, (0.0, 0.0, None))[:2]
+                    mapped_pairs.add(pair)
+                    used.setdefault(pair, []).append(ln['label'])
+                else:
+                    dr, cr = gl_acct.get(key, [0.0, 0.0, None])[:2]
+                    mapped_whole.add(key)
+                    used.setdefault((key, None), []).append(ln['label'])
+                amount += sign * ((cr - dr) if kind == 'income' else (dr - cr))
+        ln['amount'] = round(amount, 2)
+        if ln['section'] in sections:
+            sections[ln['section']].append(ln)
+
+    # Income / expense accounts with activity this month that no line picks up
+    inc_exp = {}
+    for r in db.execute_query("""
+        SELECT account_name, account_income, account_expenses FROM new_account_table
+        WHERE account_income = 1 OR account_expenses = 1
+    """) or []:
+        inc_exp[' '.join(str(r['account_name'] or '').split()).lower()] = 'income' if r['account_income'] else 'expense'
+    sub_names = {}
+    for r in db.execute_query("SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or []:
+        sub_names[(' '.join(str(r['sub_new_account'] or '').split()).lower(), int(r['sub_account_code'] or 0))] = r['sub_sub_accaount_name']
+    unmapped = []
+    for (key, sub), (dr, cr, name) in gl_pair.items():
+        kind = inc_exp.get(key)
+        if not kind or key in mapped_whole or (key, sub) in mapped_pairs:
+            continue
+        amt = round((cr - dr) if kind == 'income' else (dr - cr), 2)
+        if abs(amt) < 0.005:
+            continue
+        unmapped.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
+                         'kind': kind, 'amount': amt})
+    unmapped.sort(key=lambda u: (u['kind'], -abs(u['amount'])))
+    duplicates = []
+    for (key, sub), labels in used.items():
+        if len(labels) > 1 or (sub is not None and key in mapped_whole):
+            name = gl_acct.get(key, [0, 0, key])[2] if key in gl_acct else key
+            duplicates.append(f"{name}{' / sub ' + str(sub) if sub else ''}: " + ', '.join(sorted(set(labels))))
+
+    # Stock - opening defaults to last month's closing
+    mrow = db.execute_query("SELECT * FROM mgmt_acc_months WHERE period = %s", (period,)) or []
+    mrow = mrow[0] if mrow else {}
+    prow_m = db.execute_query("SELECT * FROM mgmt_acc_months WHERE period = %s", (prev_period,)) or []
+    prow_m = prow_m[0] if prow_m else {}
+    stock = {}
+    for k in ('bar', 'food', 'hk'):
+        op = mrow.get(f'opening_{k}')
+        op_from_prev = False
+        if op is None and prow_m.get(f'closing_{k}') is not None:
+            op, op_from_prev = prow_m.get(f'closing_{k}'), True
+        stock[k] = {'opening': float(op or 0), 'opening_set': op is not None, 'opening_from_prev': op_from_prev,
+                    'closing': float(mrow.get(f'closing_{k}') or 0), 'closing_set': mrow.get(f'closing_{k}') is not None}
+
+    def ssum(sec):
+        return round(sum(l['amount'] for l in sections.get(sec, [])), 2)
+
+    t = {'sales_rr': ssum('NOTE1'), 'sales_bar': ssum('NOTE2'), 'service': ssum('SERVICE'),
+         'purch_bar': ssum('PURCH_BAR'), 'purch_food': ssum('PURCH_FOOD'), 'purch_hk': ssum('PURCH_HK')}
+    for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8'):
+        t[n] = ssum(n)
+    t['sales'] = round(t['sales_rr'] + t['sales_bar'], 2)
+    for k in ('bar', 'food', 'hk'):
+        t[f'cogs_{k}'] = round(stock[k]['opening'] + t[f'purch_{k}'] - stock[k]['closing'], 2)
+    t['cogs'] = round(t['cogs_bar'] + t['cogs_food'], 2)          # HK shown in Note 3 only, as in the workbook
+    t['gross_profit'] = round(t['sales'] - t['cogs'], 2)
+    t['after_service'] = round(t['gross_profit'] + t['service'], 2)
+    t['expenses'] = round(sum(t[n] for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8')), 2)
+    t['net_profit'] = round(t['after_service'] - t['expenses'], 2)
+    t['gp_margin'] = (t['gross_profit'] / t['sales'] * 100) if t['sales'] else None
+    t['np_margin'] = (t['net_profit'] / t['sales'] * 100) if t['sales'] else None
+    for base in ('BAR', 'FOOD'):
+        b = round(sum(l['amount'] for sec in ('NOTE1', 'NOTE2') for l in sections[sec] if l['cost_base'] == base), 2)
+        t[f'base_{base.lower()}'] = b
+        t[f'cost_pct_{base.lower()}'] = (t[f'cogs_{base.lower()}'] / b * 100) if b else None
+
+    sales_pct = []
+    for sec in ('NOTE1', 'NOTE2'):
+        for l in sections[sec]:
+            sales_pct.append({'label': l['label'], 'section': sec, 'amount': l['amount'],
+                              'pct': (l['amount'] / t['sales'] * 100) if t['sales'] else 0})
+
+    return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
+            'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
+            'unmapped': unmapped, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
+            'sales_pct': sales_pct}
+
+
+@app.route('/management_account', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def management_account():
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    prev_amounts = {l['id']: l['amount'] for sec in prev['sections'].values() for l in sec}
+    return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
+                           sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
+                           company_name=_company_display_name(),
+                           can_edit=check_permission('Access_Accounting'),
+                           tab=request.args.get('tab') or 'pl')
+
+
+@app.route('/management_account/save', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def management_account_save():
+    period, _s, _e, _p = _mgmt_period(request.form.get('month'))
+    f = request.form
+
+    def opt(name):
+        raw = (f.get(name) or '').replace(',', '').strip()
+        return round(parse_float(raw), 2) if raw else None
+
+    vals = {k: opt(k) for k in ('opening_bar', 'opening_food', 'opening_hk', 'closing_bar', 'closing_food', 'closing_hk')}
+    vals['remarks'] = (f.get('remarks') or '').strip()[:500] or None
+    cols = list(vals)
+    try:
+        if db.execute_query("SELECT id FROM mgmt_acc_months WHERE period = %s", (period,)):
+            db.execute_query(f"UPDATE mgmt_acc_months SET {', '.join(c + '=%s' for c in cols)}, updated_by=%s, updated_date=NOW() WHERE period=%s",
+                             tuple(vals[c] for c in cols) + (get_current_user_pk(), period), commit=True)
+        else:
+            db.execute_query(f"INSERT INTO mgmt_acc_months (period, {', '.join(cols)}, updated_by, updated_date) VALUES (%s, {', '.join(['%s'] * len(cols))}, %s, NOW())",
+                             (period,) + tuple(vals[c] for c in cols) + (get_current_user_pk(),), commit=True)
+        for key in f:
+            if key.startswith('manual_') and key[7:].isdigit():
+                amt = round(parse_float((f.get(key) or '').replace(',', '')), 2)
+                db.execute_query("""
+                    INSERT INTO mgmt_acc_manual (period, line_id, amount) VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE amount = VALUES(amount)
+                """, (period, int(key[7:]), amt), commit=True)
+        flash(f'Management Account inputs for {period} saved.', 'success')
+    except Exception as e:
+        flash(f'Error saving: {str(e)}', 'danger')
+    return redirect(url_for('management_account', month=period, tab=f.get('tab') or 'note3'))
+
+
+@app.route('/management_account/export')
+@login_required
+@has_permission('Access_Reports')
+def management_account_export():
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('management_account', month=cur['period']))
+    t, pt = cur['t'], prev['t']
+    company = _company_display_name()
+    head = ['Description', cur['month_label'], prev['month_label']]
+
+    wb, ws = xl.new_workbook('P&L')
+    row = xl.title_block(ws, 3, company, 'TRADING PROFIT & LOSS ACCOUNT', f"For the month of {cur['month_label']}")
+    row = xl.header_row(ws, row, head)
+    row = xl.section_row(ws, row, 3, 'Sales')
+    row = xl.item_row(ws, row, 'Room & Restaurant Revenue (Note 1)', [t['sales_rr'], pt['sales_rr']])
+    row = xl.item_row(ws, row, 'Bar Sales (Note 2)', [t['sales_bar'], pt['sales_bar']])
+    row = xl.total_row(ws, row, 'Total Sales', [t['sales'], pt['sales']])
+    row = xl.section_row(ws, row, 3, 'Less: Cost of Sales (Note 3)', color=xl.RED_DARK, bg='FDECEA')
+    row = xl.item_row(ws, row, 'Bar', [t['cogs_bar'], pt['cogs_bar']])
+    row = xl.item_row(ws, row, 'Food', [t['cogs_food'], pt['cogs_food']])
+    row = xl.total_row(ws, row, 'Total Cost of Sales', [t['cogs'], pt['cogs']])
+    row = xl.total_row(ws, row, 'Gross Profit', [t['gross_profit'], pt['gross_profit']], bg='EAF6EA')
+    row = xl.item_row(ws, row, 'Add: Service Charges', [t['service'], pt['service']])
+    row = xl.total_row(ws, row, '', [t['after_service'], pt['after_service']])
+    row = xl.section_row(ws, row, 3, 'Less: Expenses', color=xl.RED_DARK, bg='FDECEA')
+    for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8'):
+        row = xl.item_row(ws, row, MGMT_SECTION_LABEL[n], [t[n], pt[n]])
+    row = xl.total_row(ws, row, 'Total Expenses', [t['expenses'], pt['expenses']])
+    row = xl.total_row(ws, row, 'Net Profit', [t['net_profit'], pt['net_profit']], bg='E8F3FF', size=11)
+    row = xl.item_row(ws, row, 'Gross Profit Margin %', [t['gp_margin'] or 0, pt['gp_margin'] or 0])
+    row = xl.item_row(ws, row, 'Net Profit Margin %', [t['np_margin'] or 0, pt['np_margin'] or 0])
+    xl.finish(ws, 3)
+
+    for sec, label, _kind in MGMT_SECTIONS:
+        if sec.startswith('PURCH'):
+            continue
+        ws = wb.create_sheet(label.split(' - ')[0][:31] if sec.startswith('NOTE') else 'Service Charges')
+        row = xl.title_block(ws, 3, company, label.upper(), cur['month_label'])
+        row = xl.header_row(ws, row, head)
+        pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
+        for l in cur['sections'].get(sec, []):
+            row = xl.item_row(ws, row, l['label'], [l['amount'], pmap.get(l['id'], 0)])
+        row = xl.total_row(ws, row, 'TOTAL', [sum(l['amount'] for l in cur['sections'].get(sec, [])),
+                                             sum(l['amount'] for l in prev['sections'].get(sec, []))])
+        xl.finish(ws, 3)
+
+    ws = wb.create_sheet('Note 3 - Cost of Sales')
+    row = xl.title_block(ws, 4, company, 'NOTE 3 - COST OF SALES', cur['month_label'])
+    row = xl.header_row(ws, row, ['Description', 'Bar', 'Food', 'Housekeeping'])
+    st = cur['stock']
+    row = xl.item_row(ws, row, 'Opening Stock', [st['bar']['opening'], st['food']['opening'], st['hk']['opening']])
+    row = xl.item_row(ws, row, 'Add: Purchases', [t['purch_bar'], t['purch_food'], t['purch_hk']])
+    row = xl.item_row(ws, row, 'Less: Closing Stock', [st['bar']['closing'], st['food']['closing'], st['hk']['closing']])
+    row = xl.total_row(ws, row, 'Cost of Sales', [t['cogs_bar'], t['cogs_food'], t['cogs_hk']])
+    row = xl.item_row(ws, row, 'Sales base', [t['base_bar'], t['base_food'], 0])
+    row = xl.item_row(ws, row, 'Cost %', [t['cost_pct_bar'] or 0, t['cost_pct_food'] or 0, 0])
+    xl.finish(ws, 4)
+
+    ws = wb.create_sheet('Sales Percentage')
+    row = xl.title_block(ws, 3, company, 'SALES PERCENTAGE ANALYSIS', cur['month_label'])
+    row = xl.header_row(ws, row, ['Sales Location', 'Revenue', '%'])
+    for s in cur['sales_pct']:
+        row = xl.item_row(ws, row, s['label'], [s['amount'], s['pct']])
+    row = xl.total_row(ws, row, 'TOTAL', [t['sales'], 100 if t['sales'] else 0])
+    xl.finish(ws, 3)
+    return xl.workbook_response(wb, f"Management_Account_{cur['period']}.xlsx")
+
+
+@app.route('/management_account/mapping', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def management_account_mapping():
+    if request.method == 'POST':
+        try:
+            payload = json.loads(request.form.get('mapping_json') or '{}')
+        except (ValueError, TypeError):
+            flash('Could not read the mapping - please try again.', 'danger')
+            return redirect(url_for('management_account_mapping'))
+        valid_sections = {k for k, _, _ in MGMT_SECTIONS}
+        try:
+            for lid in payload.get('deleted') or []:
+                if str(lid).isdigit():
+                    db.execute_query("DELETE FROM mgmt_acc_lines WHERE id = %s", (int(lid),), commit=True)
+            for ln in payload.get('lines') or []:
+                section = ln.get('section')
+                label = ' '.join(str(ln.get('label') or '').split())[:150]
+                if section not in valid_sections or not label:
+                    continue
+                cost_base = ln.get('cost_base') if ln.get('cost_base') in ('BAR', 'FOOD') else None
+                order = int(parse_float(ln.get('order')) or 0)
+                is_manual = 1 if ln.get('is_manual') else 0
+                if str(ln.get('id') or '').isdigit():
+                    line_id = int(ln['id'])
+                    db.execute_query("""
+                        UPDATE mgmt_acc_lines SET section=%s, label=%s, display_order=%s, cost_base=%s, is_manual=%s, is_active=1
+                        WHERE id=%s
+                    """, (section, label, order, cost_base, is_manual, line_id), commit=True)
+                else:
+                    line_id = db.execute_query("""
+                        INSERT INTO mgmt_acc_lines (section, label, display_order, cost_base, is_manual)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (section, label, order, cost_base, is_manual), commit=True)
+                db.execute_query("DELETE FROM mgmt_acc_sources WHERE line_id = %s", (line_id,), commit=True)
+                for s in ln.get('sources') or []:
+                    sign = -1 if str(s.get('sign')) == '-1' else 1
+                    if s.get('type') == 'PURCH':
+                        cat = str(s.get('category') or '').strip()[:100]
+                        if cat:
+                            db.execute_query("""
+                                INSERT INTO mgmt_acc_sources (line_id, source_type, purchase_category, sign)
+                                VALUES (%s, 'PURCH', %s, %s)
+                            """, (line_id, cat, sign), commit=True)
+                    else:
+                        acct = str(s.get('account') or '').strip()[:150]
+                        sub = str(s.get('sub') or '').strip()
+                        if acct:
+                            db.execute_query("""
+                                INSERT INTO mgmt_acc_sources (line_id, source_type, gl_account, sub_account_code, sign)
+                                VALUES (%s, 'GL', %s, %s, %s)
+                            """, (line_id, acct, int(sub) if sub.isdigit() and int(sub) else None, sign), commit=True)
+            flash('Management Account mapping saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving mapping: {str(e)}', 'danger')
+        return redirect(url_for('management_account_mapping', month=request.form.get('month') or ''))
+
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    cur = _mgmt_compute(month)
+    lines = _mgmt_lines()
+    amounts = {l['id']: l['amount'] for sec in cur['sections'].values() for l in sec}
+    accounts = db.execute_query("""
+        SELECT account_name, account_income, account_expenses FROM new_account_table WHERE account_active = 1 ORDER BY account_name
+    """) or []
+    categories = db.execute_query("""
+        SELECT DISTINCT Main_Catogry AS c FROM inventoy_items WHERE Main_Catogry IS NOT NULL AND Main_Catogry <> '' ORDER BY Main_Catogry
+    """) or []
+    sub_accounts = {}
+    for r in db.execute_query("""
+        SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1
+        ORDER BY sub_sub_accaount_name
+    """) or []:
+        sub_accounts.setdefault(r['sub_new_account'], []).append({'code': r['sub_account_code'], 'name': r['sub_sub_accaount_name']})
+    for ln in lines:
+        ln['amount'] = amounts.get(ln['id'], 0)
+        for s in ln['sources']:
+            s.pop('id', None)
+    return render_template('management_account_mapping.html', lines=lines, sections=MGMT_SECTIONS,
+                           accounts=accounts, categories=[c['c'] for c in categories],
+                           sub_accounts=sub_accounts, cur=cur, month=cur['period'])
 
 
 # ================================================================

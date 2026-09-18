@@ -1,0 +1,220 @@
+{% extends "base.html" %}
+
+{% block title %}Management Account - Mapping{% endblock %}
+
+{% block content %}
+<style>
+  .mm-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:16px; overflow:hidden; }
+  .mm-head { padding:8px 14px; background:#f3f7fc; border-bottom:1px solid rgba(0,0,0,0.06);
+             display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+  .mm-body { padding:8px 14px; }
+  table.mm { width:100%; border-collapse:collapse; font-size:0.8rem; }
+  table.mm td, table.mm th { border-bottom:1px solid #eee; padding:4px 6px; vertical-align:top; }
+  table.mm th { background:#fafafa; font-size:0.72rem; text-transform:uppercase; color:#666; }
+  .mm-src { display:flex; gap:4px; align-items:center; margin-bottom:3px; flex-wrap:wrap; }
+  .mm-src .form-control, .mm-src .form-select { font-size:0.76rem; padding:2px 6px; height:26px; }
+  .mm-amt { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
+  .mm-save-bar { position:sticky; top:0; z-index:40; background:#fff; padding:8px 0; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-sitemap me-2 text-primary"></i>Management Account &mdash; Mapping</h4>
+  <a href="{{ url_for('management_account', month=month) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Management Account</a>
+</div>
+
+<div class="mm-save-bar d-flex align-items-center justify-content-between flex-wrap gap-2">
+  <span class="small text-muted">
+    Link each report line to a <strong>GL account</strong> (all of it, or one <strong>sub-account</strong>) or to a
+    <strong>purchase Main Category</strong>. A line can have several sources; use <strong>&minus;</strong> to deduct one.
+    Tick <strong>Manual</strong> for a line you'll type in each month instead. Amounts shown are for {{ cur.month_label }}.
+  </span>
+  <form method="POST" id="mmForm" class="d-flex gap-2 align-items-center">
+    <input type="hidden" name="mapping_json" id="mmJson">
+    <input type="hidden" name="month" value="{{ month }}">
+    <span id="mmDirty" class="small text-danger fw-semibold" style="display:none;">Not saved yet</span>
+    <button type="button" class="btn btn-success btn-sm" onclick="mmSave()"><i class="fas fa-save me-1"></i> Save Mapping</button>
+  </form>
+</div>
+
+{% if cur.unmapped %}
+<div class="mm-card">
+  <div class="mm-head"><strong class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Not mapped in {{ cur.month_label }} ({{ cur.unmapped | length }})</strong>
+    <span class="small text-muted">Pick a line and click Link &mdash; then Save Mapping.</span></div>
+  <div class="mm-body">
+    <table class="mm">
+      <thead><tr><th>Account</th><th>Sub-account</th><th>Type</th><th class="text-end">Amount</th><th style="width:40%">Add to line</th></tr></thead>
+      <tbody>
+        {% for u in cur.unmapped %}
+        <tr>
+          <td>{{ u.account }}</td><td>{{ u.sub_name or ('(none)' if not u.sub_code else 'code ' ~ u.sub_code) }}</td>
+          <td>{{ u.kind | title }}</td><td class="mm-amt">{{ '{:,.2f}'.format(u.amount) }}</td>
+          <td class="d-flex gap-1">
+            <select class="form-select form-select-sm mm-link-line"></select>
+            <button type="button" class="btn btn-sm btn-outline-primary" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
+                    onclick="mmLink(this)">Link</button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div id="mmSections"></div>
+
+<datalist id="mmAccounts">{% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}</datalist>
+
+<script>
+const MM_SECTIONS = {{ sections | tojson }};
+const MM_LINES = {{ lines | tojson }};
+const MM_SUBS = {{ sub_accounts | tojson }};
+const MM_CATS = {{ categories | tojson }};
+const MM_DELETED = [];
+let mmNewId = 0;
+
+function mmEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+function mmFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+function mmDirty() { document.getElementById('mmDirty').style.display = ''; }
+
+function mmSubOptions(account, selected) {
+  const subs = MM_SUBS[account] || [];
+  let h = '<option value="">' + (subs.length ? 'All sub-accounts' : '(no sub-accounts)') + '</option>';
+  subs.forEach(function(s) {
+    h += '<option value="' + s.code + '"' + (String(s.code) === String(selected || '') ? ' selected' : '') + '>' + mmEsc(s.name) + '</option>';
+  });
+  return h;
+}
+
+function mmSourceHtml(s) {
+  s = s || {source_type: 'GL'};
+  const isP = s.source_type === 'PURCH';
+  let cats = '<option value="">- category -</option>';
+  MM_CATS.forEach(function(c) { cats += '<option' + (c === s.purchase_category ? ' selected' : '') + '>' + mmEsc(c) + '</option>'; });
+  if (s.purchase_category && MM_CATS.indexOf(s.purchase_category) === -1) cats += '<option selected>' + mmEsc(s.purchase_category) + '</option>';
+  return '<div class="mm-src">' +
+    '<select class="form-select mm-s-type" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
+    '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
+    '<select class="form-select mm-s-sub" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
+    '<select class="form-select mm-s-cat" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
+    '<select class="form-select mm-s-sign" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
+    '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="this.parentNode.remove(); mmDirty();"></i>' +
+  '</div>';
+}
+
+function mmLineHtml(l) {
+  const incomeSales = l.section === 'NOTE1' || l.section === 'NOTE2';
+  let srcs = '';
+  (l.sources || []).forEach(function(s) { srcs += mmSourceHtml(s); });
+  return '<tr class="mm-line" data-id="' + mmEsc(l.id) + '" data-section="' + l.section + '">' +
+    '<td style="width:60px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
+    '<td style="width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
+      (incomeSales ? '<select class="form-select form-select-sm mt-1 mm-cost" onchange="mmDirty()"><option value="">Cost %: none</option>' +
+        '<option value="BAR"' + (l.cost_base === 'BAR' ? ' selected' : '') + '>Cost %: Bar</option>' +
+        '<option value="FOOD"' + (l.cost_base === 'FOOD' ? ' selected' : '') + '>Cost %: Food</option></select>' : '') +
+      '<label class="small mt-1 d-block"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual (type each month)</label></td>' +
+    '<td><div class="mm-srcs">' + srcs + '</div>' +
+      '<button type="button" class="btn btn-sm btn-link p-0" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
+    '<td class="mm-amt" style="width:110px">' + (l.id && !String(l.id).startsWith('new') ? mmFmt(l.amount) : '') + '</td>' +
+    '<td style="width:30px"><i class="fas fa-trash text-danger" style="cursor:pointer" title="Delete line" onclick="mmDeleteLine(this)"></i></td>' +
+  '</tr>';
+}
+
+function mmRender() {
+  let h = '';
+  MM_SECTIONS.forEach(function(sec) {
+    const key = sec[0];
+    let rows = '';
+    MM_LINES.filter(function(l) { return l.section === key; }).forEach(function(l) { rows += mmLineHtml(l); });
+    h += '<div class="mm-card"><div class="mm-head"><strong>' + mmEsc(sec[1]) + '</strong>' +
+      '<span class="small text-muted">' + (sec[2] === 'income' ? 'income: credit - debit' : 'cost: debit - credit') + '</span>' +
+      '<button type="button" class="btn btn-sm btn-outline-primary" onclick="mmAddLine(\'' + key + '\')"><i class="fas fa-plus"></i> Add line</button></div>' +
+      '<div class="mm-body table-responsive"><table class="mm"><thead><tr><th>Order</th><th>Line</th><th>Sources</th><th class="text-end">This month</th><th></th></tr></thead>' +
+      '<tbody id="mmBody_' + key + '">' + rows + '</tbody></table></div></div>';
+  });
+  document.getElementById('mmSections').innerHTML = h;
+  mmFillLinkLists();
+}
+
+function mmTypeChanged(sel) {
+  const src = sel.closest('.mm-src');
+  const isP = sel.value === 'PURCH';
+  src.querySelector('.mm-s-acct').style.display = isP ? 'none' : '';
+  src.querySelector('.mm-s-sub').style.display = isP ? 'none' : '';
+  src.querySelector('.mm-s-cat').style.display = isP ? '' : 'none';
+  mmDirty();
+}
+function mmAcctChanged(inp) {
+  inp.closest('.mm-src').querySelector('.mm-s-sub').innerHTML = mmSubOptions(inp.value, '');
+  mmDirty();
+}
+function mmAddSource(btn, s) {
+  btn.closest('td').querySelector('.mm-srcs').insertAdjacentHTML('beforeend', mmSourceHtml(s));
+  mmDirty();
+}
+function mmAddLine(section) {
+  const body = document.getElementById('mmBody_' + section);
+  const count = body.querySelectorAll('.mm-line').length;
+  body.insertAdjacentHTML('beforeend', mmLineHtml({id: 'new' + (++mmNewId), section: section, label: '', display_order: (count + 1) * 10, sources: []}));
+  body.lastElementChild.querySelector('.mm-label').focus();
+  mmDirty();
+}
+function mmDeleteLine(icon) {
+  const tr = icon.closest('tr');
+  const label = tr.querySelector('.mm-label').value;
+  if (!confirm('Delete line "' + label + '"? Its mapping is removed when you Save.')) return;
+  if (/^\d+$/.test(tr.dataset.id)) MM_DELETED.push(tr.dataset.id);
+  tr.remove();
+  mmFillLinkLists();
+  mmDirty();
+}
+
+function mmFillLinkLists() {
+  let opts = '<option value="">- choose line -</option>';
+  MM_SECTIONS.forEach(function(sec) {
+    opts += '<optgroup label="' + mmEsc(sec[1]) + '">';
+    document.querySelectorAll('#mmBody_' + sec[0] + ' .mm-line').forEach(function(tr) {
+      opts += '<option value="' + mmEsc(tr.dataset.id) + '">' + mmEsc(tr.querySelector('.mm-label').value || '(new line)') + '</option>';
+    });
+    opts += '</optgroup>';
+  });
+  document.querySelectorAll('.mm-link-line').forEach(function(sel) { const v = sel.value; sel.innerHTML = opts; sel.value = v; });
+}
+function mmLink(btn) {
+  const lineId = btn.parentNode.querySelector('.mm-link-line').value;
+  if (!lineId) { alert('Choose the line first.'); return; }
+  const tr = document.querySelector('.mm-line[data-id="' + lineId + '"]');
+  mmAddSource(tr.querySelector('.btn-link'), {source_type: 'GL', gl_account: btn.dataset.account, sub_account_code: btn.dataset.sub || '', sign: 1});
+  btn.closest('tr').style.opacity = '0.4';
+  btn.disabled = true;
+  btn.textContent = 'Linked';
+}
+
+function mmSave() {
+  const lines = [];
+  let bad = '';
+  document.querySelectorAll('.mm-line').forEach(function(tr) {
+    const label = tr.querySelector('.mm-label').value.trim();
+    if (!label) { bad = 'Every line needs a name.'; return; }
+    const sources = [];
+    tr.querySelectorAll('.mm-src').forEach(function(s) {
+      const type = s.querySelector('.mm-s-type').value;
+      sources.push({type: type, account: s.querySelector('.mm-s-acct').value, sub: s.querySelector('.mm-s-sub').value,
+                    category: s.querySelector('.mm-s-cat').value, sign: s.querySelector('.mm-s-sign').value});
+    });
+    const cost = tr.querySelector('.mm-cost');
+    lines.push({id: tr.dataset.id, section: tr.dataset.section, label: label, order: tr.querySelector('.mm-order').value,
+                cost_base: cost ? cost.value : '', is_manual: tr.querySelector('.mm-manual').checked, sources: sources});
+  });
+  if (bad) { alert(bad); return; }
+  document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED});
+  window.mmSubmitting = true;
+  document.getElementById('mmForm').submit();
+}
+window.addEventListener('beforeunload', function(e) {
+  if (!window.mmSubmitting && document.getElementById('mmDirty').style.display === '') { e.preventDefault(); e.returnValue = ''; }
+});
+mmRender();
+</script>
+{% endblock %}

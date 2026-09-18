@@ -61,6 +61,7 @@ def run_migrations(conn):
         _migrate_daily_sales_advances_reports(cursor)
         _migrate_daily_sales_report_extrabed(cursor)
         _migrate_bar_sales_record(cursor)
+        _migrate_management_account(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1508,6 +1509,148 @@ def _migrate_bar_sales_record(cursor):
                         cursor.execute(
                             "INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
                             (key + '_sub', f'Bar Sales Record: sub-account for {sec_label} - {part_label}'))
+
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_management_account(cursor):
+    """Monthly Management Account (the accountant's "Management Account"
+    workbook): P&L with Notes 1-8.
+
+      mgmt_acc_lines    - report lines per section (NOTE1 room & restaurant
+                          sales, NOTE2 bar sales, SERVICE charges, PURCH_BAR /
+                          PURCH_FOOD / PURCH_HK purchases for cost of sales,
+                          NOTE4 admin, NOTE5 S&D, NOTE6 VAT, NOTE7 finance,
+                          NOTE8 additional). cost_base = which cost % a sales
+                          line counts towards (BAR / FOOD).
+      mgmt_acc_sources  - what feeds each line: a GL account (optionally one
+                          sub-account) or a supplier-invoice Main Category.
+      mgmt_acc_months   - per month: opening / closing stock (Bar, Food, HK)
+                          typed in by the accountant.
+      mgmt_acc_manual   - per month amounts for lines marked manual.
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'mgmt_acc_lines'")
+        if not cursor.fetchone():
+            print("Migrating: Creating Management Account tables")
+            cursor.execute("""
+                CREATE TABLE mgmt_acc_lines (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  section VARCHAR(20) NOT NULL,
+                  label VARCHAR(150) NOT NULL,
+                  display_order INT NOT NULL DEFAULT 0,
+                  cost_base VARCHAR(10) NULL,
+                  is_manual TINYINT NOT NULL DEFAULT 0,
+                  is_active TINYINT NOT NULL DEFAULT 1,
+                  PRIMARY KEY (id),
+                  INDEX idx_mal_section (section, display_order)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            cursor.execute("""
+                CREATE TABLE mgmt_acc_sources (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  line_id INT NOT NULL,
+                  source_type VARCHAR(10) NOT NULL DEFAULT 'GL',
+                  gl_account VARCHAR(150) NULL,
+                  sub_account_code INT NULL,
+                  purchase_category VARCHAR(100) NULL,
+                  sign INT NOT NULL DEFAULT 1,
+                  PRIMARY KEY (id),
+                  INDEX idx_mas_line (line_id),
+                  CONSTRAINT fk_mas_line FOREIGN KEY (line_id) REFERENCES mgmt_acc_lines(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+
+            seed = {
+                'NOTE1': [('NON A/C Room Revenue', None), ('EXTRA BED Revenue', None), ('AC Room Revenue', None),
+                          ('NO.10 ROOM', None), ('FOREIGN', None), ('LOTUS FOOD', 'FOOD'), ('LOTUS BEV', 'BAR'),
+                          ('ROOM FOOD', 'FOOD'), ('RESTAURANT FOOD SALE', 'FOOD'), ('DESSERT', 'FOOD'),
+                          ('FRUITS', 'FOOD'), ('T/ AWAY', 'FOOD'), ('BAR FOOD', 'FOOD'), ('BEVERAGE', 'FOOD'),
+                          ('FOOD HUT SALE', 'FOOD'), ('SUNDRY', None), ('BUFFET BF', 'FOOD'),
+                          ('BUFFET LUNCH', 'FOOD'), ('PICK ME FOOD SALE', 'FOOD'), ('RESTAURANT BEVERAGE SALE', 'BAR')],
+                'NOTE2': [('BAR SALE', 'BAR'), ('A/ WATER', 'BAR'), ('KEG', 'BAR')],
+                'SERVICE': [('Service Charges', None)],
+                'PURCH_BAR': [('Bar Items purchases', None)],
+                'PURCH_FOOD': [('Kitchen Items purchases', None), ('Gas purchases', None)],
+                'PURCH_HK': [('Housekeeping purchases', None)],
+                'NOTE4': [(x, None) for x in (
+                    'UDA Rent', 'Electricity Charges', 'Fuel Cost', 'Telephone Charges', 'Water Charges',
+                    'Laundry Charges', 'Dialog Axiata PLC', 'Dialog Broadband Pvt Ltd', 'Dialog Television PLC',
+                    'Director Allowance', 'Salaries', 'Casual Wages', 'Security Charges', 'Incentives',
+                    'Additional Allowances', 'F & B Commission', 'Special allowance for the month', 'EPF', 'ETF',
+                    'Advertising', 'Printing & Stationery', 'Repair & Maintenance', 'IT Maintenance',
+                    'Painting Labour', 'Postage', 'Newspaper & Periodic', 'Ladies Accommodation Rent',
+                    'Staff Room repair', 'Staff welfare', 'Complimentary', 'Uniform', 'Electrical repair',
+                    'Licence', 'SSCL', 'PAYEE', 'Travelling & Transport', 'Donation', 'Transport charges',
+                    'Fuel for generator')],
+                'NOTE5': [(x, None) for x in ('Marketing Expenses', 'Credit Card Commission-1487AC',
+                                              'Credit Card Commission-HNB', 'Delivery Charges', 'Sales Commission')],
+                'NOTE6': [('VAT', None)],
+                'NOTE7': [(x, None) for x in ('Bank Charges', 'Bank Interest', 'Loan Interest',
+                                              'Overdraft Expenses', 'Credit Card commissions')],
+                'NOTE8': [('Additional expenses', None)],
+            }
+            purch_seed = {'Bar Items purchases': 'Bar Items', 'Kitchen Items purchases': 'kitchen items',
+                          'Gas purchases': 'Gass'}
+
+            # Pre-link lines whose label exactly matches a GL account name
+            # (case / spaces ignored); the rest are linked on the Mapping screen.
+            accounts = {}
+            try:
+                cursor.execute("SELECT account_name FROM new_account_table WHERE account_active = 1")
+                for (name,) in cursor.fetchall():
+                    accounts[' '.join(str(name or '').split()).lower()] = name
+            except Exception:
+                pass
+
+            for section, rows in seed.items():
+                for i, (label, cost_base) in enumerate(rows, start=1):
+                    cursor.execute("""
+                        INSERT INTO mgmt_acc_lines (section, label, display_order, cost_base)
+                        VALUES (%s, %s, %s, %s)
+                    """, (section, label, i * 10, cost_base))
+                    line_id = cursor.lastrowid
+                    if label in purch_seed:
+                        cursor.execute("""
+                            INSERT INTO mgmt_acc_sources (line_id, source_type, purchase_category)
+                            VALUES (%s, 'PURCH', %s)
+                        """, (line_id, purch_seed[label]))
+                    elif section not in ('PURCH_BAR', 'PURCH_FOOD', 'PURCH_HK'):
+                        acct = accounts.get(' '.join(label.split()).lower())
+                        if acct:
+                            cursor.execute("""
+                                INSERT INTO mgmt_acc_sources (line_id, source_type, gl_account)
+                                VALUES (%s, 'GL', %s)
+                            """, (line_id, acct))
+
+        cursor.execute("SHOW TABLES LIKE 'mgmt_acc_months'")
+        if not cursor.fetchone():
+            cursor.execute("""
+                CREATE TABLE mgmt_acc_months (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  period CHAR(7) NOT NULL,
+                  opening_bar DOUBLE NULL, opening_food DOUBLE NULL, opening_hk DOUBLE NULL,
+                  closing_bar DOUBLE NULL, closing_food DOUBLE NULL, closing_hk DOUBLE NULL,
+                  remarks VARCHAR(500) NULL,
+                  updated_by INT NULL,
+                  updated_date DATETIME NULL,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY period_UNIQUE (period)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
+            cursor.execute("""
+                CREATE TABLE mgmt_acc_manual (
+                  id INT NOT NULL AUTO_INCREMENT,
+                  period CHAR(7) NOT NULL,
+                  line_id INT NOT NULL,
+                  amount DOUBLE NOT NULL DEFAULT 0,
+                  PRIMARY KEY (id),
+                  UNIQUE KEY period_line_UNIQUE (period, line_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            """)
 
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
