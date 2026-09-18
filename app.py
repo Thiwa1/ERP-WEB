@@ -4584,7 +4584,76 @@ def _get_supplier_history_data(supplier_name):
             'narration': h.get('narration'),
         })
 
-    return {'details': details, 'invoices': inv_list, 'history': hist_list}
+    return {'details': details, 'invoices': inv_list, 'history': hist_list,
+            'pending_cheques': _supplier_pending_cheques(supplier_name)}
+
+
+def _supplier_pending_cheques(supplier_name):
+    """Postdated cheques written to this supplier that haven't cleared yet.
+    They aren't in the books (no JV until cleared), and the invoices they pay
+    are hidden from Outstanding so they can't be paid twice - so list them
+    here, with the invoices each one covers, or the supplier screens would
+    show them nowhere at all."""
+    try:
+        rows = db.execute_query("""
+            SELECT id, cheque_no, post_date, issue_date, amount, account_name, narration, payload
+            FROM postdated_cheques
+            WHERE pdc_type = 'payment' AND status = 'pending' AND TRIM(party_name) = TRIM(%s)
+            ORDER BY post_date, id
+        """, (supplier_name,)) or []
+    except Exception:
+        return []
+
+    inv_ids = set()
+    parsed = []
+    for r in rows:
+        try:
+            payload = json.loads(r['payload'] or '{}')
+        except Exception:
+            payload = {}
+        pays = payload.get('payments', []) or []
+        for p in pays:
+            if str(p.get('id') or '').isdigit():
+                inv_ids.add(int(p['id']))
+        parsed.append((r, pays))
+
+    inv_map = {}
+    if inv_ids:
+        placeholders = ','.join(['%s'] * len(inv_ids))
+        for i in db.execute_query(f"""
+            SELECT s.s_i_id, s.suppliers_invoice_number, s.suppliers_invoice_date, s.suppliers_invoice_oustanding,
+                   s.suppliers_invoice_JV, j.jv_user_code
+            FROM suppliers_invoice_data s
+            LEFT JOIN jv_numbers j ON s.suppliers_invoice_JV = j.jv_id
+            WHERE s.s_i_id IN ({placeholders})
+        """, tuple(sorted(inv_ids))) or []:
+            inv_map[i['s_i_id']] = i
+
+    out = []
+    for r, pays in parsed:
+        invoices = []
+        for p in pays:
+            inv = inv_map.get(int(p['id'])) if str(p.get('id') or '').isdigit() else None
+            invoices.append({
+                'id': p.get('id'),
+                'invoice_no': inv['suppliers_invoice_number'] if inv else str(p.get('id')),
+                'invoice_date': str(inv['suppliers_invoice_date']) if inv else '',
+                'balance': float(inv['suppliers_invoice_oustanding'] or 0) if inv else None,
+                'amount': float(p.get('base') or p.get('amount') or 0),
+                'inv_jv': inv['suppliers_invoice_JV'] if inv else None,
+                'is_grn': bool(inv and inv.get('jv_user_code') == 'JV FROM GRN'),
+            })
+        out.append({
+            'id': r['id'],
+            'cheque_no': r['cheque_no'],
+            'post_date': str(r['post_date']),
+            'issue_date': str(r['issue_date'] or ''),
+            'amount': float(r['amount'] or 0),
+            'account': r['account_name'],
+            'narration': r['narration'],
+            'invoices': invoices,
+        })
+    return out
 
 def _get_supplier_base_data(supplier_name):
     """Helper to fetch common supplier details and outstanding invoices."""

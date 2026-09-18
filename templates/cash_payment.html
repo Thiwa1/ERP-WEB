@@ -327,6 +327,20 @@
                 // 3. Update Payment History
                 const histBody = document.querySelector('#historyTable tbody');
                 histBody.innerHTML = '';
+                (data.pending_cheques || []).forEach(pdc => {
+                    const invs = pdc.invoices.map(iv => iv.invoice_no).join(', ') || '-';
+                    histBody.innerHTML += `
+                        <tr style="background:#fff8e6;">
+                            <td class="font-monospace" style="padding:.45rem 1rem;">Chq #${pdc.cheque_no}</td>
+                            <td style="padding:.45rem .75rem;">${pdc.post_date}</td>
+                            <td style="padding:.45rem .75rem;"><span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#fff1c2;color:#8a6100;">PDC PENDING</span></td>
+                            <td class="font-monospace fw-bold" style="padding:.45rem .75rem;color:#8a6100;">${fmtNum(pdc.amount)}</td>
+                            <td style="padding:.45rem .75rem;">${pdc.account || '-'}</td>
+                            <td class="font-monospace" style="padding:.45rem .75rem;">${invs}</td>
+                            <td style="padding:.45rem .75rem;">Postdated cheque &mdash; posts when cleared on/after ${pdc.post_date}</td>
+                            <td style="padding:.35rem .75rem;"><a href="/postdated_cheques" target="_blank" class="btn btn-sm btn-outline-warning" style="font-size:.78rem;"><i class="fas fa-calendar-check"></i> Manage</a></td>
+                        </tr>`;
+                });
                 data.history.forEach(h => {
                     const hInvCell = h.invoice_no
                         ? (h.is_grn

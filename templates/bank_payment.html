@@ -349,14 +349,55 @@ function loadSupplierData() {
                     `;
                     tbody.innerHTML += row;
                 });
-            } else {
+            } else if (!(data.pending_cheques || []).length) {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center py-3" style="color:#a0a0a0;font-size:.85rem;"><i class="fas fa-check-circle me-2" style="color:#107c10;"></i> No outstanding invoices found.</td></tr>';
             }
+            // Invoices already paid by a postdated cheque that hasn't cleared yet:
+            // shown (greyed, no Pay box) so it's clear they're pending, not forgotten.
+            (data.pending_cheques || []).forEach(pdc => {
+                pdc.invoices.forEach(iv => {
+                    const lbl = iv.is_grn && iv.inv_jv
+                        ? '<a href="/grn/view/' + iv.inv_jv + '" target="_blank" style="color:#018574;text-decoration:none;">' + iv.invoice_no + '</a>'
+                        : iv.invoice_no;
+                    tbody.innerHTML += `
+                        <tr style="background:#fff8e6;">
+                            <td style="padding:.65rem .9rem;" class="font-monospace">${lbl}</td>
+                            <td style="padding:.65rem .75rem;">${iv.invoice_date || '-'}</td>
+                            <td style="padding:.65rem .75rem;">-</td>
+                            <td class="text-end font-monospace" style="padding:.65rem .75rem;">-</td>
+                            <td class="text-end font-monospace" style="padding:.65rem .75rem;">-</td>
+                            <td class="text-end fw-bold font-monospace" style="padding:.65rem .75rem;color:#8a6100;">${iv.balance !== null ? fmtNum(iv.balance) : '-'}</td>
+                            <td style="padding:.5rem .9rem;font-size:.75rem;">
+                                <span style="font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#fff1c2;color:#8a6100;">PDC PENDING</span>
+                                <div style="color:#8a6100;">Cheque #${pdc.cheque_no} &middot; ${fmtNum(iv.amount)} &middot; posts ${pdc.post_date}</div>
+                            </td>
+                        </tr>`;
+                });
+            });
             calculateWHT(); // also refreshes the Total Outstanding / Total Payment strip
 
             // Update History Grid
             const hbody = document.getElementById('historyBody');
             hbody.innerHTML = '';
+            // Postdated cheques not cleared yet - listed first as PENDING
+            (data.pending_cheques || []).forEach(pdc => {
+                const invs = pdc.invoices.map(iv => iv.invoice_no).join(', ') || '-';
+                hbody.innerHTML += `
+                    <tr style="background:#fff8e6;">
+                        <td class="font-monospace" style="padding:.5rem 1rem;">Chq #${pdc.cheque_no}</td>
+                        <td style="padding:.5rem .75rem;">${pdc.post_date}</td>
+                        <td style="padding:.5rem .75rem;"><span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#fff1c2;color:#8a6100;">PDC PENDING</span></td>
+                        <td style="padding:.5rem .75rem;">${pdc.account || '-'}</td>
+                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;color:#8a6100;">${fmtNum(pdc.amount)}</td>
+                        <td class="font-monospace" style="padding:.5rem .75rem;">${invs}</td>
+                        <td style="padding:.5rem .75rem;">Postdated cheque issued ${pdc.issue_date || ''} &mdash; posts to the books when cleared on/after ${pdc.post_date}</td>
+                        <td style="padding:.35rem .75rem;">
+                            <a href="/postdated_cheques" target="_blank" class="btn btn-sm btn-outline-warning" style="font-size:.78rem;" title="Clear / reschedule / cancel on Postdated Cheques">
+                                <i class="fas fa-calendar-check"></i> Manage
+                            </a>
+                        </td>
+                    </tr>`;
+            });
             data.history.forEach(hist => {
                 const histInvCell = hist.invoice_no
                     ? (hist.is_grn
