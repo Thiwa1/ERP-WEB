@@ -218,14 +218,29 @@
   {% endif %}
   {% if not locked %}
     {% if can_post %}
-    <form method="POST" action="{{ url_for('bar_sales_post') }}" class="d-flex justify-content-end"
+    <div id="bsUnsaved" class="alert alert-info small py-2 mb-2 text-end" style="display:none;">
+      <i class="fas fa-save me-1"></i> You have changes that aren't saved &mdash; click <strong>Save</strong> first, then Post.
+    </div>
+    <form method="POST" action="{{ url_for('bar_sales_post') }}" class="d-flex justify-content-end align-items-start gap-3"
           onsubmit="return confirm('Post bar sales for {{ entry_date }} to the GL? The day will be locked.');">
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
-      <button type="submit" class="btn btn-success" {{ 'disabled' if problems or not preview }}>
+      {% if problems or not preview %}
+      <div class="small text-danger text-end" style="max-width:620px;">
+        <strong><i class="fas fa-ban me-1"></i>Post to GL is disabled because:</strong>
+        <ul class="mb-0 ps-3 text-start">
+          {% for p in problems %}<li>{{ p }}</li>{% endfor %}
+          {% if not preview %}<li>All posting amounts are zero &mdash; enter Sales / Cash / Credit Card and Save.</li>{% endif %}
+        </ul>
+        {% if check_permission("Access_Daily_Sales_Mapping") %}
+        <a href="{{ url_for('bar_sales_gl_mapping') }}" class="small">Open Bar Sales GL Mapping</a>
+        {% endif %}
+      </div>
+      {% endif %}
+      <button type="submit" id="bsPostBtn" class="btn btn-success" {{ 'disabled' if problems or not preview }}>
         <i class="fas fa-check-double me-1"></i> Post to GL
       </button>
     </form>
-    <div class="text-end small text-muted mt-1">Save first &mdash; posting uses the last saved figures.</div>
+    <div class="text-end small text-muted mt-1">Posting uses the last <strong>saved</strong> figures.</div>
     {% else %}
     <div class="small text-muted">Saved as Parked &mdash; the accountant posts it to the GL.</div>
     {% endif %}
@@ -372,6 +387,15 @@ function bsGo(off) {
   d.setDate(d.getDate() + off);
   bsJump(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'));
 }
+
+// Any edit after loading means the Post button would post old figures - hold it until saved.
+document.addEventListener('input', function(e) {
+  if (!e.target.closest || !e.target.closest('#bsForm')) return;
+  const note = document.getElementById('bsUnsaved');
+  const btn = document.getElementById('bsPostBtn');
+  if (note) note.style.display = '';
+  if (btn) btn.disabled = true;
+});
 
 document.addEventListener('DOMContentLoaded', function() {
   // A saved commission that isn't simply card x rate was typed by hand - keep it.
