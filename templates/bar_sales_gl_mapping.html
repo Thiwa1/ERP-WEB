@@ -48,6 +48,35 @@
       </div>
     </div>
     {% endfor %}
+    {% set key = 'bar_sales_gl_cash_short' %}
+    <div class="col-lg-6">
+      <div class="card h-100">
+        <div class="card-header fw-bold">Cash Short / Excess</div>
+        <div class="card-body">
+          <p class="small text-muted mb-2">
+            Used when <strong>Cash Received to Management</strong> differs from the day's cash sales.
+            Short: <strong>Dr</strong> this account / <strong>Cr</strong> Cash. Excess: <strong>Dr</strong> Cash / <strong>Cr</strong> this account.
+          </p>
+          <div class="mb-3 bsgl-row">
+            <label class="form-label">Cash Short / Excess account</label>
+            <div class="row g-2">
+              <div class="col-7">
+                <input type="text" class="form-control {{ '' if settings[key] else 'border-danger' }}" list="bsglAccountList"
+                       name="{{ key }}" value="{{ settings[key] }}" placeholder="Select account..." onchange="bsglRefreshSub(this)">
+              </div>
+              <div class="col-5">
+                <select class="form-select bsgl-sub" name="{{ key }}_sub" title="Sub-account (optional)" {{ 'disabled' if not sub_options[key] }}>
+                  <option value="">{{ '- Sub-account -' if sub_options[key] else 'No sub-accounts' }}</option>
+                  {% for opt in sub_options[key] %}
+                  <option value="{{ opt.sub_account_code }}" {{ 'selected' if settings[key ~ '_sub'] == opt.sub_account_code|string }}>{{ opt.sub_sub_accaount_name }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
   <datalist id="bsglAccountList">
     {% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}

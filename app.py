@@ -21536,7 +21536,7 @@ def daily_sales_report_mapping_delete(row_id):
 
 BAR_SALES_SECTIONS = (('bar', 'Bar Sales'), ('food', 'Bar Food Sales'))
 BAR_SALES_GL_PARTS = (('sales', 'Sales (credited)'), ('cash', 'Cash'),
-                      ('card', 'Credit Card control account'), ('commission', 'Card Service Charge account'))
+                      ('card', 'Credit Card control account'), ('commission', 'Card Service Charge (credited)'))
 # (key, label, group, has_qty) - record-only breakdown, same order as the sheet
 BAR_SALES_RECORD_LINES = [
     ('BAR_SALES', 'Bar Sales', 'Bar', False),
@@ -21555,6 +21555,7 @@ def _bar_sales_gl_settings():
     for s, _ in BAR_SALES_SECTIONS:
         for p, _ in BAR_SALES_GL_PARTS:
             keys += [f'bar_sales_gl_{s}_{p}', f'bar_sales_gl_{s}_{p}_sub']
+    keys += ['bar_sales_gl_cash_short', 'bar_sales_gl_cash_short_sub']
     placeholders = ','.join(['%s'] * len(keys))
     rows = db.execute_query(f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
                             tuple(keys)) or []
@@ -21591,16 +21592,19 @@ def _bar_sales_check(day):
         comm = round(float(day.get(f'{sec}_commission') or 0), 2)
         if not (sales or cash or card or comm):
             continue
-        if abs(cash + card - sales) > 0.01:
-            problems.append(f'{sec_label}: Cash {cash:,.2f} + Credit Card {card:,.2f} = {cash + card:,.2f}, '
-                            f'but Sales is {sales:,.2f} (difference {sales - cash - card:,.2f}).')
+        # The card amount includes the service charge (e.g. 10%), which isn't
+        # sales: Cash + (Credit Card - Service Charge) must equal Sales.
+        if abs(cash + card - comm - sales) > 0.01:
+            problems.append(f'{sec_label}: Cash {cash:,.2f} + Credit Card {card:,.2f} - Service Charge {comm:,.2f} = '
+                            f'{cash + card - comm:,.2f}, but Sales is {sales:,.2f} (difference {sales - cash - card + comm:,.2f}).')
+        if cash < -0.01:
+            problems.append(f'{sec_label}: Card sales ({card - comm:,.2f}) are more than Sales ({sales:,.2f}) - Cash Sales would be negative.')
         if comm - card > 0.01:
             problems.append(f'{sec_label}: Service Charge {comm:,.2f} is more than the Credit Card amount {card:,.2f}.')
-        # Full card amount to the Credit Card control account; the service
-        # charge (e.g. 10%) is then moved out of it to the Service Charge
-        # account, so the control account ends at what the bank will pay.
+        # Dr Cash + Dr Credit Card control (full card amount)
+        #   = Cr Sales + Cr Service Charge (the service charge paid on the card).
         lines = [('sales', 0, sales, None), ('cash', cash, 0, None), ('card', card, 0, None),
-                 ('commission', comm, 0, None), ('card', 0, comm, 'Service charge on credit card')]
+                 ('commission', 0, comm, None)]
         for part, dr, cr, note in lines:
             if not (dr or cr):
                 continue
@@ -21613,6 +21617,40 @@ def _bar_sales_check(day):
             preview.append({'section': sec_label, 'part': label, 'account': acct or '(not set)',
                             'sub_code': sub_code, 'sub_name': _bar_sales_sub_name(acct, sub_code) if sub_code else '',
                             'dr': dr, 'cr': cr})
+    # Cash handed to management vs the day's cash sales. The difference moves
+    # between the cash account and the Cash Short / Excess account, so cash
+    # ends at what management actually received:
+    #   short:  Dr Cash Short/Excess, Cr Cash      excess: Dr Cash, Cr Cash Short/Excess
+    received = day.get('cash_to_management')
+    if received is not None:
+        cash_total = round(sum(float(day.get(f'{s}_cash') or 0) for s, _ in BAR_SALES_SECTIONS), 2)
+        diff = round(float(received) - cash_total, 2)
+        if abs(diff) > 0.01:
+            cash_acct = gl.get('bar_sales_gl_bar_cash') if float(day.get('bar_cash') or 0) else gl.get('bar_sales_gl_food_cash')
+            cash_acct = cash_acct or gl.get('bar_sales_gl_bar_cash') or gl.get('bar_sales_gl_food_cash')
+            cash_sec = 'bar' if cash_acct == gl.get('bar_sales_gl_bar_cash') else 'food'
+            cash_sub = gl.get(f'bar_sales_gl_{cash_sec}_cash_sub')
+            cash_sub = int(cash_sub) if str(cash_sub or '').isdigit() else 0
+            short_acct = gl.get('bar_sales_gl_cash_short')
+            short_sub = gl.get('bar_sales_gl_cash_short_sub')
+            short_sub = int(short_sub) if str(short_sub or '').isdigit() else 0
+            kind = 'Cash Short' if diff < 0 else 'Cash Excess'
+            if not short_acct:
+                problems.append(f'{kind} {abs(diff):,.2f}: no GL account set for "Cash Short / Excess" - set it on Bar Sales GL Mapping.')
+            if not cash_acct:
+                problems.append(f'{kind} {abs(diff):,.2f}: no Cash account set on Bar Sales GL Mapping.')
+            amt = abs(diff)
+            short_line = {'section': 'Cash to Management', 'part': kind, 'account': short_acct or '(not set)',
+                          'sub_code': short_sub, 'sub_name': _bar_sales_sub_name(short_acct, short_sub) if short_sub else ''}
+            cash_line = {'section': 'Cash to Management', 'part': f'Cash ({kind.lower()})', 'account': cash_acct or '(not set)',
+                         'sub_code': cash_sub, 'sub_name': _bar_sales_sub_name(cash_acct, cash_sub) if cash_sub else ''}
+            if diff < 0:
+                preview.append(dict(short_line, dr=amt, cr=0))
+                preview.append(dict(cash_line, dr=0, cr=amt))
+            else:
+                preview.append(dict(cash_line, dr=amt, cr=0))
+                preview.append(dict(short_line, dr=0, cr=amt))
+
     problems = list(dict.fromkeys(problems))
     return problems, preview
 
@@ -21658,6 +21696,9 @@ def bar_sales_save():
     for sec, _ in BAR_SALES_SECTIONS:
         for part in ('sales', 'cash', 'card', 'commission'):
             vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
+    # Cash Sales is always the balance: Sales - (Credit Card - Service Charge)
+    for sec, _ in BAR_SALES_SECTIONS:
+        vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission']), 2)
     ctm_raw = (f.get('cash_to_management') or '').replace(',', '').strip()
     vals['cash_to_management'] = round(parse_float(ctm_raw), 2) if ctm_raw else None
     cols = list(vals.keys())
@@ -21781,6 +21822,7 @@ def bar_sales_gl_mapping():
         for p, _ in BAR_SALES_GL_PARTS:
             key = f'bar_sales_gl_{s}_{p}'
             sub_options[key] = _daily_sales_sub_accounts_for(settings.get(key))
+    sub_options['bar_sales_gl_cash_short'] = _daily_sales_sub_accounts_for(settings.get('bar_sales_gl_cash_short'))
     return render_template('bar_sales_gl_mapping.html', settings=settings, accounts=accounts,
                            sections=BAR_SALES_SECTIONS, parts=BAR_SALES_GL_PARTS, sub_options=sub_options)
 
