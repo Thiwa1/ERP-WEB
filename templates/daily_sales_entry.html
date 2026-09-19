@@ -66,7 +66,7 @@
     <div class="d-flex align-items-center gap-2 dse-date-nav">
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dseGoToDate(-1)"><i class="fas fa-chevron-left"></i></button>
       <input type="date" id="dseDatePicker" class="form-control form-control-sm" style="width:160px"
-             value="{{ entry_date }}" max="{{ today_date }}" onchange="dseJumpToDate(this.value)">
+             value="{{ entry_date }}" max="{{ today_date }}" onchange="dseDatePicked(this)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); dseJumpToDate(this.value); }" onblur="dseDateBlur(this)">
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="dseGoToDate(1)"><i class="fas fa-chevron-right"></i></button>
       <button type="button" class="btn btn-outline-primary btn-sm" onclick="dseJumpToDate('{{ today_date }}')">Today</button>
     </div>
@@ -335,9 +335,9 @@
               </div>
               <div class="col-6">
                 <label class="form-label">Petty Cash <span class="text-muted fw-normal">(from takings)</span></label>
-                <input type="text" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm" readonly
-                       title="Total of the Petty Cash lines paid from today's takings"
-                       value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}">
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
+                       title="Type the amount, or add Petty Cash lines below and it fills itself"
+                       value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
                 <label class="form-label">Advance Given</label>
@@ -509,7 +509,6 @@ const dseSavedAdvances = {{ advances|default([])|tojson }};
 const dseSavedSettlements = {{ settlements|default([])|tojson }};
 const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_given': []})|tojson }};
 const dseSavedPetty = {{ petty_lines|default([])|tojson }};
-const dseLegacyPetty = {{ (header.petty_cash or 0) if header else 0 }};
 const dsePettyCashAccounts = {{ petty_cash_accounts|default([])|tojson }};
 const dseTillAccount = {{ (till_account or '')|tojson }};
 const dseSubUrl = "{{ url_for('api_get_sub_accounts') }}";
@@ -713,7 +712,7 @@ function dseIsTill(acct) {
   return !!dseTillAccount && String(acct || '').trim().toLowerCase() === dseTillAccount.toLowerCase();
 }
 function dseAddPetty(row) {
-  row = row || { cash_account: dseTillAccount };
+  row = row || {};
   const dis = dseReadonly ? 'disabled' : '';
   let cashOpts = '<option value="">- select -</option>';
   let found = false;
@@ -757,13 +756,13 @@ function dsePettyAccountChanged(inp) {
   dsePettyLoadSubs(inp.closest('tr'), '');
 }
 function dsePettyTotals() {
-  let total = 0, till = 0;
+  let total = 0, till = 0, hasTill = false;
   document.querySelectorAll('#dsePettyBody .dse-petty-row').forEach(function(tr) {
     const amt = dseParse(tr.querySelector('.dse-pc-amount').value);
     total += amt;
-    if (dseIsTill(tr.querySelector('.dse-pc-cash').value)) till += amt;
+    if (dseIsTill(tr.querySelector('.dse-pc-cash').value)) { till += amt; hasTill = true; }
   });
-  return { total: Math.round(total * 100) / 100, till: Math.round(till * 100) / 100 };
+  return { total: Math.round(total * 100) / 100, till: Math.round(till * 100) / 100, hasTill: hasTill };
 }
 
 function dseRecalc() {
@@ -794,10 +793,21 @@ function dseRecalc() {
   warn.innerHTML = uniqueProblems.map(dseEsc).join('<br>');
 
   const telephone = dseParse(document.getElementById('dseTelephone').value);
+  // Petty Cash (from takings): typed by hand, unless some lines are paid from
+  // the takings account - then it shows their total and is locked.
   const pt = dsePettyTotals();
-  const pettyCash = pt.till;
+  const pettyBox = document.getElementById('dsePettyCash');
   document.getElementById('dsePettyTotal').textContent = dseFmt(pt.total);
-  document.getElementById('dsePettyCash').value = pettyCash ? dseFmt(pettyCash) : '';
+  if (pt.hasTill) {
+    pettyBox.value = pt.till ? dseFmt(pt.till) : '';
+    pettyBox.readOnly = true;
+    pettyBox.title = "Total of the Petty Cash lines paid from today's takings";
+  } else if (pettyBox.readOnly) {
+    pettyBox.readOnly = false;
+    pettyBox.value = '';
+    pettyBox.title = 'Type the amount, or add Petty Cash lines below and it fills itself';
+  }
+  const pettyCash = dseParse(pettyBox.value);
   let miscTotal = 0;
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += dseParse(inp.value); });
 
@@ -905,7 +915,21 @@ function dseSubmit() {
 }
 
 function dseJumpToDate(val) {
-  if (val) window.location.href = "{{ url_for('daily_sales_entry') }}?date=" + val;
+  // Only a complete date - typing the year digit by digit passes through 0002, 0020...
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(val || '') || +val.slice(0, 4) < 2000) return;
+  if (val === "{{ entry_date }}") return;
+  window.location.href = "{{ url_for('daily_sales_entry') }}?date=" + val;
+}
+// Typing in the date box fires 'change' on every digit (31 -> day 3 first), so
+// wait until typing stops; Enter or leaving the box opens it straight away.
+let dseDateTimer = null;
+function dseDatePicked(inp) {
+  clearTimeout(dseDateTimer);
+  dseDateTimer = setTimeout(function() { dseJumpToDate(inp.value); }, 1500);
+}
+function dseDateBlur(inp) {
+  clearTimeout(dseDateTimer);
+  dseJumpToDate(inp.value);
 }
 function dseGoToDate(offsetDays) {
   const d = new Date("{{ entry_date }}T00:00:00");
@@ -1009,12 +1033,7 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   dseSavedAdvances.forEach(function(a) { dseAddAdvance(a.adv_type, a); });
   dseSavedSettlements.forEach(function(s) { dseAddSettlement(s.adv_type === 'GIVEN' ? 'GIVEN' : 'RECEIVED', s); });
-  if (dseSavedPetty.length) {
-    dseSavedPetty.forEach(function(p) { dseAddPetty(p); });
-  } else if (dseLegacyPetty) {
-    // Day saved before petty cash lines existed: show its single figure as one line
-    dseAddPetty({ description: 'Petty Cash', cash_account: dseTillAccount, amount: dseLegacyPetty });
-  }
+  dseSavedPetty.forEach(function(p) { dseAddPetty(p); });
   dseRecalc();
 });
 </script>
