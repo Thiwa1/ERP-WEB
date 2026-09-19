@@ -80,6 +80,7 @@
       <input type="hidden" name="credit_lines_json" id="dseCreditLinesJson">
       <input type="hidden" name="advances_json" id="dseAdvancesJson">
       <input type="hidden" name="settlements_json" id="dseSettlementsJson">
+      <input type="hidden" name="petty_lines_json" id="dsePettyLinesJson" disabled>
 
       <div class="mb-3">
         <label class="form-label fw-semibold">Narration / Notes</label>
@@ -255,6 +256,42 @@
       <div id="dseRegWarning" class="alert alert-danger small py-2" style="display:none;"></div>
       <div class="mb-4"></div>
 
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="fw-bold mb-0" style="font-size:0.9rem;"><i class="fas fa-wallet me-1 text-primary"></i>Petty Cash</h6>
+        {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddPetty()"><i class="fas fa-plus"></i> Add Petty Cash Line</button>{% endif %}
+      </div>
+      <div class="alert alert-light border small">
+        <i class="fas fa-info-circle me-1"></i> Each line posts <strong>Dr Expense Account / Cr Cash Account</strong> when the day is posted,
+        and shows under Petty Cash in the Cash Book report.
+        {% if till_account %}Lines paid from <strong>{{ till_account }}</strong> (today's takings) reduce the Expected Receipt.{% endif %}
+      </div>
+      <div class="table-responsive mb-4">
+        <table class="table table-bordered table-sm dse-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:20%">Description</th>
+              <th style="width:10%">Voucher No</th>
+              <th style="width:22%">Expense Account</th>
+              <th style="width:16%">Sub Account</th>
+              <th style="width:16%">Cash Account</th>
+              <th style="width:13%" class="text-end">Amount</th>
+              <th style="width:3%"></th>
+            </tr>
+          </thead>
+          <tbody id="dsePettyBody"></tbody>
+          <tfoot>
+            <tr class="dse-total-row">
+              <td colspan="5" class="text-end">Total Petty Cash</td>
+              <td class="text-end"><span id="dsePettyTotal">0.00</span></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <datalist id="dsePettyAccountList">
+        {% for a in petty_accounts %}<option value="{{ a }}">{% endfor %}
+      </datalist>
+
       <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-book me-1 text-primary"></i>Income &amp; Expenditure Summary</h6>
       <div class="alert alert-light border small">
         <i class="fas fa-info-circle me-1"></i> Recorded for reference only &mdash; does not post to the General Ledger.
@@ -297,9 +334,10 @@
                        value="{{ '{:,.2f}'.format(header.telephone_income) if header and header.telephone_income else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
-                <label class="form-label">Petty Cash</label>
-                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
-                       value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                <label class="form-label">Petty Cash <span class="text-muted fw-normal">(from takings)</span></label>
+                <input type="text" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm" readonly
+                       title="Total of the Petty Cash lines paid from today's takings"
+                       value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}">
               </div>
               <div class="col-6">
                 <label class="form-label">Advance Given</label>
@@ -470,6 +508,11 @@ const dseSavedCredit = {{ credit_lines|default([])|tojson }};
 const dseSavedAdvances = {{ advances|default([])|tojson }};
 const dseSavedSettlements = {{ settlements|default([])|tojson }};
 const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_given': []})|tojson }};
+const dseSavedPetty = {{ petty_lines|default([])|tojson }};
+const dseLegacyPetty = {{ (header.petty_cash or 0) if header else 0 }};
+const dsePettyCashAccounts = {{ petty_cash_accounts|default([])|tojson }};
+const dseTillAccount = {{ (till_account or '')|tojson }};
+const dseSubUrl = "{{ url_for('api_get_sub_accounts') }}";
 
 function dseEsc(v) {
   return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -665,6 +708,64 @@ function dseRegisterTotals() {
   return t;
 }
 
+// ---- Petty Cash lines -------------------------------------------------------------
+function dseIsTill(acct) {
+  return !!dseTillAccount && String(acct || '').trim().toLowerCase() === dseTillAccount.toLowerCase();
+}
+function dseAddPetty(row) {
+  row = row || { cash_account: dseTillAccount };
+  const dis = dseReadonly ? 'disabled' : '';
+  let cashOpts = '<option value="">- select -</option>';
+  let found = false;
+  dsePettyCashAccounts.forEach(function(a) {
+    const sel = row.cash_account && a.toLowerCase() === String(row.cash_account).toLowerCase();
+    if (sel) found = true;
+    cashOpts += '<option value="' + dseEsc(a) + '"' + (sel ? ' selected' : '') + '>' + dseEsc(a) + (dseIsTill(a) ? ' (today\'s takings)' : '') + '</option>';
+  });
+  if (row.cash_account && !found) cashOpts += '<option value="' + dseEsc(row.cash_account) + '" selected>' + dseEsc(row.cash_account) + '</option>';
+  const subOpt = row.expense_sub_account_code
+    ? '<option value="' + dseEsc(row.expense_sub_account_code) + '" selected>' + dseEsc(row.sub_account_name || row.expense_sub_account_code) + '</option>' : '';
+  document.getElementById('dsePettyBody').insertAdjacentHTML('beforeend',
+    '<tr class="dse-petty-row">' +
+      '<td><input type="text" class="form-control form-control-sm dse-pc-desc" value="' + dseEsc(row.description) + '" ' + dis + '></td>' +
+      '<td><input type="text" class="form-control form-control-sm dse-pc-voucher" value="' + dseEsc(row.voucher_no) + '" ' + dis + '></td>' +
+      '<td><input type="text" list="dsePettyAccountList" class="form-control form-control-sm dse-pc-account" placeholder="Type to search" value="' + dseEsc(row.expense_account) + '" onchange="dsePettyAccountChanged(this)" ' + dis + '></td>' +
+      '<td><select class="form-select form-select-sm dse-pc-sub" ' + dis + '><option value="">- none -</option>' + subOpt + '</select></td>' +
+      '<td><select class="form-select form-select-sm dse-pc-cash" onchange="dseRecalc()" ' + dis + '>' + cashOpts + '</select></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-pc-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+  const tr = document.getElementById('dsePettyBody').lastElementChild;
+  if (row.expense_account && !dseReadonly) dsePettyLoadSubs(tr, row.expense_sub_account_code);
+}
+function dsePettyLoadSubs(tr, selected) {
+  const acct = tr.querySelector('.dse-pc-account').value.trim();
+  const sel = tr.querySelector('.dse-pc-sub');
+  if (!acct) { sel.innerHTML = '<option value="">- none -</option>'; return; }
+  fetch(dseSubUrl + '?account_name=' + encodeURIComponent(acct))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      let html = '<option value="">- none -</option>';
+      (rows || []).forEach(function(s) {
+        html += '<option value="' + dseEsc(s.code) + '"' + (String(s.code) === String(selected || '') ? ' selected' : '') + '>' + dseEsc(s.name) + '</option>';
+      });
+      sel.innerHTML = html;
+    })
+    .catch(function() {});
+}
+function dsePettyAccountChanged(inp) {
+  dsePettyLoadSubs(inp.closest('tr'), '');
+}
+function dsePettyTotals() {
+  let total = 0, till = 0;
+  document.querySelectorAll('#dsePettyBody .dse-petty-row').forEach(function(tr) {
+    const amt = dseParse(tr.querySelector('.dse-pc-amount').value);
+    total += amt;
+    if (dseIsTill(tr.querySelector('.dse-pc-cash').value)) till += amt;
+  });
+  return { total: Math.round(total * 100) / 100, till: Math.round(till * 100) / 100 };
+}
+
 function dseRecalc() {
   let total = 0;
   document.querySelectorAll('#dseForm .dse-sales-row').forEach(function(tr) {
@@ -693,7 +794,10 @@ function dseRecalc() {
   warn.innerHTML = uniqueProblems.map(dseEsc).join('<br>');
 
   const telephone = dseParse(document.getElementById('dseTelephone').value);
-  const pettyCash = dseParse(document.getElementById('dsePettyCash').value);
+  const pt = dsePettyTotals();
+  const pettyCash = pt.till;
+  document.getElementById('dsePettyTotal').textContent = dseFmt(pt.total);
+  document.getElementById('dsePettyCash').value = pettyCash ? dseFmt(pettyCash) : '';
   let miscTotal = 0;
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += dseParse(inp.value); });
 
@@ -781,6 +885,21 @@ function dseSubmit() {
     });
   });
   document.getElementById('dseSettlementsJson').value = JSON.stringify(settlements);
+
+  const petty = [];
+  document.querySelectorAll('#dsePettyBody .dse-petty-row').forEach(function(tr) {
+    petty.push({
+      description: tr.querySelector('.dse-pc-desc').value,
+      voucher_no: tr.querySelector('.dse-pc-voucher').value,
+      expense_account: tr.querySelector('.dse-pc-account').value,
+      expense_sub_account_code: tr.querySelector('.dse-pc-sub').value,
+      cash_account: tr.querySelector('.dse-pc-cash').value,
+      amount: tr.querySelector('.dse-pc-amount').value
+    });
+  });
+  const pettyInput = document.getElementById('dsePettyLinesJson');
+  pettyInput.value = JSON.stringify(petty);
+  pettyInput.disabled = false;
 
   document.getElementById('dseForm').submit();
 }
@@ -890,6 +1009,12 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   dseSavedAdvances.forEach(function(a) { dseAddAdvance(a.adv_type, a); });
   dseSavedSettlements.forEach(function(s) { dseAddSettlement(s.adv_type === 'GIVEN' ? 'GIVEN' : 'RECEIVED', s); });
+  if (dseSavedPetty.length) {
+    dseSavedPetty.forEach(function(p) { dseAddPetty(p); });
+  } else if (dseLegacyPetty) {
+    // Day saved before petty cash lines existed: show its single figure as one line
+    dseAddPetty({ description: 'Petty Cash', cash_account: dseTillAccount, amount: dseLegacyPetty });
+  }
   dseRecalc();
 });
 </script>

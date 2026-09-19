@@ -20475,11 +20475,39 @@ def _daily_sales_open_items(entry_date, entry_id=None):
     return out
 
 
+def _daily_sales_till_account():
+    """The GL account the day's cash takings post to (Daily Sales GL Mapping)."""
+    rows = db.execute_query("SELECT setting_value FROM system_settings WHERE setting_key = 'daily_sales_cash_account'") or []
+    return (rows[0]['setting_value'] or '').strip() if rows else ''
+
+
+def _daily_sales_petty_from_till(row, till_account):
+    """True when a petty cash line was paid out of the day's takings (its cash
+    account is the daily sales cash account) - those reduce the Expected Receipt."""
+    return bool(till_account) and (row.get('cash_account') or '').strip().lower() == till_account.lower()
+
+
+def _daily_sales_petty_rows(entry_id):
+    """Petty cash lines saved for one day."""
+    if not entry_id:
+        return []
+    try:
+        return db.execute_query("""
+            SELECT p.id, p.description, p.voucher_no, p.expense_account, p.expense_sub_account_code,
+                   p.cash_account, p.amount, s.sub_sub_accaount_name AS sub_account_name
+            FROM daily_sales_petty_cash_lines p
+            LEFT JOIN sub_accont_for_new_account s ON s.sub_account_code = p.expense_sub_account_code AND s.sub_new_account = p.expense_account
+            WHERE p.entry_id = %s ORDER BY p.id
+        """, (entry_id,)) or []
+    except Exception:
+        return []
+
+
 def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditure, cash_float,
                                 cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
                                 telephone_income, advance_received, advance_received_bill_no,
                                 advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-                                credit_lines_in, action, current_user_pk, registers_in=None):
+                                credit_lines_in, action, current_user_pk, registers_in=None, petty_lines_in=None):
     """Core Park/Post logic shared by the front office Save button and the
     accountant's Post button. `action` is always decided by the caller
     ('park' or 'post') - never trusted from the request directly.
@@ -20599,6 +20627,35 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                                       'remarks': (s.get('remarks') or '').strip()[:255] or None})
         adv_rows_for_totals, set_rows_for_totals = clean_advances, clean_settlements
 
+    # Petty cash lines (None = keep what's saved). Lines paid from the daily
+    # sales cash account come out of the day's takings, so only those reduce
+    # the Expected Receipt - the header's petty_cash holds that figure.
+    till_account = _daily_sales_till_account()
+    if petty_lines_in is None:
+        clean_petty = None
+        petty_rows = _daily_sales_petty_rows(existing_entry_id)
+    else:
+        clean_petty = []
+        for pl in petty_lines_in:
+            amount = parse_float(pl.get('amount'))
+            description = (pl.get('description') or '').strip()[:255] or None
+            expense_account = (pl.get('expense_account') or '').strip()[:255] or None
+            if not (amount or description or expense_account):
+                continue
+            sub = str(pl.get('expense_sub_account_code') or '').strip()
+            clean_petty.append({'description': description,
+                                'voucher_no': (pl.get('voucher_no') or '').strip()[:100] or None,
+                                'expense_account': expense_account,
+                                'expense_sub_account_code': int(sub) if sub.isdigit() and int(sub) else None,
+                                'cash_account': (pl.get('cash_account') or '').strip()[:255] or None,
+                                'amount': amount})
+        petty_rows = clean_petty
+    if petty_rows:
+        petty_cash = round(sum(float(r['amount'] or 0) for r in petty_rows
+                               if _daily_sales_petty_from_till(r, till_account)), 2)
+    elif clean_petty is not None:
+        petty_cash = 0.0
+
     reg_totals = _daily_sales_register_totals(adv_rows_for_totals, set_rows_for_totals, credit_rows_for_totals)
     if registers_in is not None:
         # The header's single Advance Received / Given figures now mirror the register.
@@ -20619,6 +20676,10 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             warning = ('Cannot post: assign a GL account to every line with an amount first - missing: ' +
                        ', '.join(missing_gl[:6]) + ('...' if len(missing_gl) > 6 else ''))
             action = 'park'  # fall back to saving as Parked so nothing is lost
+        elif any(float(r['amount'] or 0) and not (r['expense_account'] and r['cash_account']) for r in petty_rows):
+            warning = ('Cannot post: every Petty Cash line needs an Expense Account and a Cash Account - '
+                       'open the day in Daily Sales Entry and complete them.')
+            action = 'park'
         elif abs(actual_received - expected_received) > 0.01:
             warning = (f'Cannot post: Cash + Credit Card (Sampath + HNB) + Bank Transfer ({actual_received:,.2f}) '
                        f'must equal the Expected Receipt ({expected_received:,.2f}) = Total Income + Advance Received '
@@ -20799,6 +20860,16 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     raise ValueError(f"Advance {a['receipt_no'] or ''} {a['party_name'] or ''} is {float(a['amount']):,.2f} "
                                      f"but {float(a['settled']):,.2f} has been settled against it.")
 
+        if clean_petty is not None:
+            cursor.execute("DELETE FROM daily_sales_petty_cash_lines WHERE entry_id = %s", (entry_id,))
+            for r in clean_petty:
+                cursor.execute("""
+                    INSERT INTO daily_sales_petty_cash_lines (entry_id, entry_date, description, voucher_no,
+                        expense_account, expense_sub_account_code, cash_account, amount)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (entry_id, entry_date, r['description'], r['voucher_no'], r['expense_account'],
+                      r['expense_sub_account_code'], r['cash_account'], r['amount']))
+
         jv_no = None
         if action == 'post':
             cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
@@ -20812,8 +20883,13 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             jv_no = cursor.lastrowid
 
             # DR: how the day's takings were actually received
+            # Cash counted is net of petty cash paid out of the takings; debit the
+            # gross takings here and credit the petty payments below, so the
+            # Cash account nets to what was counted.
+            till_petty = round(sum(float(r['amount'] or 0) for r in petty_rows
+                                   if _daily_sales_petty_from_till(r, till_account)), 2)
             for pm_amount, setting_key, label in (
-                (cash_amount, 'daily_sales_cash_account', 'Cash'),
+                (round(cash_amount + till_petty, 2), 'daily_sales_cash_account', 'Cash'),
                 (credit_card_sampath_amount, 'daily_sales_card_sampath_account', 'Credit Card - Sampath Bank'),
                 (credit_card_hnb_amount, 'daily_sales_card_hnb_account', 'Credit Card - HNB Bank'),
                 (bank_transfer_amount, 'daily_sales_bank_account', 'Bank Transfer'),
@@ -20877,6 +20953,26 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
                 """, (cost_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
 
+            # Petty cash: Dr the expense account (sub-account), Cr the cash account it was paid from.
+            for r in petty_rows:
+                amt = round(float(r['amount'] or 0), 2)
+                if not amt:
+                    continue
+                narr = f"Petty Cash - {r['description'] or r['expense_account']}" + (f" ({r['voucher_no']})" if r['voucher_no'] else '')
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, %s)
+                """, (r['expense_account'], amt, entry_date, date.today(), narr, current_user_pk, jv_no,
+                      r['expense_sub_account_code'] or 0))
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
+                """, (r['cash_account'], amt, entry_date, date.today(), narr, current_user_pk, jv_no))
+
             cursor.execute("""
                 UPDATE daily_sales_entries SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW()
                 WHERE id=%s
@@ -20917,7 +21013,21 @@ def daily_sales_entry():
         LIMIT 60
     """) or []
 
+    petty_lines = _daily_sales_petty_rows(header['id'] if header else None)
+    petty_accounts = db.execute_query(
+        "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
+    petty_cash_accounts = [c['account_name'] for c in (db.execute_query(
+        "SELECT DISTINCT cash_book_account_name AS account_name FROM cash_book ORDER BY cash_book_account_name") or [])
+        if c['account_name']]
+    till_account = _daily_sales_till_account()
+    if till_account and not any(c.lower() == till_account.lower() for c in petty_cash_accounts):
+        petty_cash_accounts.insert(0, till_account)
+
     return render_template('daily_sales_entry.html',
+                           petty_lines=petty_lines,
+                           petty_accounts=[a['account_name'] for a in petty_accounts],
+                           petty_cash_accounts=petty_cash_accounts,
+                           till_account=till_account,
                            entry_date=entry_date,
                            today_date=date.today().strftime('%Y-%m-%d'),
                            categories=categories,
@@ -20977,13 +21087,19 @@ def daily_sales_entry_save():
     except (ValueError, TypeError):
         flash('Invalid advance data submitted.', 'danger')
         return redirect(url_for('daily_sales_entry', date=entry_date))
+    petty_json = request.form.get('petty_lines_json')
+    try:
+        petty_lines_in = json.loads(petty_json) if petty_json is not None else None
+    except (ValueError, TypeError):
+        flash('Invalid petty cash data submitted.', 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
 
     ok, message, _jv = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-        credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in)
+        credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in, petty_lines_in=petty_lines_in)
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('daily_sales_entry', date=entry_date))
 
@@ -21032,6 +21148,7 @@ def daily_sales_entry_post():
         pm_matches = abs(actual_received - expected_received) <= 0.01
 
     return render_template('daily_sales_entry_post.html',
+                           petty_lines=_daily_sales_petty_rows(header['id'] if header else None),
                            entry_date=entry_date,
                            today_date=date.today().strftime('%Y-%m-%d'),
                            categories=categories,
@@ -21492,9 +21609,27 @@ def _daily_sales_report_data(as_of):
         p['mtd'] += float(amount)
         if is_today:
             p['today'] += float(amount)
+    petty_by_entry = {}
+    try:
+        for r in db.execute_query("""
+            SELECT p.entry_id, p.expense_account, p.description, p.amount, s.sub_sub_accaount_name AS sub_name
+            FROM daily_sales_petty_cash_lines p
+            JOIN daily_sales_entries e ON e.id = p.entry_id
+            LEFT JOIN sub_accont_for_new_account s ON s.sub_account_code = p.expense_sub_account_code AND s.sub_new_account = p.expense_account
+            WHERE e.entry_date BETWEEN %s AND %s ORDER BY p.id
+        """, (month_start, as_of)) or []:
+            petty_by_entry.setdefault(r['entry_id'], []).append(r)
+    except Exception:
+        petty_by_entry = {}
     for e in entries:
         is_today = e['entry_date'] == as_of
-        add_petty('Petty Cash', e['petty_cash'], is_today)
+        if e['id'] in petty_by_entry:
+            # One report row per expense account (sub-account) the petty cash was charged to
+            for r in petty_by_entry[e['id']]:
+                label = (r['expense_account'] or r['description'] or 'Petty Cash') + (f" - {r['sub_name']}" if r['sub_name'] else '')
+                add_petty(label, r['amount'], is_today)
+        else:
+            add_petty('Petty Cash', e['petty_cash'], is_today)
         add_petty('Telephone', e['telephone_income'], is_today)
         for n in (1, 2, 3):
             add_petty(e[f'misc_expense_{n}_label'] or f'Misc Expense {n}', e[f'misc_expense_{n}_amount'], is_today)

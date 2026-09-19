@@ -279,6 +279,26 @@
             </div>
           </div>
 
+          {% if petty_lines %}
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-wallet me-1 text-primary"></i>Petty Cash (posts Dr Expense / Cr Cash Account)</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-sm align-middle" style="font-size:0.82rem;">
+              <thead><tr><th>Description</th><th>Voucher</th><th>Expense Account (Dr)</th><th>Cash Account (Cr)</th><th class="text-end">Amount</th></tr></thead>
+              <tbody>
+                {% for p in petty_lines %}
+                <tr>
+                  <td>{{ p.description or '' }}</td>
+                  <td>{{ p.voucher_no or '' }}</td>
+                  <td>{% if p.expense_account %}{{ p.expense_account }}{% if p.sub_account_name %} <span class="text-muted">/ {{ p.sub_account_name }}</span>{% endif %}{% else %}<span class="text-danger fw-semibold">Not set</span>{% endif %}</td>
+                  <td>{{ p.cash_account or '' }}{% if not p.cash_account %}<span class="text-danger fw-semibold">Not set</span>{% endif %}</td>
+                  <td class="text-end">{{ '{:,.2f}'.format(p.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
           <div class="alert alert-light border small mb-3">
             <i class="fas fa-lock me-1"></i> Nos / Bill No / Amount and the reconciliation below are entered by front office and
             shown here read-only. If a figure is wrong, ask front office to correct it on their Daily Sales Entry screen
