@@ -1463,6 +1463,10 @@ def _migrate_bar_sales_record(cursor):
         cursor.execute("SHOW COLUMNS FROM bar_sales_days LIKE 'cash_to_management'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE bar_sales_days ADD COLUMN cash_to_management DOUBLE NULL")
+        for col in ('bar_bank', 'food_bank'):
+            cursor.execute("SHOW COLUMNS FROM bar_sales_days LIKE %s", (col,))
+            if not cursor.fetchone():
+                cursor.execute(f"ALTER TABLE bar_sales_days ADD COLUMN {col} DOUBLE NOT NULL DEFAULT 0")
 
         cursor.execute("SHOW TABLES LIKE 'bar_sales_lines'")
         if not cursor.fetchone():

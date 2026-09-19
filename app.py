@@ -21960,7 +21960,7 @@ def management_account_mapping():
 # ================================================================
 
 BAR_SALES_SECTIONS = (('bar', 'Bar Sales'), ('food', 'Bar Food Sales'))
-BAR_SALES_GL_PARTS = (('sales', 'Sales (credited)'), ('cash', 'Cash'),
+BAR_SALES_GL_PARTS = (('sales', 'Sales (credited)'), ('cash', 'Cash'), ('bank', 'Bank Transfer'),
                       ('card', 'Credit Card control account'), ('commission', 'Card Service Charge (credited)'))
 # (key, label, group, has_qty) - record-only breakdown, same order as the sheet
 BAR_SALES_RECORD_LINES = [
@@ -22015,20 +22015,21 @@ def _bar_sales_check(day):
         cash = round(float(day.get(f'{sec}_cash') or 0), 2)
         card = round(float(day.get(f'{sec}_card') or 0), 2)
         comm = round(float(day.get(f'{sec}_commission') or 0), 2)
-        if not (sales or cash or card or comm):
+        bank = round(float(day.get(f'{sec}_bank') or 0), 2)
+        if not (sales or cash or card or comm or bank):
             continue
         # The card amount includes the service charge (e.g. 10%), which isn't
-        # sales: Cash + (Credit Card - Service Charge) must equal Sales.
-        if abs(cash + card - comm - sales) > 0.01:
-            problems.append(f'{sec_label}: Cash {cash:,.2f} + Credit Card {card:,.2f} - Service Charge {comm:,.2f} = '
-                            f'{cash + card - comm:,.2f}, but Sales is {sales:,.2f} (difference {sales - cash - card + comm:,.2f}).')
+        # sales: Cash + Bank Transfer + (Credit Card - Service Charge) must equal Sales.
+        if abs(cash + bank + card - comm - sales) > 0.01:
+            problems.append(f'{sec_label}: Cash {cash:,.2f} + Bank Transfer {bank:,.2f} + Credit Card {card:,.2f} - Service Charge {comm:,.2f} = '
+                            f'{cash + bank + card - comm:,.2f}, but Sales is {sales:,.2f} (difference {sales - cash - bank - card + comm:,.2f}).')
         if cash < -0.01:
-            problems.append(f'{sec_label}: Card sales ({card - comm:,.2f}) are more than Sales ({sales:,.2f}) - Cash Sales would be negative.')
+            problems.append(f'{sec_label}: Card sales ({card - comm:,.2f}) + Bank Transfer ({bank:,.2f}) are more than Sales ({sales:,.2f}) - Cash Sales would be negative.')
         if comm - card > 0.01:
             problems.append(f'{sec_label}: Service Charge {comm:,.2f} is more than the Credit Card amount {card:,.2f}.')
         # Dr Cash + Dr Credit Card control (full card amount)
         #   = Cr Sales + Cr Service Charge (the service charge paid on the card).
-        lines = [('sales', 0, sales, None), ('cash', cash, 0, None), ('card', card, 0, None),
+        lines = [('sales', 0, sales, None), ('cash', cash, 0, None), ('bank', bank, 0, None), ('card', card, 0, None),
                  ('commission', 0, comm, None)]
         for part, dr, cr, note in lines:
             if not (dr or cr):
@@ -22119,13 +22120,14 @@ def bar_sales_save():
     vals = {'narration': (f.get('narration') or '').strip()[:300] or None,
             'commission_rate': parse_float(f.get('commission_rate')) or 0}
     for sec, _ in BAR_SALES_SECTIONS:
-        for part in ('sales', 'cash', 'card', 'commission'):
+        for part in ('sales', 'cash', 'bank', 'card', 'commission'):
             vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
     # Service Charge is always the rate % of the card amount; Cash Sales is the
     # balance: Sales - (Credit Card - Service Charge)
     for sec, _ in BAR_SALES_SECTIONS:
         vals[f'{sec}_commission'] = round(vals[f'{sec}_card'] * vals['commission_rate'] / 100.0, 2)
-        vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission']), 2)
+        vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission'])
+                                    - vals[f'{sec}_bank'], 2)
     ctm_raw = (f.get('cash_to_management') or '').replace(',', '').strip()
     vals['cash_to_management'] = round(parse_float(ctm_raw), 2) if ctm_raw else None
     cols = list(vals.keys())

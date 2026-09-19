@@ -75,7 +75,7 @@
     {# ------------------------------------------------ posted to GL #}
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="bs-gl-badge"><i class="fas fa-book me-1"></i>POSTS TO GL</span>
-      <span class="small text-muted">The card amount includes the Service Charge (always the % above of the card amount &mdash; change the % if it differs), which is not sales. Cash Sales = Sales &minus; (Card &minus; Service Charge). Posting: Dr Cash, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
+      <span class="small text-muted">The card amount includes the Service Charge (always the % above of the card amount &mdash; change the % if it differs), which is not sales. Cash Sales = Sales &minus; (Card &minus; Service Charge) &minus; Bank Transfer. Posting: Dr Cash, Dr Bank, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
     </div>
     <div class="row g-3 mb-3">
       {% for sec, sec_label in sections %}
@@ -93,7 +93,10 @@
                    style="background:#eef6ff;" title="Worked out from the Service Charge % at the top"
                    value="{{ money(day[sec ~ '_commission']) if day else '' }}" {{ 'disabled' if locked }}></div>
           <div class="bs-row"><label>Card Sales <span class="fw-normal text-muted">(Card &minus; Service Charge)</span></label><span class="bs-cardsales-val fw-semibold">0.00</span></div>
-          <div class="bs-row bs-total"><label>Cash Sales <span class="fw-normal text-muted">(Sales &minus; Card Sales)</span></label>
+          <div class="bs-row"><label>Bank Transfer</label>
+            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_bank" class="form-control form-control-sm bs-bank"
+                   value="{{ money(day[sec ~ '_bank']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
+          <div class="bs-row bs-total"><label>Cash Sales <span class="fw-normal text-muted">(Sales &minus; Card Sales &minus; Bank Transfer)</span></label>
             <input type="text" data-money="1" name="{{ sec }}_cash" class="form-control form-control-sm bs-cash fw-bold" readonly tabindex="-1"
                    style="background:#eef6ff;" value="{{ money(day[sec ~ '_cash']) if day else '' }}" {{ 'disabled' if locked }}></div>
           <div class="bs-check small"></div>
@@ -286,7 +289,7 @@ function bsRecalc(rateChanged) {
     const card = bsParse(box.querySelector('.bs-card').value);
     const commEl = box.querySelector('.bs-comm');
     const cashEl = box.querySelector('.bs-cash');
-    // Service charge follows the card amount until someone types their own figure
+    // Service charge is always the % of the card amount
     if (!commEl.disabled) {
       const c = Math.round(card * rate) / 100;
       commEl.value = card ? bsFmt(c) : '';
@@ -295,20 +298,21 @@ function bsRecalc(rateChanged) {
     // The card amount includes the service charge, which isn't sales.
     const cardSales = Math.round((card - comm) * 100) / 100;
     box.querySelector('.bs-cardsales-val').textContent = bsFmt(cardSales);
-    // Cash sales is the balance of Sales after card sales.
+    // Cash sales is the balance of Sales after card sales and bank transfers.
+    const bank = bsParse(box.querySelector('.bs-bank').value);
     if (!cashEl.disabled) {
-      const cash = Math.round((sales - cardSales) * 100) / 100;
-      cashEl.value = (sales || card) ? bsFmt(cash) : '';
+      const cash = Math.round((sales - cardSales - bank) * 100) / 100;
+      cashEl.value = (sales || card || bank) ? bsFmt(cash) : '';
     }
     const chk = box.querySelector('.bs-check');
-    if (!sales && !card) { chk.innerHTML = ''; return; }
+    if (!sales && !card && !bank) { chk.innerHTML = ''; return; }
     if (comm - card > 0.005) {
       chk.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Service Charge is more than the card amount</span>';
     } else if (bsParse(cashEl.value) < -0.005) {
-      chk.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Card sales are more than Sales &mdash; Cash Sales would be negative</span>';
+      chk.innerHTML = '<span class="bs-bad"><i class="fas fa-exclamation-triangle"></i> Card sales + Bank Transfer are more than Sales &mdash; Cash Sales would be negative</span>';
     } else {
       chk.innerHTML = '<span class="bs-ok"><i class="fas fa-check-circle"></i> Cash ' + bsFmt(bsParse(cashEl.value)) +
-        ' + Card ' + bsFmt(card) + ' &minus; Service Charge ' + bsFmt(comm) + ' = Sales ' + bsFmt(sales) + '</span>';
+        ' + Bank ' + bsFmt(bank) + ' + Card ' + bsFmt(card) + ' &minus; Service Charge ' + bsFmt(comm) + ' = Sales ' + bsFmt(sales) + '</span>';
     }
   });
 
