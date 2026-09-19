@@ -108,10 +108,16 @@
         <table class="rp mb-3">
           <thead><tr><th class="rp-col-label">Payment Method</th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
           <tbody>
-            <tr><td>Cash</td><td class="num">{{ money(d.cash[0]) }}</td><td class="num">{{ money(d.cash[1]) }}</td></tr>
-            <tr><td>Credit Card &mdash; Sampath Bank</td><td class="num">{{ money(d.sampath[0]) }}</td><td class="num">{{ money(d.sampath[1]) }}</td></tr>
-            <tr><td>Credit Card &mdash; HNB Bank</td><td class="num">{{ money(d.hnb[0]) }}</td><td class="num">{{ money(d.hnb[1]) }}</td></tr>
-            <tr><td>Bank</td><td class="num">{{ money(d.bank[0]) }}</td><td class="num">{{ money(d.bank[1]) }}</td></tr>
+            {% set bx = d.bar_extra %}
+            {% for label, key in [('Cash', 'cash'), ('Credit Card &mdash; Sampath Bank', 'sampath'), ('Credit Card &mdash; HNB Bank', 'hnb'), ('Bank', 'bank')] %}
+            <tr><td>{{ label | safe }}
+                {% if bx[key][1] %}<div class="text-muted" style="font-size:10.5px;">incl. Bar Sales Record: {{ money(bx[key][0]) }} to day &middot; {{ money(bx[key][1]) }} MTD</div>{% endif %}</td>
+              <td class="num">{{ money(d[key][0]) }}</td><td class="num">{{ money(d[key][1]) }}</td></tr>
+            {% endfor %}
+            {% if d.card_other[1] %}
+            <tr><td>Credit Card &mdash; Bar Sales Record <span class="text-muted" style="font-size:10.5px;">(card account not Sampath / HNB)</span></td>
+              <td class="num">{{ money(d.card_other[0]) }}</td><td class="num">{{ money(d.card_other[1]) }}</td></tr>
+            {% endif %}
             <tr class="rp-total"><td>Total Collections</td><td class="num">{{ money(d.collections[0]) }}</td><td class="num">{{ money(d.collections[1]) }}</td></tr>
           </tbody>
         </table>

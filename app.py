@@ -21359,7 +21359,51 @@ def _daily_sales_report_data(as_of):
     sampath = e_sum('credit_card_sampath_amount')
     hnb = e_sum('credit_card_hnb_amount')
     bank = e_sum('bank_transfer_amount')
-    collections = (round(cash[0] + sampath[0] + hnb[0] + bank[0], 2), round(cash[1] + sampath[1] + hnb[1] + bank[1], 2))
+
+    # Bar Sales Record collections post to the GL separately - add them in so
+    # the Cash Book matches the GL. Cash = what was handed to management when
+    # entered (the GL is adjusted to that by the short/excess), else cash sales.
+    # Card goes to the Sampath / HNB row whose account it posts to.
+    bar_extra = {'cash': [0.0, 0.0], 'sampath': [0.0, 0.0], 'hnb': [0.0, 0.0], 'card_other': [0.0, 0.0], 'bank': [0.0, 0.0]}
+    try:
+        bs_rows = db.execute_query("""
+            SELECT entry_date, bar_cash, food_cash, bar_card, food_card, bar_bank, food_bank, cash_to_management
+            FROM bar_sales_days WHERE entry_date BETWEEN %s AND %s
+        """, (month_start, as_of)) or []
+        bs_gl = _bar_sales_gl_settings()
+        ds_cards = {r['setting_key']: (r['setting_value'] or '').strip().lower() for r in (db.execute_query("""
+            SELECT setting_key, setting_value FROM system_settings
+            WHERE setting_key IN ('daily_sales_card_sampath_account', 'daily_sales_card_hnb_account')
+        """) or [])}
+    except Exception:
+        bs_rows, bs_gl, ds_cards = [], {}, {}
+
+    def card_bucket(sec):
+        acct = (bs_gl.get(f'bar_sales_gl_{sec}_card') or '').strip().lower()
+        if acct and acct == ds_cards.get('daily_sales_card_sampath_account'):
+            return 'sampath'
+        if acct and acct == ds_cards.get('daily_sales_card_hnb_account'):
+            return 'hnb'
+        return 'card_other'
+
+    for d in bs_rows:
+        idx = [1] + ([0] if d['entry_date'] == as_of else [])
+        cash_amt = d['cash_to_management'] if d['cash_to_management'] is not None else \
+            float(d['bar_cash'] or 0) + float(d['food_cash'] or 0)
+        for i in idx:
+            bar_extra['cash'][i] += float(cash_amt or 0)
+            bar_extra['bank'][i] += float(d['bar_bank'] or 0) + float(d['food_bank'] or 0)
+            for sec in ('bar', 'food'):
+                bar_extra[card_bucket(sec)][i] += float(d[f'{sec}_card'] or 0)
+    bar_extra = {k: (round(v[0], 2), round(v[1], 2)) for k, v in bar_extra.items()}
+
+    cash = (round(cash[0] + bar_extra['cash'][0], 2), round(cash[1] + bar_extra['cash'][1], 2))
+    sampath = (round(sampath[0] + bar_extra['sampath'][0], 2), round(sampath[1] + bar_extra['sampath'][1], 2))
+    hnb = (round(hnb[0] + bar_extra['hnb'][0], 2), round(hnb[1] + bar_extra['hnb'][1], 2))
+    bank = (round(bank[0] + bar_extra['bank'][0], 2), round(bank[1] + bar_extra['bank'][1], 2))
+    card_other = bar_extra['card_other']
+    collections = (round(cash[0] + sampath[0] + hnb[0] + bank[0] + card_other[0], 2),
+                   round(cash[1] + sampath[1] + hnb[1] + bank[1] + card_other[1], 2))
 
     petty = {}
     def add_petty(label, amount, is_today):
@@ -21441,6 +21485,7 @@ def _daily_sales_report_data(as_of):
         'r1_unmapped': list(unmapped.values()),
         'total_income': (total_income_today, total_income_mtd),
         'collections': collections, 'cash': cash, 'sampath': sampath, 'hnb': hnb, 'bank': bank,
+        'card_other': card_other, 'bar_extra': bar_extra,
         'debtors': debtors, 'creditors': creditors,
         'petty': list(petty.values()),
         'adv_debtors': advance_rows(out['adv_given']),
