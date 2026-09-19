@@ -22182,6 +22182,12 @@ def management_account_mapping():
     accounts = db.execute_query("""
         SELECT account_name, account_income, account_expenses FROM new_account_table WHERE account_active = 1 ORDER BY account_name
     """) or []
+    def _flag(v):
+        if isinstance(v, (bytes, bytearray)):
+            return 1 if any(v) else 0
+        return 1 if v and str(v) not in ('0', 'False') else 0
+    accounts = [{'account_name': a['account_name'], 'account_income': _flag(a['account_income']),
+                 'account_expenses': _flag(a['account_expenses'])} for a in accounts]
     categories = db.execute_query("""
         SELECT DISTINCT Main_Catogry AS c FROM inventoy_items WHERE Main_Catogry IS NOT NULL AND Main_Catogry <> '' ORDER BY Main_Catogry
     """) or []
