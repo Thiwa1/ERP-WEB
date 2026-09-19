@@ -248,6 +248,12 @@
     {% else %}
     <div class="small text-muted">Saved as Parked &mdash; the accountant posts it to the GL.</div>
     {% endif %}
+  {% elif can_post %}
+    <form method="POST" action="{{ url_for('bar_sales_unpost') }}" class="text-end"
+          onsubmit="return confirm('Unpost bar sales for {{ entry_date }}? A reversal JV will be passed and the day unlocked for editing.');">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <button type="submit" class="btn btn-warning btn-sm"><i class="fas fa-lock-open me-1"></i> Unpost &amp; Unlock</button>
+    </form>
   {% endif %}
   {% endif %}
   </div>

@@ -21104,6 +21104,85 @@ def daily_sales_entry_post_save():
     return redirect(url_for('daily_sales_entry_post', date=entry_date, last_jv=(jv_no if ok and jv_no else None)))
 
 
+def _unpost_reverse_jv(cursor, jv_no, label):
+    """Reverse a posted JV the same way Journal Entry reversal does: a
+    REV-JV-<n> entry with Dr/Cr swapped on the ORIGINAL effective dates, so
+    period reports net to zero. Returns the reversal JV number (None if the
+    JV had no active lines). Raises ValueError if it can't be reversed."""
+    cursor.execute("SELECT COUNT(*) AS n FROM jv_numbers WHERE jv_user_code = %s", (f'REV-JV-{jv_no}',))
+    if cursor.fetchone()['n']:
+        raise ValueError(f'JV {jv_no} has already been reversed.')
+    cursor.execute("SELECT COUNT(*) AS n FROM entry_details WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0", (jv_no,))
+    if not cursor.fetchone()['n']:
+        return None
+    cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration, status) VALUES (%s, %s, 1)",
+                   (f'REV-JV-{jv_no}', f'{label} - unposted (reversal of JV-{jv_no})'))
+    rev_jv = cursor.lastrowid
+    cursor.execute("""
+        INSERT INTO entry_details (
+            account_name, enty_values_DR, enty_values_CR,
+            entry_effective_date, entry_create_date,
+            entry_naration, entry_create_user, entry_jv,
+            entry_sub_account_code, entry_job_number
+        )
+        SELECT account_name, COALESCE(enty_values_CR, 0), COALESCE(enty_values_DR, 0),
+               entry_effective_date, %s, %s, %s, %s, entry_sub_account_code, entry_job_number
+        FROM entry_details WHERE entry_jv = %s AND COALESCE(entry_deleted, 0) = 0
+    """, (date.today(), f'{label} - unposted (reversal of JV-{jv_no})', get_current_user_pk(), rev_jv, jv_no))
+    return rev_jv
+
+
+def _unpost_day(table, entry_date, label):
+    """Shared Unpost for Daily Sales Entry / Bar Sales Record: reverse the
+    day's JV and set it back to Parked so it can be corrected and re-posted."""
+    row = db.execute_query(f"SELECT id, status, jv_id FROM {table} WHERE entry_date = %s", (entry_date,)) or []
+    if not row or row[0]['status'] != 'Posted':
+        return False, f'{label} for {entry_date} is not posted.'
+    row = row[0]
+    if row['jv_id'] and jv_in_closed_period(row['jv_id']):
+        return False, f'{entry_date} is in a closed period (locked through {get_period_lock_date()}) - it cannot be unposted.'
+    conn = cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+        rev_jv = _unpost_reverse_jv(cursor, row['jv_id'], f'{label} {entry_date}') if row['jv_id'] else None
+        cursor.execute(f"UPDATE {table} SET status='Parked', jv_id=NULL, posted_by=NULL, posted_date=NULL WHERE id=%s",
+                       (row['id'],))
+        conn.commit()
+        msg = f'{label} for {entry_date} unposted and unlocked (back to Parked).'
+        if rev_jv:
+            msg += f' JV {row["jv_id"]} was reversed by JV {rev_jv}. Correct the figures, then post again.'
+        return True, msg
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return False, f'Could not unpost: {e}'
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/daily_sales_entry/unpost', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def daily_sales_entry_unpost():
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    ok, msg = _unpost_day('daily_sales_entries', entry_date, 'Daily Sales Entry')
+    flash(msg, 'success' if ok else 'danger')
+    return redirect(url_for('daily_sales_entry', date=entry_date))
+
+
+@app.route('/bar_sales/unpost', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def bar_sales_unpost():
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    ok, msg = _unpost_day('bar_sales_days', entry_date, 'Bar Sales')
+    flash(msg, 'success' if ok else 'danger')
+    return redirect(url_for('bar_sales', date=entry_date))
+
+
 @app.route('/daily_sales_entry/records', methods=['GET'])
 @login_required
 @has_any_permission('Access_Daily_Sales', 'Access_Accounting')

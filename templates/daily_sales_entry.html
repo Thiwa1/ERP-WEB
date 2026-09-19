@@ -418,10 +418,19 @@
       <div class="text-end small text-muted mt-1">Save first &mdash; the Post screen uses the last saved figures.</div>
       {% endif %}
       {% else %}
-      <div class="alert alert-secondary mt-4 mb-0">
-        <i class="fas fa-info-circle me-1"></i> This day has already been posted to the GL and is locked for editing.
+      <div class="alert alert-secondary mt-4 mb-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span><i class="fas fa-lock me-1"></i> This day has been posted to the GL{% if header.jv_id %} (JV {{ header.jv_id }}){% endif %} and is locked for editing.</span>
+        {% if check_permission("Access_Accounting") %}
+        <button type="submit" form="dseUnpostForm" class="btn btn-warning btn-sm"
+                onclick="return confirm('Unpost {{ entry_date }}?\n\nJV {{ header.jv_id }} will be reversed in the GL (on its original date) and the day unlocked as Parked, so it can be corrected and posted again.');">
+          <i class="fas fa-lock-open me-1"></i> Unpost &amp; Unlock
+        </button>
+        {% endif %}
       </div>
       {% endif %}
+    </form>
+    <form id="dseUnpostForm" method="POST" action="{{ url_for('daily_sales_entry_unpost') }}" class="d-none">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
     </form>
   </div>
 </div>
