@@ -21191,6 +21191,10 @@ def daily_sales_gl_mapping_save():
 # Every figure has a "To Day" (the selected date) and "Month To Date" (1st of
 # that month .. selected date) column, so the month restarts on the 1st.
 
+# Report-row keys that read the Bar Sales Record instead of a Daily Sales line
+BAR_SALES_REPORT_KEYS = (('BARSALES:bar', 'Bar Sales'), ('BARSALES:food', 'Bar Food Sales'))
+
+
 def _dse_parse_date(raw):
     try:
         return datetime.strptime((raw or '').strip(), '%Y-%m-%d').date()
@@ -21279,6 +21283,12 @@ def _daily_sales_report_data(as_of):
         WHERE e.entry_date BETWEEN %s AND %s
     """, (month_start, as_of)) or []
 
+    # Bar sales are recorded on the Bar Sales Record page, not in Daily Sales
+    # Entry - report rows pick them up through the BARSALES:bar / BARSALES:food keys.
+    bar_days = db.execute_query("""
+        SELECT entry_date, bar_sales, food_sales FROM bar_sales_days WHERE entry_date BETWEEN %s AND %s
+    """, (month_start, as_of)) or []
+
     def sums(keys, field):
         t = m = 0.0
         for ln in lines:
@@ -21287,6 +21297,14 @@ def _daily_sales_report_data(as_of):
                 m += v
                 if ln['entry_date'] == as_of:
                     t += v
+        if field == 'amount':
+            for key, col in ((BAR_SALES_REPORT_KEYS[0][0], 'bar_sales'), (BAR_SALES_REPORT_KEYS[1][0], 'food_sales')):
+                if key in keys:
+                    for d in bar_days:
+                        v = float(d[col] or 0)
+                        m += v
+                        if d['entry_date'] == as_of:
+                            t += v
         return round(t, 2), round(m, 2)
 
     # ---------------- R1
@@ -21467,7 +21485,7 @@ def daily_sales_report_mapping():
     plus the room count behind each occupancy rate."""
     if request.method == 'POST':
         try:
-            valid_keys = {c['category_key'] for c in _daily_sales_categories()}
+            valid_keys = {c['category_key'] for c in _daily_sales_categories()} | {k for k, _ in BAR_SALES_REPORT_KEYS}
             for rid in request.form.getlist('row_id[]'):
                 if not str(rid).isdigit():
                     continue
@@ -21505,6 +21523,15 @@ def daily_sales_report_mapping():
     for r in rows:
         r['row_keys'] = [k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()]
     categories = [c for c in _daily_sales_categories() if c['category_group'] == 'SALES']
+    # Bar Sales Record totals can feed a report row too
+    try:
+        bs_gl = _bar_sales_gl_settings()
+    except Exception:
+        bs_gl = {}
+    for key, label in BAR_SALES_REPORT_KEYS:
+        sec = key.split(':')[1]
+        categories.append({'category_key': key, 'description': 'Bar Sales Record', 'particulars': label,
+                           'entry_side': 'CR', 'gl_account_name': bs_gl.get(f'bar_sales_gl_{sec}_sales') or None})
     used = {}
     for r in rows:
         if r['row_type'] == 'REVENUE':

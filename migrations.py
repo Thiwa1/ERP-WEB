@@ -62,6 +62,7 @@ def run_migrations(conn):
         _migrate_daily_sales_report_extrabed(cursor)
         _migrate_bar_sales_record(cursor)
         _migrate_management_account(cursor)
+        _migrate_daily_sales_report_barsales(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1652,6 +1653,25 @@ def _migrate_management_account(cursor):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_daily_sales_report_barsales(cursor):
+    """Bar sales moved from Daily Sales Entry to the Bar Sales Record page, so
+    the Daily Revenue Report's Bar Revenue / Bar Food Revenue rows now read
+    it (BARSALES:bar / BARSALES:food). Only rows still on their original
+    Daily Sales line are switched - anything re-mapped by hand is left."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_report_rows'")
+        if not cursor.fetchone():
+            return
+        for row_key, old, new in (('REV_BAR', 'BAR_REVENUE', 'BARSALES:bar'),
+                                  ('REV_BAR_FOOD', 'BAR_FOOD_REVENUE', 'BARSALES:food')):
+            cursor.execute("UPDATE daily_sales_report_rows SET category_keys = %s WHERE row_key = %s AND category_keys = %s",
+                           (new, row_key, old))
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
