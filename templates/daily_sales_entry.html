@@ -263,7 +263,7 @@
       <div class="alert alert-light border small">
         <i class="fas fa-info-circle me-1"></i> When the day is posted, the total is <strong>debited to the Petty Cash Account</strong> and each line is <strong>credited to its Account</strong>,
         and shows under Petty Cash in the Cash Book report.
-        {% if till_account %}Lines whose Petty Cash Account is <strong>{{ till_account }}</strong> (today's takings) reduce the Expected Receipt.{% endif %}
+        The <strong>Petty Cash (from takings)</strong> box below is typed separately and is what reduces the Expected Receipt.
       </div>
       <div class="table-responsive mb-4">
         <table class="table table-bordered table-sm dse-table align-middle mb-0">
@@ -336,7 +336,7 @@
               <div class="col-6">
                 <label class="form-label">Petty Cash <span class="text-muted fw-normal">(from takings)</span></label>
                 <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="petty_cash" id="dsePettyCash" class="form-control form-control-sm"
-                       title="Type the amount, or add Petty Cash lines below and it fills itself"
+                       title="Petty cash paid out of today's takings - reduces the Expected Receipt"
                        value="{{ '{:,.2f}'.format(header.petty_cash) if header and header.petty_cash else '' }}" onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
               <div class="col-6">
@@ -793,21 +793,10 @@ function dseRecalc() {
   warn.innerHTML = uniqueProblems.map(dseEsc).join('<br>');
 
   const telephone = dseParse(document.getElementById('dseTelephone').value);
-  // Petty Cash (from takings): typed by hand, unless some lines are paid from
-  // the takings account - then it shows their total and is locked.
+  // Petty Cash (from takings) is always typed by hand - the lines don't change it.
   const pt = dsePettyTotals();
-  const pettyBox = document.getElementById('dsePettyCash');
   document.getElementById('dsePettyTotal').textContent = dseFmt(pt.total);
-  if (pt.hasTill) {
-    pettyBox.value = pt.till ? dseFmt(pt.till) : '';
-    pettyBox.readOnly = true;
-    pettyBox.title = "Total of the Petty Cash lines paid from today's takings";
-  } else if (pettyBox.readOnly) {
-    pettyBox.readOnly = false;
-    pettyBox.value = '';
-    pettyBox.title = 'Type the amount, or add Petty Cash lines below and it fills itself';
-  }
-  const pettyCash = dseParse(pettyBox.value);
+  const pettyCash = dseParse(document.getElementById('dsePettyCash').value);
   let miscTotal = 0;
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += dseParse(inp.value); });
 

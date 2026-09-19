@@ -20650,10 +20650,6 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                                 'cash_account': (pl.get('cash_account') or '').strip()[:255] or None,
                                 'amount': amount})
         petty_rows = clean_petty
-    # Box typed by hand unless some lines are paid from the takings - then it is their total.
-    if any(_daily_sales_petty_from_till(r, till_account) for r in petty_rows):
-        petty_cash = round(sum(float(r['amount'] or 0) for r in petty_rows
-                               if _daily_sales_petty_from_till(r, till_account)), 2)
 
     reg_totals = _daily_sales_register_totals(adv_rows_for_totals, set_rows_for_totals, credit_rows_for_totals)
     if registers_in is not None:
