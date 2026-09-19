@@ -22121,8 +22121,10 @@ def bar_sales_save():
     for sec, _ in BAR_SALES_SECTIONS:
         for part in ('sales', 'cash', 'card', 'commission'):
             vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
-    # Cash Sales is always the balance: Sales - (Credit Card - Service Charge)
+    # Service Charge is always the rate % of the card amount; Cash Sales is the
+    # balance: Sales - (Credit Card - Service Charge)
     for sec, _ in BAR_SALES_SECTIONS:
+        vals[f'{sec}_commission'] = round(vals[f'{sec}_card'] * vals['commission_rate'] / 100.0, 2)
         vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission']), 2)
     ctm_raw = (f.get('cash_to_management') or '').replace(',', '').strip()
     vals['cash_to_management'] = round(parse_float(ctm_raw), 2) if ctm_raw else None

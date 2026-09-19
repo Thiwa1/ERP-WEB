@@ -75,7 +75,7 @@
     {# ------------------------------------------------ posted to GL #}
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="bs-gl-badge"><i class="fas fa-book me-1"></i>POSTS TO GL</span>
-      <span class="small text-muted">The card amount includes the Service Charge (worked out at the % above &mdash; overwrite it if needed), which is not sales. Cash Sales = Sales &minus; (Card &minus; Service Charge). Posting: Dr Cash, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
+      <span class="small text-muted">The card amount includes the Service Charge (always the % above of the card amount &mdash; change the % if it differs), which is not sales. Cash Sales = Sales &minus; (Card &minus; Service Charge). Posting: Dr Cash, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
     </div>
     <div class="row g-3 mb-3">
       {% for sec, sec_label in sections %}
@@ -89,8 +89,9 @@
             <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_card" class="form-control form-control-sm bs-card"
                    value="{{ money(day[sec ~ '_card']) if day else '' }}" oninput="bsRecalc()" {{ 'disabled' if locked }}></div>
           <div class="bs-row"><label>Credit Card Service Charge <span class="fw-normal bs-rate-label"></span></label>
-            <input type="text" inputmode="decimal" data-money="1" name="{{ sec }}_commission" class="form-control form-control-sm bs-comm"
-                   value="{{ money(day[sec ~ '_commission']) if day else '' }}" oninput="this.dataset.manual='1'; bsRecalc()" {{ 'disabled' if locked }}></div>
+            <input type="text" data-money="1" name="{{ sec }}_commission" class="form-control form-control-sm bs-comm" readonly tabindex="-1"
+                   style="background:#eef6ff;" title="Worked out from the Service Charge % at the top"
+                   value="{{ money(day[sec ~ '_commission']) if day else '' }}" {{ 'disabled' if locked }}></div>
           <div class="bs-row"><label>Card Sales <span class="fw-normal text-muted">(Card &minus; Service Charge)</span></label><span class="bs-cardsales-val fw-semibold">0.00</span></div>
           <div class="bs-row bs-total"><label>Cash Sales <span class="fw-normal text-muted">(Sales &minus; Card Sales)</span></label>
             <input type="text" data-money="1" name="{{ sec }}_cash" class="form-control form-control-sm bs-cash fw-bold" readonly tabindex="-1"
@@ -286,7 +287,7 @@ function bsRecalc(rateChanged) {
     const commEl = box.querySelector('.bs-comm');
     const cashEl = box.querySelector('.bs-cash');
     // Service charge follows the card amount until someone types their own figure
-    if (commEl.dataset.manual !== '1' && !commEl.disabled && document.activeElement !== commEl) {
+    if (!commEl.disabled) {
       const c = Math.round(card * rate) / 100;
       commEl.value = card ? bsFmt(c) : '';
     }
@@ -408,14 +409,6 @@ document.addEventListener('input', function(e) {
 });
 
 document.addEventListener('DOMContentLoaded', function() {
-  // A saved commission that isn't simply card x rate was typed by hand - keep it.
-  const rate = bsParse(document.getElementById('bsRate').value);
-  document.querySelectorAll('.bs-sec[data-sec]').forEach(function(box) {
-    const card = bsParse(box.querySelector('.bs-card').value);
-    const commEl = box.querySelector('.bs-comm');
-    const comm = bsParse(commEl.value);
-    if (commEl.value && Math.abs(comm - Math.round(card * rate) / 100) > 0.005) commEl.dataset.manual = '1';
-  });
   bsRecalc();
 });
 </script>
