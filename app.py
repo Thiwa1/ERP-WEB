@@ -20677,7 +20677,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                        ', '.join(missing_gl[:6]) + ('...' if len(missing_gl) > 6 else ''))
             action = 'park'  # fall back to saving as Parked so nothing is lost
         elif any(float(r['amount'] or 0) and not (r['expense_account'] and r['cash_account']) for r in petty_rows):
-            warning = ('Cannot post: every Petty Cash line needs an Expense Account and a Cash Account - '
+            warning = ('Cannot post: every Petty Cash line needs an Account and a Petty Cash Account - '
                        'open the day in Daily Sales Entry and complete them.')
             action = 'park'
         elif abs(actual_received - expected_received) > 0.01:
@@ -20883,13 +20883,8 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             jv_no = cursor.lastrowid
 
             # DR: how the day's takings were actually received
-            # Cash counted is net of petty cash paid out of the takings; debit the
-            # gross takings here and credit the petty payments below, so the
-            # Cash account nets to what was counted.
-            till_petty = round(sum(float(r['amount'] or 0) for r in petty_rows
-                                   if _daily_sales_petty_from_till(r, till_account)), 2)
             for pm_amount, setting_key, label in (
-                (round(cash_amount + till_petty, 2), 'daily_sales_cash_account', 'Cash'),
+                (cash_amount, 'daily_sales_cash_account', 'Cash'),
                 (credit_card_sampath_amount, 'daily_sales_card_sampath_account', 'Credit Card - Sampath Bank'),
                 (credit_card_hnb_amount, 'daily_sales_card_hnb_account', 'Credit Card - HNB Bank'),
                 (bank_transfer_amount, 'daily_sales_bank_account', 'Bank Transfer'),
@@ -20953,7 +20948,9 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
                 """, (cost_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
 
-            # Petty cash: Dr the expense account (sub-account), Cr the cash account it was paid from.
+            # Petty cash: Cr each line's account (sub-account); Dr the petty cash
+            # account with the total of its lines (one debit per petty cash account).
+            petty_dr = {}
             for r in petty_rows:
                 amt = round(float(r['amount'] or 0), 2)
                 if not amt:
@@ -20963,15 +20960,18 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
                         entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
-                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s)
                 """, (r['expense_account'], amt, entry_date, date.today(), narr, current_user_pk, jv_no,
                       r['expense_sub_account_code'] or 0))
+                petty_dr[r['cash_account']] = round(petty_dr.get(r['cash_account'], 0) + amt, 2)
+            for petty_account, total in petty_dr.items():
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
                         entry_create_date, entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
-                """, (r['cash_account'], amt, entry_date, date.today(), narr, current_user_pk, jv_no))
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s)
+                """, (petty_account, total, entry_date, date.today(), f"Petty Cash total - Daily Sales {entry_date}",
+                      current_user_pk, jv_no))
 
             cursor.execute("""
                 UPDATE daily_sales_entries SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW()

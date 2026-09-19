@@ -280,10 +280,10 @@
           </div>
 
           {% if petty_lines %}
-          <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-wallet me-1 text-primary"></i>Petty Cash (posts Dr Expense / Cr Cash Account)</h6>
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-wallet me-1 text-primary"></i>Petty Cash (Dr Petty Cash Account with the total / Cr each line account)</h6>
           <div class="table-responsive mb-3">
             <table class="table table-bordered table-sm align-middle" style="font-size:0.82rem;">
-              <thead><tr><th>Description</th><th>Voucher</th><th>Expense Account (Dr)</th><th>Cash Account (Cr)</th><th class="text-end">Amount</th></tr></thead>
+              <thead><tr><th>Description</th><th>Voucher</th><th>Account (Cr)</th><th>Petty Cash Account (Dr)</th><th class="text-end">Amount</th></tr></thead>
               <tbody>
                 {% for p in petty_lines %}
                 <tr>

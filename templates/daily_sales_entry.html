@@ -261,9 +261,9 @@
         {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddPetty()"><i class="fas fa-plus"></i> Add Petty Cash Line</button>{% endif %}
       </div>
       <div class="alert alert-light border small">
-        <i class="fas fa-info-circle me-1"></i> Each line posts <strong>Dr Expense Account / Cr Cash Account</strong> when the day is posted,
+        <i class="fas fa-info-circle me-1"></i> When the day is posted, the total is <strong>debited to the Petty Cash Account</strong> and each line is <strong>credited to its Account</strong>,
         and shows under Petty Cash in the Cash Book report.
-        {% if till_account %}Lines paid from <strong>{{ till_account }}</strong> (today's takings) reduce the Expected Receipt.{% endif %}
+        {% if till_account %}Lines whose Petty Cash Account is <strong>{{ till_account }}</strong> (today's takings) reduce the Expected Receipt.{% endif %}
       </div>
       <div class="table-responsive mb-4">
         <table class="table table-bordered table-sm dse-table align-middle mb-0">
@@ -271,9 +271,9 @@
             <tr>
               <th style="width:20%">Description</th>
               <th style="width:10%">Voucher No</th>
-              <th style="width:22%">Expense Account</th>
+              <th style="width:22%">Account (Cr)</th>
               <th style="width:16%">Sub Account</th>
-              <th style="width:16%">Cash Account</th>
+              <th style="width:16%">Petty Cash Account (Dr)</th>
               <th style="width:13%" class="text-end">Amount</th>
               <th style="width:3%"></th>
             </tr>
