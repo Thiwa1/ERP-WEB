@@ -21661,6 +21661,12 @@ def _daily_sales_report_data(as_of):
 
     total_income_today = round(float(today_entry['total_income'] or 0), 2) if today_entry else 0.0
     total_income_mtd = round(sum(float(e['total_income'] or 0) for e in entries), 2)
+    # Bar sales live on the Bar Sales Record page, so they are in the revenue
+    # rows above but not in the Daily Sales Entry total - shown separately so
+    # the cross-check at the foot of R1 adds up to Total Revenue.
+    bar_income_today = round(sum(float(d['bar_sales'] or 0) + float(d['food_sales'] or 0)
+                                 for d in bar_days if d['entry_date'] == as_of), 2)
+    bar_income_mtd = round(sum(float(d['bar_sales'] or 0) + float(d['food_sales'] or 0) for d in bar_days), 2)
 
     # ---------------- R2
     def e_sum(field):
@@ -21836,6 +21842,9 @@ def _daily_sales_report_data(as_of):
         'r1_total': (round(tot_today, 2), round(tot_mtd, 2)),
         'r1_unmapped': list(unmapped.values()),
         'total_income': (total_income_today, total_income_mtd),
+        'bar_income': (bar_income_today, bar_income_mtd),
+        'income_check': (round(total_income_today + bar_income_today, 2),
+                         round(total_income_mtd + bar_income_mtd, 2)),
         'collections': collections, 'cash': cash, 'sampath': sampath, 'hnb': hnb, 'bank': bank,
         'card_other': card_other, 'bar_extra': bar_extra,
         'debtors': debtors, 'creditors': creditors,
