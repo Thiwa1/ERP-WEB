@@ -20841,7 +20841,10 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     continue
                 cursor.execute("""SELECT COUNT(*) AS n FROM daily_sales_credit_lines
                                   WHERE settles_credit_id = %s AND entry_id <> %s""", (old_id, entry_id))
-                if old['credit_type'] == 'GIVEN' and cursor.fetchone()['n']:
+                # Always read the result: leaving it unread breaks the next
+                # statement on this cursor with "Unread result found".
+                settled_elsewhere = cursor.fetchone()['n']
+                if old['credit_type'] == 'GIVEN' and settled_elsewhere:
                     raise ValueError(f"Credit Given {old['invoice_no'] or ''} {old['party_name'] or ''} has been settled on "
                                      f"another day, so it can't be removed. Remove that settlement first.")
                 cursor.execute("DELETE FROM daily_sales_credit_lines WHERE id = %s", (old_id,))
