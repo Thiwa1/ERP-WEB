@@ -190,6 +190,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th style="width:28%">Invoice No</th><th>Name</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseCreditGivenBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="2" class="text-end">Total Credit Given</td><td class="text-end"><span id="dseCreditGivenBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -202,6 +203,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Credit being settled</th><th style="width:20%">Mode</th><th style="width:18%">Ref No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseCreditReceivedBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="3" class="text-end">Total Credit Received / Set-off</td><td class="text-end"><span id="dseCreditReceivedBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -214,6 +216,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Name</th><th style="width:26%">Receipt No</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseAdvReceivedBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="2" class="text-end">Total Advance Received</td><td class="text-end"><span id="dseAdvReceivedBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -226,6 +229,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseSetReceivedBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="3" class="text-end">Total Settled</td><td class="text-end"><span id="dseSetReceivedBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -238,6 +242,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Name</th><th style="width:26%">Receipt No</th><th style="width:24%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseAdvGivenBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="2" class="text-end">Total Advance Given</td><td class="text-end"><span id="dseAdvGivenBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -250,6 +255,7 @@
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
               <tbody id="dseSetGivenBody"></tbody>
+              <tfoot><tr class="dse-total-row"><td colspan="3" class="text-end">Total Settled</td><td class="text-end"><span id="dseSetGivenBodyTotal">0.00</span></td><td></td></tr></tfoot>
             </table>
           </div>
         </div>
@@ -883,6 +889,16 @@ function dseRecalc() {
   document.getElementById('dseAdvanceGivenTotal').value = dseMoney(t.advGiven);
   document.getElementById('dseAdvanceSettledTotal').value = dseMoney(t.advReceivedSettled);
   document.getElementById('dseAdvanceRecoveredTotal').value = dseMoney(t.advGivenRecovered);
+
+  // Total under each register table
+  [['dseCreditGivenBody', '.dse-cg-amount'], ['dseCreditReceivedBody', '.dse-cr-amount'],
+   ['dseAdvReceivedBody', '.dse-adv-amount'], ['dseAdvGivenBody', '.dse-adv-amount'],
+   ['dseSetReceivedBody', '.dse-set-amount'], ['dseSetGivenBody', '.dse-set-amount']].forEach(function(p) {
+    let sum = 0;
+    document.querySelectorAll('#' + p[0] + ' ' + p[1]).forEach(function(inp) { sum += dseParse(inp.value); });
+    const el = document.getElementById(p[0] + 'Total');
+    if (el) el.textContent = dseFmt(sum);
+  });
 
   const warn = document.getElementById('dseRegWarning');
   const uniqueProblems = t.problems.filter(function(p, i) { return t.problems.indexOf(p) === i; });
