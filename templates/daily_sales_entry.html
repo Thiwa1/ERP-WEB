@@ -509,6 +509,7 @@ const dseSavedAdvances = {{ advances|default([])|tojson }};
 const dseSavedSettlements = {{ settlements|default([])|tojson }};
 const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_given': []})|tojson }};
 const dseSavedPetty = {{ petty_lines|default([])|tojson }};
+const dsePettyAccounts = {{ petty_accounts|default([])|tojson }};
 const dsePettyCashAccounts = {{ petty_cash_accounts|default([])|tojson }};
 const dseTillAccount = {{ (till_account or '')|tojson }};
 const dseSubUrl = "{{ url_for('api_get_sub_accounts') }}";
@@ -736,6 +737,7 @@ function dseAddPetty(row) {
     '</tr>');
   const tr = document.getElementById('dsePettyBody').lastElementChild;
   if (row.expense_account && !dseReadonly) dsePettyLoadSubs(tr, row.expense_sub_account_code);
+  dsePettyCheckAccount(tr.querySelector(".dse-pc-account"));
 }
 function dsePettyLoadSubs(tr, selected) {
   const acct = tr.querySelector('.dse-pc-account').value.trim();
@@ -754,6 +756,16 @@ function dsePettyLoadSubs(tr, selected) {
 }
 function dsePettyAccountChanged(inp) {
   dsePettyLoadSubs(inp.closest('tr'), '');
+  dsePettyCheckAccount(inp);
+}
+// The GL only accepts names that exist in the Chart of Accounts - typing a
+// description here ("Vegetable purchasing") makes the posting fail, so flag it now.
+function dsePettyCheckAccount(inp) {
+  const v = String(inp.value || '').trim().toLowerCase();
+  const known = !v || dsePettyAccounts.some(function(a) { return a.toLowerCase() === v; });
+  inp.style.borderColor = known ? '' : '#c0392b';
+  inp.style.background = known ? '' : '#fff5f5';
+  inp.title = known ? '' : 'Not in the Chart of Accounts - pick one from the list, or the day cannot be posted';
 }
 function dsePettyTotals() {
   let total = 0, till = 0, hasTill = false;

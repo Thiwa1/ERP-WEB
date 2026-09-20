@@ -279,6 +279,13 @@
             </div>
           </div>
 
+          {% if petty_bad_accounts %}
+          <div class="alert alert-danger small">
+            <i class="fas fa-ban me-1"></i> These Petty Cash accounts are not in the Chart of Accounts, so this day cannot be posted:
+            <strong>{{ petty_bad_accounts | join(', ') }}</strong>.
+            Correct them on the Daily Sales Entry screen, or create the accounts in Chart of Accounts first.
+          </div>
+          {% endif %}
           {% if petty_lines %}
           <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-wallet me-1 text-primary"></i>Petty Cash (Dr Petty Cash Account with the total / Cr each line account)</h6>
           <div class="table-responsive mb-3">

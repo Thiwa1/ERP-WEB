@@ -20487,6 +20487,23 @@ def _daily_sales_petty_from_till(row, till_account):
     return bool(till_account) and (row.get('cash_account') or '').strip().lower() == till_account.lower()
 
 
+def _daily_sales_unknown_accounts(petty_rows):
+    """Petty cash account names that aren't in the Chart of Accounts. The GL's
+    entry_details.account_name is a foreign key, so posting one fails the whole JV."""
+    names = []
+    for r in petty_rows or []:
+        if not float(r['amount'] or 0):
+            continue
+        for acct in (r.get('expense_account'), r.get('cash_account')):
+            if acct and acct not in names:
+                names.append(acct)
+    if not names:
+        return []
+    valid = {' '.join(str(a['account_name']).split()).lower()
+             for a in (db.execute_query("SELECT account_name FROM new_account_table") or [])}
+    return [n for n in names if ' '.join(str(n).split()).lower() not in valid]
+
+
 def _daily_sales_petty_rows(entry_id):
     """Petty cash lines saved for one day."""
     if not entry_id:
@@ -20674,6 +20691,15 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
         elif any(float(r['amount'] or 0) and not (r['expense_account'] and r['cash_account']) for r in petty_rows):
             warning = ('Cannot post: every Petty Cash line needs an Account and a Petty Cash Account - '
                        'open the day in Daily Sales Entry and complete them.')
+            action = 'park'
+        elif _daily_sales_unknown_accounts(petty_rows):
+            # Every petty cash account name must be a real GL account, or the
+            # entry_details foreign key rejects the whole posting.
+            bad_accounts = _daily_sales_unknown_accounts(petty_rows)
+            warning = ('Cannot post: these Petty Cash accounts are not in the Chart of Accounts - ' +
+                       ', '.join(f'"{a}"' for a in bad_accounts[:6]) +
+                       ('...' if len(bad_accounts) > 6 else '') +
+                       '. Pick an existing account on the Daily Sales Entry screen (or create it in Chart of Accounts first).')
             action = 'park'
         elif abs(actual_received - expected_received) > 0.01:
             warning = (f'Cannot post: Cash + Credit Card (Sampath + HNB) + Bank Transfer ({actual_received:,.2f}) '
@@ -21142,8 +21168,10 @@ def daily_sales_entry_post():
             misc_expenses, reg_totals)
         pm_matches = abs(actual_received - expected_received) <= 0.01
 
+    petty_lines = _daily_sales_petty_rows(header['id'] if header else None)
     return render_template('daily_sales_entry_post.html',
-                           petty_lines=_daily_sales_petty_rows(header['id'] if header else None),
+                           petty_lines=petty_lines,
+                           petty_bad_accounts=_daily_sales_unknown_accounts(petty_lines),
                            entry_date=entry_date,
                            today_date=date.today().strftime('%Y-%m-%d'),
                            categories=categories,
