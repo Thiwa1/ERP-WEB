@@ -65,6 +65,7 @@ def run_migrations(conn):
         _migrate_daily_sales_report_barsales(cursor)
         _migrate_daily_sales_petty_cash(cursor)
         _migrate_daily_sales_commissions(cursor)
+        _migrate_daily_sales_bank2(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1731,6 +1732,30 @@ def _migrate_daily_sales_commissions(cursor):
                 INDEX idx_dscom_date (entry_date)
             )
         """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_daily_sales_bank2(cursor):
+    """A second Bank Transfer box in Received By, for money received into
+    another bank account, with its own GL account."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_entries'")
+        if cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_entries ADD COLUMN bank_transfer_2_amount DOUBLE NOT NULL DEFAULT 0")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+    try:
+        cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", ('daily_sales_bank2_account',))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                           ('daily_sales_bank2_account', 'Daily Sales Entry: GL account for Bank Transfer 2 collections'))
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")

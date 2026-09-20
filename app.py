@@ -20315,6 +20315,7 @@ def _daily_sales_load_entry(entry_date):
     header = db.execute_query("""
         SELECT id, entry_date, narration, total_income, total_expenditure, balance,
                cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+               bank_transfer_2_amount,
                telephone_income, advance_received, advance_received_bill_no,
                advance_given, advance_given_bill_no, petty_cash,
                misc_expense_1_label, misc_expense_1_amount,
@@ -20543,6 +20544,7 @@ def _daily_sales_petty_rows(entry_id):
 
 def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditure, cash_float,
                                 cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+                                bank_transfer_2_amount,
                                 telephone_income, advance_received, advance_received_bill_no,
                                 advance_given, advance_given_bill_no, petty_cash, misc_expenses,
                                 credit_lines_in, action, current_user_pk, registers_in=None, petty_lines_in=None,
@@ -20720,7 +20722,8 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
         advance_given_bill_no = ', '.join(a['receipt_no'] for a in clean_advances
                                           if a['adv_type'] == 'GIVEN' and a['receipt_no'])[:100] or None
 
-    actual_received = cash_amount + credit_card_sampath_amount + credit_card_hnb_amount + bank_transfer_amount
+    actual_received = (cash_amount + credit_card_sampath_amount + credit_card_hnb_amount
+                       + bank_transfer_amount + bank_transfer_2_amount)
     expected_received = _daily_sales_expected_from_registers(
         total_income, total_expenditure, telephone_income, petty_cash, misc_expenses, reg_totals,
         commission_total)
@@ -20779,6 +20782,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 UPDATE daily_sales_entries SET
                     narration=%s, total_income=%s, total_expenditure=%s, balance=%s,
                     cash_float=%s, cash_amount=%s, credit_card_sampath_amount=%s, credit_card_hnb_amount=%s, bank_transfer_amount=%s,
+                    bank_transfer_2_amount=%s,
                     telephone_income=%s, advance_received=%s, advance_received_bill_no=%s,
                     advance_given=%s, advance_given_bill_no=%s, petty_cash=%s,
                     misc_expense_1_label=%s, misc_expense_1_amount=%s,
@@ -20788,6 +20792,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 WHERE id=%s
             """, (narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+                  bank_transfer_2_amount,
                   telephone_income, advance_received, advance_received_bill_no,
                   advance_given, advance_given_bill_no, petty_cash,
                   misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
@@ -20798,15 +20803,16 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 INSERT INTO daily_sales_entries (
                     entry_date, narration, total_income, total_expenditure, balance,
                     cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-                    telephone_income, advance_received, advance_received_bill_no,
+                    bank_transfer_2_amount, telephone_income, advance_received, advance_received_bill_no,
                     advance_given, advance_given_bill_no, petty_cash,
                     misc_expense_1_label, misc_expense_1_amount,
                     misc_expense_2_label, misc_expense_2_amount,
                     misc_expense_3_label, misc_expense_3_amount,
                     status, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
             """, (entry_date, narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+                  bank_transfer_2_amount,
                   telephone_income, advance_received, advance_received_bill_no,
                   advance_given, advance_given_bill_no, petty_cash,
                   misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
@@ -20964,6 +20970,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 (credit_card_sampath_amount, 'daily_sales_card_sampath_account', 'Credit Card - Sampath Bank'),
                 (credit_card_hnb_amount, 'daily_sales_card_hnb_account', 'Credit Card - HNB Bank'),
                 (bank_transfer_amount, 'daily_sales_bank_account', 'Bank Transfer'),
+                (bank_transfer_2_amount, 'daily_sales_bank2_account', 'Bank Transfer 2'),
             ):
                 if pm_amount:
                     cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = %s", (setting_key,))
@@ -21147,6 +21154,7 @@ def daily_sales_entry_save():
     credit_card_sampath_amount = parse_float(request.form.get('credit_card_sampath_amount'))
     credit_card_hnb_amount = parse_float(request.form.get('credit_card_hnb_amount'))
     bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
+    bank_transfer_2_amount = parse_float(request.form.get('bank_transfer_2_amount'))
     telephone_income = parse_float(request.form.get('telephone_income'))
     advance_received = parse_float(request.form.get('advance_received'))
     advance_received_bill_no = (request.form.get('advance_received_bill_no') or '').strip() or None
@@ -21192,6 +21200,7 @@ def daily_sales_entry_save():
     ok, message, _jv = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+        bank_transfer_2_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
         credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in, petty_lines_in=petty_lines_in,
@@ -21230,7 +21239,8 @@ def daily_sales_entry_post():
     actual_received = 0
     if header:
         actual_received = ((header.get('cash_amount') or 0) + (header.get('credit_card_sampath_amount') or 0) +
-                            (header.get('credit_card_hnb_amount') or 0) + (header.get('bank_transfer_amount') or 0))
+                            (header.get('credit_card_hnb_amount') or 0) + (header.get('bank_transfer_amount') or 0)
+                            + (header.get('bank_transfer_2_amount') or 0))
         misc_expenses = [
             (header.get('misc_expense_1_label'), header.get('misc_expense_1_amount')),
             (header.get('misc_expense_2_label'), header.get('misc_expense_2_amount')),
@@ -21284,6 +21294,7 @@ def daily_sales_entry_post_save():
     credit_card_sampath_amount = parse_float(request.form.get('credit_card_sampath_amount'))
     credit_card_hnb_amount = parse_float(request.form.get('credit_card_hnb_amount'))
     bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
+    bank_transfer_2_amount = parse_float(request.form.get('bank_transfer_2_amount'))
     # These aren't editable on this screen - carried forward unchanged from
     # what front office entered (see the hidden fields in daily_sales_entry_post.html).
     telephone_income = parse_float(request.form.get('telephone_income'))
@@ -21315,6 +21326,7 @@ def daily_sales_entry_post_save():
     ok, message, jv_no = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+        bank_transfer_2_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
         None, action, get_current_user_pk(), registers_in=None)  # registers are front office's - kept as saved
@@ -21439,7 +21451,7 @@ def daily_sales_gl_mapping():
     settings = db.execute_query("""
         SELECT setting_key, setting_value FROM system_settings
         WHERE setting_key IN ('daily_sales_cash_account', 'daily_sales_card_sampath_account', 'daily_sales_card_hnb_account',
-                               'daily_sales_bank_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account')
+                               'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account')
     """) or []
     pm_accounts = {s['setting_key']: s['setting_value'] for s in settings}
 
@@ -21472,7 +21484,7 @@ def daily_sales_gl_mapping_save():
                              (acc.strip() or None, sub_code, cat_id), commit=True)
 
         for key in ('daily_sales_cash_account', 'daily_sales_card_sampath_account', 'daily_sales_card_hnb_account',
-                    'daily_sales_bank_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
+                    'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
             val = (request.form.get(key) or '').strip()
             db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
                              (val, key), commit=True)
@@ -21563,7 +21575,7 @@ def _daily_sales_report_data(as_of):
 
     entries = db.execute_query("""
         SELECT id, entry_date, status, total_income, cash_amount, credit_card_sampath_amount,
-               credit_card_hnb_amount, bank_transfer_amount, petty_cash, telephone_income,
+               credit_card_hnb_amount, bank_transfer_amount, bank_transfer_2_amount, petty_cash, telephone_income,
                misc_expense_1_label, misc_expense_1_amount, misc_expense_2_label, misc_expense_2_amount,
                misc_expense_3_label, misc_expense_3_amount
         FROM daily_sales_entries WHERE entry_date BETWEEN %s AND %s
@@ -21656,6 +21668,8 @@ def _daily_sales_report_data(as_of):
     sampath = e_sum('credit_card_sampath_amount')
     hnb = e_sum('credit_card_hnb_amount')
     bank = e_sum('bank_transfer_amount')
+    bank2 = e_sum('bank_transfer_2_amount')
+    bank = (round(bank[0] + bank2[0], 2), round(bank[1] + bank2[1], 2))
 
     # Bar Sales Record collections post to the GL separately - add them in so
     # the Cash Book matches the GL. Cash = what was handed to management when

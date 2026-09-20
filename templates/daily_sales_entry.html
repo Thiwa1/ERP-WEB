@@ -456,6 +456,13 @@
                        value="{{ '{:,.2f}'.format(header.bank_transfer_amount) if header and header.bank_transfer_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
+              <div class="col-3">
+                <label class="form-label">Bank Transfer 2</label>
+                <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="bank_transfer_2_amount" id="dseBank2" class="form-control form-control-sm"
+                       title="Money received into a second bank account"
+                       value="{{ '{:,.2f}'.format(header.bank_transfer_2_amount) if header and header.bank_transfer_2_amount else '' }}"
+                       onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+              </div>
               <div class="col-6 offset-3">
                 <label class="form-label">Total Credit Card <span class="fw-normal text-muted">(Sampath + HNB)</span></label>
                 <input type="text" class="form-control form-control-sm text-end fw-bold" id="dseCardTotal" value="0.00" readonly
@@ -902,7 +909,7 @@ function dseRecalc() {
   const cash = dseParse(document.getElementById('dseCash').value);
   const cardSampath = dseParse(document.getElementById('dseCardSampath').value);
   const cardHnb = dseParse(document.getElementById('dseCardHnb').value);
-  const bank = dseParse(document.getElementById('dseBank').value);
+  const bank = dseParse(document.getElementById('dseBank').value) + dseParse(document.getElementById('dseBank2').value);
   const pmTotal = Math.round((cash + cardSampath + cardHnb + bank) * 100) / 100;
   document.getElementById('dsePmTotal').textContent = dseFmt(pmTotal);
   document.getElementById('dseCardTotal').value = (Math.round((cardSampath + cardHnb) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

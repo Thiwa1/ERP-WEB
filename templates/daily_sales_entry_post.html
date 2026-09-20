@@ -91,6 +91,7 @@
           <input type="hidden" name="credit_card_sampath_amount" value="{{ header.credit_card_sampath_amount or 0 }}">
           <input type="hidden" name="credit_card_hnb_amount" value="{{ header.credit_card_hnb_amount or 0 }}">
           <input type="hidden" name="bank_transfer_amount" value="{{ header.bank_transfer_amount or 0 }}">
+          <input type="hidden" name="bank_transfer_2_amount" value="{{ header.bank_transfer_2_amount or 0 }}">
           <input type="hidden" name="telephone_income" value="{{ header.telephone_income or 0 }}">
           <input type="hidden" name="advance_received" value="{{ header.advance_received or 0 }}">
           <input type="hidden" name="advance_received_bill_no" value="{{ header.advance_received_bill_no or '' }}">
@@ -378,6 +379,10 @@
                   <div class="col-3">
                     <label class="form-label">Bank Transfer</label>
                     <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.bank_transfer_amount or 0) }}" readonly>
+                  </div>
+                  <div class="col-3">
+                    <label class="form-label">Bank Transfer 2</label>
+                    <input type="text" class="form-control form-control-sm" value="{{ '%.2f'|format(header.bank_transfer_2_amount or 0) }}" readonly>
                   </div>
                   <div class="col-6 offset-3">
                     <label class="form-label">Total Credit Card <span class="fw-normal text-muted">(Sampath + HNB)</span></label>
