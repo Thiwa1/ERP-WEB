@@ -21752,7 +21752,9 @@ def _daily_sales_report_data(as_of):
         for n in (1, 2, 3):
             add_petty(e[f'misc_expense_{n}_label'] or f'Misc Expense {n}', e[f'misc_expense_{n}_amount'], is_today)
 
-    # Commission kept by agents (PickMe and the like) never reaches the till either
+    # Commission kept by agents (PickMe and the like) never reaches the till
+    # either - reported on its own, never mixed into petty cash.
+    commission = {}
     try:
         for r in db.execute_query("""
             SELECT e.entry_date, c.gl_account, c.description, c.amount
@@ -21760,9 +21762,15 @@ def _daily_sales_report_data(as_of):
             JOIN daily_sales_entries e ON e.id = c.entry_id
             WHERE e.entry_date BETWEEN %s AND %s ORDER BY c.id
         """, (month_start, as_of)) or []:
-            add_petty(r['gl_account'] or r['description'] or 'Commission', r['amount'], r['entry_date'] == as_of)
+            if not r['amount']:
+                continue
+            label = r['gl_account'] or r['description'] or 'Commission'
+            c = commission.setdefault(_dse_name_key(label), {'label': label, 'today': 0.0, 'mtd': 0.0})
+            c['mtd'] += float(r['amount'])
+            if r['entry_date'] == as_of:
+                c['today'] += float(r['amount'])
     except Exception:
-        pass
+        commission = {}
 
     out = _daily_sales_outstanding(as_of)
 
@@ -21832,6 +21840,7 @@ def _daily_sales_report_data(as_of):
         'card_other': card_other, 'bar_extra': bar_extra,
         'debtors': debtors, 'creditors': creditors,
         'petty': list(petty.values()),
+        'commission': list(commission.values()),
         'adv_debtors': advance_rows(out['adv_given']),
         'adv_creditors': advance_rows(out['adv_received']),
     }

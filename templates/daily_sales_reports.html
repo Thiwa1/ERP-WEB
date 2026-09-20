@@ -172,6 +172,18 @@
           </tbody>
         </table>
 
+        {% if d.commission %}
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Commission / Set-off <span class="fw-normal">(kept by agents &mdash; never reached the till)</span></th><th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>
+          <tbody>
+            {% for c in d.commission %}
+            <tr><td>{{ c.label }}</td><td class="num">{{ money(c.today) }}</td><td class="num">{{ money(c.mtd) }}</td></tr>
+            {% endfor %}
+            <tr class="rp-total"><td>Total</td><td class="num">{{ money(d.commission | sum(attribute='today')) }}</td><td class="num">{{ money(d.commission | sum(attribute='mtd')) }}</td></tr>
+          </tbody>
+        </table>
+        {% endif %}
+
         {% for title, rows in [('Advance Debtors (Advance Given)', d.adv_debtors), ('Advance Creditors (Advance Received)', d.adv_creditors)] %}
         <table class="rp mb-3">
           <thead>
