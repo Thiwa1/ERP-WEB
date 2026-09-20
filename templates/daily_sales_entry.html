@@ -81,6 +81,7 @@
       <input type="hidden" name="advances_json" id="dseAdvancesJson">
       <input type="hidden" name="settlements_json" id="dseSettlementsJson">
       <input type="hidden" name="petty_lines_json" id="dsePettyLinesJson" disabled>
+      <input type="hidden" name="commission_lines_json" id="dseCommissionLinesJson" disabled>
 
       <div class="mb-3">
         <label class="form-label fw-semibold">Narration / Notes</label>
@@ -292,6 +293,37 @@
         {% for a in petty_accounts %}<option value="{{ a }}">{% endfor %}
       </datalist>
 
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+        <h6 class="fw-bold mb-0" style="font-size:0.9rem;"><i class="fas fa-percent me-1 text-primary"></i>Commission / Set-off</h6>
+        {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCommission()"><i class="fas fa-plus"></i> Add Commission Line</button>{% endif %}
+      </div>
+      <div class="alert alert-light border small">
+        <i class="fas fa-info-circle me-1"></i> For sales where the agent keeps a commission &mdash; PickMe, booking sites and the like.
+        Record the <strong>full sale</strong> above and the commission here: it is <strong>deducted from the Expected Receipt</strong>
+        (you only collect the balance) and posts <strong>Dr the account you pick</strong> when the day is posted.
+      </div>
+      <div class="table-responsive mb-4">
+        <table class="table table-bordered table-sm dse-table align-middle mb-0">
+          <thead>
+            <tr>
+              <th style="width:34%">Description</th>
+              <th style="width:28%">Account (Dr)</th>
+              <th style="width:22%">Sub Account</th>
+              <th style="width:13%" class="text-end">Amount</th>
+              <th style="width:3%"></th>
+            </tr>
+          </thead>
+          <tbody id="dseCommissionBody"></tbody>
+          <tfoot>
+            <tr class="dse-total-row">
+              <td colspan="3" class="text-end">Total Commission / Set-off</td>
+              <td class="text-end"><span id="dseCommissionTotal">0.00</span></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
       <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-book me-1 text-primary"></i>Income &amp; Expenditure Summary</h6>
       <div class="alert alert-light border small">
         <i class="fas fa-info-circle me-1"></i> Recorded for reference only &mdash; does not post to the General Ledger.
@@ -391,7 +423,7 @@
             </div>
             <div class="mt-2 text-muted" style="font-size:0.72rem;">
               Expected Receipt = Total Sales + Advance Received &minus; Advance Set-off/Refund + Advance Recovered
-              + Credit Received (cash) &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+              + Credit Received (cash) &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Commission &minus; Misc &minus; Total Expenditure
               <br>A credit or advance <em>set-off</em> (no cash) doesn't change the Expected Receipt.
             </div>
           </div>
@@ -509,6 +541,7 @@ const dseSavedAdvances = {{ advances|default([])|tojson }};
 const dseSavedSettlements = {{ settlements|default([])|tojson }};
 const dseOpen = {{ open_items|default({'credits': [], 'adv_received': [], 'adv_given': []})|tojson }};
 const dseSavedPetty = {{ petty_lines|default([])|tojson }};
+const dseSavedCommission = {{ commission_lines|default([])|tojson }};
 const dsePettyAccounts = {{ petty_accounts|default([])|tojson }};
 const dsePettyCashAccounts = {{ petty_cash_accounts|default([])|tojson }};
 const dseTillAccount = {{ (till_account or '')|tojson }};
@@ -777,6 +810,51 @@ function dsePettyTotals() {
   return { total: Math.round(total * 100) / 100, till: Math.round(till * 100) / 100, hasTill: hasTill };
 }
 
+// ---- Commission / Set-off lines ---------------------------------------------------
+function dseAddCommission(row) {
+  row = row || {};
+  const dis = dseReadonly ? 'disabled' : '';
+  const subOpt = row.sub_account_code
+    ? '<option value="' + dseEsc(row.sub_account_code) + '" selected>' + dseEsc(row.sub_account_name || row.sub_account_code) + '</option>' : '';
+  document.getElementById('dseCommissionBody').insertAdjacentHTML('beforeend',
+    '<tr class="dse-comm-row">' +
+      '<td><input type="text" class="form-control form-control-sm dse-cm-desc" placeholder="e.g. PickMe commission" value="' + dseEsc(row.description) + '" ' + dis + '></td>' +
+      '<td><input type="text" list="dsePettyAccountList" class="form-control form-control-sm dse-cm-account" placeholder="Type to search" value="' + dseEsc(row.gl_account) + '" onchange="dseCommissionAccountChanged(this)" ' + dis + '></td>' +
+      '<td><select class="form-select form-select-sm dse-cm-sub" ' + dis + '><option value="">- none -</option>' + subOpt + '</select></td>' +
+      '<td><input type="text" inputmode="decimal" autocomplete="off" data-money="1" class="form-control form-control-sm text-end dse-cm-amount" value="' + (row.amount ? dseFmt(row.amount) : '') + '" oninput="dseRecalc()" ' + dis + '></td>' +
+      '<td>' + dseRemoveBtn() + '</td>' +
+    '</tr>');
+  const tr = document.getElementById('dseCommissionBody').lastElementChild;
+  if (row.gl_account && !dseReadonly) dseCommissionLoadSubs(tr, row.sub_account_code);
+  dsePettyCheckAccount(tr.querySelector('.dse-cm-account'));
+}
+function dseCommissionLoadSubs(tr, selected) {
+  const acct = tr.querySelector('.dse-cm-account').value.trim();
+  const sel = tr.querySelector('.dse-cm-sub');
+  if (!acct) { sel.innerHTML = '<option value="">- none -</option>'; return; }
+  fetch(dseSubUrl + '?account_name=' + encodeURIComponent(acct))
+    .then(function(r) { return r.json(); })
+    .then(function(rows) {
+      let html = '<option value="">- none -</option>';
+      (rows || []).forEach(function(s) {
+        html += '<option value="' + dseEsc(s.code) + '"' + (String(s.code) === String(selected || '') ? ' selected' : '') + '>' + dseEsc(s.name) + '</option>';
+      });
+      sel.innerHTML = html;
+    })
+    .catch(function() {});
+}
+function dseCommissionAccountChanged(inp) {
+  dseCommissionLoadSubs(inp.closest('tr'), '');
+  dsePettyCheckAccount(inp);
+}
+function dseCommissionTotal() {
+  let total = 0;
+  document.querySelectorAll('#dseCommissionBody .dse-comm-row').forEach(function(tr) {
+    total += dseParse(tr.querySelector('.dse-cm-amount').value);
+  });
+  return Math.round(total * 100) / 100;
+}
+
 function dseRecalc() {
   let total = 0;
   document.querySelectorAll('#dseForm .dse-sales-row').forEach(function(tr) {
@@ -812,9 +890,12 @@ function dseRecalc() {
   let miscTotal = 0;
   document.querySelectorAll('.dse-misc-amount').forEach(function(inp) { miscTotal += dseParse(inp.value); });
 
+  const commission = dseCommissionTotal();
+  document.getElementById('dseCommissionTotal').textContent = dseFmt(commission);
+
   const expectedReceived = Math.round((
     total + t.advReceived - t.advReceivedSettled + t.advGivenRecovered + t.creditReceivedCash
-    - t.creditGiven - t.advGiven - telephone - pettyCash - miscTotal - exp
+    - t.creditGiven - t.advGiven - telephone - pettyCash - miscTotal - commission - exp
   ) * 100) / 100;
   document.getElementById('dseExpectedReceived').value = dseFmt(expectedReceived);
 
@@ -911,6 +992,19 @@ function dseSubmit() {
   const pettyInput = document.getElementById('dsePettyLinesJson');
   pettyInput.value = JSON.stringify(petty);
   pettyInput.disabled = false;
+
+  const commission = [];
+  document.querySelectorAll('#dseCommissionBody .dse-comm-row').forEach(function(tr) {
+    commission.push({
+      description: tr.querySelector('.dse-cm-desc').value,
+      gl_account: tr.querySelector('.dse-cm-account').value,
+      sub_account_code: tr.querySelector('.dse-cm-sub').value,
+      amount: tr.querySelector('.dse-cm-amount').value
+    });
+  });
+  const commissionInput = document.getElementById('dseCommissionLinesJson');
+  commissionInput.value = JSON.stringify(commission);
+  commissionInput.disabled = false;
 
   document.getElementById('dseForm').submit();
 }
@@ -1035,6 +1129,7 @@ document.addEventListener('DOMContentLoaded', function() {
   dseSavedAdvances.forEach(function(a) { dseAddAdvance(a.adv_type, a); });
   dseSavedSettlements.forEach(function(s) { dseAddSettlement(s.adv_type === 'GIVEN' ? 'GIVEN' : 'RECEIVED', s); });
   dseSavedPetty.forEach(function(p) { dseAddPetty(p); });
+  dseSavedCommission.forEach(function(c) { dseAddCommission(c); });
   dseRecalc();
 });
 </script>

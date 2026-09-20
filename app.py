@@ -20432,13 +20432,16 @@ def _daily_sales_register_totals(advances, settlements, credit_lines):
     return {k: round(v, 2) for k, v in t.items()}
 
 
-def _daily_sales_expected_from_registers(total_income, total_expenditure, telephone, petty_cash, misc_expenses, t):
-    """Expected Receipt with the registers folded in - see the cash effects above."""
-    return _daily_sales_expected_received(
+def _daily_sales_expected_from_registers(total_income, total_expenditure, telephone, petty_cash, misc_expenses, t,
+                                          commission_total=0.0):
+    """Expected Receipt with the registers folded in - see the cash effects above.
+    `commission_total` is what agents (PickMe and the like) keep out of the
+    money they pass on, so it never reaches the till either."""
+    return round(_daily_sales_expected_received(
         total_income, total_expenditure, telephone,
         t['adv_received'] - t['adv_received_settled'] + t['adv_given_recovered'],
         t['adv_given'], petty_cash, misc_expenses,
-        t['credit_received_cash'], t['credit_given'])
+        t['credit_received_cash'], t['credit_given']) - round(commission_total or 0, 2), 2)
 
 
 def _daily_sales_open_items(entry_date, entry_id=None):
@@ -20487,6 +20490,24 @@ def _daily_sales_petty_from_till(row, till_account):
     return bool(till_account) and (row.get('cash_account') or '').strip().lower() == till_account.lower()
 
 
+def _daily_sales_commission_rows(entry_id):
+    """Commission / set-off lines saved for one day (PickMe & co keep their
+    commission, so the cash received is short of the sales recorded)."""
+    if not entry_id:
+        return []
+    try:
+        return db.execute_query("""
+            SELECT c.id, c.description, c.gl_account, c.gl_account AS expense_account, c.sub_account_code,
+                   c.amount, s.sub_sub_accaount_name AS sub_account_name
+            FROM daily_sales_commission_lines c
+            LEFT JOIN sub_accont_for_new_account s ON s.sub_account_code = c.sub_account_code
+                 AND s.sub_new_account = c.gl_account
+            WHERE c.entry_id = %s ORDER BY c.id
+        """, (entry_id,)) or []
+    except Exception:
+        return []
+
+
 def _daily_sales_unknown_accounts(petty_rows):
     """Petty cash account names that aren't in the Chart of Accounts. The GL's
     entry_details.account_name is a foreign key, so posting one fails the whole JV."""
@@ -20524,7 +20545,8 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                                 cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
                                 telephone_income, advance_received, advance_received_bill_no,
                                 advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-                                credit_lines_in, action, current_user_pk, registers_in=None, petty_lines_in=None):
+                                credit_lines_in, action, current_user_pk, registers_in=None, petty_lines_in=None,
+                                commission_lines_in=None):
     """Core Park/Post logic shared by the front office Save button and the
     accountant's Post button. `action` is always decided by the caller
     ('park' or 'post') - never trusted from the request directly.
@@ -20668,6 +20690,26 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                                 'amount': amount})
         petty_rows = clean_petty
 
+    # Commission / set-off lines (None = keep what's saved)
+    if commission_lines_in is None:
+        clean_commission = None
+        commission_rows = _daily_sales_commission_rows(existing_entry_id)
+    else:
+        clean_commission = []
+        for cm in commission_lines_in:
+            amount = parse_float(cm.get('amount'))
+            description = (cm.get('description') or '').strip()[:255] or None
+            gl_account = (cm.get('gl_account') or '').strip()[:255] or None
+            if not (amount or description or gl_account):
+                continue
+            sub = str(cm.get('sub_account_code') or '').strip()
+            clean_commission.append({'description': description, 'gl_account': gl_account,
+                                     'expense_account': gl_account,
+                                     'sub_account_code': int(sub) if sub.isdigit() and int(sub) else None,
+                                     'amount': amount})
+        commission_rows = clean_commission
+    commission_total = round(sum(float(r['amount'] or 0) for r in commission_rows), 2)
+
     reg_totals = _daily_sales_register_totals(adv_rows_for_totals, set_rows_for_totals, credit_rows_for_totals)
     if registers_in is not None:
         # The header's single Advance Received / Given figures now mirror the register.
@@ -20680,7 +20722,8 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
 
     actual_received = cash_amount + credit_card_sampath_amount + credit_card_hnb_amount + bank_transfer_amount
     expected_received = _daily_sales_expected_from_registers(
-        total_income, total_expenditure, telephone_income, petty_cash, misc_expenses, reg_totals)
+        total_income, total_expenditure, telephone_income, petty_cash, misc_expenses, reg_totals,
+        commission_total)
 
     warning = None
     if action == 'post':
@@ -20692,11 +20735,15 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             warning = ('Cannot post: every Petty Cash line needs an Account and a Petty Cash Account - '
                        'open the day in Daily Sales Entry and complete them.')
             action = 'park'
-        elif _daily_sales_unknown_accounts(petty_rows):
+        elif any(float(r['amount'] or 0) and not r['gl_account'] for r in commission_rows):
+            warning = ('Cannot post: every Commission / Set-off line needs an account - '
+                       'open the day in Daily Sales Entry and complete them.')
+            action = 'park'
+        elif _daily_sales_unknown_accounts(petty_rows + commission_rows):
             # Every petty cash account name must be a real GL account, or the
             # entry_details foreign key rejects the whole posting.
-            bad_accounts = _daily_sales_unknown_accounts(petty_rows)
-            warning = ('Cannot post: these Petty Cash accounts are not in the Chart of Accounts - ' +
+            bad_accounts = _daily_sales_unknown_accounts(petty_rows + commission_rows)
+            warning = ('Cannot post: these accounts are not in the Chart of Accounts - ' +
                        ', '.join(f'"{a}"' for a in bad_accounts[:6]) +
                        ('...' if len(bad_accounts) > 6 else '') +
                        '. Pick an existing account on the Daily Sales Entry screen (or create it in Chart of Accounts first).')
@@ -20705,7 +20752,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             warning = (f'Cannot post: Cash + Credit Card (Sampath + HNB) + Bank Transfer ({actual_received:,.2f}) '
                        f'must equal the Expected Receipt ({expected_received:,.2f}) = Total Income + Advance Received '
                        f'- Advance Set-off/Refund + Advance Recovered + Credit Received (cash) - Credit Given - Advance Given '
-                       f'- Telephone - Petty Cash - Misc Expenses - Total Expenditure. '
+                       f'- Telephone - Petty Cash - Commission - Misc Expenses - Total Expenditure. '
                        f'Adjust the breakdown before posting - ask front office to correct it if the figures themselves are wrong.')
             action = 'park'
 
@@ -20891,6 +20938,14 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 """, (entry_id, entry_date, r['description'], r['voucher_no'], r['expense_account'],
                       r['expense_sub_account_code'], r['cash_account'], r['amount']))
 
+        if clean_commission is not None:
+            cursor.execute("DELETE FROM daily_sales_commission_lines WHERE entry_id = %s", (entry_id,))
+            for r in clean_commission:
+                cursor.execute("""
+                    INSERT INTO daily_sales_commission_lines (entry_id, entry_date, description, gl_account, sub_account_code, amount)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (entry_id, entry_date, r['description'], r['gl_account'], r['sub_account_code'], r['amount']))
+
         jv_no = None
         if action == 'post':
             cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'enable_approval_workflow'")
@@ -20994,6 +21049,21 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 """, (petty_account, total, entry_date, date.today(), f"Petty Cash total - Daily Sales {entry_date}",
                       current_user_pk, jv_no))
 
+            # Commission / set-off: the agent kept this out of the money passed on,
+            # so Dr the commission account against the sales already credited above.
+            for r in commission_rows:
+                amt = round(float(r['amount'] or 0), 2)
+                if not amt:
+                    continue
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, %s)
+                """, (r['gl_account'], amt, entry_date, date.today(),
+                      f"{r['description'] or 'Commission'} - Daily Sales {entry_date}",
+                      current_user_pk, jv_no, r['sub_account_code'] or 0))
+
             cursor.execute("""
                 UPDATE daily_sales_entries SET status='Posted', jv_id=%s, posted_by=%s, posted_date=NOW()
                 WHERE id=%s
@@ -21035,6 +21105,7 @@ def daily_sales_entry():
     """) or []
 
     petty_lines = _daily_sales_petty_rows(header['id'] if header else None)
+    commission_lines = _daily_sales_commission_rows(header['id'] if header else None)
     petty_accounts = db.execute_query(
         "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or []
     petty_cash_accounts = [c['account_name'] for c in (db.execute_query(
@@ -21046,6 +21117,7 @@ def daily_sales_entry():
 
     return render_template('daily_sales_entry.html',
                            petty_lines=petty_lines,
+                           commission_lines=commission_lines,
                            petty_accounts=[a['account_name'] for a in petty_accounts],
                            petty_cash_accounts=petty_cash_accounts,
                            till_account=till_account,
@@ -21109,10 +21181,12 @@ def daily_sales_entry_save():
         flash('Invalid advance data submitted.', 'danger')
         return redirect(url_for('daily_sales_entry', date=entry_date))
     petty_json = request.form.get('petty_lines_json')
+    commission_json = request.form.get('commission_lines_json')
     try:
         petty_lines_in = json.loads(petty_json) if petty_json is not None else None
+        commission_lines_in = json.loads(commission_json) if commission_json is not None else None
     except (ValueError, TypeError):
-        flash('Invalid petty cash data submitted.', 'danger')
+        flash('Invalid petty cash / commission data submitted.', 'danger')
         return redirect(url_for('daily_sales_entry', date=entry_date))
 
     ok, message, _jv = _daily_sales_process_entry(
@@ -21120,7 +21194,8 @@ def daily_sales_entry_save():
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
-        credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in, petty_lines_in=petty_lines_in)
+        credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in, petty_lines_in=petty_lines_in,
+        commission_lines_in=commission_lines_in)
     flash(message, 'success' if ok else 'danger')
     return redirect(url_for('daily_sales_entry', date=entry_date))
 
@@ -21165,13 +21240,16 @@ def daily_sales_entry_post():
         expected_received = _daily_sales_expected_from_registers(
             header.get('total_income') or 0, header.get('total_expenditure') or 0,
             header.get('telephone_income') or 0, header.get('petty_cash') or 0,
-            misc_expenses, reg_totals)
+            misc_expenses, reg_totals,
+            sum(float(c['amount'] or 0) for c in _daily_sales_commission_rows(header['id'])))
         pm_matches = abs(actual_received - expected_received) <= 0.01
 
     petty_lines = _daily_sales_petty_rows(header['id'] if header else None)
+    commission_lines = _daily_sales_commission_rows(header['id'] if header else None)
     return render_template('daily_sales_entry_post.html',
                            petty_lines=petty_lines,
-                           petty_bad_accounts=_daily_sales_unknown_accounts(petty_lines),
+                           commission_lines=commission_lines,
+                           petty_bad_accounts=_daily_sales_unknown_accounts(petty_lines + commission_lines),
                            entry_date=entry_date,
                            today_date=date.today().strftime('%Y-%m-%d'),
                            categories=categories,
@@ -21656,6 +21734,18 @@ def _daily_sales_report_data(as_of):
         add_petty('Telephone', e['telephone_income'], is_today)
         for n in (1, 2, 3):
             add_petty(e[f'misc_expense_{n}_label'] or f'Misc Expense {n}', e[f'misc_expense_{n}_amount'], is_today)
+
+    # Commission kept by agents (PickMe and the like) never reaches the till either
+    try:
+        for r in db.execute_query("""
+            SELECT e.entry_date, c.gl_account, c.description, c.amount
+            FROM daily_sales_commission_lines c
+            JOIN daily_sales_entries e ON e.id = c.entry_id
+            WHERE e.entry_date BETWEEN %s AND %s ORDER BY c.id
+        """, (month_start, as_of)) or []:
+            add_petty(r['gl_account'] or r['description'] or 'Commission', r['amount'], r['entry_date'] == as_of)
+    except Exception:
+        pass
 
     out = _daily_sales_outstanding(as_of)
 

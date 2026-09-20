@@ -306,6 +306,25 @@
           </div>
           {% endif %}
 
+          {% if commission_lines %}
+          <h6 class="fw-bold mb-2" style="font-size:0.9rem;"><i class="fas fa-percent me-1 text-primary"></i>Commission / Set-off (posts Dr the account, against the sales credited)</h6>
+          <div class="table-responsive mb-3">
+            <table class="table table-bordered table-sm align-middle" style="font-size:0.82rem;">
+              <thead><tr><th>Description</th><th>Account (Dr)</th><th>Sub Account</th><th class="text-end">Amount</th></tr></thead>
+              <tbody>
+                {% for c in commission_lines %}
+                <tr>
+                  <td>{{ c.description or '' }}</td>
+                  <td>{% if c.gl_account %}{{ c.gl_account }}{% else %}<span class="text-danger fw-semibold">Not set</span>{% endif %}</td>
+                  <td>{{ c.sub_account_name or '' }}</td>
+                  <td class="text-end">{{ '{:,.2f}'.format(c.amount or 0) }}</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endif %}
+
           <div class="alert alert-light border small mb-3">
             <i class="fas fa-lock me-1"></i> Nos / Bill No / Amount and the reconciliation below are entered by front office and
             shown here read-only. If a figure is wrong, ask front office to correct it on their Daily Sales Entry screen
@@ -336,7 +355,7 @@
                 </div>
                 <div class="mt-2 text-muted" style="font-size:0.72rem;">
                   Expected Receipt = Total Sales + Advance Received + Credit Received
-                  &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Misc &minus; Total Expenditure
+                  &minus; Credit Given &minus; Advance Given &minus; Telephone &minus; Petty Cash &minus; Commission &minus; Misc &minus; Total Expenditure
                 </div>
               </div>
             </div>

@@ -64,6 +64,7 @@ def run_migrations(conn):
         _migrate_management_account(cursor)
         _migrate_daily_sales_report_barsales(cursor)
         _migrate_daily_sales_petty_cash(cursor)
+        _migrate_daily_sales_commissions(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1702,6 +1703,32 @@ def _migrate_daily_sales_petty_cash(cursor):
                 amount DOUBLE NOT NULL DEFAULT 0,
                 INDEX idx_dspc_entry (entry_id),
                 INDEX idx_dspc_date (entry_date)
+            )
+        """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_daily_sales_commissions(cursor):
+    """Commission / set-off lines on Daily Sales Entry: an amount kept by an
+    agent (PickMe, booking sites, card aggregators) so the cash received is
+    less than the sales recorded. Posts Dr the chosen account when the day
+    is posted, and reduces the Expected Receipt."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS daily_sales_commission_lines (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                entry_id INT NOT NULL,
+                entry_date DATE NOT NULL,
+                description VARCHAR(255) NULL,
+                gl_account VARCHAR(255) NULL,
+                sub_account_code INT NULL,
+                amount DOUBLE NOT NULL DEFAULT 0,
+                INDEX idx_dscom_entry (entry_id),
+                INDEX idx_dscom_date (entry_date)
             )
         """)
     except mysql.connector.Error as e:
