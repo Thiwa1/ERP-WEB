@@ -19,11 +19,34 @@
   table.rp tr.rp-muted td { color:#6c757d; }
   .rp-col-label { width:46%; }
   .rp-nav .btn { padding:5px 10px; }
+  .rp-print-head { display:none; }
+  @page { size: A4 portrait; margin: 12mm 12mm 14mm 12mm; }
   @media print {
-    .no-print, .sidebar, nav, .navbar, header { display:none !important; }
-    .rp-card { box-shadow:none; border:0; page-break-inside:avoid; }
-    .rp-print-both .tab-pane { display:block !important; opacity:1 !important; }
-    body { background:#fff !important; }
+    .no-print, .sidebar, nav, .navbar, header, .top-navbar { display:none !important; }
+    html, body { background:#fff !important; margin:0 !important; padding:0 !important; }
+    .main-content { margin:0 !important; padding:0 !important; min-height:0 !important; background:#fff !important; }
+    .main-content > .container, .main-content > .container-fluid { max-width:none !important; padding:0 !important; }
+    .rp-print-head { display:flex !important; justify-content:space-between; align-items:flex-end;
+                     border-bottom:2px solid #000; padding-bottom:4px; margin-bottom:6px; }
+    .rp-print-head .h { font-size:15px; font-weight:800; }
+    .rp-print-head .s { font-size:10px; color:#333; }
+    .rp-card { box-shadow:none !important; border:0 !important; border-radius:0 !important; margin:0 0 6px !important; }
+    .rp-card-body { padding:0 !important; }
+    .rp-title { font-size:13px; }
+    .rp-sub { font-size:10px; margin-bottom:4px; }
+    .table-responsive { overflow:visible !important; }
+    table.rp { font-size:10.5px; margin-bottom:8px !important; page-break-inside:auto; }
+    table.rp th, table.rp td { padding:2px 5px; border-color:#999 !important; }
+    table.rp thead { display:table-header-group; }
+    table.rp tr { page-break-inside:avoid; }
+    table.rp th, table.rp tr.rp-sec td, table.rp tr.rp-total td {
+      -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    /* Only the tab on screen prints - unless "Print R1 + R2" was used */
+    .tab-content > .tab-pane { display:none !important; }
+    .tab-content > .tab-pane.active { display:block !important; opacity:1 !important; }
+    body.rp-print-all .tab-content > .tab-pane { display:block !important; opacity:1 !important; }
+    body.rp-print-all #rpR2 { page-break-before:always; }
+    .rp-intro { font-size:9.5px !important; margin-bottom:4px !important; }
   }
 </style>
 
@@ -35,14 +58,20 @@
            onchange="rpJump(this.value)">
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpGo(1)"><i class="fas fa-chevron-right"></i></button>
     <button type="button" class="btn btn-outline-primary btn-sm" onclick="rpJump('{{ today_date }}')">Today</button>
-    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpPrint(false)" title="Print the tab you are on"><i class="fas fa-print me-1"></i> Print</button>
+    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpPrint(true)" title="Print R1 and R2, each on its own page"><i class="fas fa-print me-1"></i> Print R1 + R2</button>
     <a href="{{ url_for('daily_sales_outstanding', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-search-dollar me-1"></i> Outstanding</a>
     <a href="{{ url_for('daily_sales_report_mapping') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sitemap me-1"></i> Row Mapping</a>
     <a href="{{ url_for('daily_sales_entry', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-cash-register me-1"></i> Entry</a>
   </div>
 </div>
 
-<div class="small text-muted mb-2">
+<div class="rp-print-head">
+  <div class="h">Daily Revenue Report &amp; Cash Book</div>
+  <div class="s">Date: {{ as_of }} &nbsp;&middot;&nbsp; Printed {{ today_date }}</div>
+</div>
+
+<div class="small text-muted mb-2 rp-intro">
   <strong class="text-dark">To Day</strong> = {{ as_of }} &nbsp;&middot;&nbsp;
   <strong class="text-dark">Month To Date</strong> = {{ d.month_start.strftime('%Y-%m-%d') }} to {{ as_of }} ({{ d.days }} day{{ '' if d.days == 1 else 's' }})
   &nbsp;&middot;&nbsp; {{ d.entries_count }} day(s) entered this month{% if d.parked_count %}, {{ d.parked_count }} not yet posted (included){% endif %}.
@@ -228,6 +257,11 @@
 </div>
 
 <script>
+function rpPrint(all) {
+  document.body.classList.toggle('rp-print-all', !!all);
+  window.print();
+}
+window.addEventListener('afterprint', function() { document.body.classList.remove('rp-print-all'); });
 function rpJump(val) {
   if (!val) return;
   const tab = document.querySelector('#rpR2.active') ? 'r2' : 'r1';
