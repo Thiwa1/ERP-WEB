@@ -20,11 +20,15 @@
   .rp-col-label { width:46%; }
   .rp-nav .btn { padding:5px 10px; }
   .rp-print-head { display:none; }
-  @page { size: A4 portrait; margin: 12mm 12mm 14mm 12mm; }
+  /* Top/bottom margins come from @page; left/right are padding on the content, so the
+     25mm hole-punch gap on the left stays even if the print dialog is set to Margins: None. */
+  @page { size: A4 portrait; margin: 12mm 0 14mm 0; }
   @media print {
     .no-print, .sidebar, nav, .navbar, header, .top-navbar { display:none !important; }
     html, body { background:#fff !important; margin:0 !important; padding:0 !important; }
-    .main-content { margin:0 !important; padding:0 !important; min-height:0 !important; background:#fff !important; }
+    .main-content { margin:0 !important; padding:0 12mm 0 25mm !important; min-height:0 !important; background:#fff !important;
+                    width:auto !important; max-width:none !important; min-width:0 !important; }
+    table.rp { width:100% !important; table-layout:auto; }
     .main-content > .container, .main-content > .container-fluid { max-width:none !important; padding:0 !important; }
     .rp-print-head { display:flex !important; justify-content:space-between; align-items:flex-end;
                      border-bottom:2px solid #000; padding-bottom:4px; margin-bottom:6px; }
