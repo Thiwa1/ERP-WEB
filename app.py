@@ -20509,6 +20509,53 @@ def _daily_sales_commission_rows(entry_id):
         return []
 
 
+def _daily_sales_bad_posting_accounts(cash_amount, card_sampath, card_hnb, bank, bank2,
+                                      sales_lines, comp_lines, categories, petty_rows, commission_rows):
+    """Every account name the day's JV would post to that is NOT in the Chart
+    of Accounts, as (name, where it comes from). entry_details.account_name
+    is a foreign key, so a single bad name fails the whole posting."""
+    settings = {r['setting_key']: (r['setting_value'] or '').strip() for r in (db.execute_query("""
+        SELECT setting_key, setting_value FROM system_settings WHERE setting_key LIKE 'daily\\_sales\\_%%'
+    """) or [])}
+    used = []
+
+    def add(name, where):
+        name = (name or '').strip()
+        if name and not any(n == name for n, _ in used):
+            used.append((name, where))
+
+    for amt, key, where in ((cash_amount, 'daily_sales_cash_account', 'GL Mapping - Cash'),
+                            (card_sampath, 'daily_sales_card_sampath_account', 'GL Mapping - Card Sampath'),
+                            (card_hnb, 'daily_sales_card_hnb_account', 'GL Mapping - Card HNB'),
+                            (bank, 'daily_sales_bank_account', 'GL Mapping - Bank Transfer'),
+                            (bank2, 'daily_sales_bank2_account', 'GL Mapping - Bank Transfer 2')):
+        if amt:
+            add(settings.get(key), where)
+    for cat_id, _nos, _bill, amount, gl_account, _sub in sales_lines:
+        if amount:
+            cat = categories.get(cat_id) or {}
+            add(gl_account, 'sales line ' + str(cat.get('description') or cat_id))
+    for cat_id, _nos, _bill, amount, gl_account, _sub, subgroup in comp_lines:
+        if amount:
+            cat = categories.get(cat_id) or {}
+            add(gl_account, 'complimentary ' + str(cat.get('particulars') or cat_id))
+            key = {'FOOD': 'daily_sales_food_cost_account', 'LIQUOR': 'daily_sales_liquor_cost_account'}.get(subgroup)
+            if key:
+                add(settings.get(key), 'GL Mapping - ' + str(subgroup).title() + ' cost')
+    for r in petty_rows or []:
+        if float(r['amount'] or 0):
+            add(r.get('expense_account'), 'petty cash line')
+            add(r.get('cash_account'), 'petty cash account')
+    for r in commission_rows or []:
+        if float(r['amount'] or 0):
+            add(r.get('gl_account'), 'commission line')
+    if not used:
+        return []
+    valid = {' '.join(str(a['account_name']).split()).lower()
+             for a in (db.execute_query("SELECT account_name FROM new_account_table") or [])}
+    return [(n, w) for n, w in used if ' '.join(n.split()).lower() not in valid]
+
+
 def _daily_sales_unknown_accounts(petty_rows):
     """Petty cash account names that aren't in the Chart of Accounts. The GL's
     entry_details.account_name is a foreign key, so posting one fails the whole JV."""
@@ -20742,14 +20789,19 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             warning = ('Cannot post: every Commission / Set-off line needs an account - '
                        'open the day in Daily Sales Entry and complete them.')
             action = 'park'
-        elif _daily_sales_unknown_accounts(petty_rows + commission_rows):
-            # Every petty cash account name must be a real GL account, or the
+        elif _daily_sales_bad_posting_accounts(
+                cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+                bank_transfer_2_amount, clean_sales_lines, clean_comp_lines, categories, petty_rows, commission_rows):
+            # Every account the JV will use must be a real GL account, or the
             # entry_details foreign key rejects the whole posting.
-            bad_accounts = _daily_sales_unknown_accounts(petty_rows + commission_rows)
+            bad = _daily_sales_bad_posting_accounts(
+                cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
+                bank_transfer_2_amount, clean_sales_lines, clean_comp_lines, categories, petty_rows, commission_rows)
             warning = ('Cannot post: these accounts are not in the Chart of Accounts - ' +
-                       ', '.join(f'"{a}"' for a in bad_accounts[:6]) +
-                       ('...' if len(bad_accounts) > 6 else '') +
-                       '. Pick an existing account on the Daily Sales Entry screen (or create it in Chart of Accounts first).')
+                       '; '.join(f'"{name}" ({where})' for name, where in bad[:8]) +
+                       ('...' if len(bad) > 8 else '') +
+                       '. Correct them (GL Mapping for Cash/Card/Bank and cost accounts, the Post screen for sales lines, '
+                       'Daily Sales Entry for petty cash and commission), or create the account in Chart of Accounts first.')
             action = 'park'
         elif abs(actual_received - expected_received) > 0.01:
             warning = (f'Cannot post: Cash + Credit Card (Sampath + HNB) + Bank Transfer ({actual_received:,.2f}) '
