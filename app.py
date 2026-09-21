@@ -21468,6 +21468,122 @@ def bar_sales_unpost():
     return redirect(url_for('bar_sales', date=entry_date))
 
 
+def _move_day_target(entry_date, new_date_raw, table, label):
+    """Common checks for moving a Parked day to another date. Returns
+    (row, new_date_str, error)."""
+    try:
+        new_date = datetime.strptime((new_date_raw or '').strip(), '%Y-%m-%d').date()
+    except ValueError:
+        return None, None, 'Pick the new date.'
+    new_str = new_date.strftime('%Y-%m-%d')
+    if new_str == entry_date:
+        return None, None, 'The new date is the same as the current one.'
+    if new_date > date.today():
+        return None, None, 'The new date cannot be in the future.'
+    lock = get_period_lock_date()
+    if lock and new_date <= (lock if isinstance(lock, date) else date.fromisoformat(str(lock)[:10])):
+        return None, None, f'{new_str} is in a closed period (locked through {lock}).'
+    row = db.execute_query(f"SELECT id, status FROM {table} WHERE entry_date = %s", (entry_date,)) or []
+    if not row:
+        return None, None, f'There is no {label} saved for {entry_date}.'
+    if row[0]['status'] == 'Posted':
+        return None, None, f'{label} for {entry_date} is posted - Unpost & Unlock it first, then move it.'
+    if db.execute_query(f"SELECT id FROM {table} WHERE entry_date = %s", (new_str,)):
+        return None, None, f'{new_str} already has a {label} - open it, or clear it first.'
+    return row[0], new_str, None
+
+
+@app.route('/daily_sales_entry/move', methods=['POST'])
+@login_required
+@has_permission('Access_Daily_Sales')
+def daily_sales_entry_move():
+    """Move a Parked Daily Sales Entry (and everything saved with it) to another date."""
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    row, new_date, err = _move_day_target(entry_date, request.form.get('new_date'), 'daily_sales_entries', 'Daily Sales Entry')
+    if err:
+        flash(err, 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
+    entry_id = row['id']
+    # Settlements must never come before what they settle, in either direction.
+    if new_date < entry_date:
+        early = db.execute_query("""
+            SELECT a.receipt_no, a.party_name, a.entry_date FROM daily_sales_advance_settlements s
+            JOIN daily_sales_advances a ON a.id = s.advance_id
+            WHERE s.entry_id = %s AND a.entry_id <> %s AND a.entry_date > %s LIMIT 1
+        """, (entry_id, entry_id, new_date)) or db.execute_query("""
+            SELECT g.invoice_no AS receipt_no, g.party_name, e.entry_date FROM daily_sales_credit_lines r
+            JOIN daily_sales_credit_lines g ON g.id = r.settles_credit_id
+            JOIN daily_sales_entries e ON e.id = g.entry_id
+            WHERE r.entry_id = %s AND g.entry_id <> %s AND e.entry_date > %s LIMIT 1
+        """, (entry_id, entry_id, new_date))
+        if early:
+            e = early[0]
+            flash(f"Can't move to {new_date}: this day settles {e['receipt_no'] or ''} {e['party_name'] or ''} "
+                  f"which was only recorded on {e['entry_date']}.", 'danger')
+            return redirect(url_for('daily_sales_entry', date=entry_date))
+    else:
+        late = db.execute_query("""
+            SELECT a.receipt_no, a.party_name, s.entry_date FROM daily_sales_advance_settlements s
+            JOIN daily_sales_advances a ON a.id = s.advance_id
+            WHERE a.entry_id = %s AND s.entry_id <> %s AND s.entry_date < %s LIMIT 1
+        """, (entry_id, entry_id, new_date)) or db.execute_query("""
+            SELECT g.invoice_no AS receipt_no, g.party_name, e.entry_date FROM daily_sales_credit_lines g
+            JOIN daily_sales_credit_lines r ON r.settles_credit_id = g.id
+            JOIN daily_sales_entries e ON e.id = r.entry_id
+            WHERE g.entry_id = %s AND r.entry_id <> %s AND e.entry_date < %s LIMIT 1
+        """, (entry_id, entry_id, new_date))
+        if late:
+            e = late[0]
+            flash(f"Can't move to {new_date}: {e['receipt_no'] or ''} {e['party_name'] or ''} from this day "
+                  f"was already settled on {e['entry_date']}.", 'danger')
+            return redirect(url_for('daily_sales_entry', date=entry_date))
+    conn = cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor(dictionary=True)
+        conn.start_transaction()
+        cursor.execute("UPDATE daily_sales_entries SET entry_date = %s, updated_by = %s, updated_date = NOW() WHERE id = %s",
+                       (new_date, get_current_user_pk(), entry_id))
+        for table in ('daily_sales_advances', 'daily_sales_advance_settlements',
+                      'daily_sales_petty_cash_lines', 'daily_sales_commission_lines'):
+            try:
+                cursor.execute(f"UPDATE {table} SET entry_date = %s WHERE entry_id = %s", (new_date, entry_id))
+            except mysql.connector.Error as e:
+                if e.errno != 1146:   # table not created yet on this database
+                    raise
+        conn.commit()
+        flash(f'Daily Sales Entry moved from {entry_date} to {new_date}.', 'success')
+        return redirect(url_for('daily_sales_entry', date=new_date))
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        flash(f'Could not move the entry: {e}', 'danger')
+        return redirect(url_for('daily_sales_entry', date=entry_date))
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+@app.route('/bar_sales/move', methods=['POST'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
+def bar_sales_move():
+    """Move a Parked Bar Sales Record day to another date."""
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    row, new_date, err = _move_day_target(entry_date, request.form.get('new_date'), 'bar_sales_days', 'Bar Sales Record')
+    if err:
+        flash(err, 'danger')
+        return redirect(url_for('bar_sales', date=entry_date))
+    try:
+        db.execute_query("UPDATE bar_sales_days SET entry_date = %s, updated_by = %s, updated_date = NOW() WHERE id = %s",
+                         (new_date, get_current_user_pk(), row['id']), commit=True)
+    except Exception as e:
+        flash(f'Could not move the record: {e}', 'danger')
+        return redirect(url_for('bar_sales', date=entry_date))
+    flash(f'Bar Sales Record moved from {entry_date} to {new_date}.', 'success')
+    return redirect(url_for('bar_sales', date=new_date))
+
+
 @app.route('/daily_sales_entry/records', methods=['GET'])
 @login_required
 @has_any_permission('Access_Daily_Sales', 'Access_Accounting')

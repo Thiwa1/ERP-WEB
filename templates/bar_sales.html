@@ -50,13 +50,22 @@
     </strong>
     <div class="d-flex align-items-center gap-2">
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="bsGo(-1)"><i class="fas fa-chevron-left"></i></button>
-      <input type="date" class="form-control form-control-sm" style="width:160px" value="{{ entry_date }}" max="{{ today_date }}" onchange="bsJump(this.value)">
+      <input type="date" class="form-control form-control-sm" style="width:160px" value="{{ entry_date }}" max="{{ today_date }}" onchange="bsDatePicked(this)" onkeydown="if (event.key === 'Enter') { event.preventDefault(); bsJump(this.value); }" onblur="clearTimeout(bsDateTimer); bsJump(this.value)">
       <button type="button" class="btn btn-outline-secondary btn-sm" onclick="bsGo(1)"><i class="fas fa-chevron-right"></i></button>
       <button type="button" class="btn btn-outline-primary btn-sm" onclick="bsJump('{{ today_date }}')">Today</button>
     </div>
   </div>
 
   <div class="bs-body">
+  {% if day and not locked %}
+  <form method="POST" action="{{ url_for('bar_sales_move') }}" class="d-flex flex-wrap gap-2 align-items-center justify-content-end mb-3"
+        onsubmit="return this.new_date.value ? confirm('Move this Bar Sales Record from {{ entry_date }} to ' + this.new_date.value + '?') : (alert('Pick the new date first.'), false);">
+    <input type="hidden" name="entry_date" value="{{ entry_date }}">
+    <span class="small text-muted"><i class="fas fa-calendar-alt me-1"></i>Entered on the wrong day? Move it to</span>
+    <input type="date" name="new_date" class="form-control form-control-sm" style="width:160px" max="{{ today_date }}">
+    <button type="submit" class="btn btn-outline-warning btn-sm"><i class="fas fa-exchange-alt me-1"></i> Change Date</button>
+  </form>
+  {% endif %}
   <form method="POST" action="{{ url_for('bar_sales_save') }}" id="bsForm">
     <input type="hidden" name="entry_date" value="{{ entry_date }}">
     <div class="row g-2 mb-3">
@@ -402,7 +411,16 @@ document.addEventListener('wheel', function(e) {
   if (t && t.tagName === 'INPUT' && t.type === 'number' && document.activeElement === t) { e.preventDefault(); window.scrollBy(0, e.deltaY); }
 }, { passive: false });
 
-function bsJump(v) { if (v) window.location.href = "{{ url_for('bar_sales') }}?date=" + v; }
+function bsJump(v) {
+  // Only a complete date, and only if it changed - typing fires change on every digit
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(v || '') || +v.slice(0, 4) < 2000 || v === "{{ entry_date }}") return;
+  window.location.href = "{{ url_for('bar_sales') }}?date=" + v;
+}
+let bsDateTimer = null;
+function bsDatePicked(inp) {
+  clearTimeout(bsDateTimer);
+  bsDateTimer = setTimeout(function() { bsJump(inp.value); }, 1500);
+}
 function bsGo(off) {
   const d = new Date("{{ entry_date }}T00:00:00");
   d.setDate(d.getDate() + off);

@@ -74,6 +74,15 @@
 
   <div class="dse-card-body">
     {% set readonly = header and header.status == 'Posted' %}
+    {% if header and not readonly %}
+    <form method="POST" action="{{ url_for('daily_sales_entry_move') }}" class="d-flex flex-wrap gap-2 align-items-center justify-content-end mb-3"
+          onsubmit="return this.new_date.value ? confirm('Move this whole entry from {{ entry_date }} to ' + this.new_date.value + '?') : (alert('Pick the new date first.'), false);">
+      <input type="hidden" name="entry_date" value="{{ entry_date }}">
+      <span class="small text-muted"><i class="fas fa-calendar-alt me-1"></i>Entered on the wrong day? Move it to</span>
+      <input type="date" name="new_date" class="form-control form-control-sm" style="width:160px" max="{{ today_date }}">
+      <button type="submit" class="btn btn-outline-warning btn-sm"><i class="fas fa-exchange-alt me-1"></i> Change Date</button>
+    </form>
+    {% endif %}
     <form id="dseForm" method="POST" action="{{ url_for('daily_sales_entry_save') }}">
       <input type="hidden" name="entry_date" value="{{ entry_date }}">
       <input type="hidden" name="lines_json" id="dseLinesJson">
