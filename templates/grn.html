@@ -163,11 +163,13 @@
                         <div class="row g-2 mb-3">
                             <div class="col-4">
                                 <label class="form-label">Qty</label>
-                                <input type="number" class="form-control" id="itemQty" step="0.01" placeholder="0.00">
+                                <input type="text" inputmode="decimal" autocomplete="off" class="form-control grn-calc" id="itemQty" placeholder="0.00"
+                                       title="You can type a sum, e.g. 100/10 or 12*6+3 - it is worked out when you leave the box or press Enter">
                             </div>
                             <div class="col-4">
                                 <label class="form-label">Cost</label>
-                                <input type="number" class="form-control" id="itemCost" step="0.01" placeholder="0.00">
+                                <input type="text" inputmode="decimal" autocomplete="off" class="form-control grn-calc" id="itemCost" placeholder="0.00"
+                                       title="You can type a sum, e.g. 1500/12 or 250*1.18 - it is worked out when you leave the box or press Enter">
                             </div>
                             <div class="col-4">
                                 <label class="form-label">Total</label>
@@ -370,9 +372,77 @@
     const costInput = document.getElementById('itemCost');
     const totalInput = document.getElementById('itemTotal');
 
+    // ---- Sums in Qty / Cost boxes ------------------------------------------------
+    // "+100/10" -> 10, "12*6+3" -> 75, "(1500+300)/12" -> 150. Only numbers,
+    // + - * / ( ) and . are allowed (commas are ignored); worked out with a
+    // small parser, never eval(). Returns null if it isn't a valid sum.
+    function grnCalc(text) {
+        const s = String(text == null ? '' : text).replace(/,/g, '').replace(/\s+/g, '').replace(/^=/, '');
+        if (s === '') return null;
+        if (!/^[0-9+\-*/().]+$/.test(s)) return null;
+        let i = 0;
+        function num() {
+            const m = /^\d*\.?\d+|^\d+\.?/.exec(s.slice(i));
+            if (!m) throw 0;
+            i += m[0].length;
+            return parseFloat(m[0]);
+        }
+        function factor() {
+            if (s[i] === '+') { i++; return factor(); }
+            if (s[i] === '-') { i++; return -factor(); }
+            if (s[i] === '(') { i++; const v = expr(); if (s[i] !== ')') throw 0; i++; return v; }
+            return num();
+        }
+        function term() {
+            let v = factor();
+            while (s[i] === '*' || s[i] === '/') {
+                const op = s[i++], r = factor();
+                if (op === '/' && r === 0) throw 0;
+                v = op === '*' ? v * r : v / r;
+            }
+            return v;
+        }
+        function expr() {
+            let v = term();
+            while (s[i] === '+' || s[i] === '-') { const op = s[i++]; const r = term(); v = op === '+' ? v + r : v - r; }
+            return v;
+        }
+        try {
+            const v = expr();
+            if (i !== s.length || !isFinite(v)) return null;
+            return Math.round(v * 10000) / 10000;
+        } catch (e) { return null; }
+    }
+    function grnCalcValue(text) { const v = grnCalc(text); return v === null ? 0 : v; }
+    // Replace a typed sum with its answer (on leaving the box or pressing Enter)
+    function grnCalcFinish(inp) {
+        if (!String(inp.value).trim()) return;
+        const v = grnCalc(inp.value);
+        if (v === null) {
+            inp.classList.add('is-invalid');
+            inp.title = 'Not a valid number or sum';
+            return;
+        }
+        inp.classList.remove('is-invalid');
+        if (String(v) !== String(inp.value)) {
+            inp.value = v;
+            inp.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+    }
+    document.addEventListener('keydown', function (e) {
+        const t = e.target;
+        if (e.key !== 'Enter' || !t.classList || !t.classList.contains('grn-calc')) return;
+        e.preventDefault();          // Enter works out the sum - it must not submit the GRN
+        grnCalcFinish(t);
+        t.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    document.addEventListener('focusout', function (e) {
+        if (e.target.classList && e.target.classList.contains('grn-calc')) grnCalcFinish(e.target);
+    }, true);
+
     function calcItemTotal() {
-        const qty = parseFloat(qtyInput.value) || 0;
-        const cost = parseFloat(costInput.value) || 0;
+        const qty = grnCalcValue(qtyInput.value);
+        const cost = grnCalcValue(costInput.value);
         totalInput.value = (qty * cost).toFixed(2);
     }
 
@@ -387,14 +457,19 @@
             alert("Please fill all item fields");
             return;
         }
+        const qtyVal = grnCalc(qtyInput.value), costVal = grnCalc(costInput.value);
+        if (qtyVal === null || costVal === null) {
+            alert("Qty or Cost is not a valid number or sum");
+            return;
+        }
 
         const item = {
             name: option.value,
             code: option.getAttribute('data-code'),
             unit: option.getAttribute('data-unit'),
-            qty: parseFloat(qtyInput.value),
-            cost: parseFloat(costInput.value),
-            total: parseFloat(totalInput.value)
+            qty: qtyVal,
+            cost: costVal,
+            total: round2(qtyVal * costVal)
         };
 
         items.push(item);
@@ -422,7 +497,7 @@
     function updateItemField(index, field, value) {
         const item = items[index];
         if (!item) return;
-        item[field] = parseFloat(value) || 0;
+        item[field] = grnCalcValue(value);
         item.total = round2(item.qty * item.cost);
         renderTable();
         calculateTotals();
@@ -476,13 +551,13 @@
                         <td style="font-size:.875rem;color:#605E5C;">${item.code}</td>
                         <td style="font-size:.875rem;color:#605E5C;">${item.unit}</td>
                         <td class="text-end" style="font-size:.875rem;">
-                            <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                   style="width:78px;display:inline-block;" step="0.01" value="${item.qty}"
+                            <input type="text" inputmode="decimal" autocomplete="off" class="form-control form-control-sm text-end amount-cell grn-calc"
+                                   style="width:78px;display:inline-block;" value="${item.qty}"
                                    onchange="updateItemField(${index}, 'qty', this.value)">
                         </td>
                         <td class="text-end" style="font-size:.875rem;">
-                            <input type="number" class="form-control form-control-sm text-end amount-cell"
-                                   style="width:92px;display:inline-block;" step="0.01" value="${item.cost}"
+                            <input type="text" inputmode="decimal" autocomplete="off" class="form-control form-control-sm text-end amount-cell grn-calc"
+                                   style="width:92px;display:inline-block;" value="${item.cost}"
                                    onchange="updateItemField(${index}, 'cost', this.value)">
                         </td>
                         <td class="text-end amount-cell fw-bold" style="font-size:.875rem;">${fmtNum(item.total)}</td>
