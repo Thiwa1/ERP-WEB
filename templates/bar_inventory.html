@@ -118,6 +118,14 @@
     .bi-sheet-wrap tfoot td.bi-m-label { flex:1 1 60%; text-align:left !important; }
     .bi-sheet-wrap tfoot #biSheet { font-size:16px; height:34px; width:140px; }
   }
+  /* Row you clicked / are typing in - whole line lit so the eye stays on one item */
+  #biForm tr.bi-line-row.bi-row-active > td { background:#fff3c4 !important; }
+  #biForm tr.bi-line-row.bi-row-active > td:first-child { box-shadow:inset 4px 0 0 #f0b400; }
+  #biForm tr.bi-line-row.bi-row-active .bi-m-name strong { color:#7a4d00; }
+  #biForm tr.bi-line-row.bi-row-active input:focus { border-color:#f0b400; box-shadow:0 0 0 2px rgba(240,180,0,0.35); }
+  @media (max-width: 767.98px) {
+    .bi-sheet-wrap tr.bi-line-row.bi-row-active { background:#fff3c4; outline:2px solid #f0b400; }
+  }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
@@ -835,6 +843,25 @@ document.addEventListener('keydown', function(e) {
       return;
     }
   }
+});
+
+// ---- Highlight the row you click or type in ----------------------------------------
+function biSetActiveRow(tr) {
+  document.querySelectorAll('#biForm tr.bi-row-active').forEach(function(r) {
+    if (r !== tr) r.classList.remove('bi-row-active');
+  });
+  if (tr) tr.classList.add('bi-row-active');
+}
+document.addEventListener('focusin', function(e) {
+  const tr = e.target.closest && e.target.closest('#biForm tr.bi-line-row');
+  if (tr) biSetActiveRow(tr);
+});
+document.addEventListener('click', function(e) {
+  if (!e.target.closest) return;
+  const tr = e.target.closest('#biForm tr.bi-line-row');
+  // Clicking any cell (not just a box) lights the row; clicking outside the sheet clears it
+  if (tr) biSetActiveRow(tr);
+  else if (!e.target.closest('#biForm')) biSetActiveRow(null);
 });
 
 function biFilterMoved(on) {
