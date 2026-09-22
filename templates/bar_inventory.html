@@ -808,6 +808,35 @@ function biMarkMovement() {
   });
 }
 
+// ---- Enter moves down the column, like Excel ------------------------------------
+// Enter = same column, next item row; Shift+Enter = previous row. Skips category
+// headings, rows hidden by "Show only moved items" and boxes that are hidden or
+// locked. Never submits the form.
+const BI_COLS = ['bi-rf', 'bi-sales', 'bi-restaurant', 'bi-ent', 'bi-adj', 'bi-adj-note', 'bi-count'];
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' || e.ctrlKey || e.altKey || e.metaKey) return;
+  const inp = e.target;
+  if (!inp || inp.tagName !== 'INPUT' || !inp.closest) return;
+  const row = inp.closest('#biForm .bi-line-row');
+  if (!row) return;
+  const col = BI_COLS.find(function(c) { return inp.classList.contains(c); });
+  if (!col) return;
+  e.preventDefault();
+  // Let the box finish first (e.g. Counted Stock turns 4-325 into ml on change)
+  inp.dispatchEvent(new Event('change', { bubbles: true }));
+  let r = row;
+  while ((r = e.shiftKey ? r.previousElementSibling : r.nextElementSibling)) {
+    if (!r.classList.contains('bi-line-row') || r.offsetParent === null) continue;
+    const next = r.querySelector('input.' + col);
+    if (next && !next.disabled && next.offsetParent !== null) {
+      next.focus();
+      try { next.select(); } catch (err) {}
+      next.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+  }
+});
+
 function biFilterMoved(on) {
   document.querySelectorAll('#biForm .bi-line-row').forEach(function(tr) {
     tr.style.display = (on && !tr.classList.contains('bi-moved')) ? 'none' : '';
