@@ -12,7 +12,13 @@
   table.mm { width:100%; border-collapse:collapse; font-size:0.8rem; }
   table.mm td, table.mm th { border-bottom:1px solid #eee; padding:4px 6px; vertical-align:top; }
   table.mm th { background:#fafafa; font-size:0.72rem; text-transform:uppercase; color:#666; }
-  .mm-src { display:flex; gap:4px; align-items:center; margin-bottom:3px; flex-wrap:wrap; }
+  .mm-src { display:flex; gap:4px; align-items:center; margin-bottom:2px; flex-wrap:nowrap; }
+  .mm-src .form-control, .mm-src .form-select { flex:0 0 auto; }
+  .mm-srcs { overflow-x:auto; }
+  table.mm .mm-line .form-select { padding-right:22px !important; background-position:right 5px center; background-size:12px 10px; }
+  table.mm .mm-line .mm-add-src { font-size:0.75rem; padding:0 !important; border:0 !important; box-shadow:none !important; background:none !important; }
+  table.mm .mm-line td { padding:3px 6px; }
+  table.mm .mm-line .form-control-sm, table.mm .mm-line .form-select-sm { font-size:0.78rem; padding:2px 6px; min-height:0; height:26px; }
   .mm-src .form-control, .mm-src .form-select { font-size:0.76rem; padding:2px 6px; height:26px; }
   .mm-amt { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
   .mm-save-bar { position:sticky; top:0; z-index:40; background:#fff; padding:8px 0; }
@@ -143,11 +149,11 @@ function mmSourceHtml(s) {
   MM_CATS.forEach(function(c) { cats += '<option' + (c === s.purchase_category ? ' selected' : '') + '>' + mmEsc(c) + '</option>'; });
   if (s.purchase_category && MM_CATS.indexOf(s.purchase_category) === -1) cats += '<option selected>' + mmEsc(s.purchase_category) + '</option>';
   return '<div class="mm-src" data-uid="' + (++mmSrcUid) + '">' +
-    '<select class="form-select mm-s-type" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
+    '<select class="form-select mm-s-type no-select2" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
     '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
-    '<select class="form-select mm-s-sub" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
-    '<select class="form-select mm-s-cat" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
-    '<select class="form-select mm-s-sign" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
+    '<select class="form-select mm-s-sub no-select2" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
+    '<select class="form-select mm-s-cat no-select2" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
+    '<select class="form-select mm-s-sign no-select2" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
     '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="this.parentNode.remove(); mmDirty();"></i>' +
   '</div>';
 }
@@ -157,14 +163,15 @@ function mmLineHtml(l) {
   let srcs = '';
   (l.sources || []).forEach(function(s) { srcs += mmSourceHtml(s); });
   return '<tr class="mm-line" data-id="' + mmEsc(l.id) + '" data-section="' + l.section + '">' +
-    '<td style="width:60px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
-    '<td style="width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
-      (incomeSales ? '<select class="form-select form-select-sm mt-1 mm-cost" onchange="mmDirty()"><option value="">Cost %: none</option>' +
+    '<td style="width:56px;min-width:56px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
+    '<td style="min-width:200px;width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
+      '<div class="d-flex align-items-center gap-2 mt-1">' +
+      (incomeSales ? '<select class="form-select form-select-sm mm-cost no-select2" style="width:auto" onchange="mmDirty()"><option value="">Cost %: none</option>' +
         '<option value="BAR"' + (l.cost_base === 'BAR' ? ' selected' : '') + '>Cost %: Bar</option>' +
         '<option value="FOOD"' + (l.cost_base === 'FOOD' ? ' selected' : '') + '>Cost %: Food</option></select>' : '') +
-      '<label class="small mt-1 d-block"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual (type each month)</label></td>' +
+      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual</label></div></td>' +
     '<td><div class="mm-srcs">' + srcs + '</div>' +
-      '<button type="button" class="btn btn-sm btn-link p-0" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
+      '<button type="button" class="btn btn-sm btn-link p-0 mm-add-src" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
     '<td class="mm-amt" style="width:110px">' + (l.id && !String(l.id).startsWith('new') ? mmFmt(l.amount) : '') + '</td>' +
     '<td style="width:30px"><i class="fas fa-trash text-danger" style="cursor:pointer" title="Delete line" onclick="mmDeleteLine(this)"></i></td>' +
   '</tr>';
