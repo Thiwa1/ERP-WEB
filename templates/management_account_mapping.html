@@ -429,29 +429,28 @@ function mmCheckDupes() {
     const a = accts[akey] || (accts[akey] = {title: title, isGL: type !== 'PURCH', bySub: {}});
     (a.bySub[sub] = a.bySub[sub] || {name: subName, items: []}).items.push({src: src, tr: tr});
   });
-  // One group per clash: the same sub-account (or whole account) used more than once,
-  // or "all sub-accounts" together with one of its sub-accounts
+  // For every sub-account, count how many times it ends up in the report: "+ all sub-accounts"
+  // counts every sub once, "+ sub" adds one, "- sub" takes one away. More than 1 = counted twice;
+  // below 0 = taken away but never added. (A "- sub" on a line that has "+ all" is a correct split.)
   const groups = [];
   const isOn = function(i) { return !i.src.classList.contains('mm-src-off'); };
+  const sgn = function(i) { return i.src.querySelector('.mm-s-sign').value === '-1' ? -1 : 1; };
+  const cover = function(items) { return items.filter(isOn).reduce(function(a, i) { return a + sgn(i); }, 0); };
   Object.keys(accts).forEach(function(akey) {
     const a = accts[akey];
     const whole = a.bySub[''] ? a.bySub[''].items : [];
     Object.keys(a.bySub).forEach(function(sub) {
       if (sub === '') return;
-      const items = a.bySub[sub].items;
-      if (items.length > 1) groups.push({title: a.title + ' / ' + a.bySub[sub].name, items: items});
+      const items = whole.concat(a.bySub[sub].items);
+      groups.push({title: a.title + ' / ' + a.bySub[sub].name, items: items, count: cover(items)});
     });
-    if (whole.length) {
-      let items = whole.slice();
-      Object.keys(a.bySub).forEach(function(sub) { if (sub !== '') items = items.concat(a.bySub[sub].items); });
-      if (items.length > 1) groups.push({title: a.title + (a.isGL ? ' (all sub-accounts)' : ''), items: items});
-    }
+    if (whole.length) groups.push({title: a.title + (a.isGL ? ' (all sub-accounts)' : ''), items: whole, count: cover(whole)});
   });
   const body = document.getElementById('mmDupBody');
   let h = '', n = 0;
   groups.forEach(function(g) {
     const on = g.items.filter(isOn);
-    const clash = on.length > 1;
+    const clash = g.count > 1 || g.count < 0;
     if (!clash && on.length === g.items.length) return;
     if (clash) { n++; on.forEach(function(i) { i.src.classList.add('mm-dup'); }); }
     let opts = '';
@@ -467,7 +466,7 @@ function mmCheckDupes() {
         ' <span class="text-muted small">&middot; ' + mmEsc(mmSectionName(i.tr.dataset.section)) + mmEsc(subTxt) + sign + '</span></label>';
     });
     h += '<tr class="mm-dup-row"><td><strong>' + mmEsc(g.title) + '</strong>' +
-      (clash ? '' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
+      (clash ? ' <span class="small text-danger">counted ' + g.count + '&times;</span>' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
   });
   body.innerHTML = h;
   document.getElementById('mmDupCount').textContent = n;

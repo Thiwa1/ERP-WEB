@@ -22181,6 +22181,17 @@ def _mgmt_lines(active_only=True):
     return lines
 
 
+def _ensure_table(name, ddl):
+    """Create a table only when it doesn't exist. (On this server 'CREATE TABLE IF NOT EXISTS' on an existing
+    table comes back as a warning that is raised as an error, so check first and never let it block a save.)"""
+    try:
+        if db.execute_query("SHOW TABLES LIKE %s", (name,)):
+            return
+        db.execute_query(ddl, commit=True)
+    except Exception as e:
+        logging.error(f"ensure table {name}: {e}")
+
+
 def _mgmt_src_text(line_id):
     """A line's sources as one readable string, for the mapping change log."""
     parts = []
@@ -22197,13 +22208,13 @@ def _mgmt_src_text(line_id):
 
 
 def _mgmt_log(line_id, label, action, before, after):
+    _ensure_table('mgmt_acc_mapping_log', """
+        CREATE TABLE mgmt_acc_mapping_log (
+          id INT NOT NULL AUTO_INCREMENT, changed_at DATETIME NOT NULL, changed_by VARCHAR(100) NULL,
+          line_id INT NULL, line_label VARCHAR(150) NULL, action VARCHAR(20) NOT NULL,
+          before_text TEXT NULL, after_text TEXT NULL, PRIMARY KEY (id), INDEX idx_mal_time (changed_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
     try:
-        db.execute_query("""
-            CREATE TABLE IF NOT EXISTS mgmt_acc_mapping_log (
-              id INT NOT NULL AUTO_INCREMENT, changed_at DATETIME NOT NULL, changed_by VARCHAR(100) NULL,
-              line_id INT NULL, line_label VARCHAR(150) NULL, action VARCHAR(20) NOT NULL,
-              before_text TEXT NULL, after_text TEXT NULL, PRIMARY KEY (id), INDEX idx_mal_time (changed_at)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""", commit=True)
         db.execute_query("""
             INSERT INTO mgmt_acc_mapping_log (changed_at, changed_by, line_id, line_label, action, before_text, after_text)
             VALUES (NOW(), %s, %s, %s, %s, %s, %s)""",
@@ -22274,11 +22285,11 @@ def _mgmt_compute(period_raw):
                     pair = (key, int(s['sub_account_code']))
                     dr, cr = gl_pair.get(pair, (0.0, 0.0, None))[:2]
                     mapped_pairs.add(pair)
-                    used.setdefault(pair, []).append(ln['label'])
+                    used.setdefault(pair, []).append((ln['label'], sign))
                 else:
                     dr, cr = gl_acct.get(key, [0.0, 0.0, None])[:2]
                     mapped_whole.add(key)
-                    used.setdefault((key, None), []).append(ln['label'])
+                    used.setdefault((key, None), []).append((ln['label'], sign))
                 amount += sign * ((cr - dr) if kind == 'income' else (dr - cr))
         ln['amount'] = round(amount, 2)
         if ln['section'] in sections:
@@ -22322,11 +22333,22 @@ def _mgmt_compute(period_raw):
         ignored.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
                         'kind': inc_exp.get(key, ''), 'amount': 0.0})
     ignored.sort(key=lambda u: (str(u['account']).lower(), u['sub_code']))
+    # Counted more than once: for each sub-account, add up how many times it is counted -
+    # "+ all sub-accounts" counts every sub once, "+ sub" / "- sub" add / take away one.
+    # More than once (or taken away without being added) means the amounts are wrong.
     duplicates = []
-    for (key, sub), labels in used.items():
-        if len(labels) > 1 or (sub is not None and key in mapped_whole):
-            name = gl_acct.get(key, [0, 0, key])[2] if key in gl_acct else key
-            duplicates.append(f"{name}{' / sub ' + str(sub) if sub else ''}: " + ', '.join(sorted(set(labels))))
+    for key in {k for k, _ in used}:
+        whole = used.get((key, None), [])
+        wsum = sum(sg for _, sg in whole)
+        name = gl_acct[key][2] if key in gl_acct else key
+        for (k2, sub), entries in used.items():
+            if k2 != key or sub is None:
+                continue
+            c = wsum + sum(sg for _, sg in entries)
+            if c > 1 or c < 0:
+                duplicates.append(f"{name} / sub {sub}: counted {c} times - " + ', '.join(sorted({l for l, _ in whole + entries})))
+        if wsum > 1 or wsum < 0:
+            duplicates.append(f"{name} (all sub-accounts): counted {wsum} times - " + ', '.join(sorted({l for l, _ in whole})))
 
     # Stock - opening defaults to last month's closing
     mrow = db.execute_query("SELECT * FROM mgmt_acc_months WHERE period = %s", (period,)) or []
@@ -22778,20 +22800,21 @@ def management_account_mapping():
         n_changed = 0
         try:
             if payload.get('ignore'):
-                db.execute_query("""
-                    CREATE TABLE IF NOT EXISTS mgmt_acc_ignored (
+                _ensure_table('mgmt_acc_ignored', """
+                    CREATE TABLE mgmt_acc_ignored (
                       id INT NOT NULL AUTO_INCREMENT, gl_account VARCHAR(150) NOT NULL,
                       sub_account_code INT NOT NULL DEFAULT 0, PRIMARY KEY (id),
                       UNIQUE KEY acct_sub_UNIQUE (gl_account, sub_account_code)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                """, commit=True)
+                """)
             for ig in payload.get('ignore') or []:
                 acct = ' '.join(str(ig.get('account') or '').split())[:150]
                 sub = str(ig.get('sub') or '').strip()
                 if acct:
-                    db.execute_query("""
-                        INSERT IGNORE INTO mgmt_acc_ignored (gl_account, sub_account_code) VALUES (%s, %s)
-                    """, (acct, int(sub) if sub.isdigit() else 0), commit=True)
+                    code = int(sub) if sub.isdigit() else 0
+                    if not db.execute_query("SELECT id FROM mgmt_acc_ignored WHERE gl_account = %s AND sub_account_code = %s", (acct, code)):
+                        db.execute_query("INSERT INTO mgmt_acc_ignored (gl_account, sub_account_code) VALUES (%s, %s)",
+                                         (acct, code), commit=True)
             for ig in payload.get('unignore') or []:
                 acct = ' '.join(str(ig.get('account') or '').split())[:150]
                 sub = str(ig.get('sub') or '').strip()
