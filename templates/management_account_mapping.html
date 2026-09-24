@@ -360,71 +360,74 @@ function mmSectionName(key) {
   return sec ? sec[1] : key;
 }
 function mmCheckDupes() {
-  const groups = {};   // group key -> {title, items:[{src, tr}]}
+  // Collect every GL / purchase source, per account (or category)
+  const accts = {};
   document.querySelectorAll('.mm-src').forEach(function(src) {
     src.classList.remove('mm-dup');
     const tr = src.closest('.mm-line');
     if (!tr || tr.querySelector('.mm-manual').checked) return;
     const type = src.querySelector('.mm-s-type').value;
-    let gkey, title, sub = '';
+    let akey, title, sub = '', subName = '';
     if (type === 'PURCH') {
       const cat = src.querySelector('.mm-s-cat').value;
       if (!cat) return;
-      gkey = 'P|' + cat.trim().toLowerCase();
+      akey = 'P|' + cat.trim().toLowerCase();
       title = 'Purchases: ' + cat;
     } else {
       const acct = src.querySelector('.mm-s-acct').value.trim();
       if (!acct) return;
-      gkey = 'G|' + acct.replace(/\s+/g, ' ').toLowerCase();
+      akey = 'G|' + acct.replace(/\s+/g, ' ').toLowerCase();
       title = acct;
-      sub = src.querySelector('.mm-s-sub').value || '';
+      const subSel = src.querySelector('.mm-s-sub');
+      sub = subSel.value || '';
+      subName = sub && subSel.selectedIndex >= 0 ? subSel.options[subSel.selectedIndex].text : '';
     }
-    const g = groups[gkey] || (groups[gkey] = {title: title, items: []});
-    g.items.push({src: src, tr: tr, sub: sub});
+    const a = accts[akey] || (accts[akey] = {title: title, isGL: type !== 'PURCH', bySub: {}});
+    (a.bySub[sub] = a.bySub[sub] || {name: subName, items: []}).items.push({src: src, tr: tr});
   });
-  const rows = [];
-  Object.keys(groups).forEach(function(gkey) {
-    const g = groups[gkey];
-    const on = g.items.filter(function(i) { return !i.src.classList.contains('mm-src-off'); });
-    // Clashes: same sub (or same whole account) twice, or whole account together with any sub-account
-    const bySub = {};
-    on.forEach(function(i) { (bySub[i.sub] = bySub[i.sub] || []).push(i); });
-    const whole = bySub[''] || [];
-    let clash = [];
-    Object.keys(bySub).forEach(function(sub) {
-      const list = bySub[sub];
-      if (list.length > 1) clash = clash.concat(list);
-      else if (sub !== '' && whole.length) clash = clash.concat(list);
+  // One group per clash: the same sub-account (or whole account) used more than once,
+  // or "all sub-accounts" together with one of its sub-accounts
+  const groups = [];
+  const isOn = function(i) { return !i.src.classList.contains('mm-src-off'); };
+  Object.keys(accts).forEach(function(akey) {
+    const a = accts[akey];
+    const whole = a.bySub[''] ? a.bySub[''].items : [];
+    Object.keys(a.bySub).forEach(function(sub) {
+      if (sub === '') return;
+      const items = a.bySub[sub].items;
+      if (items.length > 1) groups.push({title: a.title + ' / ' + a.bySub[sub].name, items: items});
     });
-    if (clash.length && whole.length) clash = clash.concat(whole);
-    if (!clash.length) {
-      // keep showing groups where the user has unticked something, so they can tick it back
-      if (!g.items.some(function(i) { return i.src.classList.contains('mm-src-off'); })) return;
+    if (whole.length) {
+      let items = whole.slice();
+      Object.keys(a.bySub).forEach(function(sub) { if (sub !== '') items = items.concat(a.bySub[sub].items); });
+      if (items.length > 1) groups.push({title: a.title + (a.isGL ? ' (all sub-accounts)' : ''), items: items});
     }
-    clash.forEach(function(i) { i.src.classList.add('mm-dup'); });
-    rows.push({g: g, clash: clash.length > 0});
   });
   const body = document.getElementById('mmDupBody');
   let h = '', n = 0;
-  rows.forEach(function(r) {
-    if (r.clash) n++;
+  groups.forEach(function(g) {
+    const on = g.items.filter(isOn);
+    const clash = on.length > 1;
+    if (!clash && on.length === g.items.length) return;
+    if (clash) { n++; on.forEach(function(i) { i.src.classList.add('mm-dup'); }); }
     let opts = '';
-    r.g.items.forEach(function(i) {
-      const off = i.src.classList.contains('mm-src-off');
+    g.items.forEach(function(i) {
+      const off = !isOn(i);
       const subSel = i.src.querySelector('.mm-s-sub');
-      const subTxt = i.sub ? ' / ' + subSel.options[subSel.selectedIndex].text : (i.src.querySelector('.mm-s-type').value === 'GL' ? ' / all subs' : '');
+      const isGL = i.src.querySelector('.mm-s-type').value === 'GL';
+      const subTxt = isGL ? ' / ' + (subSel.value && subSel.selectedIndex >= 0 ? subSel.options[subSel.selectedIndex].text : 'all subs') : '';
       const sign = i.src.querySelector('.mm-s-sign').value === '-1' ? ' (&minus;)' : '';
       opts += '<label class="mm-dup-opt' + (off ? ' off' : '') + '"><input type="checkbox"' + (off ? '' : ' checked') +
         ' onchange="mmToggleSrc(' + i.src.dataset.uid + ', this.checked)"> ' +
         mmEsc(i.tr.querySelector('.mm-label').value || '(new line)') +
         ' <span class="text-muted small">&middot; ' + mmEsc(mmSectionName(i.tr.dataset.section)) + mmEsc(subTxt) + sign + '</span></label>';
     });
-    h += '<tr class="mm-dup-row"><td><strong>' + mmEsc(r.g.title) + '</strong>' +
-      (r.clash ? '' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
+    h += '<tr class="mm-dup-row"><td><strong>' + mmEsc(g.title) + '</strong>' +
+      (clash ? '' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
   });
   body.innerHTML = h;
   document.getElementById('mmDupCount').textContent = n;
-  document.getElementById('mmDupCard').style.display = rows.length ? '' : 'none';
+  document.getElementById('mmDupCard').style.display = h ? '' : 'none';
 }
 function mmToggleSrc(uid, keep) {
   const src = document.querySelector('.mm-src[data-uid="' + uid + '"]');

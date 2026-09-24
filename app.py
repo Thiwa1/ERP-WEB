@@ -22253,17 +22253,34 @@ def _mgmt_compute(period_raw):
     sub_names = {}
     for r in db.execute_query("SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or []:
         sub_names[(' '.join(str(r['sub_new_account'] or '').split()).lower(), int(r['sub_account_code'] or 0))] = r['sub_sub_accaount_name']
-    unmapped = []
+    ignored_keys = set()
+    try:
+        for r in db.execute_query("SELECT gl_account, sub_account_code FROM mgmt_acc_ignored") or []:
+            ignored_keys.add((' '.join(str(r['gl_account'] or '').split()).lower(), int(r['sub_account_code'] or 0)))
+    except Exception:
+        pass   # table not created yet
+    unmapped, ignored = [], []
     for (key, sub), (dr, cr, name) in gl_pair.items():
         kind = inc_exp.get(key)
         if not kind or key in mapped_whole or (key, sub) in mapped_pairs:
             continue
         amt = round((cr - dr) if kind == 'income' else (dr - cr), 2)
+        if (key, sub) in ignored_keys:
+            ignored.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
+                            'kind': kind, 'amount': amt})
+            continue
         if abs(amt) < 0.005:
             continue
         unmapped.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
                          'kind': kind, 'amount': amt})
     unmapped.sort(key=lambda u: (u['kind'], -abs(u['amount'])))
+    # Ignored accounts with no activity this month are still listed so they can be restored
+    seen = {(' '.join(str(i['account'] or '').split()).lower(), i['sub_code']) for i in ignored}
+    for key, sub in ignored_keys - seen:
+        name = gl_acct[key][2] if key in gl_acct else key
+        ignored.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
+                        'kind': inc_exp.get(key, ''), 'amount': 0.0})
+    ignored.sort(key=lambda u: (str(u['account']).lower(), u['sub_code']))
     duplicates = []
     for (key, sub), labels in used.items():
         if len(labels) > 1 or (sub is not None and key in mapped_whole):
@@ -22314,7 +22331,7 @@ def _mgmt_compute(period_raw):
 
     return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
             'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
-            'unmapped': unmapped, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
+            'unmapped': unmapped, 'ignored': ignored, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
             'sales_pct': sales_pct}
 
 
@@ -22451,6 +22468,27 @@ def management_account_mapping():
             return redirect(url_for('management_account_mapping'))
         valid_sections = {k for k, _, _ in MGMT_SECTIONS}
         try:
+            if payload.get('ignore'):
+                db.execute_query("""
+                    CREATE TABLE IF NOT EXISTS mgmt_acc_ignored (
+                      id INT NOT NULL AUTO_INCREMENT, gl_account VARCHAR(150) NOT NULL,
+                      sub_account_code INT NOT NULL DEFAULT 0, PRIMARY KEY (id),
+                      UNIQUE KEY acct_sub_UNIQUE (gl_account, sub_account_code)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """, commit=True)
+            for ig in payload.get('ignore') or []:
+                acct = ' '.join(str(ig.get('account') or '').split())[:150]
+                sub = str(ig.get('sub') or '').strip()
+                if acct:
+                    db.execute_query("""
+                        INSERT IGNORE INTO mgmt_acc_ignored (gl_account, sub_account_code) VALUES (%s, %s)
+                    """, (acct, int(sub) if sub.isdigit() else 0), commit=True)
+            for ig in payload.get('unignore') or []:
+                acct = ' '.join(str(ig.get('account') or '').split())[:150]
+                sub = str(ig.get('sub') or '').strip()
+                if acct:
+                    db.execute_query("DELETE FROM mgmt_acc_ignored WHERE gl_account = %s AND sub_account_code = %s",
+                                     (acct, int(sub) if sub.isdigit() else 0), commit=True)
             for lid in payload.get('deleted') or []:
                 if str(lid).isdigit():
                     db.execute_query("DELETE FROM mgmt_acc_lines WHERE id = %s", (int(lid),), commit=True)
