@@ -22817,12 +22817,35 @@ def management_account_mapping():
     categories = db.execute_query("""
         SELECT DISTINCT Main_Catogry AS c FROM inventoy_items WHERE Main_Catogry IS NOT NULL AND Main_Catogry <> '' ORDER BY Main_Catogry
     """) or []
-    sub_accounts = {}
+    # Sub-accounts per GL account, keyed by the account name in lower case with single spaces
+    # (the page looks them up the same way, so 'Bar Income' / 'BAR  INCOME' still match).
+    # Sub-accounts are often saved with active left empty, so only an explicit 0 hides one;
+    # any sub-account code that actually has GL entries is listed too.
+    _k = lambda v: ' '.join(str(v or '').split()).lower()
+    sub_accounts, seen = {}, set()
     for r in db.execute_query("""
-        SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1
-        ORDER BY sub_sub_accaount_name
+        SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
+        WHERE COALESCE(active, 1) <> 0 ORDER BY sub_sub_accaount_name
     """) or []:
-        sub_accounts.setdefault(r['sub_new_account'], []).append({'code': r['sub_account_code'], 'name': r['sub_sub_accaount_name']})
+        key = _k(r['sub_new_account'])
+        if not key or not r['sub_account_code'] or (key, int(r['sub_account_code'])) in seen:
+            continue
+        seen.add((key, int(r['sub_account_code'])))
+        sub_accounts.setdefault(key, []).append({'code': r['sub_account_code'], 'name': r['sub_sub_accaount_name']})
+    try:
+        names = {int(r['sub_account_code']): r['sub_sub_accaount_name'] for r in (db.execute_query(
+            "SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or []) if r['sub_account_code']}
+        for r in db.execute_query("""
+            SELECT DISTINCT account_name, entry_sub_account_code AS sub FROM entry_details
+            WHERE entry_deleted = 0 AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code <> 0
+              AND entry_effective_date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+        """) or []:
+            key, code = _k(r['account_name']), int(r['sub'])
+            if key and (key, code) not in seen:
+                seen.add((key, code))
+                sub_accounts.setdefault(key, []).append({'code': code, 'name': names.get(code) or f'code {code}'})
+    except Exception:
+        pass
     for ln in lines:
         ln['amount'] = amounts.get(ln['id'], 0)
         for s in ln['sources']:

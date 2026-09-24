@@ -133,11 +133,15 @@ function mmEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').rep
 function mmFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function mmDirty() { document.getElementById('mmDirty').style.display = ''; mmCheckDupes(); }
 
+function mmSubKey(account) { return String(account || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 function mmSubOptions(account, selected) {
-  const subs = MM_SUBS[account] || [];
+  const subs = (MM_SUBS[mmSubKey(account)] || []).slice();
+  const sel = String(selected || '');
+  // Keep a saved sub-account selectable even if it isn't in the list, so saving never drops it
+  if (sel && sel !== '0' && !subs.some(function(s) { return String(s.code) === sel; })) subs.push({code: sel, name: 'code ' + sel});
   let h = '<option value="">' + (subs.length ? 'All sub-accounts' : '(no sub-accounts)') + '</option>';
   subs.forEach(function(s) {
-    h += '<option value="' + s.code + '"' + (String(s.code) === String(selected || '') ? ' selected' : '') + '>' + mmEsc(s.name) + '</option>';
+    h += '<option value="' + s.code + '"' + (String(s.code) === sel ? ' selected' : '') + '>' + mmEsc(s.name) + '</option>';
   });
   return h;
 }
@@ -320,7 +324,7 @@ function mmFillEmptyLines() {
     MM_ACCOUNTS.forEach(function(a) {
       if (kind === 'income' ? !a.account_income : !a.account_expenses) return;
       let sc = mmScore(a.account_name, label), sub = '';
-      (MM_SUBS[a.account_name] || []).forEach(function(s) {
+      (MM_SUBS[mmSubKey(a.account_name)] || []).forEach(function(s) {
         const ss = mmScore(s.name, label);
         if (ss > sc + 0.1) { sc = ss; sub = s.code; }
       });
