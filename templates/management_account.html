@@ -26,6 +26,16 @@
   table.ma td.ind { padding-left:26px; }
   table.ma td.prev { color:#7a7a7a; }
   table.ma td.fav { color:#107c10; }
+  .ma-day-wrap { overflow:auto; max-height:75vh; }
+  table.ma-day { border-collapse:collapse; font-family:Calibri, 'Segoe UI', Arial, sans-serif; font-size:11.5px; }
+  table.ma-day th, table.ma-day td { border:1px solid #cfcfcf; padding:3px 6px; white-space:nowrap; }
+  table.ma-day th { background:#f2f2f2; position:sticky; top:0; z-index:2; text-align:center; font-weight:700; white-space:normal; min-width:62px; vertical-align:bottom; }
+  table.ma-day td.n { text-align:right; font-variant-numeric:tabular-nums; }
+  table.ma-day .dt { position:sticky; left:0; background:#fff; z-index:1; font-weight:600; }
+  table.ma-day th.dt { z-index:3; background:#f2f2f2; }
+  table.ma-day .sum { font-weight:700; background:#f7f9fc; }
+  table.ma-day tr.tot td { font-weight:800; background:#eaf0f8; border-top:2px solid #555; position:sticky; bottom:0; }
+  table.ma-day tr.wkend td:not(.sum) { background:#fcfcf5; }
   table.ma td.unfav { color:#c42b1c; }
   .ma-bar { height:10px; background:#0d6efd; border-radius:3px; }
   .ma-flag { font-size:0.75rem; }
@@ -76,7 +86,7 @@
 {% endif %}
 
 <ul class="nav nav-tabs mb-3 no-print">
-  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
   {% endfor %}
 </ul>
@@ -84,33 +94,12 @@
 <div class="tab-content">
 {# ================================================================ P&L #}
 <div class="tab-pane fade {{ 'show active' if tab == 'pl' }}" id="ma_pl">
-  <div class="ma-card"><div class="ma-body">
-    <div class="ma-title"><div class="co">{{ company_name if company_name is defined else '' }}</div>
-      <div class="rt">TRADING PROFIT &amp; LOSS ACCOUNT FOR THE MONTH OF {{ cur.month_label | upper }}</div></div>
-    <div class="table-responsive">
-    <table class="ma">
-      <thead><tr><th>Description</th><th class="note">Note</th><th class="num">Rs</th><th class="num">Rs</th><th class="num">{{ prev.month_label }}</th></tr></thead>
-      <tbody>
-        <tr class="sec"><td colspan="5">Sales</td></tr>
-        <tr><td class="ind">Room &amp; Restaurant Revenue</td><td class="note">1</td><td class="num">{{ money(t.sales_rr) }}</td><td></td><td class="num prev">{{ money(pt.sales_rr) }}</td></tr>
-        <tr><td class="ind">Bar Sales</td><td class="note">2</td><td class="num">{{ money(t.sales_bar) }}</td><td class="num fw-bold">{{ money(t.sales) }}</td><td class="num prev">{{ money(pt.sales_bar) }}</td></tr>
-        <tr class="sec"><td colspan="5">Less: Cost of Sales</td></tr>
-        <tr><td class="ind">Bar</td><td class="note">3</td><td class="num">{{ money(t.cogs_bar) }}</td><td></td><td class="num prev">{{ money(pt.cogs_bar) }}</td></tr>
-        <tr><td class="ind">Food</td><td class="note">3</td><td class="num">{{ money(t.cogs_food) }}</td><td class="num">{{ money(t.cogs) }}</td><td class="num prev">{{ money(pt.cogs_food) }}</td></tr>
-        <tr class="gp"><td>Gross Profit</td><td></td><td></td><td class="num">{{ money(t.gross_profit) }}</td><td class="num prev">{{ money(pt.gross_profit) }}</td></tr>
-        <tr><td>Add: Service Charges</td><td></td><td></td><td class="num">{{ money(t.service) }}</td><td class="num prev">{{ money(pt.service) }}</td></tr>
-        <tr class="sub"><td></td><td></td><td></td><td class="num">{{ money(t.after_service) }}</td><td class="num prev">{{ money(pt.after_service) }}</td></tr>
-        <tr class="sec"><td colspan="5">Less: Expenses</td></tr>
-        {% for n, lbl, note in [('NOTE4', 'Administration Expenses', 4), ('NOTE5', 'Selling & Distribution Expenses', 5), ('NOTE6', 'VAT', 6), ('NOTE7', 'Finance Expenses', 7), ('NOTE8', 'Additional Expenses', 8)] %}
-        <tr><td class="ind">{{ lbl }}</td><td class="note">{{ note }}</td><td class="num">{{ money(t[n]) }}</td>
-          <td class="num">{% if loop.last %}{{ money(t.expenses) }}{% endif %}</td><td class="num prev">{{ money(pt[n]) }}</td></tr>
-        {% endfor %}
-        <tr class="np"><td>Net Profit</td><td></td><td></td><td class="num">{{ money(t.net_profit) }}</td><td class="num prev">{{ money(pt.net_profit) }}</td></tr>
-        <tr class="muted"><td>Gross Profit Margin</td><td></td><td></td><td class="num">{{ pct(t.gp_margin) }}</td><td class="num prev">{{ pct(pt.gp_margin) }}</td></tr>
-        <tr class="muted"><td>Net Profit Margin</td><td></td><td></td><td class="num">{{ pct(t.np_margin) }}</td><td class="num prev">{{ pct(pt.np_margin) }}</td></tr>
-      </tbody>
-    </table>
+  <div class="ma-card"><div class="ma-body" style="padding:10px 18px 24px;">
+    <div class="d-flex justify-content-end gap-2 no-print">
+      <a class="btn btn-outline-secondary btn-sm" href="?month={{ cur.period }}&tab=variance"><i class="fas fa-balance-scale me-1"></i> Compare with {{ prev.month_label }}</a>
+      <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='pl') }}"><i class="fas fa-print me-1"></i> Print P&amp;L</a>
     </div>
+    <div style="overflow-x:auto;">{% include '_ma_pl_workbook.html' %}</div>
   </div></div>
 </div>
 
@@ -312,6 +301,44 @@
     </table>
   </div></div>
   <div class="ma-card"><div class="ma-body text-center">{{ pie_svg | safe }}</div></div>
+</div>
+
+{# ================================================================ Day Summary #}
+{% macro dn(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% else %}{% set a = v | abs %}{% set txt = '{:,.0f}'.format(a) if (a - (a | round(0))) | abs < 0.005 else '{:,.2f}'.format(a) %}{{ '(' ~ txt ~ ')' if v < 0 else txt }}{% endif %}{% endmacro %}
+<div class="tab-pane fade {{ 'show active' if tab == 'day' }}" id="ma_day">
+  <div class="ma-card"><div class="ma-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div class="fw-bold">DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
+      <a class="btn btn-outline-secondary btn-sm no-print" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print Day Summary</a>
+    </div>
+    <div class="small text-muted mb-2 no-print">Each day's takings per report line, from that day's GL entries on the line's mapped accounts &mdash; so the month totals agree with the P&amp;L.
+      {% if daily.has_manual %}Lines typed in manually have no daily split; only their month total is shown.{% endif %}</div>
+    <div class="ma-day-wrap">
+    <table class="ma-day">
+      <thead><tr>
+        <th class="dt">Date</th>
+        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
+        <th class="sum">TOTAL</th>
+        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
+        <th class="sum">BAR SALES</th><th class="sum">TOTAL</th>
+      </tr></thead>
+      <tbody>
+      {% for d in daily.days %}
+        <tr class="{{ 'wkend' if d.date.weekday() >= 5 }}"><td class="dt">{{ d.date.strftime('%d/%m %a') }}</td>
+          {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
+          <td class="n sum">{{ dn(d.rr_total) }}</td>
+          {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
+          <td class="n sum">{{ dn(d.bar_total) }}</td><td class="n sum">{{ dn(d.grand) }}</td></tr>
+      {% endfor %}
+        <tr class="tot"><td class="dt">TOTAL</td>
+          {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
+          <td class="n">{{ dn(daily.rr_total) }}</td>
+          {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
+          <td class="n">{{ dn(daily.bar_total) }}</td><td class="n">{{ dn(daily.grand) }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div></div>
 </div>
 
 {# ================================================================ Not mapped #}

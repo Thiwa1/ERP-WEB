@@ -22345,6 +22345,7 @@ def management_account():
     return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
                            pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
+                           daily=_mgmt_daily(cur),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
