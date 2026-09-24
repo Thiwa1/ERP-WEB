@@ -66,6 +66,34 @@
   table.wb-pl td.ul { border-bottom: 1px solid #000; }
   table.wb-pl td.tot { border-top: 1px solid #000; border-bottom: 3px double #000; }
   table.wb-pl tr.last td { border-bottom: 2px solid #000; }
+  /* ---- Sales Page (Notes 1 & 2) ---- */
+  .sp { max-width: 150mm; }
+  .sp-note { font-size: 13pt; }
+  .sp-head { font-size: 13pt; text-decoration: underline; margin-bottom: 4mm; }
+  table.sp-t { width: 100%; border-collapse: collapse; font-size: 12.5pt; margin: 0; border: 2px solid #000; }
+  table.sp-t td { border: 1px solid #000; padding: 1px 6px; font-weight: 700; height: 21px; }
+  table.sp-t td:first-child { border-left: 2px solid #000; width: 68%; }
+  table.sp-t td.n { font-weight: 400; text-align: right; font-variant-numeric: tabular-nums; border-left: 2px solid #000; }
+  table.sp-t tr.tot td { font-weight: 700; border-bottom: 2px solid #000; }
+  /* ---- Pie chart page ---- */
+  @page land { size: A4 landscape; margin: 10mm; }
+  .part.land { page: land; }
+  .pie-wrap { max-width: none; display: flex; gap: 8mm; align-items: flex-start; }
+  .pie-l { flex: 0 0 88mm; }
+  .pie-r { flex: 1; }
+  table.pie-t { width: 100%; border-collapse: collapse; font-size: 10.5pt; margin: 0; }
+  table.pie-t td { border: 1px solid #000; padding: 0 5px; height: 17px; }
+  table.pie-t td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  /* ---- Day Summary ---- */
+  .day-title { font-family: Calibri, Carlito, Arial, sans-serif; font-weight: 700; font-size: 11pt; margin-bottom: 3mm; text-align: center; }
+  table.day-t { width: 100%; border-collapse: collapse; font-family: Calibri, Carlito, Arial, sans-serif; font-size: 6.4pt; margin: 0; }
+  table.day-t th { background: #f2f2f2; color: #000; font-size: 6.2pt; font-weight: 700; border: 1px solid #000; padding: 2px 2px;
+                   text-align: center; vertical-align: bottom; word-break: normal; line-height: 1.1; }
+  table.day-t td { border: 1px solid #000; padding: 1px 2px; white-space: nowrap; }
+  table.day-t td.dt, table.day-t th:first-child { width: 8mm; text-align: center; }
+  table.day-t td.n { text-align: right; font-variant-numeric: tabular-nums; }
+  table.day-t .sum { font-weight: 700; background: #f7f7f7; }
+  table.day-t tr.tot td { font-weight: 700; background: #eaeaea; border-top: 2px solid #000; }
   @media print { .toolbar { display: none; } .page { padding: 0; max-width: none; } }
 </style>
 </head>
@@ -79,7 +107,7 @@
 {% set t = cur.t %}{% set pt = prev.t %}
 
 {% for part in parts %}
-<div class="part">
+<div class="part{{ ' land' if part in ('pie', 'day') }}">
 
 {% if part == 'pl' %}
   {# Same layout as the accountant's workbook "P&L" sheet: boxed, Description | Note | Rs | Rs.,
@@ -168,8 +196,8 @@
   {% endfor %}
 
 {% elif part == 'notes' %}
-  {{ title('NOTES TO THE PROFIT & LOSS ACCOUNT', cur.month_label) }}
-  {% for n in note_rows %}
+  {{ title('NOTES TO THE PROFIT & LOSS ACCOUNT - EXPENSES', cur.month_label) }}
+  {% for n in note_rows if n.sec not in ('NOTE1', 'NOTE2', 'SERVICE') %}
   <div class="block">
   <table>
     <thead><tr><th>{{ n.label | upper }}</th><th style="width:24%">{{ cur.month_label }}</th><th style="width:24%">{{ prev.month_label }}</th></tr></thead>
@@ -182,6 +210,69 @@
   </table>
   </div>
   {% endfor %}
+
+{% elif part == 'sales' %}
+  {# Notes 1 & 2 together, like the workbook's "Sales Page" sheet #}
+  {% macro acct2(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+  {% set mon = cur.start.strftime('%b') %}
+  <div class="wb sp">
+    <div class="sp-note">NOTE NO 1</div>
+    <div class="sp-head">ROOM &amp; RESTAURANT SALES-{{ mon }}</div>
+    <table class="sp-t">
+      {% for l in cur.sections['NOTE1'] %}<tr><td>{{ l.label }}</td><td class="n">{{ acct2(l.amount) }}</td></tr>{% endfor %}
+      <tr class="tot"><td>TOTAL</td><td class="n">{{ acct2(t.sales_rr) }}</td></tr>
+    </table>
+    <div class="sp-note" style="margin-top:9mm">NOTE NO 2</div>
+    <div class="sp-head">BAR SALES</div>
+    <table class="sp-t">
+      {% for l in cur.sections['NOTE2'] %}<tr><td>{{ l.label }}</td><td class="n">{{ acct2(l.amount) }}</td></tr>{% endfor %}
+      <tr class="tot"><td>TOTAL</td><td class="n">{{ acct2(t.sales_bar) }}</td></tr>
+    </table>
+    <table class="sp-t" style="margin-top:9mm">
+      <tr><td style="font-weight:400">S/ CHARGE</td><td class="n">{{ acct2(t.service) }}</td></tr>
+    </table>
+  </div>
+
+{% elif part == 'pie' %}
+  {# The workbook's "Pi-Chart" sheet: sales lines on the left, pie chart on the right #}
+  <div class="wb pie-wrap">
+    <div class="pie-l">
+      <div class="sp-head" style="margin-bottom:5mm">ROOM &amp; RESTAURANT SALES-{{ cur.start.strftime('%b') }}</div>
+      <table class="pie-t">
+        {% for lbl, amt in pie_items %}<tr><td>{{ lbl }}</td><td class="n">{{ '{:,.2f}'.format(amt) }}</td></tr>{% endfor %}
+      </table>
+    </div>
+    <div class="pie-r">{{ pie_svg | safe }}</div>
+  </div>
+
+{% elif part == 'day' %}
+  {# The workbook's "Day Sumory" sheet #}
+  {% macro dn(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% else %}{% set a = v | abs %}{% set txt = '{:,.0f}'.format(a) if (a - (a | round(0))) | abs < 0.005 else '{:,.2f}'.format(a) %}{{ '(' ~ txt ~ ')' if v < 0 else txt }}{% endif %}{% endmacro %}
+  <div class="day-title">{{ company_name or '' }} &mdash; DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
+  <table class="day-t">
+    <thead><tr>
+      <th>Date</th>
+      {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
+      <th class="sum">TOTAL</th>
+      {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
+      <th class="sum">BAR SALES</th><th class="sum">TOTAL</th>
+    </tr></thead>
+    <tbody>
+    {% for d in daily.days %}
+      <tr><td class="dt">{{ d.date.strftime('%d/%m') }}</td>
+        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
+        <td class="n sum">{{ dn(d.rr_total) }}</td>
+        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
+        <td class="n sum">{{ dn(d.bar_total) }}</td><td class="n sum">{{ dn(d.grand) }}</td></tr>
+    {% endfor %}
+      <tr class="tot"><td>TOTAL</td>
+        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
+        <td class="n">{{ dn(daily.rr_total) }}</td>
+        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
+        <td class="n">{{ dn(daily.bar_total) }}</td><td class="n">{{ dn(daily.grand) }}</td></tr>
+    </tbody>
+  </table>
+  {% if daily.has_manual %}<div class="legend" style="margin-top:4px">Lines typed in manually each month have no daily split &mdash; only their month total is shown.</div>{% endif %}
 
 {% elif part == 'note3' %}
   {{ title('NOTE 3 - COST OF SALES', cur.month_label) }}

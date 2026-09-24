@@ -48,7 +48,7 @@
     <div class="dropdown">
       <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-print me-1"></i> Print</button>
       <ul class="dropdown-menu dropdown-menu-end">
-        {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %')] %}
+        {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('sales', 'Notes 1 & 2 - Sales'), ('notes', 'Notes 4-8 - Expenses'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('pie', 'Sales Pie Chart'), ('day', 'Day Summary')] %}
         <li><a class="dropdown-item" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part=key) }}">{{ label }}</a></li>
         {% endfor %}
         <li><hr class="dropdown-divider"></li>
@@ -311,6 +311,7 @@
       </tbody>
     </table>
   </div></div>
+  <div class="ma-card"><div class="ma-body text-center">{{ pie_svg | safe }}</div></div>
 </div>
 
 {# ================================================================ Not mapped #}

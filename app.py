@@ -22344,6 +22344,7 @@ def management_account():
     prev_amounts = {l['id']: l['amount'] for sec in prev['sections'].values() for l in sec}
     return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
+                           pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -22452,18 +22453,175 @@ def _mgmt_note_rows(cur, prev):
     return out
 
 
+# ---- Sales pie chart (drawn like the accountant's Excel "Pi-Chart": Office 2007 theme
+#      colours, pale gradient slices, value labels with leader lines, legend underneath) ----
+_MGMT_PIE_BASE = ['4F81BD', 'C0504D', '9BBB59', '8064A2', '4BACC6', 'F79646']
+
+
+def _mgmt_pie_colour(i):
+    """Excel's pie point colours: the 6 accents, then darker / lighter variants of them."""
+    rgb = [int(_MGMT_PIE_BASE[i % 6][k:k + 2], 16) for k in (0, 2, 4)]
+    mod, off = [(1, 0), (.6, 0), (.8, .2), (.8, 0), (.6, .4), (.5, 0)][min(i // 6, 5)]
+    return tuple(min(255, round(c * mod + 255 * off)) for c in rgb)
+
+
+def _mgmt_pie_svg(items, title, width=660, radius=150):
+    """items: [(label, amount)]. Returns an inline SVG string."""
+    import math
+    from markupsafe import escape
+    hexc = lambda c: '#%02x%02x%02x' % c
+    tint = lambda c, t: tuple(round(v * t + 255 * (1 - t)) for v in c)
+    shade = lambda c, t: tuple(round(v * t) for v in c)
+    cols = 4
+    legend_rows = (len(items) + cols - 1) // cols
+    cx, cy = width / 2, 64 + radius
+    height = cy + radius + 46 + legend_rows * 15 + 10
+    total = sum(a for _, a in items if a > 0)
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}" width="100%" '
+           f'style="max-width:{width}px;font-family:Calibri,Carlito,\'Segoe UI\',Arial,sans-serif" role="img" aria-label="{escape(title)}">',
+           '<defs>']
+    for i, _ in enumerate(items):
+        c = _mgmt_pie_colour(i)
+        out.append(f'<linearGradient id="pg{i}" x1="0" y1="0" x2="0" y2="1">'
+                   f'<stop offset="0" stop-color="{hexc(tint(c, .55))}"/><stop offset=".35" stop-color="{hexc(tint(c, .42))}"/>'
+                   f'<stop offset="1" stop-color="{hexc(tint(c, .22))}"/></linearGradient>')
+    out.append('</defs>')
+    out.append(f'<rect x=".5" y=".5" width="{width - 1:.0f}" height="{height - 1:.0f}" fill="#fff" stroke="#d9d9d9"/>')
+    out.append(f'<text x="14" y="28" font-size="14" fill="#7f7f7f">{escape(title)}</text>')
+    labels = []
+    if total > 0:
+        ang = 0.0
+        for i, (lbl, amt) in enumerate(items):
+            if amt <= 0:
+                continue
+            frac = amt / total
+            a0, a1 = ang, ang + frac * 2 * math.pi
+            ang = a1
+            c = _mgmt_pie_colour(i)
+            pt = lambda a, r=radius: (cx + r * math.sin(a), cy - r * math.cos(a))
+            if frac >= 0.9999:
+                out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{radius}" fill="url(#pg{i})" stroke="{hexc(shade(c, .95))}" stroke-width=".75"/>')
+            else:
+                (x0, y0), (x1, y1) = pt(a0), pt(a1)
+                out.append(f'<path d="M{cx:.1f},{cy:.1f} L{x0:.2f},{y0:.2f} A{radius},{radius} 0 {1 if a1 - a0 > math.pi else 0} 1 {x1:.2f},{y1:.2f} Z" '
+                           f'fill="url(#pg{i})" stroke="{hexc(shade(c, .95))}" stroke-width=".75"/>')
+            mid = (a0 + a1) / 2
+            labels.append({'mid': mid, 'frac': frac, 'text': '{:,.2f}'.format(amt), 'pt': pt})
+        # Big slices: value inside. Small ones: outside with a leader line, spread so they don't overlap.
+        sides = {1: [], -1: []}
+        for L in labels:
+            if L['frac'] >= 0.06:
+                x, y = L['pt'](L['mid'], radius * .62)
+                out.append(f'<text x="{x:.1f}" y="{y + 3:.1f}" font-size="9" fill="#595959" text-anchor="middle">{L["text"]}</text>')
+            else:
+                side = 1 if math.sin(L['mid']) >= 0 else -1
+                L['y'] = cy - (radius + 16) * math.cos(L['mid'])
+                sides[side].append(L)
+        for side, lst in sides.items():
+            lst.sort(key=lambda L: L['y'])
+            for k in range(1, len(lst)):
+                lst[k]['y'] = max(lst[k]['y'], lst[k - 1]['y'] + 11)
+            over = (lst[-1]['y'] - (cy + radius + 26)) if lst else 0
+            if over > 0:
+                for L in lst:
+                    L['y'] -= over
+                for k in range(len(lst) - 2, -1, -1):
+                    lst[k]['y'] = min(lst[k]['y'], lst[k + 1]['y'] - 11)
+            for L in lst:
+                ax, ay = L['pt'](L['mid'])
+                ex, ey = L['pt'](L['mid'], radius + 10)
+                tx = cx + side * (radius + 34)
+                out.append(f'<polyline points="{ax:.1f},{ay:.1f} {ex:.1f},{ey:.1f} {tx - side * 3:.1f},{L["y"]:.1f}" fill="none" stroke="#a6a6a6" stroke-width=".75"/>')
+                out.append(f'<text x="{tx:.1f}" y="{L["y"] + 3:.1f}" font-size="9" fill="#595959" text-anchor="{"start" if side > 0 else "end"}">{L["text"]}</text>')
+    else:
+        out.append(f'<text x="{cx:.0f}" y="{cy:.0f}" font-size="12" fill="#7f7f7f" text-anchor="middle">No sales this month</text>')
+    ly = cy + radius + 46
+    colw = (width - 40) / cols
+    for i, (lbl, _amt) in enumerate(items):
+        x = 20 + (i % cols) * colw
+        y = ly + (i // cols) * 15
+        c = _mgmt_pie_colour(i)
+        out.append(f'<rect x="{x:.1f}" y="{y - 7:.1f}" width="7" height="7" fill="url(#pg{i})" stroke="{hexc(c)}" stroke-width=".75"/>'
+                   f'<text x="{x + 11:.1f}" y="{y:.1f}" font-size="9" fill="#595959">{escape(lbl)}</text>')
+    out.append('</svg>')
+    return '\n'.join(out)
+
+
+def _mgmt_pie_items(cur):
+    """Note 1 then Note 2 lines, in report order - the same list as the Pi-Chart sheet."""
+    return [(l['label'], float(l['amount'] or 0)) for sec in ('NOTE1', 'NOTE2') for l in cur['sections'].get(sec, [])]
+
+
+def _mgmt_daily(cur):
+    """Day Summary (the workbook's "Day Sumory" sheet): one row per day of the month,
+    one column per Note 1 / Service / Note 2 line, from that day's GL movements on the
+    line's mapped accounts. Manual lines have no daily split - only their month total."""
+    from datetime import timedelta
+    start, end = cur['start'], cur['end']
+    pair, acct = {}, {}
+    for r in db.execute_query("""
+        SELECT entry_effective_date AS d, account_name, COALESCE(entry_sub_account_code, 0) AS sub,
+               COALESCE(SUM(enty_values_DR), 0) AS dr, COALESCE(SUM(enty_values_CR), 0) AS cr
+        FROM entry_details
+        WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+        GROUP BY entry_effective_date, account_name, COALESCE(entry_sub_account_code, 0)
+    """, (start, end)) or []:
+        d = r['d'].date() if hasattr(r['d'], 'date') else r['d']
+        key = ' '.join(str(r['account_name'] or '').split()).lower()
+        dr, cr = float(r['dr'] or 0), float(r['cr'] or 0)
+        pair[(d, key, int(r['sub'] or 0))] = (dr, cr)
+        a = acct.setdefault((d, key), [0.0, 0.0])
+        a[0] += dr
+        a[1] += cr
+
+    def day_amount(ln, d):
+        amt = 0.0
+        for s in ln['sources']:
+            if s['source_type'] == 'PURCH':
+                continue
+            key = ' '.join(str(s['gl_account'] or '').split()).lower()
+            if not key:
+                continue
+            sign = -1 if int(s['sign'] or 1) < 0 else 1
+            dr, cr = (pair.get((d, key, int(s['sub_account_code'])), (0.0, 0.0)) if s['sub_account_code']
+                      else acct.get((d, key), (0.0, 0.0)))
+            amt += sign * (cr - dr)
+        return round(amt, 2)
+
+    groups = [(sec, cur['sections'].get(sec, [])) for sec in ('NOTE1', 'SERVICE', 'NOTE2')]
+    days = []
+    d = start
+    while d <= end:
+        vals = {}
+        for _sec, lines in groups:
+            for ln in lines:
+                vals[ln['id']] = None if ln['is_manual'] else day_amount(ln, d)
+        rr = round(sum(vals[l['id']] or 0 for sec, ls in groups if sec != 'NOTE2' for l in ls), 2)
+        bar = round(sum(vals[l['id']] or 0 for sec, ls in groups if sec == 'NOTE2' for l in ls), 2)
+        days.append({'date': d, 'vals': vals, 'rr_total': rr, 'bar_total': bar, 'grand': round(rr + bar, 2)})
+        d += timedelta(days=1)
+    totals = {l['id']: float(l['amount'] or 0) for _sec, ls in groups for l in ls}
+    rr_t = round(sum(totals[l['id']] for sec, ls in groups if sec != 'NOTE2' for l in ls), 2)
+    bar_t = round(sum(totals[l['id']] for sec, ls in groups if sec == 'NOTE2' for l in ls), 2)
+    return {'groups': groups, 'days': days, 'totals': totals, 'rr_total': rr_t, 'bar_total': bar_t,
+            'grand': round(rr_t + bar_t, 2), 'has_manual': any(l['is_manual'] for _s, ls in groups for l in ls)}
+
+
 @app.route('/management_account/print')
 @login_required
 @has_permission('Access_Reports')
 def management_account_print():
     """Printable Management Account laid out like the Excel export.
-    part = pl / variance / notes / note3 / pct / all."""
+    part = pl / variance / sales / notes / note3 / pct / pie / day / all."""
     cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
     prev = _mgmt_compute(cur['prev_period'])
     part = request.args.get('part') or 'pl'
-    parts = ['pl', 'variance', 'notes', 'note3', 'pct'] if part == 'all' else [part]
+    parts = ['pl', 'variance', 'sales', 'notes', 'note3', 'pct', 'pie', 'day'] if part == 'all' else [part]
     return render_template('management_account_print.html', cur=cur, prev=prev, parts=parts,
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
+                           pie_items=_mgmt_pie_items(cur),
+                           pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis") if 'pie' in parts else '',
+                           daily=_mgmt_daily(cur) if 'day' in parts else None,
                            company_name=_company_display_name(), printed_on=datetime.now())
 
 
