@@ -25,12 +25,14 @@
   table.ma tr.muted td { color:#6c757d; }
   table.ma td.ind { padding-left:26px; }
   table.ma td.prev { color:#7a7a7a; }
+  table.ma td.fav { color:#107c10; }
+  table.ma td.unfav { color:#c42b1c; }
   .ma-bar { height:10px; background:#0d6efd; border-radius:3px; }
   .ma-flag { font-size:0.75rem; }
   @media print {
     .no-print, .sidebar, nav, .navbar, header { display:none !important; }
     .ma-card { box-shadow:none; border:0; page-break-inside:avoid; }
-    .tab-pane { display:block !important; opacity:1 !important; margin-bottom:20px; }
+    .tab-pane:not(.active) { display:none !important; }
     body { background:#fff !important; }
   }
 </style>
@@ -43,7 +45,16 @@
       <input type="hidden" name="tab" value="{{ tab }}">
     </form>
     <a href="{{ url_for('management_account_export', month=cur.period) }}" class="btn btn-outline-success btn-sm"><i class="fas fa-file-excel me-1"></i> Excel</a>
-    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+    <div class="dropdown">
+      <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-print me-1"></i> Print</button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %')] %}
+        <li><a class="dropdown-item" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part=key) }}">{{ label }}</a></li>
+        {% endfor %}
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item fw-semibold" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='all') }}">Everything</a></li>
+      </ul>
+    </div>
     {% if can_edit %}<a href="{{ url_for('management_account_mapping', month=cur.period) }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-sitemap me-1"></i> Mapping</a>{% endif %}
   </div>
 </div>
@@ -65,7 +76,7 @@
 {% endif %}
 
 <ul class="nav nav-tabs mb-3 no-print">
-  {% for key, label in [('pl', 'P&L'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
   {% endfor %}
 </ul>
@@ -101,6 +112,66 @@
     </table>
     </div>
   </div></div>
+</div>
+
+{# ================================================================ Variance #}
+{% macro signed(v) %}{% if v is none %}{% elif v > 0 %}+{{ '{:,.2f}'.format(v) }}{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}&ndash;{% endif %}{% endmacro %}
+{% macro favcls(f) %}{{ 'fav' if f else ('unfav' if f is sameas false else '') }}{% endmacro %}
+{% macro favicon(f) %}{% if f %}<i class="fas fa-arrow-up" title="Favourable"></i>{% elif f is sameas false %}<i class="fas fa-arrow-down" title="Unfavourable"></i>{% endif %}{% endmacro %}
+<div class="tab-pane fade {{ 'show active' if tab == 'variance' }}" id="ma_variance">
+  <div class="ma-card"><div class="ma-body">
+    <div class="ma-title"><div class="co">{{ company_name if company_name is defined else '' }}</div>
+      <div class="rt">VARIANCE ANALYSIS &mdash; {{ cur.month_label | upper }} COMPARED WITH {{ prev.month_label | upper }}</div></div>
+    <div class="small text-muted mb-2">Variance = this month &minus; last month.
+      <span class="text-success fw-semibold">Green</span> = favourable (more income or less cost),
+      <span class="text-danger fw-semibold">red</span> = unfavourable. Margin rows show the change in percentage points.</div>
+    <div class="table-responsive">
+    <table class="ma">
+      <thead><tr><th>Description</th><th class="note">Note</th><th class="num">{{ cur.month_label }}</th><th class="num">{{ prev.month_label }}</th>
+        <th class="num">Variance (Rs)</th><th class="num">Variance %</th><th style="width:24px"></th></tr></thead>
+      <tbody>
+      {% for r in pl_rows %}
+        {% if r.kind in ('sec', 'sec_red') %}
+        <tr class="sec"><td colspan="7">{{ r.label }}</td></tr>
+        {% elif r.kind == 'pct' %}
+        <tr class="muted"><td>{{ r.label }}</td><td></td><td class="num">{{ pct(r.cur) }}</td><td class="num prev">{{ pct(r.prev) }}</td>
+          <td class="num {{ favcls(r.fav) }}">{% if r.cur is not none and r.prev is not none %}{{ '%+.2f'|format(r.diff) }} pts{% endif %}</td><td></td>
+          <td class="{{ favcls(r.fav) }}">{{ favicon(r.fav) }}</td></tr>
+        {% else %}
+        <tr class="{{ {'total': 'sub', 'gp': 'gp', 'np': 'np'}.get(r.kind, '') }}">
+          <td class="{{ 'ind' if r.kind == 'item' }}">{{ r.label }}</td><td class="note">{{ r.note }}</td>
+          <td class="num">{{ money(r.cur) }}</td><td class="num prev">{{ money(r.prev) }}</td>
+          <td class="num {{ favcls(r.fav) }}">{{ signed(r.diff) }}</td><td class="num {{ favcls(r.fav) }}">{{ pct(r.pct) if r.pct is not none else '' }}</td>
+          <td class="{{ favcls(r.fav) }}">{{ favicon(r.fav) }}</td></tr>
+        {% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </div></div>
+
+  <div class="row g-3">
+  {% for n in note_rows %}
+    <div class="col-xl-6">
+    <div class="ma-card"><div class="ma-body">
+      <div class="fw-bold mb-2">{{ n.label | upper }}</div>
+      <table class="ma">
+        <thead><tr><th>Description</th><th class="num">{{ cur.month_label }}</th><th class="num">{{ prev.month_label }}</th><th class="num">Variance</th><th class="num">%</th></tr></thead>
+        <tbody>
+          {% for l in n.lines if l.cur or l.prev %}
+          <tr><td>{{ l.label }}</td><td class="num">{{ money(l.cur) }}</td><td class="num prev">{{ money(l.prev) }}</td>
+            <td class="num {{ favcls(l.fav) }}">{{ signed(l.diff) }}</td><td class="num {{ favcls(l.fav) }}">{{ pct(l.pct) if l.pct is not none else '' }}</td></tr>
+          {% else %}
+          <tr class="muted"><td colspan="5">No amounts in either month.</td></tr>
+          {% endfor %}
+          <tr class="sub"><td>TOTAL</td><td class="num">{{ money(n.total.cur) }}</td><td class="num prev">{{ money(n.total.prev) }}</td>
+            <td class="num {{ favcls(n.total.fav) }}">{{ signed(n.total.diff) }}</td><td class="num {{ favcls(n.total.fav) }}">{{ pct(n.total.pct) if n.total.pct is not none else '' }}</td></tr>
+        </tbody>
+      </table>
+    </div></div>
+    </div>
+  {% endfor %}
+  </div>
 </div>
 
 {# ================================================================ Notes #}

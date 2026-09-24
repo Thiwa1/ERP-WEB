@@ -22343,6 +22343,7 @@ def management_account():
     prev = _mgmt_compute(cur['prev_period'])
     prev_amounts = {l['id']: l['amount'] for sec in prev['sections'].values() for l in sec}
     return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
+                           pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -22383,6 +22384,89 @@ def management_account_save():
     return redirect(url_for('management_account', month=period, tab=f.get('tab') or 'note3'))
 
 
+def _mgmt_var(cur_v, prev_v, better):
+    """Variance of one figure: change, % change and whether it is favourable.
+    better = 1 when a higher figure is good (income / profit), -1 when lower is good (costs)."""
+    c, p = float(cur_v or 0), float(prev_v or 0)
+    diff = round(c - p, 2)
+    pct = (diff / abs(p) * 100) if abs(p) >= 0.005 else None
+    fav = None
+    if better and abs(diff) >= 0.005:
+        fav = (diff > 0) == (better > 0)
+    return {'diff': diff, 'pct': pct, 'fav': fav}
+
+
+def _mgmt_pl_rows(t, pt):
+    """The P&L as rows (same order and wording as the Excel export), each with
+    this month, last month and the variance. kind: sec / sec_red / item / total / gp / np / pct."""
+    rows = []
+
+    def add(kind, label, key=None, better=0, note=''):
+        r = {'kind': kind, 'label': label, 'note': note}
+        if key:
+            r['cur'], r['prev'] = t.get(key), pt.get(key)
+            r.update(_mgmt_var(r['cur'], r['prev'], better))
+            if kind == 'pct':
+                r['pct'] = None   # a margin's change is already in percentage points
+        rows.append(r)
+
+    add('sec', 'Sales')
+    add('item', 'Room & Restaurant Revenue', 'sales_rr', 1, '1')
+    add('item', 'Bar Sales', 'sales_bar', 1, '2')
+    add('total', 'Total Sales', 'sales', 1)
+    add('sec_red', 'Less: Cost of Sales (Note 3)')
+    add('item', 'Bar', 'cogs_bar', -1, '3')
+    add('item', 'Food', 'cogs_food', -1, '3')
+    add('total', 'Total Cost of Sales', 'cogs', -1)
+    add('gp', 'Gross Profit', 'gross_profit', 1)
+    add('item', 'Add: Service Charges', 'service', 1)
+    add('total', '', 'after_service', 1)
+    add('sec_red', 'Less: Expenses')
+    for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8'):
+        add('item', MGMT_SECTION_LABEL[n].split(' - ', 1)[-1], n, -1, n[-1])
+    add('total', 'Total Expenses', 'expenses', -1)
+    add('np', 'Net Profit', 'net_profit', 1)
+    add('pct', 'Gross Profit Margin %', 'gp_margin', 1)
+    add('pct', 'Net Profit Margin %', 'np_margin', 1)
+    return rows
+
+
+def _mgmt_note_rows(cur, prev):
+    """Per note section: its lines with this month, last month and variance."""
+    out = []
+    for sec, label, kind in MGMT_SECTIONS:
+        if sec.startswith('PURCH'):
+            continue
+        better = 1 if kind == 'income' else -1
+        pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
+        lines = []
+        for l in cur['sections'].get(sec, []):
+            r = {'label': l['label'], 'cur': l['amount'], 'prev': pmap.get(l['id'], 0.0)}
+            r.update(_mgmt_var(r['cur'], r['prev'], better))
+            lines.append(r)
+        tc = round(sum(l['amount'] for l in cur['sections'].get(sec, [])), 2)
+        tp = round(sum(l['amount'] for l in prev['sections'].get(sec, [])), 2)
+        tot = {'cur': tc, 'prev': tp}
+        tot.update(_mgmt_var(tc, tp, better))
+        out.append({'sec': sec, 'label': label, 'kind': kind, 'lines': lines, 'total': tot})
+    return out
+
+
+@app.route('/management_account/print')
+@login_required
+@has_permission('Access_Reports')
+def management_account_print():
+    """Printable Management Account laid out like the Excel export.
+    part = pl / variance / notes / note3 / pct / all."""
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    part = request.args.get('part') or 'pl'
+    parts = ['pl', 'variance', 'notes', 'note3', 'pct'] if part == 'all' else [part]
+    return render_template('management_account_print.html', cur=cur, prev=prev, parts=parts,
+                           pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
+                           company_name=_company_display_name(), printed_on=datetime.now())
+
+
 @app.route('/management_account/export')
 @login_required
 @has_permission('Access_Reports')
@@ -22420,6 +22504,30 @@ def management_account_export():
     row = xl.item_row(ws, row, 'Gross Profit Margin %', [t['gp_margin'] or 0, pt['gp_margin'] or 0])
     row = xl.item_row(ws, row, 'Net Profit Margin %', [t['np_margin'] or 0, pt['np_margin'] or 0])
     xl.finish(ws, 3)
+
+    ws = wb.create_sheet('Variance Analysis')
+    vhead = ['Description', cur['month_label'], prev['month_label'], 'Variance (Rs)', 'Variance %']
+    row = xl.title_block(ws, 5, company, 'VARIANCE ANALYSIS', f"{cur['month_label']} compared with {prev['month_label']}")
+    row = xl.header_row(ws, row, vhead)
+    for r in _mgmt_pl_rows(t, pt):
+        if r['kind'] in ('sec', 'sec_red'):
+            row = xl.section_row(ws, row, 5, r['label'], **({'color': xl.RED_DARK, 'bg': 'FDECEA'} if r['kind'] == 'sec_red' else {}))
+            continue
+        vals = [r['cur'] or 0, r['prev'] or 0, r['diff'], r['pct'] or 0]
+        label = r['label'] + (f" (Note {r['note']})" if r['note'] else '')
+        if r['kind'] == 'item' or r['kind'] == 'pct':
+            row = xl.item_row(ws, row, label, vals, color=('107C10' if r['fav'] else 'C42B1C' if r['fav'] is False else '333333'))
+        else:
+            row = xl.total_row(ws, row, label, vals, bg={'gp': 'EAF6EA', 'np': 'E8F3FF'}.get(r['kind'], 'F3F3F3'))
+    row += 1
+    for n in _mgmt_note_rows(cur, prev):
+        row = xl.section_row(ws, row, 5, n['label'], **({} if n['kind'] == 'income' else {'color': xl.RED_DARK, 'bg': 'FDECEA'}))
+        for l in n['lines']:
+            row = xl.item_row(ws, row, l['label'], [l['cur'], l['prev'], l['diff'], l['pct'] or 0],
+                              color=('107C10' if l['fav'] else 'C42B1C' if l['fav'] is False else '333333'))
+        tt = n['total']
+        row = xl.total_row(ws, row, 'TOTAL', [tt['cur'], tt['prev'], tt['diff'], tt['pct'] or 0])
+    xl.finish(ws, 5)
 
     for sec, label, _kind in MGMT_SECTIONS:
         if sec.startswith('PURCH'):

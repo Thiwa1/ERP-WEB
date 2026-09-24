@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Management Account - {{ cur.month_label }}</title>
+{% macro money(v) %}{% if v is none %}{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+{% macro pct(v) %}{% if v is none %}{% else %}{{ '%.2f'|format(v) }}%{% endif %}{% endmacro %}
+{% macro signed(v) %}{% if v is none %}{% elif v > 0 %}+{{ '{:,.2f}'.format(v) }}{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}-{% endif %}{% endmacro %}
+{% macro favcls(f) %}{{ 'fav' if f else ('unfav' if f is sameas false else '') }}{% endmacro %}
+{% macro title(t, sub) %}
+  <div class="tb">
+    <div class="co">{{ company_name or '' }}</div>
+    <div class="rt">{{ t }}</div>
+    <div class="st">{{ sub }}</div>
+  </div>
+{% endmacro %}
+<style>
+  /* Laid out like the Excel export (excel_export.py): title block, grey header row,
+     coloured section bars, bold grey total rows. */
+  @page { size: A4 portrait; margin: 14mm 12mm; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #fff; color: #333; font-family: Calibri, 'Segoe UI', Arial, sans-serif; font-size: 10pt; }
+  .toolbar { position: sticky; top: 0; background: #f3f3f3; border-bottom: 1px solid #d9d9d9; padding: 8px 16px;
+             display: flex; gap: 8px; align-items: center; font-family: 'Segoe UI', Arial, sans-serif; font-size: 13px; }
+  .toolbar button { padding: 5px 14px; border: 1px solid #bbb; background: #fff; border-radius: 4px; cursor: pointer; font-size: 13px; }
+  .toolbar button.primary { background: #0F6CBD; border-color: #0F6CBD; color: #fff; }
+  .toolbar .sp { flex: 1; }
+  .page { max-width: 190mm; margin: 0 auto; padding: 18px 0 28px; }
+  .part + .part { break-before: page; page-break-before: always; }
+  .tb { text-align: center; margin-bottom: 14px; }
+  .tb .co { font-size: 16pt; font-weight: 700; color: #1A1A2E; }
+  .tb .rt { font-size: 12pt; font-weight: 700; color: #605E5C; margin-top: 2px; }
+  .tb .st { font-size: 10pt; font-style: italic; color: #605E5C; margin-top: 2px; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  th, td { padding: 3px 7px; }
+  th { font-size: 9pt; font-weight: 700; color: #605E5C; background: #F3F3F3; border: 1px solid #D9D9D9; text-align: right; }
+  th:first-child { text-align: left; }
+  td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.lbl { padding-left: 16px; }
+  tr.sec td { font-weight: 700; color: #107C10; background: #EAF6EA; }
+  tr.sec_red td { font-weight: 700; color: #C42B1C; background: #FDECEA; }
+  tr.total td, tr.gp td, tr.np td { font-weight: 700; color: #1A1A2E; background: #F3F3F3; }
+  tr.total td:first-child, tr.gp td:first-child, tr.np td:first-child { text-align: right; }
+  tr.gp td { background: #EAF6EA; }
+  tr.np td { background: #E8F3FF; font-size: 11pt; }
+  td.fav { color: #107C10; }
+  td.unfav { color: #C42B1C; }
+  .block { break-inside: avoid; page-break-inside: avoid; }
+  .foot { font-size: 8pt; color: #888; text-align: right; margin-top: 6px; }
+  .legend { font-size: 8.5pt; color: #605E5C; margin: -6px 0 10px; }
+  tr, td, th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @media print { .toolbar { display: none; } .page { padding: 0; max-width: none; } }
+</style>
+</head>
+<body>
+<div class="toolbar">
+  <strong>Management Account &mdash; {{ cur.month_label }}</strong><span class="sp"></span>
+  <button type="button" onclick="window.close()">Close</button>
+  <button type="button" class="primary" onclick="window.print()">Print</button>
+</div>
+<div class="page">
+{% set t = cur.t %}{% set pt = prev.t %}
+
+{% for part in parts %}
+<div class="part">
+
+{% if part == 'pl' %}
+  {{ title('TRADING PROFIT & LOSS ACCOUNT', 'For the month of ' ~ cur.month_label) }}
+  <table>
+    <thead><tr><th>Description</th><th style="width:24%">{{ cur.month_label }}</th><th style="width:24%">{{ prev.month_label }}</th></tr></thead>
+    <tbody>
+    {% for r in pl_rows %}
+      {% if r.kind in ('sec', 'sec_red') %}
+      <tr class="{{ r.kind }}"><td colspan="3">{{ r.label }}</td></tr>
+      {% elif r.kind == 'pct' %}
+      <tr><td class="lbl">{{ r.label }}</td><td class="n">{{ pct(r.cur) }}</td><td class="n">{{ pct(r.prev) }}</td></tr>
+      {% else %}
+      <tr class="{{ r.kind if r.kind != 'item' else '' }}"><td class="{{ 'lbl' if r.kind == 'item' }}">{{ r.label }}{% if r.note %} (Note {{ r.note }}){% endif %}</td>
+        <td class="n">{{ money(r.cur) }}</td><td class="n">{{ money(r.prev) }}</td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+
+{% elif part == 'variance' %}
+  {{ title('VARIANCE ANALYSIS', cur.month_label ~ ' compared with ' ~ prev.month_label) }}
+  <div class="legend">Variance = this month &minus; last month. <span style="color:#107C10">Green</span> = favourable (more income / less cost),
+    <span style="color:#C42B1C">red</span> = unfavourable. Margin rows show the change in percentage points.</div>
+  {% macro vhead(first) %}<thead><tr><th>{{ first }}</th><th style="width:17%">{{ cur.month_label }}</th><th style="width:17%">{{ prev.month_label }}</th>
+    <th style="width:16%">Variance (Rs)</th><th style="width:11%">Variance %</th></tr></thead>{% endmacro %}
+  <table>
+    {{ vhead('Description') }}
+    <tbody>
+    {% for r in pl_rows %}
+      {% if r.kind in ('sec', 'sec_red') %}
+      <tr class="{{ r.kind }}"><td colspan="5">{{ r.label }}</td></tr>
+      {% elif r.kind == 'pct' %}
+      <tr><td class="lbl">{{ r.label }}</td><td class="n">{{ pct(r.cur) }}</td><td class="n">{{ pct(r.prev) }}</td>
+        <td class="n {{ favcls(r.fav) }}">{% if r.cur is not none and r.prev is not none %}{{ '%+.2f'|format(r.diff) }} pts{% endif %}</td><td></td></tr>
+      {% else %}
+      <tr class="{{ r.kind if r.kind != 'item' else '' }}"><td class="{{ 'lbl' if r.kind == 'item' }}">{{ r.label }}{% if r.note %} (Note {{ r.note }}){% endif %}</td>
+        <td class="n">{{ money(r.cur) }}</td><td class="n">{{ money(r.prev) }}</td>
+        <td class="n {{ favcls(r.fav) }}">{{ signed(r.diff) }}</td><td class="n {{ favcls(r.fav) }}">{{ pct(r.pct) }}</td></tr>
+      {% endif %}
+    {% endfor %}
+    </tbody>
+  </table>
+  {% for n in note_rows %}
+  <div class="block">
+  <table>
+    {{ vhead(n.label | upper) }}
+    <tbody>
+    {% for l in n.lines if l.cur or l.prev %}
+      <tr><td class="lbl">{{ l.label }}</td><td class="n">{{ money(l.cur) }}</td><td class="n">{{ money(l.prev) }}</td>
+        <td class="n {{ favcls(l.fav) }}">{{ signed(l.diff) }}</td><td class="n {{ favcls(l.fav) }}">{{ pct(l.pct) }}</td></tr>
+    {% endfor %}
+      <tr class="total"><td>TOTAL</td><td class="n">{{ money(n.total.cur) }}</td><td class="n">{{ money(n.total.prev) }}</td>
+        <td class="n">{{ signed(n.total.diff) }}</td><td class="n">{{ pct(n.total.pct) }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {% endfor %}
+
+{% elif part == 'notes' %}
+  {{ title('NOTES TO THE PROFIT & LOSS ACCOUNT', cur.month_label) }}
+  {% for n in note_rows %}
+  <div class="block">
+  <table>
+    <thead><tr><th>{{ n.label | upper }}</th><th style="width:24%">{{ cur.month_label }}</th><th style="width:24%">{{ prev.month_label }}</th></tr></thead>
+    <tbody>
+    {% for l in n.lines %}
+      <tr><td class="lbl">{{ l.label }}</td><td class="n">{{ money(l.cur) if l.cur else '' }}</td><td class="n">{{ money(l.prev) if l.prev else '' }}</td></tr>
+    {% endfor %}
+      <tr class="total"><td>TOTAL</td><td class="n">{{ money(n.total.cur) }}</td><td class="n">{{ money(n.total.prev) }}</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {% endfor %}
+
+{% elif part == 'note3' %}
+  {{ title('NOTE 3 - COST OF SALES', cur.month_label) }}
+  {% set st = cur.stock %}
+  <table>
+    <thead><tr><th>Description</th><th style="width:20%">Bar</th><th style="width:20%">Food</th><th style="width:20%">Housekeeping</th></tr></thead>
+    <tbody>
+      <tr><td class="lbl">Opening Stock as at {{ cur.start.strftime('%d/%m/%Y') }}</td><td class="n">{{ money(st.bar.opening) }}</td><td class="n">{{ money(st.food.opening) }}</td><td class="n">{{ money(st.hk.opening) }}</td></tr>
+      <tr><td class="lbl">Add: Purchases</td><td class="n">{{ money(t.purch_bar) }}</td><td class="n">{{ money(t.purch_food) }}</td><td class="n">{{ money(t.purch_hk) }}</td></tr>
+      <tr><td class="lbl">Less: Closing Stock as at {{ cur.end.strftime('%d/%m/%Y') }}</td><td class="n">{{ money(st.bar.closing) }}</td><td class="n">{{ money(st.food.closing) }}</td><td class="n">{{ money(st.hk.closing) }}</td></tr>
+      <tr class="total"><td>Cost of Sales</td><td class="n">{{ money(t.cogs_bar) }}</td><td class="n">{{ money(t.cogs_food) }}</td><td class="n">{{ money(t.cogs_hk) }}</td></tr>
+      <tr><td class="lbl">Sales base</td><td class="n">{{ money(t.base_bar) }}</td><td class="n">{{ money(t.base_food) }}</td><td></td></tr>
+      <tr class="gp"><td>Cost %</td><td class="n">{{ pct(t.cost_pct_bar) }}</td><td class="n">{{ pct(t.cost_pct_food) }}</td><td></td></tr>
+    </tbody>
+  </table>
+  {% for sec in ['PURCH_BAR', 'PURCH_FOOD', 'PURCH_HK'] %}
+  <table class="block">
+    <thead><tr><th>{{ sec | replace('PURCH_BAR', 'Purchases - Bar') | replace('PURCH_FOOD', 'Purchases - Food') | replace('PURCH_HK', 'Purchases - Housekeeping') }}</th><th style="width:24%">Rs</th></tr></thead>
+    <tbody>
+      {% for l in cur.sections[sec] %}<tr><td class="lbl">{{ l.label }}</td><td class="n">{{ money(l.amount) }}</td></tr>{% endfor %}
+      <tr class="total"><td>TOTAL</td><td class="n">{{ money(cur.sections[sec] | sum(attribute='amount')) }}</td></tr>
+    </tbody>
+  </table>
+  {% endfor %}
+  {% if cur.remarks %}<div style="font-size:9.5pt;"><strong>Remarks:</strong> {{ cur.remarks }}</div>{% endif %}
+
+{% elif part == 'pct' %}
+  {{ title('SALES PERCENTAGE ANALYSIS', cur.month_label) }}
+  <table>
+    <thead><tr><th>Sales Location</th><th style="width:26%">Revenue</th><th style="width:16%">%</th></tr></thead>
+    <tbody>
+      {% for s in cur.sales_pct | sort(attribute='amount', reverse=True) if s.amount %}
+      <tr><td class="lbl">{{ s.label }}</td><td class="n">{{ money(s.amount) }}</td><td class="n">{{ '%.2f'|format(s.pct) }}%</td></tr>
+      {% endfor %}
+      <tr class="total"><td>TOTAL</td><td class="n">{{ money(t.sales) }}</td><td class="n">{{ '100.00%' if t.sales else '' }}</td></tr>
+    </tbody>
+  </table>
+{% endif %}
+
+  <div class="foot">Printed {{ printed_on.strftime('%d/%m/%Y %H:%M') }}</div>
+</div>
+{% endfor %}
+</div>
+<script>
+  window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });
+</script>
+</body>
+</html>
