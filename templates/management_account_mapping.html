@@ -354,7 +354,14 @@ function mmLink(btn) {
       label: row.dataset.subName || row.dataset.account, display_order: (count + 1) * 10, sources: []}));
   }
   const tr = document.querySelector('.mm-line[data-id="' + lineId + '"]');
-  mmAddSource(tr.querySelector('.btn-link'), {source_type: 'GL', gl_account: btn.dataset.account, sub_account_code: btn.dataset.sub || '', sign: 1});
+  if (tr.querySelector('.mm-manual').checked && !confirm('"' + tr.querySelector('.mm-label').value + '" is ticked Manual: its amount is typed in each month, so '
+      + 'linked accounts are not added up on that line (the account just stops showing as Not mapped).\n\nLink it anyway?')) return;
+  // Don't add the same account / sub-account to the line twice
+  const already = [...tr.querySelectorAll('.mm-src:not(.mm-src-off)')].some(function(s) {
+    return s.querySelector('.mm-s-type').value === 'GL' && mmSubKey(s.querySelector('.mm-s-acct').value) === mmSubKey(btn.dataset.account)
+      && (s.querySelector('.mm-s-sub').value || '') === String(btn.dataset.sub || '');
+  });
+  if (!already) mmAddSource(tr.querySelector('.btn-link'), {source_type: 'GL', gl_account: btn.dataset.account, sub_account_code: btn.dataset.sub || '', sign: 1});
   btn.closest('tr').style.opacity = '0.4';
   btn.disabled = true;
   btn.textContent = 'Linked';

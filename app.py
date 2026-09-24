@@ -22220,6 +22220,16 @@ def _mgmt_compute(period_raw):
         amount = 0.0
         if ln['is_manual']:
             amount = manual.get(ln['id'], 0.0)
+            # The typed-in amount covers the GL accounts linked to this line, so they count as
+            # mapped (not listed under "Not mapped") even though they aren't added up here.
+            for s in ln['sources']:
+                key = ' '.join(str(s['gl_account'] or '').split()).lower()
+                if s['source_type'] == 'PURCH' or not key:
+                    continue
+                if s['sub_account_code']:
+                    mapped_pairs.add((key, int(s['sub_account_code'])))
+                else:
+                    mapped_whole.add(key)
         else:
             for s in ln['sources']:
                 sign = -1 if int(s['sign'] or 1) < 0 else 1
@@ -22779,8 +22789,14 @@ def management_account_mapping():
                         VALUES (%s, %s, %s, %s, %s)
                     """, (section, label, order, cost_base, is_manual), commit=True)
                 db.execute_query("DELETE FROM mgmt_acc_sources WHERE line_id = %s", (line_id,), commit=True)
+                seen_src = set()
                 for s in ln.get('sources') or []:
                     sign = -1 if str(s.get('sign')) == '-1' else 1
+                    sig = (s.get('type'), ' '.join(str(s.get('account') or '').split()).lower(), str(s.get('sub') or ''),
+                           str(s.get('category') or '').strip().lower(), sign)
+                    if sig in seen_src:
+                        continue   # the same source twice on one line would count it twice
+                    seen_src.add(sig)
                     if s.get('type') == 'PURCH':
                         cat = str(s.get('category') or '').strip()[:100]
                         if cat:

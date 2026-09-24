@@ -2,7 +2,7 @@
 cd /d C:\Users\Srithiwankara\Desktop\Calude\ERP-WEB
 echo ==== Sending the Management Account changes to GitHub ====
 git add app.py templates/management_account_mapping.html push_mapping_fix.bat
-git commit -m "Mapping: show all sub-accounts for an account"
+git commit -m "Mapping: sub-account list fix, accounts on Manual lines count as mapped, no duplicate links"
 git push origin add-db-schema-15069424110250862180
 echo.
 echo ==== Done. Copy everything above and send it to Claude. ====
