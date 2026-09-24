@@ -62,6 +62,7 @@ def run_migrations(conn):
         _migrate_daily_sales_report_extrabed(cursor)
         _migrate_bar_sales_record(cursor)
         _migrate_management_account(cursor)
+        _migrate_management_account_ignored(cursor)
         _migrate_daily_sales_report_barsales(cursor)
         _migrate_daily_sales_petty_cash(cursor)
         _migrate_daily_sales_commissions(cursor)
@@ -1660,6 +1661,26 @@ def _migrate_management_account(cursor):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             """)
 
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+def _migrate_management_account_ignored(cursor):
+    """Management Account: GL accounts / sub-accounts the accountant chose to
+    leave out of the report. They no longer show under "Not mapped".
+    sub_account_code 0 = the account with no sub-account."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mgmt_acc_ignored (
+              id INT NOT NULL AUTO_INCREMENT,
+              gl_account VARCHAR(150) NOT NULL,
+              sub_account_code INT NOT NULL DEFAULT 0,
+              PRIMARY KEY (id),
+              UNIQUE KEY acct_sub_UNIQUE (gl_account, sub_account_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")

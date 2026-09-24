@@ -47,7 +47,7 @@
 <div class="mm-card">
   <div class="mm-head"><strong class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Not mapped in {{ cur.month_label }} ({{ cur.unmapped | length }})</strong>
     <span class="small text-muted">The best-matching line is pre-selected by name &mdash; check it, change any that are wrong, then
-      <strong>Link all suggested</strong> and <strong>Save Mapping</strong>.</span>
+      <strong>Link all suggested</strong> and <strong>Save Mapping</strong>. Use <strong>Ignore</strong> for an account that should stay out of the report.</span>
     <button type="button" class="btn btn-sm btn-primary" onclick="mmLinkAll()"><i class="fas fa-magic me-1"></i> Link all suggested</button></div>
   <div class="mm-body">
     <table class="mm">
@@ -62,7 +62,32 @@
             <span class="mm-score small text-nowrap"></span>
             <button type="button" class="btn btn-sm btn-outline-primary" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
                     onclick="mmLink(this)">Link</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary mm-ignore-btn" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
+                    title="Leave this account out of the report - it stops showing here" onclick="mmIgnore(this)">Ignore</button>
           </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+{% if cur.ignored %}
+<div class="mm-card">
+  <div class="mm-head"><strong class="text-secondary"><i class="fas fa-eye-slash me-1"></i> Ignored accounts ({{ cur.ignored | length }})</strong>
+    <span class="small text-muted">Left out of the report and hidden from "Not mapped". <strong>Restore</strong> one to see it there again.</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="var b=document.getElementById('mmIgnBody'); b.style.display = b.style.display === 'none' ? '' : 'none';">Show / hide</button></div>
+  <div class="mm-body" id="mmIgnBody" style="display:none;">
+    <table class="mm">
+      <thead><tr><th>Account</th><th>Sub-account</th><th>Type</th><th class="text-end">Amount ({{ cur.month_label }})</th><th></th></tr></thead>
+      <tbody>
+        {% for u in cur.ignored %}
+        <tr>
+          <td>{{ u.account }}</td><td>{{ u.sub_name or ('(none)' if not u.sub_code else 'code ' ~ u.sub_code) }}</td>
+          <td>{{ (u.kind or '') | title }}</td><td class="mm-amt">{{ '{:,.2f}'.format(u.amount) }}</td>
+          <td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
+                onclick="mmRestore(this)">Restore</button></td>
         </tr>
         {% endfor %}
       </tbody>
@@ -93,6 +118,8 @@ const MM_LINES = {{ lines | tojson }};
 const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
 const MM_DELETED = [];
+const MM_IGNORE = [];
+const MM_UNIGNORE = [];
 let mmNewId = 0;
 let mmSrcUid = 0;
 
@@ -248,7 +275,7 @@ function mmSuggestAll() {
   document.querySelectorAll('.mm-unmapped').forEach(function(row) {
     const sel = row.querySelector('.mm-link-line');
     const badge = row.querySelector('.mm-score');
-    if (row.querySelector('button').disabled) return;
+    if (row.querySelector('button[onclick^="mmLink"]').disabled) return;
     const name = row.dataset.account + ' ' + row.dataset.subName;
     let best = null, bestScore = 0;
     mmLinesOfKind(row.dataset.kind).forEach(function(tr) {
@@ -270,7 +297,7 @@ function mmSuggestAll() {
 function mmLinkAll() {
   let n = 0;
   document.querySelectorAll('.mm-unmapped').forEach(function(row) {
-    const btn = row.querySelector('button');
+    const btn = row.querySelector('button[onclick^="mmLink"]');
     if (!btn.disabled && row.querySelector('.mm-link-line').value) { mmLink(btn); n++; }
   });
   alert(n + ' account(s) linked. Check the lines below, then click Save Mapping.');
@@ -320,6 +347,8 @@ function mmLink(btn) {
   btn.closest('tr').style.opacity = '0.4';
   btn.disabled = true;
   btn.textContent = 'Linked';
+  const ign = btn.closest('tr').querySelector('.mm-ignore-btn');
+  if (ign) ign.disabled = true;
   mmFillLinkLists();
 }
 
@@ -405,6 +434,37 @@ function mmToggleSrc(uid, keep) {
   mmDirty();
 }
 
+// ---- Ignore / restore not-mapped accounts (saved with Save Mapping) ----------------
+function mmIgnKey(btn) { return {account: btn.dataset.account, sub: btn.dataset.sub || ''}; }
+function mmIgnIndex(list, k) {
+  return list.findIndex(function(x) { return x.account === k.account && x.sub === k.sub; });
+}
+function mmIgnore(btn) {
+  const row = btn.closest('tr');
+  const link = row.querySelector('button[onclick^="mmLink"]');
+  const k = mmIgnKey(btn), i = mmIgnIndex(MM_IGNORE, k);
+  if (i === -1) {
+    MM_IGNORE.push(k);
+    row.style.opacity = '0.4';
+    row.querySelector('.mm-link-line').disabled = true;
+    link.disabled = true;
+    btn.textContent = 'Undo ignore';
+  } else {
+    MM_IGNORE.splice(i, 1);
+    row.style.opacity = '';
+    row.querySelector('.mm-link-line').disabled = false;
+    link.disabled = false;
+    btn.textContent = 'Ignore';
+  }
+  mmDirty();
+}
+function mmRestore(btn) {
+  const k = mmIgnKey(btn), i = mmIgnIndex(MM_UNIGNORE, k);
+  if (i === -1) { MM_UNIGNORE.push(k); btn.textContent = 'Undo restore'; btn.closest('tr').style.opacity = '0.4'; }
+  else { MM_UNIGNORE.splice(i, 1); btn.textContent = 'Restore'; btn.closest('tr').style.opacity = ''; }
+  mmDirty();
+}
+
 function mmSave() {
   const lines = [];
   let bad = '';
@@ -422,7 +482,7 @@ function mmSave() {
                 cost_base: cost ? cost.value : '', is_manual: tr.querySelector('.mm-manual').checked, sources: sources});
   });
   if (bad) { alert(bad); return; }
-  document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED});
+  document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED, ignore: MM_IGNORE, unignore: MM_UNIGNORE});
   window.mmSubmitting = true;
   document.getElementById('mmForm').submit();
 }
