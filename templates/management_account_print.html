@@ -49,6 +49,23 @@
   .foot { font-size: 8pt; color: #888; text-align: right; margin-top: 6px; }
   .legend { font-size: 8.5pt; color: #605E5C; margin: -6px 0 10px; }
   tr, td, th { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* ---- Workbook-style P&L (matches the accountant's Excel "P&L" sheet) ---- */
+  .wb { font-family: Calibri, Carlito, 'Segoe UI', Arial, sans-serif; color: #000; max-width: 165mm; margin: 0 auto; }
+  .wb-title { text-align: center; font-weight: 700; font-size: 14pt; line-height: 1.45; margin: 6mm 0 7mm; }
+  table.wb-pl { width: 100%; border-collapse: collapse; font-size: 12pt; border: 2px solid #000; margin: 0; }
+  table.wb-pl th { background: none; color: #000; font-size: 14pt; font-weight: 700; text-align: center;
+                   border: 2px solid #000; padding: 3px 6px; }
+  table.wb-pl td { padding: 1px 6px; height: 21px; border-left: 2px solid #000; border-right: 2px solid #000; vertical-align: bottom; }
+  table.wb-pl tr.gap td { height: 21px; }
+  table.wb-pl td.n { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  table.wb-pl td.c { text-align: center; }
+  table.wb-pl td.r { text-align: right; }
+  table.wb-pl td.ind { padding-left: 42px; }
+  table.wb-pl td.b { font-weight: 700; }
+  table.wb-pl td.bu { font-weight: 700; text-decoration: underline; }
+  table.wb-pl td.ul { border-bottom: 1px solid #000; }
+  table.wb-pl td.tot { border-top: 1px solid #000; border-bottom: 3px double #000; }
+  table.wb-pl tr.last td { border-bottom: 2px solid #000; }
   @media print { .toolbar { display: none; } .page { padding: 0; max-width: none; } }
 </style>
 </head>
@@ -65,22 +82,51 @@
 <div class="part">
 
 {% if part == 'pl' %}
-  {{ title('TRADING PROFIT & LOSS ACCOUNT', 'For the month of ' ~ cur.month_label) }}
-  <table>
-    <thead><tr><th>Description</th><th style="width:24%">{{ cur.month_label }}</th><th style="width:24%">{{ prev.month_label }}</th></tr></thead>
-    <tbody>
-    {% for r in pl_rows %}
-      {% if r.kind in ('sec', 'sec_red') %}
-      <tr class="{{ r.kind }}"><td colspan="3">{{ r.label }}</td></tr>
-      {% elif r.kind == 'pct' %}
-      <tr><td class="lbl">{{ r.label }}</td><td class="n">{{ pct(r.cur) }}</td><td class="n">{{ pct(r.prev) }}</td></tr>
-      {% else %}
-      <tr class="{{ r.kind if r.kind != 'item' else '' }}"><td class="{{ 'lbl' if r.kind == 'item' }}">{{ r.label }}{% if r.note %} (Note {{ r.note }}){% endif %}</td>
-        <td class="n">{{ money(r.cur) }}</td><td class="n">{{ money(r.prev) }}</td></tr>
-      {% endif %}
-    {% endfor %}
-    </tbody>
-  </table>
+  {# Same layout as the accountant's workbook "P&L" sheet: boxed, Description | Note | Rs | Rs.,
+     line amounts in the first Rs column, subtotals in the second. #}
+  {% macro acct(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+  {% macro pc0(v) %}{% if v is none %}{% else %}{{ '%.0f'|format(v) }}%{% endif %}{% endmacro %}
+  <div class="wb">
+    <div class="wb-title">
+      <div>{{ company_name or '' }}</div>
+      <div>TRADING PROFIT &amp; LOSS ACCOUNT FOR THE MONTH OF</div>
+      <div>{{ cur.start.strftime('%b-%y') }}</div>
+    </div>
+    <table class="wb-pl">
+      <colgroup><col style="width:52%"><col style="width:9%"><col style="width:19%"><col style="width:20%"></colgroup>
+      <thead><tr><th>Description</th><th>Note</th><th>Rs</th><th>Rs.</th></tr></thead>
+      <tbody>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr><td>Sales</td><td></td><td></td><td></td></tr>
+        <tr><td class="ind">-Room &amp; Restaurant Revenue</td><td class="c">1</td><td class="n">{{ acct(t.sales_rr) }}</td><td></td></tr>
+        <tr><td class="ind">- Bar Sales</td><td class="c">2</td><td class="n ul">{{ acct(t.sales_bar) }}</td><td class="n">{{ acct(t.sales) }}</td></tr>
+        <tr><td class="bu">Less</td><td></td><td></td><td></td></tr>
+        <tr><td>Cost Of Sales</td><td class="c">3</td><td></td><td></td></tr>
+        <tr><td class="r">BAR</td><td></td><td class="n">{{ acct(t.cogs_bar) }}</td><td></td></tr>
+        <tr><td class="r">FOOD</td><td></td><td class="n">{{ acct(t.cogs_food) }}</td><td></td></tr>
+        <tr><td></td><td></td><td class="ul"></td><td class="n ul">{{ acct(t.cogs) }}</td></tr>
+        <tr><td class="b">Gross Profit</td><td></td><td></td><td class="n b tot">{{ acct(t.gross_profit) }}</td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="bu">Add</td><td></td><td></td><td></td></tr>
+        <tr><td>Service Charges</td><td></td><td class="ul"></td><td class="n ul">{{ acct(t.service) }}</td></tr>
+        <tr><td></td><td></td><td></td><td class="n b">{{ acct(t.after_service) }}</td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="bu">Less</td><td></td><td></td><td></td></tr>
+        {% for n, lbl in [('NOTE4', 'Administration Expenses'), ('NOTE5', 'Selling & Distribution Expenses'), ('NOTE6', 'VAT'), ('NOTE7', 'Finance Expenses'), ('NOTE8', 'Additional expenses')] %}
+        <tr><td>{{ lbl }}</td><td class="c">{{ n[-1] }}</td><td class="n{{ ' ul' if loop.last }}">{{ acct(t[n]) }}</td>
+          <td class="n{{ ' ul' if loop.last }}">{% if loop.last %}{{ acct(t.expenses) }}{% endif %}</td></tr>
+        {% endfor %}
+        <tr><td class="b">Net Profit</td><td></td><td></td><td class="n b">{{ acct(t.net_profit) }}</td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="b">Gross Profit Margin</td><td></td><td></td><td class="c b">{{ pc0(t.gp_margin) }}</td></tr>
+        <tr class="gap"><td></td><td></td><td></td><td></td></tr>
+        <tr><td class="b">Net Profit Margin</td><td></td><td></td><td class="c b">{{ pc0(t.np_margin) }}</td></tr>
+        <tr class="gap last"><td></td><td></td><td></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
 
 {% elif part == 'variance' %}
   {{ title('VARIANCE ANALYSIS', cur.month_label ~ ' compared with ' ~ prev.month_label) }}
