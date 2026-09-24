@@ -22181,6 +22181,37 @@ def _mgmt_lines(active_only=True):
     return lines
 
 
+def _mgmt_src_text(line_id):
+    """A line's sources as one readable string, for the mapping change log."""
+    parts = []
+    for s in db.execute_query("""
+        SELECT source_type, gl_account, sub_account_code, purchase_category, sign
+        FROM mgmt_acc_sources WHERE line_id = %s ORDER BY id""", (line_id,)) or []:
+        sign = '-' if int(s['sign'] or 1) < 0 else '+'
+        if s['source_type'] == 'PURCH':
+            parts.append(f"{sign} Purchases: {s['purchase_category']}")
+        else:
+            parts.append(f"{sign} {' '.join(str(s['gl_account'] or '').split())}"
+                         + (f" / sub {s['sub_account_code']}" if s['sub_account_code'] else ' / all subs'))
+    return ', '.join(parts)
+
+
+def _mgmt_log(line_id, label, action, before, after):
+    try:
+        db.execute_query("""
+            CREATE TABLE IF NOT EXISTS mgmt_acc_mapping_log (
+              id INT NOT NULL AUTO_INCREMENT, changed_at DATETIME NOT NULL, changed_by VARCHAR(100) NULL,
+              line_id INT NULL, line_label VARCHAR(150) NULL, action VARCHAR(20) NOT NULL,
+              before_text TEXT NULL, after_text TEXT NULL, PRIMARY KEY (id), INDEX idx_mal_time (changed_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""", commit=True)
+        db.execute_query("""
+            INSERT INTO mgmt_acc_mapping_log (changed_at, changed_by, line_id, line_label, action, before_text, after_text)
+            VALUES (NOW(), %s, %s, %s, %s, %s, %s)""",
+            (session.get('username') or '', line_id, (label or '')[:150], action, before, after), commit=True)
+    except Exception as e:
+        logging.error(f"Mapping log error: {e}")
+
+
 def _mgmt_compute(period_raw):
     period, start, end, prev_period = _mgmt_period(period_raw)
     lines = _mgmt_lines()
@@ -22744,6 +22775,7 @@ def management_account_mapping():
             flash('Could not read the mapping - please try again.', 'danger')
             return redirect(url_for('management_account_mapping'))
         valid_sections = {k for k, _, _ in MGMT_SECTIONS}
+        n_changed = 0
         try:
             if payload.get('ignore'):
                 db.execute_query("""
@@ -22768,7 +22800,10 @@ def management_account_mapping():
                                      (acct, int(sub) if sub.isdigit() else 0), commit=True)
             for lid in payload.get('deleted') or []:
                 if str(lid).isdigit():
+                    old = db.execute_query("SELECT label FROM mgmt_acc_lines WHERE id = %s", (int(lid),)) or []
+                    before = _mgmt_src_text(int(lid))
                     db.execute_query("DELETE FROM mgmt_acc_lines WHERE id = %s", (int(lid),), commit=True)
+                    _mgmt_log(int(lid), old[0]['label'] if old else '', 'deleted', before, '')
             for ln in payload.get('lines') or []:
                 section = ln.get('section')
                 label = ' '.join(str(ln.get('label') or '').split())[:150]
@@ -22777,8 +22812,14 @@ def management_account_mapping():
                 cost_base = ln.get('cost_base') if ln.get('cost_base') in ('BAR', 'FOOD') else None
                 order = int(parse_float(ln.get('order')) or 0)
                 is_manual = 1 if ln.get('is_manual') else 0
+                before, is_new = '', True
                 if str(ln.get('id') or '').isdigit():
                     line_id = int(ln['id'])
+                    is_new = False
+                    old = (db.execute_query("SELECT label, section, is_manual FROM mgmt_acc_lines WHERE id = %s", (line_id,)) or [{}])[0]
+                    before = _mgmt_src_text(line_id)
+                    if old and (old.get('label') != label or old.get('section') != section or int(old.get('is_manual') or 0) != is_manual):
+                        before = f"[{old.get('section')} | {old.get('label')}{' | manual' if old.get('is_manual') else ''}] " + before
                     db.execute_query("""
                         UPDATE mgmt_acc_lines SET section=%s, label=%s, display_order=%s, cost_base=%s, is_manual=%s, is_active=1
                         WHERE id=%s
@@ -22812,7 +22853,17 @@ def management_account_mapping():
                                 INSERT INTO mgmt_acc_sources (line_id, source_type, gl_account, sub_account_code, sign)
                                 VALUES (%s, 'GL', %s, %s, %s)
                             """, (line_id, acct, int(sub) if sub.isdigit() and int(sub) else None, sign), commit=True)
-            flash('Management Account mapping saved.', 'success')
+                after = _mgmt_src_text(line_id)
+                if is_new or after != before:
+                    _mgmt_log(line_id, label, 'added' if is_new else 'changed', before, after)
+                    n_changed += 1
+            for ig in payload.get('ignore') or []:
+                _mgmt_log(None, f"{ig.get('account')}{' / sub ' + str(ig.get('sub')) if ig.get('sub') else ''}", 'ignored', '', '')
+            for ig in payload.get('unignore') or []:
+                _mgmt_log(None, f"{ig.get('account')}{' / sub ' + str(ig.get('sub')) if ig.get('sub') else ''}", 'restored', '', '')
+            n_changed += len(payload.get('deleted') or [])
+            flash(f'Management Account mapping saved - {n_changed} line(s) changed.' if n_changed
+                  else 'Management Account mapping saved - no line changed.', 'success')
         except Exception as e:
             flash(f'Error saving mapping: {str(e)}', 'danger')
         return redirect(url_for('management_account_mapping', month=request.form.get('month') or ''))
@@ -22866,9 +22917,15 @@ def management_account_mapping():
         ln['amount'] = amounts.get(ln['id'], 0)
         for s in ln['sources']:
             s.pop('id', None)
+    try:
+        history = db.execute_query("""
+            SELECT changed_at, changed_by, line_label, action, before_text, after_text
+            FROM mgmt_acc_mapping_log ORDER BY id DESC LIMIT 100""") or []
+    except Exception:
+        history = []
     return render_template('management_account_mapping.html', lines=lines, sections=MGMT_SECTIONS,
                            accounts=accounts, categories=[c['c'] for c in categories],
-                           sub_accounts=sub_accounts, cur=cur, month=cur['period'])
+                           sub_accounts=sub_accounts, cur=cur, month=cur['period'], history=history)
 
 
 # ================================================================

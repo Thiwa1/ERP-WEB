@@ -116,6 +116,26 @@
 
 <div id="mmSections"></div>
 
+<div class="mm-card">
+  <div class="mm-head"><strong><i class="fas fa-history me-1"></i> Change history</strong>
+    <span class="small text-muted">Every saved change to the mapping, newest first (last 100).</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="var b=document.getElementById('mmHist'); b.style.display = b.style.display === 'none' ? '' : 'none';">Show / hide</button></div>
+  <div class="mm-body" id="mmHist" style="display:none;">
+    <table class="mm">
+      <thead><tr><th style="width:130px">When</th><th style="width:100px">By</th><th style="width:18%">Line</th><th style="width:70px">Action</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        {% for h in history %}
+        <tr><td class="text-nowrap">{{ h.changed_at.strftime('%d/%m/%Y %H:%M') if h.changed_at else '' }}</td><td>{{ h.changed_by }}</td>
+          <td>{{ h.line_label }}</td><td>{{ h.action }}</td>
+          <td class="text-muted">{{ h.before_text or '' }}</td><td>{{ h.after_text or '' }}</td></tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No changes recorded yet &mdash; changes are recorded from now on.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 <datalist id="mmAccounts">{% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}</datalist>
 
 <script>
@@ -132,6 +152,11 @@ let mmSrcUid = 0;
 function mmEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 function mmFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function mmDirty() { document.getElementById('mmDirty').style.display = ''; mmCheckDupes(); }
+// Only lines that were actually edited are sent on Save, so nothing else can be rewritten by accident.
+function mmMark(el) { const tr = el && el.closest ? el.closest('.mm-line') : null; if (tr) tr.dataset.changed = '1'; }
+document.addEventListener('change', function(e) { mmMark(e.target); }, true);
+document.addEventListener('input', function(e) { mmMark(e.target); }, true);
+function mmRemoveSrc(icon) { mmMark(icon); icon.parentNode.remove(); mmDirty(); }
 
 function mmSubKey(account) { return String(account || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 function mmSubOptions(account, selected) {
@@ -158,7 +183,7 @@ function mmSourceHtml(s) {
     '<select class="form-select mm-s-sub no-select2" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
     '<select class="form-select mm-s-cat no-select2" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
     '<select class="form-select mm-s-sign no-select2" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
-    '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="this.parentNode.remove(); mmDirty();"></i>' +
+    '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="mmRemoveSrc(this)"></i>' +
   '</div>';
 }
 
@@ -210,6 +235,7 @@ function mmAcctChanged(inp) {
   mmDirty();
 }
 function mmAddSource(btn, s) {
+  mmMark(btn);
   btn.closest('td').querySelector('.mm-srcs').insertAdjacentHTML('beforeend', mmSourceHtml(s));
   mmDirty();
 }
@@ -450,6 +476,7 @@ function mmCheckDupes() {
 function mmToggleSrc(uid, keep) {
   const src = document.querySelector('.mm-src[data-uid="' + uid + '"]');
   if (!src) return;
+  mmMark(src);
   src.classList.toggle('mm-src-off', !keep);
   src.style.display = keep ? '' : 'none';
   mmDirty();
@@ -490,6 +517,7 @@ function mmSave() {
   const lines = [];
   let bad = '';
   document.querySelectorAll('.mm-line').forEach(function(tr) {
+    if (!tr.dataset.changed && !String(tr.dataset.id).startsWith('new')) return;   // untouched: leave it exactly as saved
     const label = tr.querySelector('.mm-label').value.trim();
     if (!label) { bad = 'Every line needs a name.'; return; }
     const sources = [];
@@ -503,6 +531,7 @@ function mmSave() {
                 cost_base: cost ? cost.value : '', is_manual: tr.querySelector('.mm-manual').checked, sources: sources});
   });
   if (bad) { alert(bad); return; }
+  if (!lines.length && !MM_DELETED.length && !MM_IGNORE.length && !MM_UNIGNORE.length) { alert('Nothing has been changed.'); return; }
   document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED, ignore: MM_IGNORE, unignore: MM_UNIGNORE});
   window.mmSubmitting = true;
   document.getElementById('mmForm').submit();
