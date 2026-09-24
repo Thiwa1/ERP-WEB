@@ -16,6 +16,10 @@
   .mm-src .form-control, .mm-src .form-select { font-size:0.76rem; padding:2px 6px; height:26px; }
   .mm-amt { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
   .mm-save-bar { position:sticky; top:0; z-index:40; background:#fff; padding:8px 0; }
+  .mm-src.mm-dup .form-control, .mm-src.mm-dup .form-select { border-color:#dc3545; background-color:#fff5f5; }
+  .mm-dup-row td { vertical-align:middle; }
+  .mm-dup-opt { display:inline-flex; align-items:center; gap:4px; margin:2px 12px 2px 0; white-space:nowrap; }
+  .mm-dup-opt.off { color:#999; text-decoration:line-through; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -67,6 +71,18 @@
 </div>
 {% endif %}
 
+<div class="mm-card" id="mmDupCard" style="display:none;">
+  <div class="mm-head"><strong class="text-danger"><i class="fas fa-clone me-1"></i> Mapped more than once (<span id="mmDupCount">0</span>)</strong>
+    <span class="small text-muted">These accounts are counted on more than one line, so their amounts are added twice.
+      <strong>Untick</strong> the lines that should <em>not</em> use the account, then <strong>Save Mapping</strong>.</span></div>
+  <div class="mm-body">
+    <table class="mm">
+      <thead><tr><th style="width:30%">Account / category</th><th>Used on lines (ticked = keep)</th></tr></thead>
+      <tbody id="mmDupBody"></tbody>
+    </table>
+  </div>
+</div>
+
 <div id="mmSections"></div>
 
 <datalist id="mmAccounts">{% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}</datalist>
@@ -78,10 +94,11 @@ const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
 const MM_DELETED = [];
 let mmNewId = 0;
+let mmSrcUid = 0;
 
 function mmEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 function mmFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function mmDirty() { document.getElementById('mmDirty').style.display = ''; }
+function mmDirty() { document.getElementById('mmDirty').style.display = ''; mmCheckDupes(); }
 
 function mmSubOptions(account, selected) {
   const subs = MM_SUBS[account] || [];
@@ -98,7 +115,7 @@ function mmSourceHtml(s) {
   let cats = '<option value="">- category -</option>';
   MM_CATS.forEach(function(c) { cats += '<option' + (c === s.purchase_category ? ' selected' : '') + '>' + mmEsc(c) + '</option>'; });
   if (s.purchase_category && MM_CATS.indexOf(s.purchase_category) === -1) cats += '<option selected>' + mmEsc(s.purchase_category) + '</option>';
-  return '<div class="mm-src">' +
+  return '<div class="mm-src" data-uid="' + (++mmSrcUid) + '">' +
     '<select class="form-select mm-s-type" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
     '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
     '<select class="form-select mm-s-sub" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
@@ -261,7 +278,7 @@ function mmLinkAll() {
 function mmFillEmptyLines() {
   let n = 0;
   document.querySelectorAll('.mm-line').forEach(function(tr) {
-    if (tr.querySelector('.mm-src') || tr.querySelector('.mm-manual').checked) return;
+    if (tr.querySelector('.mm-src:not(.mm-src-off)') || tr.querySelector('.mm-manual').checked) return;
     if (tr.dataset.section.indexOf('PURCH_') === 0) return;   // purchases lines use Purchase categories
     const kind = MM_KIND[tr.dataset.section];
     const label = tr.querySelector('.mm-label').value;
@@ -306,6 +323,88 @@ function mmLink(btn) {
   mmFillLinkLists();
 }
 
+// ---- Duplicate mapping check ----------------------------------------------------
+// A GL account (or sub-account) or purchase category used on more than one line is counted twice.
+// "All sub-accounts" of an account plus one of its sub-accounts on another line also counts twice.
+function mmSectionName(key) {
+  const sec = MM_SECTIONS.find(function(s) { return s[0] === key; });
+  return sec ? sec[1] : key;
+}
+function mmCheckDupes() {
+  const groups = {};   // group key -> {title, items:[{src, tr}]}
+  document.querySelectorAll('.mm-src').forEach(function(src) {
+    src.classList.remove('mm-dup');
+    const tr = src.closest('.mm-line');
+    if (!tr || tr.querySelector('.mm-manual').checked) return;
+    const type = src.querySelector('.mm-s-type').value;
+    let gkey, title, sub = '';
+    if (type === 'PURCH') {
+      const cat = src.querySelector('.mm-s-cat').value;
+      if (!cat) return;
+      gkey = 'P|' + cat.trim().toLowerCase();
+      title = 'Purchases: ' + cat;
+    } else {
+      const acct = src.querySelector('.mm-s-acct').value.trim();
+      if (!acct) return;
+      gkey = 'G|' + acct.replace(/\s+/g, ' ').toLowerCase();
+      title = acct;
+      sub = src.querySelector('.mm-s-sub').value || '';
+    }
+    const g = groups[gkey] || (groups[gkey] = {title: title, items: []});
+    g.items.push({src: src, tr: tr, sub: sub});
+  });
+  const rows = [];
+  Object.keys(groups).forEach(function(gkey) {
+    const g = groups[gkey];
+    const on = g.items.filter(function(i) { return !i.src.classList.contains('mm-src-off'); });
+    // Clashes: same sub (or same whole account) twice, or whole account together with any sub-account
+    const bySub = {};
+    on.forEach(function(i) { (bySub[i.sub] = bySub[i.sub] || []).push(i); });
+    const whole = bySub[''] || [];
+    let clash = [];
+    Object.keys(bySub).forEach(function(sub) {
+      const list = bySub[sub];
+      if (list.length > 1) clash = clash.concat(list);
+      else if (sub !== '' && whole.length) clash = clash.concat(list);
+    });
+    if (clash.length && whole.length) clash = clash.concat(whole);
+    if (!clash.length) {
+      // keep showing groups where the user has unticked something, so they can tick it back
+      if (!g.items.some(function(i) { return i.src.classList.contains('mm-src-off'); })) return;
+    }
+    clash.forEach(function(i) { i.src.classList.add('mm-dup'); });
+    rows.push({g: g, clash: clash.length > 0});
+  });
+  const body = document.getElementById('mmDupBody');
+  let h = '', n = 0;
+  rows.forEach(function(r) {
+    if (r.clash) n++;
+    let opts = '';
+    r.g.items.forEach(function(i) {
+      const off = i.src.classList.contains('mm-src-off');
+      const subSel = i.src.querySelector('.mm-s-sub');
+      const subTxt = i.sub ? ' / ' + subSel.options[subSel.selectedIndex].text : (i.src.querySelector('.mm-s-type').value === 'GL' ? ' / all subs' : '');
+      const sign = i.src.querySelector('.mm-s-sign').value === '-1' ? ' (&minus;)' : '';
+      opts += '<label class="mm-dup-opt' + (off ? ' off' : '') + '"><input type="checkbox"' + (off ? '' : ' checked') +
+        ' onchange="mmToggleSrc(' + i.src.dataset.uid + ', this.checked)"> ' +
+        mmEsc(i.tr.querySelector('.mm-label').value || '(new line)') +
+        ' <span class="text-muted small">&middot; ' + mmEsc(mmSectionName(i.tr.dataset.section)) + mmEsc(subTxt) + sign + '</span></label>';
+    });
+    h += '<tr class="mm-dup-row"><td><strong>' + mmEsc(r.g.title) + '</strong>' +
+      (r.clash ? '' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
+  });
+  body.innerHTML = h;
+  document.getElementById('mmDupCount').textContent = n;
+  document.getElementById('mmDupCard').style.display = rows.length ? '' : 'none';
+}
+function mmToggleSrc(uid, keep) {
+  const src = document.querySelector('.mm-src[data-uid="' + uid + '"]');
+  if (!src) return;
+  src.classList.toggle('mm-src-off', !keep);
+  src.style.display = keep ? '' : 'none';
+  mmDirty();
+}
+
 function mmSave() {
   const lines = [];
   let bad = '';
@@ -313,7 +412,7 @@ function mmSave() {
     const label = tr.querySelector('.mm-label').value.trim();
     if (!label) { bad = 'Every line needs a name.'; return; }
     const sources = [];
-    tr.querySelectorAll('.mm-src').forEach(function(s) {
+    tr.querySelectorAll('.mm-src:not(.mm-src-off)').forEach(function(s) {
       const type = s.querySelector('.mm-s-type').value;
       sources.push({type: type, account: s.querySelector('.mm-s-acct').value, sub: s.querySelector('.mm-s-sub').value,
                     category: s.querySelector('.mm-s-cat').value, sign: s.querySelector('.mm-s-sign').value});
@@ -332,5 +431,6 @@ window.addEventListener('beforeunload', function(e) {
 });
 mmRender();
 mmSuggestAll();
+mmCheckDupes();
 </script>
 {% endblock %}
