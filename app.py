@@ -6559,18 +6559,8 @@ def sub_account_allocation_save():
     return jsonify({'success': True, 'updated': updated})
 
 
-@app.route('/supplier_payments_report')
-@login_required
-@has_permission('Access_Reports')
-def supplier_payments_report():
-    """Payments made to suppliers: supplier, amount, method (Cash/Bank) and which
-    bank/cash account. Combines cash_book_recode and bank_book_recod."""
-    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
-    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
-    supplier = (request.args.get('supplier') or '').strip()
-    method = (request.args.get('method') or '').strip()  # '', 'Cash', 'Bank'
-    download = request.args.get('download')
-
+def _supplier_payment_rows(from_date, to_date, supplier='', method=''):
+    """Cash and bank payments to suppliers between two dates (Supplier Payments report)."""
     rows = []
 
     if method in ('', 'Cash'):
@@ -6615,6 +6605,23 @@ def supplier_payments_report():
             rows.append({'supplier': r['supplier'], 'amount': float(r['amount'] or 0),
                          'method': 'Bank', 'account': r['account'] or '', 'cheque': r['cheque'] or '',
                          'voucher': r['voucher'], 'date': r['pdate'], 'jv': r['jv']})
+
+    return rows
+
+
+@app.route('/supplier_payments_report')
+@login_required
+@has_permission('Access_Reports')
+def supplier_payments_report():
+    """Payments made to suppliers: supplier, amount, method (Cash/Bank) and which
+    bank/cash account. Combines cash_book_recode and bank_book_recod."""
+    from_date = (request.args.get('from') or date.today().replace(day=1).strftime('%Y-%m-%d')).strip()
+    to_date = (request.args.get('to') or date.today().strftime('%Y-%m-%d')).strip()
+    supplier = (request.args.get('supplier') or '').strip()
+    method = (request.args.get('method') or '').strip()  # '', 'Cash', 'Bank'
+    download = request.args.get('download')
+
+    rows = _supplier_payment_rows(from_date, to_date, supplier, method)
 
     rows.sort(key=lambda x: str(x['date'] or ''), reverse=True)
     total = sum(r['amount'] for r in rows)
@@ -22701,6 +22708,14 @@ def management_account_export():
     except ImportError:
         flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
         return redirect(url_for('management_account', month=cur['period']))
+    return xl.workbook_response(_mgmt_export_book(cur, prev), f"Management_Account_{cur['period']}.xlsx")
+
+
+def _mgmt_export_book(cur, prev):
+    """Every Management Account tab except Not Mapped, as a workbook: P&L,
+    Variance Analysis, each note, Note 3, Sales Percentage, Pie Chart and
+    Day Summary. Used by the web export and by the Excel data-entry workbook."""
+    import excel_export as xl
     t, pt = cur['t'], prev['t']
     company = _company_display_name()
     head = ['Description', cur['month_label'], prev['month_label']]
@@ -22780,11 +22795,66 @@ def management_account_export():
     ws = wb.create_sheet('Sales Percentage')
     row = xl.title_block(ws, 3, company, 'SALES PERCENTAGE ANALYSIS', cur['month_label'])
     row = xl.header_row(ws, row, ['Sales Location', 'Revenue', '%'])
-    for s in cur['sales_pct']:
-        row = xl.item_row(ws, row, s['label'], [s['amount'], s['pct']])
+    for s in sorted((x for x in cur['sales_pct'] if x['amount']), key=lambda x: x['amount'], reverse=True):
+        note = ' (Note 1)' if s.get('section') == 'NOTE1' else (' (Note 2)' if s.get('section') == 'NOTE2' else '')
+        row = xl.item_row(ws, row, s['label'] + note, [s['amount'], s['pct']])
     row = xl.total_row(ws, row, 'TOTAL', [t['sales'], 100 if t['sales'] else 0])
     xl.finish(ws, 3)
-    return xl.workbook_response(wb, f"Management_Account_{cur['period']}.xlsx")
+
+    # ---- Pie Chart (the accountant's "Pi-Chart" sheet)
+    from openpyxl.chart import PieChart, Reference
+    from openpyxl.chart.label import DataLabelList
+    ws = wb.create_sheet('Pie Chart')
+    row = xl.title_block(ws, 3, company, 'SALES ANALYSIS', cur['month_label'])
+    row = xl.header_row(ws, row, ['Sales Location', 'Revenue', '%'])
+    first = row
+    pie = [(lbl, amt) for lbl, amt in _mgmt_pie_items(cur) if amt]
+    total_pie = sum(a for _l, a in pie) or 0
+    for lbl, amt in pie:
+        row = xl.item_row(ws, row, lbl, [amt, (amt / total_pie * 100) if total_pie else 0])
+    row = xl.total_row(ws, row, 'TOTAL', [total_pie, 100 if total_pie else 0])
+    xl.finish(ws, 3)
+    if pie:
+        ch = PieChart()
+        ch.title = f"{cur['month_label']} Sales Analysis"
+        ch.add_data(Reference(ws, min_col=2, min_row=first, max_row=first + len(pie) - 1), titles_from_data=False)
+        ch.set_categories(Reference(ws, min_col=1, min_row=first, max_row=first + len(pie) - 1))
+        ch.dataLabels = DataLabelList()
+        ch.dataLabels.showPercent = True
+        ch.height, ch.width = 11, 17
+        ws.add_chart(ch, 'E5')
+
+    # ---- Day Summary
+    daily = _mgmt_daily(cur)
+    ws = wb.create_sheet('Day Summary')
+    rr_lines = [l for sec, ls in daily['groups'] if sec != 'NOTE2' for l in ls]
+    bar_lines = [l for sec, ls in daily['groups'] if sec == 'NOTE2' for l in ls]
+    heads = (['Date'] + [l['label'] for l in rr_lines] + ['TOTAL'] + [l['label'] for l in bar_lines]
+             + ['BAR SALES', 'TOTAL'])
+    ncols = len(heads)
+    row = xl.title_block(ws, ncols, company, 'DAY SUMMARY', cur['month_label'])
+    row = xl.header_row(ws, row, heads)
+    head_row_no = row - 1
+    num_cols = tuple(range(2, ncols + 1))
+    for d in daily['days']:
+        vals = ([d['date'].strftime('%d/%m %a')] + [d['vals'][l['id']] or 0 for l in rr_lines] + [d['rr_total']] +
+                [d['vals'][l['id']] or 0 for l in bar_lines] + [d['bar_total'], d['grand']])
+        row = xl.data_row(ws, row, vals, num_cols=num_cols)
+        if d['date'].weekday() >= 5:
+            for c in range(1, ncols + 1):
+                ws.cell(row=row - 1, column=c).fill = xl._fill('F7F7F7')
+    row = xl.total_row(ws, row, 'TOTAL', [daily['totals'][l['id']] for l in rr_lines] + [daily['rr_total']] +
+                       [daily['totals'][l['id']] for l in bar_lines] + [daily['bar_total'], daily['grand']])
+    xl.finish(ws, ncols, first_col_width=13, num_col_width=13)
+    for c in range(1, ncols + 1):
+        ws.cell(row=head_row_no, column=c).alignment = xl.Alignment(wrap_text=True, horizontal='center',
+                                                                    vertical='center')
+    ws.row_dimensions[head_row_no].height = 45
+    ws.freeze_panes = ws.cell(row=head_row_no + 1, column=2)
+    if daily['has_manual']:
+        ws.cell(row=row + 1, column=1, value='Lines typed in manually have no daily split; only their month total '
+                                              'is shown.').font = xl.Font(italic=True, size=9, color=xl.GREY_TEXT)
+    return wb
 
 
 @app.route('/management_account/mapping', methods=['GET', 'POST'])
@@ -27792,9 +27862,15 @@ def xl_management_account():
     t, st = cur['t'], cur['stock']
     rows = [['INFO', cur['period'], cur['month_label'], prev['month_label'], _company_display_name(),
              cur.get('remarks') or ''],
-            ['STOCK', 'opening', st['bar']['opening'], st['food']['opening'], st['hk']['opening']],
-            ['STOCK', 'closing', st['bar']['closing'], st['food']['closing'], st['hk']['closing']],
+            ['STOCK', 'opening'] + [st[k]['opening'] if st[k].get('opening_set') and not st[k].get('opening_from_prev')
+                                    else '' for k in ('bar', 'food', 'hk')],
+            ['STOCK', 'closing'] + [st[k]['closing'] if st[k].get('closing_set') else '' for k in ('bar', 'food', 'hk')],
+            ['STOCKNOTE', 'opening'] + [st[k]['opening'] for k in ('bar', 'food', 'hk')],
             ['TITLE', 'Trading Profit & Loss Account - with Variance']]
+    for sec, label, _kind in MGMT_SECTIONS:
+        for l in cur['sections'].get(sec, []):
+            if l.get('is_manual'):
+                rows.append(['MANUAL', l['id'], label.split(' - ')[0] + ' - ' + l['label'], l['amount'] or 0])
     for r in _mgmt_pl_rows(t, prev['t']):
         label = r['label'] + (f" (Note {r['note']})" if r.get('note') else '')
         if r['kind'] in ('sec', 'sec_red'):
@@ -27827,6 +27903,35 @@ def xl_management_account():
     return _xl_tsv(rows)
 
 
+@app.route('/api/xl/management_account/export', methods=['GET'])
+def xl_management_account_export():
+    """The month's Management Account workbook (every tab except Not Mapped) -
+    the workbook copies these sheets in, formatted exactly like the web export."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    import excel_export as xl
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    return xl.workbook_response(_mgmt_export_book(cur, prev), f"Management_Account_{cur['period']}.xlsx")
+
+
+@app.route('/api/xl/supplier_payments', methods=['GET'])
+def xl_supplier_payments():
+    """Supplier payment history (cash and bank / cheque), newest first."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    d_from, d_to = _xl_range()
+    if d_to.year == 2999:
+        d_to = date.today()
+    rows = _supplier_payment_rows(d_from.strftime('%Y-%m-%d'), d_to.strftime('%Y-%m-%d'))
+    out = [[_xl_day(r['date']), r['supplier'] or '', 'Cheque' if r['method'] == 'Bank' else 'Cash',
+            r['account'] or '', r['cheque'] or '', r['voucher'] or '', r['jv'] or '', r['amount']] for r in rows]
+    return _xl_table(['Date', 'Supplier', 'Method', 'Bank / Cash Account', 'Cheque No', 'Voucher', 'JV', 'Amount'],
+                     ['d', 't', 't', 't', 't', 't', 't', 'n'], out)
+
+
 @app.route('/api/xl/management_account/save', methods=['POST'])
 def xl_management_account_save():
     """Save the month's opening / closing stock and remarks from the workbook."""
@@ -27835,6 +27940,9 @@ def xl_management_account_save():
         return err
     b = _xl_body()
     form = {'month': str(b.get('month') or ''), 'remarks': str(b.get('remarks') or ''), 'tab': 'note3'}
+    for line_id, amt in (b.get('manual') or {}).items():
+        if str(line_id).isdigit():
+            form[f'manual_{line_id}'] = '' if amt in (None, '') else str(amt)
     for k in ('opening_bar', 'opening_food', 'opening_hk', 'closing_bar', 'closing_food', 'closing_hk'):
         v = b.get(k)
         form[k] = '' if v in (None, '') else str(v)
@@ -28525,7 +28633,7 @@ Private Function LoadTable(ByVal sheetName As String, ByVal path As String) As L
 End Function
 
 Public Sub GetAllHistory()
-    Dim q As String, a As Long, b As Long, c As Long, d As Long
+    Dim q As String, a As Long, b As Long, c As Long, d As Long, e As Long
     q = HistoryQuery()
     Application.ScreenUpdating = False
     a = LoadTable("Sales History", "/api/xl/daily_sales/history?" & q)
@@ -28536,10 +28644,13 @@ Public Sub GetAllHistory()
     If c < 0 Then GoTo Done
     d = LoadTable("Bar History", "/api/xl/bar_sales/history?" & q)
     If d < 0 Then GoTo Done
-    SayResult "History loaded: " & a & " sales days, " & b & " credit lines, " & c & " advance lines, " & d & " bar days"
+    EnsureSheet "Payment History", "Supplier Payment History"
+    e = LoadTable("Payment History", "/api/xl/supplier_payments?" & q)
+    If e < 0 Then GoTo Done
+    SayResult "History loaded: " & a & " sales days, " & b & " credit lines, " & c & " advance lines, " & d & " bar days, " & e & " payments"
     Application.ScreenUpdating = True
     MsgBox "History loaded." & vbCrLf & a & " daily sales days" & vbCrLf & b & " credit lines" & vbCrLf & _
-           c & " advance lines" & vbCrLf & d & " bar sales days", vbInformation, "Suwin ERP"
+           c & " advance lines" & vbCrLf & d & " bar sales days" & vbCrLf & e & " supplier payments", vbInformation, "Suwin ERP"
 Done:
     Application.ScreenUpdating = True
 End Sub
@@ -28571,8 +28682,10 @@ Public Sub AddButtons()
                                           "Post Day", "PostDailySales")
     PutButtons "Bar Sales", "F1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
                                         "Post Day", "PostBarSales")
+    EnsureSheet "Payment History", "Supplier Payment History"
     PutButtons "Payments", "J1", Array("Load Payables", "LoadPayables", "Save Ready List", "SaveReadyList", _
-                                       "Submit Payment", "SubmitPayment")
+                                       "Submit Payment", "SubmitPayment", "Payment History", "LoadPaymentHistory")
+    PutButtons "Payment History", "I1", Array("Load History", "LoadPaymentHistory")
     PutButtons "Management Account", "I1", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock")
     PutButtons "Sales History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
@@ -28780,150 +28893,175 @@ Private Function MgmtSheet() As Worksheet
     Set MgmtSheet = ThisWorkbook.Worksheets("Management Account")
 End Function
 
-Private Sub MgmtHeader(ws As Worksheet, ByVal rw As Long, ByVal labels As Variant)
-    Dim j As Long
-    For j = LBound(labels) To UBound(labels)
-        With ws.Cells(rw, 2 + j - LBound(labels))
-            .Value = labels(j)
-            .Font.Bold = True
+' Make sure a sheet exists (older workbooks may not have it yet)
+Private Function EnsureSheet(ByVal sheetName As String, ByVal title As String) As Worksheet
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        Set ws = ThisWorkbook.Worksheets.Add(After:=ThisWorkbook.Worksheets(ThisWorkbook.Worksheets.Count))
+        ws.Name = sheetName
+        ws.Tab.Color = RGB(91, 155, 213)
+        ActiveWindow.DisplayGridlines = False
+        With ws.Range("A1:G1")
+            .Interior.Color = RGB(31, 56, 100)
             .Font.Color = RGB(255, 255, 255)
-            .Interior.Color = RGB(15, 108, 189)
-            .HorizontalAlignment = IIf(j = LBound(labels), -4131, -4152)
+            .Font.Bold = True
+            .Font.Size = 16
         End With
-    Next j
-End Sub
+        ws.Range("A1").Value = title
+        ws.Range("A2:G2").Interior.Color = RGB(238, 243, 250)
+        ws.Range("A2").Value = "Press Load History (range from Setup B7 / B8)"
+        ws.Range("A2").Font.Italic = True
+        ws.Rows(1).RowHeight = 32
+    End If
+    Set EnsureSheet = ws
+End Function
+
+' Download a file from the system (with the key) to a local path
+Private Function DownloadFile(ByVal path As String, ByVal saveAs As String) As Boolean
+    Dim http As Object, stm As Object
+    On Error GoTo Bad
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 10000, 10000, 60000, 180000
+    http.Open "GET", ServerUrl() & path, False
+    http.setRequestHeader "X-API-Key", ApiKey()
+    http.send
+    If http.Status <> 200 Then
+        MsgBox "Could not download the report: " & http.Status & " " & JsonValue(http.responseText, "error"), _
+               vbExclamation, "Suwin ERP"
+        Exit Function
+    End If
+    Set stm = CreateObject("ADODB.Stream")
+    stm.Type = 1
+    stm.Open
+    stm.Write http.responseBody
+    stm.SaveToFile saveAs, 2
+    stm.Close
+    DownloadFile = True
+    Exit Function
+Bad:
+    MsgBox "Could not download the report - " & Err.Description, vbExclamation, "Suwin ERP"
+End Function
+
+' Copy every sheet of the downloaded Management Account into this workbook as "MA ..."
+Private Function ImportMgmtSheets(ByVal file As String) As Long
+    Dim src As Workbook, sh As Worksheet, i As Long, lastSh As Worksheet, n As Long
+    Application.DisplayAlerts = False
+    For i = ThisWorkbook.Worksheets.Count To 1 Step -1
+        If Left$(ThisWorkbook.Worksheets(i).Name, 3) = "MA " Then ThisWorkbook.Worksheets(i).Delete
+    Next i
+    Set src = Workbooks.Open(Filename:=file, ReadOnly:=True)
+    Set lastSh = ThisWorkbook.Worksheets("Management Account")
+    For Each sh In src.Worksheets
+        sh.Copy After:=lastSh
+        Set lastSh = ThisWorkbook.ActiveSheet
+        lastSh.Name = Left$("MA " & sh.Name, 31)
+        lastSh.Tab.Color = RGB(3, 131, 135)
+        n = n + 1
+    Next sh
+    src.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    On Error Resume Next
+    Kill file
+    On Error GoTo 0
+    ImportMgmtSheets = n
+End Function
 
 Public Sub LoadMonth()
     Dim ws As Worksheet, r As String, rows_ As Variant, cols As Variant, i As Long, rw As Long, month_ As String
-    Dim curLabel As String, prevLabel As String, pieFirst As Long, pieLast As Long, co As Object, k As String
-    Const AMT As String = "#,##0.00;[Red]-#,##0.00;-"
+    Dim curLabel As String, file As String, n As Long, j As Long
     Set ws = MgmtSheet()
     month_ = DateText(ws.Range("C3").Value, "yyyy-mm")
     r = HttpCall("GET", "/api/xl/management_account?format=tsv&month=" & month_, "")
     If Failed(r) Then Exit Sub
     Application.ScreenUpdating = False
-    ws.Range("B11:H3000").Clear
     If ws.ChartObjects.Count > 0 Then ws.ChartObjects.Delete
-    rw = 11
+    ws.Range("A9:H3000").Clear
+    ws.Range("C6:E7").ClearContents
+    ws.Range("B9").Value = "Opening used (blank above = last month's closing)"
+    ws.Range("B9:E9").Font.Italic = True
+    ws.Range("B9:E9").Font.Color = RGB(107, 114, 128)
+    rw = 13
     rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
     For i = 0 To UBound(rows_)
         If Trim$(rows_(i)) <> "" Then
             cols = Split(rows_(i), vbTab)
-            k = cols(0)
-            Select Case k
+            Select Case cols(0)
             Case "INFO"
                 ws.Range("C3").NumberFormat = "@"
                 ws.Range("C3").Value = cols(1)
                 curLabel = cols(2)
-                prevLabel = cols(3)
-                ws.Range("B2").Value = cols(4) & "  -  " & curLabel
+                ws.Range("B2").Value = cols(4) & "  -  " & curLabel & "   (compared with " & cols(3) & ")"
                 ws.Range("C8").Value = cols(5)
             Case "STOCK"
-                If cols(1) = "opening" Then
-                    ws.Range("C6").Value = Val(cols(2)): ws.Range("D6").Value = Val(cols(3)): ws.Range("E6").Value = Val(cols(4))
-                Else
-                    ws.Range("C7").Value = Val(cols(2)): ws.Range("D7").Value = Val(cols(3)): ws.Range("E7").Value = Val(cols(4))
+                If cols(1) = "opening" Then rw = 6 Else rw = 7
+                For j = 2 To 4
+                    If cols(j) <> "" Then ws.Cells(rw, j + 1).Value = Val(cols(j))
+                Next j
+                rw = 13
+            Case "STOCKNOTE"
+                For j = 2 To 4
+                    ws.Cells(9, j + 1).Value = Val(cols(j))
+                    ws.Cells(9, j + 1).NumberFormat = "#,##0.00;[Red]-#,##0.00;-"
+                Next j
+            Case "MANUAL"
+                If rw = 13 Then
+                    With ws.Range("B11:E11")
+                        .Interior.Color = RGB(221, 235, 247)
+                        .Font.Bold = True
+                        .Font.Color = RGB(31, 56, 100)
+                    End With
+                    ws.Range("B11").Value = "Manual amounts for " & curLabel & " (lines typed in, not from the GL)"
+                    ws.Range("B12").Value = "Line"
+                    ws.Range("C12").Value = "Amount"
+                    With ws.Range("B12:C12")
+                        .Font.Bold = True
+                        .Font.Color = RGB(255, 255, 255)
+                        .Interior.Color = RGB(15, 108, 189)
+                    End With
                 End If
-            Case "TITLE"
-                rw = rw + 1
-                With ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7))
-                    .Interior.Color = RGB(31, 56, 100)
-                    .Font.Color = RGB(255, 255, 255)
-                    .Font.Bold = True
-                    .Font.Size = 12
-                End With
-                ws.Cells(rw, 2).Value = cols(1)
-                ws.Rows(rw).RowHeight = 22
-                rw = rw + 1
-                If InStr(cols(1), "Profit") > 0 Or InStr(cols(1), "Notes") > 0 Then
-                    MgmtHeader ws, rw, Array("Description", curLabel, prevLabel, "Variance (Rs)", "Variance %", "")
-                    rw = rw + 1
-                ElseIf InStr(cols(1), "Sales Percentage") > 0 Then
-                    MgmtHeader ws, rw, Array("Sales Location", "Revenue", "%")
-                    rw = rw + 1
-                    pieFirst = rw
-                End If
-            Case "SEC", "SECR"
-                ws.Cells(rw, 2).Value = cols(1)
-                If k = "SEC" Then
-                    StyleRange ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7)), True, RGB(221, 235, 247), RGB(31, 56, 100)
-                Else
-                    StyleRange ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7)), True, RGB(253, 236, 234), RGB(164, 38, 44)
-                End If
-                rw = rw + 1
-            Case "ITEM", "TOTAL", "GP", "NP", "PCT"
-                ws.Cells(rw, 2).Value = cols(1)
-                ws.Cells(rw, 3).Value = Val(cols(2))
-                ws.Cells(rw, 4).Value = Val(cols(3))
-                ws.Cells(rw, 5).Value = Val(cols(4))
-                If cols(5) <> "" Then ws.Cells(rw, 6).Value = Val(cols(5)) / 100
-                ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).NumberFormat = IIf(k = "PCT", "0.00""%""", AMT)
-                ws.Cells(rw, 6).NumberFormat = "0.0%;[Red]-0.0%;-"
-                If UBound(cols) >= 6 Then
-                    If cols(6) = "1" Then ws.Range(ws.Cells(rw, 5), ws.Cells(rw, 6)).Font.Color = RGB(16, 124, 16)
-                    If cols(6) = "0" Then ws.Range(ws.Cells(rw, 5), ws.Cells(rw, 6)).Font.Color = RGB(196, 43, 28)
-                End If
-                If k = "ITEM" Or k = "PCT" Then
-                    ws.Cells(rw, 2).IndentLevel = 1
-                Else
-                    ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Font.Bold = True
-                    ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 6)).Borders(8).LineStyle = 1   ' top line
-                    If k = "GP" Then ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Interior.Color = RGB(232, 243, 232)
-                    If k = "NP" Then
-                        ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Interior.Color = RGB(232, 243, 255)
-                        ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 6)).Borders(9).LineStyle = -4119   ' double bottom
-                    End If
-                End If
-                rw = rw + 1
-            Case "HEAD3"
-                MgmtHeader ws, rw, Array(cols(1), cols(2), cols(3), cols(4))
-                rw = rw + 1
-            Case "ROW3", "TOT3", "PCT3"
-                ws.Cells(rw, 2).Value = cols(1)
-                ws.Cells(rw, 3).Value = Val(cols(2))
-                ws.Cells(rw, 4).Value = Val(cols(3))
-                ws.Cells(rw, 5).Value = Val(cols(4))
-                ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).NumberFormat = IIf(k = "PCT3", "0.00""%""", AMT)
-                If k = "TOT3" Then
-                    ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 5)).Font.Bold = True
-                    ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).Borders(8).LineStyle = 1
-                End If
-                rw = rw + 1
-            Case "SALESPCT"
-                ws.Cells(rw, 2).Value = cols(1)
-                ws.Cells(rw, 3).Value = Val(cols(2))
-                ws.Cells(rw, 4).Value = Val(cols(3)) / 100
-                ws.Cells(rw, 3).NumberFormat = AMT
-                ws.Cells(rw, 4).NumberFormat = "0.0%"
-                pieLast = rw
+                ws.Cells(rw, 1).Value = cols(1)
+                ws.Cells(rw, 1).Font.Color = RGB(255, 255, 255)
+                ws.Cells(rw, 2).Value = cols(2)
+                ws.Cells(rw, 3).Value = Val(cols(3))
+                ws.Cells(rw, 3).NumberFormat = "#,##0.00"
+                ws.Cells(rw, 3).Interior.Color = RGB(255, 248, 220)
+                ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 3)).Borders.LineStyle = 1
+                ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 3)).Borders.Color = RGB(200, 206, 216)
                 rw = rw + 1
             End Select
         End If
     Next i
-    If pieFirst > 0 And pieLast >= pieFirst Then
-        ws.Cells(rw, 2).Value = "Total"
-        ws.Cells(rw, 3).Formula = "=SUM(C" & pieFirst & ":C" & pieLast & ")"
-        ws.Cells(rw, 3).NumberFormat = AMT
-        ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 4)).Font.Bold = True
-        ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 4)).Borders(8).LineStyle = 1
-        Set co = ws.ChartObjects.Add(ws.Cells(pieFirst - 2, 9).Left, ws.Cells(pieFirst - 2, 9).Top, 420, 300)
-        co.Chart.ChartType = 5   ' xlPie
-        co.Chart.SetSourceData ws.Range(ws.Cells(pieFirst, 2), ws.Cells(pieLast, 3))
-        co.Chart.HasTitle = True
-        co.Chart.ChartTitle.Text = curLabel & " Sales Analysis"
-        co.Chart.SeriesCollection(1).HasDataLabels = True
-        co.Chart.SeriesCollection(1).DataLabels.ShowPercentage = True
-        co.Chart.SeriesCollection(1).DataLabels.ShowValue = False
+    ws.Cells(rw + 1, 2).Value = "The report is in the MA sheets (P&L, Variance, Notes, Note 3, Sales %, Pie Chart, Day Summary)."
+    ws.Cells(rw + 1, 2).Font.Italic = True
+    ws.Cells(rw + 1, 2).Font.Color = RGB(107, 114, 128)
+
+    ' The report itself, formatted exactly like the web's Management Account export
+    Application.StatusBar = "Suwin ERP: downloading the Management Account for " & curLabel & "..."
+    file = Environ$("TEMP") & "\SuwinMA_" & Format$(Now, "yyyymmdd_hhnnss") & ".xlsx"
+    If DownloadFile("/api/xl/management_account/export?month=" & month_, file) Then
+        n = ImportMgmtSheets(file)
     End If
-    ws.Columns("B:G").VerticalAlignment = -4108
+    Application.StatusBar = False
+    ThisWorkbook.Activate
     Application.ScreenUpdating = True
-    ws.Activate
-    SayResult "Management Account loaded: " & curLabel
+    On Error Resume Next
+    ThisWorkbook.Worksheets("MA P&L").Activate
+    On Error GoTo 0
+    SayResult "Management Account loaded: " & curLabel & " (" & n & " sheets)"
 End Sub
 
 Public Sub SaveStock()
-    Dim ws As Worksheet, r As String, body As String
+    Dim ws As Worksheet, r As String, body As String, manual As String, rw As Long
     Set ws = MgmtSheet()
+    For rw = 13 To ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+        If IsNumeric(ws.Cells(rw, 1).Value) And Trim$(CStr(ws.Cells(rw, 1).Value)) <> "" Then
+            If manual <> "" Then manual = manual & ","
+            manual = manual & """" & ws.Cells(rw, 1).Value & """:" & JsonNumOrNull(ws.Cells(rw, 3).Value)
+        End If
+    Next rw
     body = "{" & Jq("month", JsonStr(DateText(ws.Range("C3").Value, "yyyy-mm"))) & "," & _
            Jq("opening_bar", JsonNumOrNull(ws.Range("C6").Value)) & "," & _
            Jq("opening_food", JsonNumOrNull(ws.Range("D6").Value)) & "," & _
@@ -28931,12 +29069,23 @@ Public Sub SaveStock()
            Jq("closing_bar", JsonNumOrNull(ws.Range("C7").Value)) & "," & _
            Jq("closing_food", JsonNumOrNull(ws.Range("D7").Value)) & "," & _
            Jq("closing_hk", JsonNumOrNull(ws.Range("E7").Value)) & "," & _
-           Jq("remarks", JsonStr(ws.Range("C8").Value)) & "}"
+           Jq("remarks", JsonStr(ws.Range("C8").Value)) & "," & _
+           Jq("manual", "{" & manual & "}") & "}"
     r = HttpCall("POST", "/api/xl/management_account/save", body)
     If Failed(r) Then Exit Sub
     LoadMonth
     SayResult JsonValue(r, "message")
     MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+' ---- Supplier payment history ----------------------------------------------
+Public Sub LoadPaymentHistory()
+    Dim n As Long
+    EnsureSheet "Payment History", "Supplier Payment History"
+    n = LoadTable("Payment History", "/api/xl/supplier_payments?" & HistoryQuery())
+    If n < 0 Then Exit Sub
+    ThisWorkbook.Worksheets("Payment History").Activate
+    SayResult "Supplier payment history loaded: " & n & " payment(s)"
 End Sub
 '''
 
