@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Excel Data Entry - Keys{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-file-excel me-2 text-success"></i>Excel Data Entry</h4>
+  <div class="d-flex gap-2 flex-wrap">
+    <a href="{{ url_for('excel_workbook') }}" class="btn btn-success btn-sm"><i class="fas fa-download me-1"></i> Download Workbook</a>
+    <a href="{{ url_for('excel_workbook_macro') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-code me-1"></i> Download Macro (.bas)</a>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <h6 class="fw-bold mb-2">How it works</h6>
+    <p class="small text-muted mb-2">
+      The workbook sends what you type to this website over HTTPS &mdash; the same road your browser uses &mdash;
+      and the server writes it to the database. Excel never connects to the database itself, so nothing extra
+      has to be opened on the hosting.
+    </p>
+    <ol class="small mb-0">
+      <li>Create a key below for each person or PC that will use the workbook.</li>
+      <li>Click <strong>Download Workbook</strong>, then save it as <strong>.xlsm</strong> (macro-enabled).</li>
+      <li>Right-click the saved file &rarr; Properties &rarr; tick <strong>Unblock</strong>, or Excel will block the macro.</li>
+      <li>Paste the key into the workbook's <strong>Setup</strong> sheet, then run <strong>TestConnection</strong>.</li>
+    </ol>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header fw-bold">Create a key</div>
+  <div class="card-body">
+    <form method="POST" class="row g-2 align-items-end">
+      <input type="hidden" name="action" value="create">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Key belongs to user</label>
+        <select name="user_pk" class="form-select form-select-sm" required>
+          <option value="">- select user -</option>
+          {% for u in users %}
+          <option value="{{ u.id }}">{{ u.User_Name }}{% if u.User_Code %} ({{ u.User_Code }}){% endif %}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text small">Entries sent from Excel are recorded under this user, with this user's permissions.</div>
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Label</label>
+        <input type="text" name="label" class="form-control form-control-sm" placeholder="e.g. Front office PC">
+      </div>
+      <div class="col-md-3">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-key me-1"></i> Create Key</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-bold">Keys</div>
+  <div class="card-body table-responsive">
+    <table class="table table-sm align-middle">
+      <thead><tr><th>Key</th><th>User</th><th>Label</th><th>Status</th><th>Last used</th><th></th></tr></thead>
+      <tbody>
+        {% for k in keys %}
+        <tr>
+          <td><code style="font-size:0.78rem;">{{ k.api_key }}</code></td>
+          <td>{{ k.User_Name or '(user removed)' }}</td>
+          <td>{{ k.label or '' }}</td>
+          <td>
+            {% if k.is_active %}<span class="badge bg-success">Active</span>
+            {% else %}<span class="badge bg-secondary">Off</span>{% endif %}
+          </td>
+          <td class="small text-muted">{{ k.last_used or 'never' }}{% if k.last_action %}<br>{{ k.last_action }}{% endif %}</td>
+          <td class="text-end">
+            <form method="POST" class="d-inline">
+              <input type="hidden" name="action" value="toggle">
+              <input type="hidden" name="id" value="{{ k.id }}">
+              <button class="btn btn-outline-secondary btn-sm">{{ 'Switch off' if k.is_active else 'Switch on' }}</button>
+            </form>
+            <form method="POST" class="d-inline" onsubmit="return confirm('Delete this key? Any workbook using it stops working.');">
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="id" value="{{ k.id }}">
+              <button class="btn btn-outline-danger btn-sm">Delete</button>
+            </form>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="text-center text-muted py-3">No keys yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="small text-muted">
+      A key is like a password: anyone who has it can send entries as that user. Keep it to the PCs that need it,
+      and switch it off here if a PC is lost or a person leaves.
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -241,6 +241,7 @@ MENU_ITEMS_REGISTRY = [
     # Settings
     {'key': 'email_settings',     'label': 'Email Settings',       'url': '/email_settings',         'icon': 'fas fa-envelope-open-text',  'category': 'Settings'},
     {'key': 'period_close',       'label': 'Financial Period Close','url': '/financial_period_close', 'icon': 'fas fa-lock',                'category': 'Settings'},
+    {'key': 'excel_keys',         'label': 'Excel Data Entry',     'url': '/excel_keys',             'icon': 'fas fa-file-excel',          'category': 'Settings'},
 ]
 
 # Reverse lookup used to enforce menu control at the route level.
@@ -22687,18 +22688,15 @@ def bar_sales():
                            can_post=check_permission('Access_Accounting'))
 
 
-@app.route('/bar_sales/save', methods=['POST'])
-@login_required
-@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
-def bar_sales_save():
-    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+def _bar_sales_save_day(entry_date, f, issues_in, user):
+    """Save one Bar Sales Record day. `f` reads a field by name (the web form,
+    or the flat map the Excel workbook sends); `issues_in` is a list of
+    {issue_type, description, amount}. Returns (ok, message, category)."""
     existing = db.execute_query("SELECT id, status FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
     if existing and existing[0]['status'] == 'Posted':
-        flash(f'Bar sales for {entry_date} are already posted to the GL and locked.', 'danger')
-        return redirect(url_for('bar_sales', date=entry_date))
+        return False, f'Bar sales for {entry_date} are already posted to the GL and locked.', 'danger'
 
-    f = request.form
-    vals = {'narration': (f.get('narration') or '').strip()[:300] or None,
+    vals = {'narration': str(f.get('narration') or '').strip()[:300] or None,
             'commission_rate': parse_float(f.get('commission_rate')) or 0}
     for sec, _ in BAR_SALES_SECTIONS:
         for part in ('sales', 'cash', 'bank', 'card', 'commission'):
@@ -22709,10 +22707,9 @@ def bar_sales_save():
         vals[f'{sec}_commission'] = round(vals[f'{sec}_card'] * vals['commission_rate'] / 100.0, 2)
         vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission'])
                                     - vals[f'{sec}_bank'], 2)
-    ctm_raw = (f.get('cash_to_management') or '').replace(',', '').strip()
+    ctm_raw = str(f.get('cash_to_management') or '').replace(',', '').strip()
     vals['cash_to_management'] = round(parse_float(ctm_raw), 2) if ctm_raw else None
     cols = list(vals.keys())
-    user = get_current_user_pk()
     try:
         if existing:
             day_id = existing[0]['id']
@@ -22725,7 +22722,7 @@ def bar_sales_save():
 
         db.execute_query("DELETE FROM bar_sales_lines WHERE day_id = %s", (day_id,), commit=True)
         for key, _label, _group, has_qty in BAR_SALES_RECORD_LINES:
-            qty_raw = (f.get(f'qty_{key}') or '').strip()
+            qty_raw = str(f.get(f'qty_{key}') or '').strip()
             amount = parse_float(f.get(f'amt_{key}'))
             qty = parse_float(qty_raw) if (has_qty and qty_raw) else None
             if amount or qty:
@@ -22733,24 +22730,38 @@ def bar_sales_save():
                                  (day_id, key, qty, amount), commit=True)
 
         db.execute_query("DELETE FROM bar_sales_issues WHERE day_id = %s", (day_id,), commit=True)
-        for issue_type in ('MANAGEMENT', 'ENTERTAINMENT'):
-            descs = f.getlist(f'issue_{issue_type}_desc[]')
-            amts = f.getlist(f'issue_{issue_type}_amt[]')
-            for i, desc in enumerate(descs):
-                desc = (desc or '').strip()[:200]
-                amt = parse_float(amts[i] if i < len(amts) else 0)
-                if desc or amt:
-                    db.execute_query("INSERT INTO bar_sales_issues (day_id, issue_type, description, amount) VALUES (%s, %s, %s, %s)",
-                                     (day_id, issue_type, desc or None, amt), commit=True)
+        for it in issues_in or []:
+            issue_type = 'ENTERTAINMENT' if str(it.get('issue_type')).upper() == 'ENTERTAINMENT' else 'MANAGEMENT'
+            desc = str(it.get('description') or '').strip()[:200]
+            amt = parse_float(it.get('amount'))
+            if desc or amt:
+                db.execute_query("INSERT INTO bar_sales_issues (day_id, issue_type, description, amount) VALUES (%s, %s, %s, %s)",
+                                 (day_id, issue_type, desc or None, amt), commit=True)
 
         day = db.execute_query("SELECT * FROM bar_sales_days WHERE id = %s", (day_id,))[0]
         problems, _preview = _bar_sales_check(day)
         if problems:
-            flash('Saved (Parked). Before it can be posted: ' + ' '.join(problems), 'warning')
-        else:
-            flash(f'Bar sales for {entry_date} saved (Parked) - ready to post to the GL.', 'success')
+            return True, 'Saved (Parked). Before it can be posted: ' + ' '.join(problems), 'warning'
+        return True, f'Bar sales for {entry_date} saved (Parked) - ready to post to the GL.', 'success'
     except Exception as e:
-        flash(f'Error saving bar sales: {str(e)}', 'danger')
+        return False, f'Error saving bar sales: {str(e)}', 'danger'
+
+
+@app.route('/bar_sales/save', methods=['POST'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting')
+def bar_sales_save():
+    entry_date = _dse_parse_date(request.form.get('entry_date')).strftime('%Y-%m-%d')
+    f = request.form
+    issues = []
+    for issue_type in ('MANAGEMENT', 'ENTERTAINMENT'):
+        descs = f.getlist(f'issue_{issue_type}_desc[]')
+        amts = f.getlist(f'issue_{issue_type}_amt[]')
+        for i, desc in enumerate(descs):
+            issues.append({'issue_type': issue_type, 'description': desc,
+                           'amount': amts[i] if i < len(amts) else 0})
+    _ok, message, category = _bar_sales_save_day(entry_date, f, issues, get_current_user_pk())
+    flash(message, category)
     return redirect(url_for('bar_sales', date=entry_date))
 
 
@@ -26676,6 +26687,832 @@ def food_costing_report():
                            ingredients=ingredients, totals=totals,
                            from_date=from_date, to_date=to_date,
                            method=_fc_costing_method())
+
+
+
+
+# ================================================================
+# ── EXCEL WORKBOOK API ──────────────────────────────────────────
+# Lets an Excel workbook read from and write to this system over
+# HTTPS, so data entry can be done in Excel on any PC. The workbook
+# never touches MySQL (shared hosting blocks outside connections):
+# it calls these routes exactly like the browser does, and the
+# server writes to the database from inside.
+#
+# Every call carries an API key (X-API-Key header or ?key=). Each key
+# belongs to a Login_Table user, so entries keep that user's name and
+# obey that user's permissions. Keys are managed at /excel_keys.
+# ================================================================
+
+def _xl_json(payload, status=200):
+    return Response(json.dumps(payload, default=str), status=status, mimetype='application/json')
+
+
+def _xl_auth(*required_perms):
+    """Authenticate the Excel workbook and adopt its user for this request.
+    Returns (user_pk, None) or (None, error response)."""
+    key = (request.headers.get('X-API-Key') or request.args.get('key')
+           or (request.get_json(silent=True) or {}).get('key') or '').strip()
+    if not key:
+        return None, _xl_json({'ok': False, 'error': 'No API key. Put your key in the workbook Setup sheet.'}, 401)
+    rows = db.execute_query("""
+        SELECT k.id, k.user_pk, k.is_active, l.User_Code, l.User_Name
+        FROM excel_api_keys k LEFT JOIN Login_Table l ON l.id = k.user_pk
+        WHERE k.api_key = %s
+    """, (key,)) or []
+    if not rows or not rows[0]['is_active']:
+        return None, _xl_json({'ok': False, 'error': 'This API key is not valid or has been switched off.'}, 401)
+    row = rows[0]
+    session['user_pk'] = row['user_pk']
+    session['user_id'] = row['User_Code'] or row['User_Name']
+    session['username'] = row['User_Name'] or row['User_Code']
+    for perm in required_perms:
+        if not check_permission(perm):
+            return None, _xl_json({'ok': False, 'error': f"This key's user does not have the {perm} permission."}, 403)
+    try:
+        db.execute_query("UPDATE excel_api_keys SET last_used = NOW(), last_action = %s WHERE id = %s",
+                         (request.path[:100], row['id']), commit=True)
+    except Exception:
+        pass
+    return row['user_pk'], None
+
+
+def _xl_body():
+    """The JSON the workbook posted (it always posts JSON)."""
+    return request.get_json(silent=True) or {}
+
+
+def _xl_tsv(rows):
+    """Tab-separated rows - what the workbook reads back, because VBA has no
+    JSON reader. Tabs and newlines inside a value are turned into spaces."""
+    def clean(v):
+        if v is None:
+            return ''
+        return str(v).replace('\t', ' ').replace('\r', ' ').replace('\n', ' ')
+    text = '\n'.join('\t'.join(clean(c) for c in row) for row in rows)
+    return Response(text, mimetype='text/plain; charset=utf-8')
+
+
+def _xl_wants_tsv():
+    return (request.args.get('format') or '').lower() == 'tsv'
+
+
+@app.route('/api/xl/ping', methods=['GET', 'POST'])
+def xl_ping():
+    """The workbook's Test Connection button."""
+    user_pk, err = _xl_auth()
+    if err:
+        return err
+    return _xl_json({'ok': True, 'user': session.get('username'), 'server_date': date.today().strftime('%Y-%m-%d'),
+                     'can': {p: check_permission(p) for p in
+                             ('Access_Daily_Sales', 'Access_Accounting', 'Access_Inventory', 'Access_Purchase')}})
+
+
+@app.route('/api/xl/lists', methods=['GET'])
+def xl_lists():
+    """Master lists for the workbook's dropdowns, so names always match."""
+    user_pk, err = _xl_auth()
+    if err:
+        return err
+    what = (request.args.get('what') or 'all').lower()
+    if _xl_wants_tsv():
+        if what == 'accounts':
+            return _xl_tsv([[a['account_name']] for a in (db.execute_query(
+                "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [])])
+        if what == 'sales_categories':
+            return _xl_tsv([[c['id'], c['category_group'], c['description'], c['particulars'] or '']
+                            for c in _daily_sales_categories()])
+        return _xl_tsv([[k, lbl, grp, 1 if q else 0] for k, lbl, grp, q in BAR_SALES_RECORD_LINES])
+    out = {'ok': True}
+    if what in ('all', 'sales_categories'):
+        out['sales_categories'] = [
+            {'id': c['id'], 'key': c['category_key'], 'group': c['category_group'],
+             'description': c['description'], 'particulars': c['particulars'], 'side': c['entry_side']}
+            for c in _daily_sales_categories()]
+    if what in ('all', 'accounts'):
+        out['accounts'] = [a['account_name'] for a in (db.execute_query(
+            "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [])]
+    if what in ('all', 'bar_sales_lines'):
+        out['bar_sales_lines'] = [{'key': k, 'label': lbl, 'group': grp, 'has_qty': bool(q)}
+                                  for k, lbl, grp, q in BAR_SALES_RECORD_LINES]
+        out['bar_sales_sections'] = [{'key': s, 'label': lbl} for s, lbl in BAR_SALES_SECTIONS]
+    return _xl_json(out)
+
+
+# ---------------- Daily Sales Entry ----------------
+
+@app.route('/api/xl/daily_sales', methods=['GET'])
+def xl_daily_sales_get():
+    """One day's Daily Sales Entry, as saved."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    entry_date = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    header, categories, _cl = _daily_sales_load_entry(entry_date)
+    advances, settlements, credit_lines = _daily_sales_register_rows(header['id'] if header else None)
+    if _xl_wants_tsv():
+        rows = [['STATUS', header['status'] if header else 'New', entry_date]]
+        for c in categories:
+            rows.append(['LINE', c['id'], c['nos'] if c['nos'] is not None else '', c['bill_no'] or '',
+                         c['amount'] or ''])
+        for f in ('narration', 'total_expenditure', 'cash_float', 'cash_amount',
+                  'credit_card_sampath_amount', 'credit_card_hnb_amount', 'bank_transfer_amount',
+                  'bank_transfer_2_amount', 'telephone_income', 'petty_cash',
+                  'misc_expense_1_label', 'misc_expense_1_amount', 'misc_expense_2_label',
+                  'misc_expense_2_amount', 'misc_expense_3_label', 'misc_expense_3_amount'):
+            rows.append(['HEADER', f, (header.get(f) if header else '') or ''])
+        return _xl_tsv(rows)
+    return _xl_json({
+        'ok': True, 'date': entry_date,
+        'status': header['status'] if header else 'New',
+        'header': header,
+        'lines': [{'category_id': c['id'], 'key': c['category_key'], 'group': c['category_group'],
+                   'description': c['description'], 'particulars': c['particulars'],
+                   'nos': c['nos'], 'bill_no': c['bill_no'], 'amount': c['amount']} for c in categories],
+        'credit_lines': credit_lines, 'advances': advances, 'settlements': settlements,
+        'petty_lines': _daily_sales_petty_rows(header['id'] if header else None),
+        'commission_lines': _daily_sales_commission_rows(header['id'] if header else None),
+    })
+
+
+@app.route('/api/xl/daily_sales/save', methods=['POST'])
+def xl_daily_sales_save():
+    """Save (Park) a day sent from the workbook - same rules as the web page."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    b = _xl_body()
+    entry_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    h = b.get('header') or {}
+    misc = [(str(h.get(f'misc_expense_{n}_label') or '').strip(), parse_float(h.get(f'misc_expense_{n}_amount')))
+            for n in (1, 2, 3)]
+    ok, message, _jv = _daily_sales_process_entry(
+        entry_date, str(h.get('narration') or '').strip(), b.get('lines') or [],
+        parse_float(h.get('total_expenditure')), parse_float(h.get('cash_float')),
+        parse_float(h.get('cash_amount')), parse_float(h.get('credit_card_sampath_amount')),
+        parse_float(h.get('credit_card_hnb_amount')), parse_float(h.get('bank_transfer_amount')),
+        parse_float(h.get('bank_transfer_2_amount')),
+        parse_float(h.get('telephone_income')), parse_float(h.get('advance_received')),
+        str(h.get('advance_received_bill_no') or '').strip() or None,
+        parse_float(h.get('advance_given')), str(h.get('advance_given_bill_no') or '').strip() or None,
+        parse_float(h.get('petty_cash')), misc,
+        b.get('credit_lines'), 'park', user_pk,
+        registers_in=({'advances': b.get('advances') or [], 'settlements': b.get('settlements') or []}
+                      if ('advances' in b or 'settlements' in b) else None),
+        petty_lines_in=b.get('petty_lines'), commission_lines_in=b.get('commission_lines'))
+    return _xl_json({'ok': bool(ok), 'date': entry_date, 'message': message}, 200 if ok else 400)
+
+
+@app.route('/api/xl/daily_sales/post', methods=['POST'])
+def xl_daily_sales_post():
+    """Post a saved day to the GL (the accountant's key only)."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    entry_date = _dse_parse_date(_xl_body().get('date')).strftime('%Y-%m-%d')
+    header, categories, _cl = _daily_sales_load_entry(entry_date)
+    if not header:
+        return _xl_json({'ok': False, 'message': f'Nothing saved for {entry_date} yet.'}, 400)
+    if header['status'] == 'Posted':
+        return _xl_json({'ok': False, 'message': f'{entry_date} is already posted (JV {header["jv_id"]}).'}, 400)
+    lines = [{'category_id': c['id'], 'nos': c['nos'], 'bill_no': c['bill_no'], 'amount': c['amount'],
+              'gl_account': c['line_gl_account'], 'sub_account_code': c['line_sub_account_code']} for c in categories]
+    misc = [(header.get(f'misc_expense_{n}_label'), header.get(f'misc_expense_{n}_amount')) for n in (1, 2, 3)]
+    ok, message, jv_no = _daily_sales_process_entry(
+        entry_date, header.get('narration') or '', lines,
+        header.get('total_expenditure') or 0, header.get('cash_float') or 0,
+        header.get('cash_amount') or 0, header.get('credit_card_sampath_amount') or 0,
+        header.get('credit_card_hnb_amount') or 0, header.get('bank_transfer_amount') or 0,
+        header.get('bank_transfer_2_amount') or 0,
+        header.get('telephone_income') or 0, header.get('advance_received') or 0,
+        header.get('advance_received_bill_no'), header.get('advance_given') or 0,
+        header.get('advance_given_bill_no'), header.get('petty_cash') or 0, misc,
+        None, 'post', user_pk)
+    return _xl_json({'ok': bool(ok and jv_no), 'date': entry_date, 'jv': jv_no, 'message': message},
+                    200 if (ok and jv_no) else 400)
+
+
+# ---------------- Bar Sales Record ----------------
+
+@app.route('/api/xl/bar_sales', methods=['GET'])
+def xl_bar_sales_get():
+    """One day's Bar Sales Record, as saved."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    entry_date = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    days = db.execute_query("SELECT * FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
+    day = days[0] if days else None
+    lines, issues = [], []
+    if day:
+        lines = db.execute_query("SELECT line_key, qty, amount FROM bar_sales_lines WHERE day_id = %s", (day['id'],)) or []
+        issues = db.execute_query("SELECT issue_type, description, amount FROM bar_sales_issues WHERE day_id = %s ORDER BY id",
+                                  (day['id'],)) or []
+    if _xl_wants_tsv():
+        rows = [['STATUS', day['status'] if day else 'New', entry_date]]
+        if day:
+            fields = ['narration', 'commission_rate', 'cash_to_management']
+            for sec, _lbl in BAR_SALES_SECTIONS:
+                fields += [f'{sec}_sales', f'{sec}_card', f'{sec}_bank', f'{sec}_commission', f'{sec}_cash']
+            for f in fields:
+                rows.append(['FIELD', f, day.get(f) if day.get(f) is not None else ''])
+            by_key = {l['line_key']: l for l in lines}
+            for key, _lbl, _grp, _q in BAR_SALES_RECORD_LINES:
+                l = by_key.get(key)
+                rows.append(['LINE', 'line:' + key, (l['qty'] if l and l['qty'] is not None else ''),
+                             (l['amount'] if l else '')])
+        return _xl_tsv(rows)
+    return _xl_json({'ok': True, 'date': entry_date, 'status': day['status'] if day else 'New',
+                     'day': day, 'lines': lines, 'issues': issues})
+
+
+@app.route('/api/xl/bar_sales/save', methods=['POST'])
+def xl_bar_sales_save():
+    """Save (Park) a Bar Sales Record day sent from the workbook."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    b = _xl_body()
+    entry_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    fields = b.get('fields') or {}
+    ok, message, category = _bar_sales_save_day(entry_date, fields, b.get('issues') or [], user_pk)
+    return _xl_json({'ok': bool(ok), 'date': entry_date, 'message': message, 'category': category},
+                    200 if ok else 400)
+
+
+@app.route('/api/xl/bar_sales/post', methods=['POST'])
+def xl_bar_sales_post():
+    """Post a saved Bar Sales Record day to the GL (the accountant's key only)."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    entry_date = _dse_parse_date(_xl_body().get('date')).strftime('%Y-%m-%d')
+    days = db.execute_query("SELECT id, status, jv_id FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or []
+    if not days:
+        return _xl_json({'ok': False, 'message': f'Nothing saved for {entry_date} yet.'}, 400)
+    if days[0]['status'] == 'Posted':
+        return _xl_json({'ok': False, 'message': f'{entry_date} is already posted (JV {days[0]["jv_id"]}).'}, 400)
+    # Reuse the web Post route so the GL rules stay in one place
+    with app.test_request_context('/bar_sales/post', method='POST', data={'entry_date': entry_date}):
+        session['user_pk'] = user_pk
+        bar_sales_post()
+        messages = [m for _c, m in flask.get_flashed_messages(with_categories=True)]
+    after = db.execute_query("SELECT status, jv_id FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or [{}]
+    posted = after[0].get('status') == 'Posted'
+    return _xl_json({'ok': posted, 'date': entry_date, 'jv': after[0].get('jv_id'),
+                     'message': ' '.join(messages) or ('Posted.' if posted else 'Could not post.')},
+                    200 if posted else 400)
+
+
+
+
+# The macro module that ships with the workbook. It talks to the /api/xl
+# routes above over HTTPS - never to MySQL, which shared hosting blocks.
+# Sends JSON, reads back tab-separated rows (no JSON parser needed in VBA).
+_XL_VBA_CODE = r'''Attribute VB_Name = "SuwinERP"
+Option Explicit
+
+' ===================================================================
+'  Suwin ERP - Excel data entry
+'  Sends what you type here to https://suwin.store and reads it back.
+'  Nothing connects to the database directly: every call goes to the
+'  website over HTTPS, exactly like the browser does.
+' ===================================================================
+
+Private Function SetupSheet() As Worksheet
+    Set SetupSheet = ThisWorkbook.Worksheets("Setup")
+End Function
+
+Private Function ServerUrl() As String
+    ServerUrl = Trim$(CStr(SetupSheet().Range("B3").Value))
+    Do While Right$(ServerUrl, 1) = "/"
+        ServerUrl = Left$(ServerUrl, Len(ServerUrl) - 1)
+    Loop
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+End Function
+
+Private Function EntryDate() As String
+    Dim v As Variant
+    v = SetupSheet().Range("B5").Value
+    If IsDate(v) Then
+        EntryDate = Format$(CDate(v), "yyyy-mm-dd")
+    Else
+        EntryDate = Trim$(CStr(v))
+    End If
+End Function
+
+Private Sub SayResult(ByVal msg As String)
+    SetupSheet().Range("B6").Value = Format$(Now, "hh:nn:ss") & "  " & msg
+End Sub
+
+' ---- HTTP -----------------------------------------------------------------
+Private Function HttpCall(ByVal method As String, ByVal path As String, ByVal body As String) As String
+    Dim http As Object, url As String
+    If ApiKey() = "" Then
+        HttpCall = "ERROR|Put your API key in Setup B4 first."
+        Exit Function
+    End If
+    url = ServerUrl() & path
+    On Error GoTo Failed
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 10000, 10000, 30000, 60000
+    http.Open method, url, False
+    http.setRequestHeader "X-API-Key", ApiKey()
+    http.setRequestHeader "Content-Type", "application/json"
+    If method = "POST" Then
+        http.send body
+    Else
+        http.send
+    End If
+    If http.Status >= 200 And http.Status < 300 Then
+        HttpCall = http.responseText
+    Else
+        HttpCall = "ERROR|" & http.Status & " " & JsonValue(http.responseText, "error") & JsonValue(http.responseText, "message")
+    End If
+    Exit Function
+Failed:
+    HttpCall = "ERROR|Could not reach " & url & " - " & Err.Description
+End Function
+
+' Pull one value out of a JSON reply - enough for the short replies we get
+Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim p As Long, q As Long, needle As String
+    needle = """" & keyName & """:"
+    p = InStr(1, jsonText, needle, vbTextCompare)
+    If p = 0 Then Exit Function
+    p = p + Len(needle)
+    Do While p <= Len(jsonText) And Mid$(jsonText, p, 1) = " "
+        p = p + 1
+    Loop
+    If Mid$(jsonText, p, 1) = """" Then
+        p = p + 1
+        q = InStr(p, jsonText, """")
+    Else
+        q = p
+        Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
+            q = q + 1
+        Loop
+    End If
+    JsonValue = Replace(Mid$(jsonText, p, q - p), "\/", "/")
+End Function
+
+Private Function JsonStr(ByVal v As Variant) As String
+    Dim s As String
+    s = CStr(v)
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCrLf, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    JsonStr = """" & s & """"
+End Function
+
+Private Function JsonNum(ByVal v As Variant) As String
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        JsonNum = "0"
+    ElseIf IsNumeric(v) Then
+        JsonNum = Replace(CStr(CDbl(v)), ",", ".")
+    Else
+        JsonNum = "0"
+    End If
+End Function
+
+Private Function Failed(ByVal reply As String) As Boolean
+    If Left$(reply, 6) = "ERROR|" Then
+        SayResult Mid$(reply, 7)
+        MsgBox Mid$(reply, 7), vbExclamation, "Suwin ERP"
+        Failed = True
+    End If
+End Function
+
+' ---- Buttons ---------------------------------------------------------------
+Public Sub TestConnection()
+    Dim r As String
+    r = HttpCall("GET", "/api/xl/ping", "")
+    If Failed(r) Then Exit Sub
+    SayResult "Connected as " & JsonValue(r, "user") & " (server date " & JsonValue(r, "server_date") & ")"
+    MsgBox "Connected." & vbCrLf & "User: " & JsonValue(r, "user"), vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub RefreshLists()
+    Dim r As String, ws As Worksheet, rows_ As Variant, i As Long
+    r = HttpCall("GET", "/api/xl/lists?what=accounts&format=tsv", "")
+    If Failed(r) Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Lists")
+    ws.Range("A4:A100000").ClearContents
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then ws.Cells(4 + i, 1).Value = rows_(i)
+    Next i
+    SayResult "Lists updated (" & (UBound(rows_) + 1) & " accounts)"
+End Sub
+
+' ---- Daily Sales -----------------------------------------------------------
+Private Function DailyFirstRow() As Long
+    DailyFirstRow = 5
+End Function
+
+Private Function DailyLastRow(ws As Worksheet) As Long
+    Dim r As Long
+    r = DailyFirstRow()
+    Do While ws.Cells(r, 1).Value <> ""
+        r = r + 1
+    Loop
+    DailyLastRow = r - 1
+End Function
+
+Private Function HeaderRowOf(ws As Worksheet, ByVal fieldName As String) As Long
+    Dim r As Long, last As Long
+    last = ws.Cells(ws.Rows.Count, 1).End(-4162).Row   ' xlUp
+    For r = DailyFirstRow() To last
+        If CStr(ws.Cells(r, 1).Value) = fieldName Then
+            HeaderRowOf = r
+            Exit Function
+        End If
+    Next r
+End Function
+
+Public Sub GetDailySales()
+    Dim r As String, ws As Worksheet, rows_ As Variant, cols As Variant, i As Long, rw As Long
+    If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
+    r = HttpCall("GET", "/api/xl/daily_sales?format=tsv&date=" & EntryDate(), "")
+    If Failed(r) Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            If cols(0) = "LINE" Then
+                ' LINE <tab> category_id <tab> nos <tab> bill_no <tab> amount
+                For rw = DailyFirstRow() To DailyLastRow(ws)
+                    If CStr(ws.Cells(rw, 1).Value) = cols(1) Then
+                        ws.Cells(rw, 5).Value = cols(2)
+                        ws.Cells(rw, 6).Value = cols(3)
+                        ws.Cells(rw, 7).Value = cols(4)
+                        Exit For
+                    End If
+                Next rw
+            ElseIf cols(0) = "HEADER" Then
+                rw = HeaderRowOf(ws, cols(1))
+                If rw > 0 Then ws.Cells(rw, 3).Value = cols(2)
+            ElseIf cols(0) = "STATUS" Then
+                SayResult "Loaded " & EntryDate() & " (" & cols(1) & ")"
+            End If
+        End If
+    Next i
+    If SetupSheet().Range("B6").Value = "" Then SayResult "Loaded " & EntryDate()
+End Sub
+
+Public Sub SendDailySales()
+    Dim ws As Worksheet, rw As Long, body As String, lines_ As String, hdr As String, r As String
+    Dim fields As Variant, i As Long, hrow As Long
+    If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    For rw = DailyFirstRow() To DailyLastRow(ws)
+        If lines_ <> "" Then lines_ = lines_ & ","
+        lines_ = lines_ & "{""category_id"":" & JsonNum(ws.Cells(rw, 1).Value) & _
+                 ",""nos"":" & JsonStr(ws.Cells(rw, 5).Value) & _
+                 ",""bill_no"":" & JsonStr(ws.Cells(rw, 6).Value) & _
+                 ",""amount"":" & JsonNum(ws.Cells(rw, 7).Value) & "}"
+    Next rw
+    fields = Array("narration", "total_expenditure", "cash_float", "cash_amount", _
+                   "credit_card_sampath_amount", "credit_card_hnb_amount", "bank_transfer_amount", _
+                   "bank_transfer_2_amount", "telephone_income", "petty_cash", _
+                   "misc_expense_1_label", "misc_expense_1_amount", "misc_expense_2_label", _
+                   "misc_expense_2_amount", "misc_expense_3_label", "misc_expense_3_amount")
+    For i = LBound(fields) To UBound(fields)
+        hrow = HeaderRowOf(ws, CStr(fields(i)))
+        If hrow > 0 Then
+            If hdr <> "" Then hdr = hdr & ","
+            hdr = hdr & """" & fields(i) & """:" & JsonStr(ws.Cells(hrow, 3).Value)
+        End If
+    Next i
+    body = "{""date"":" & JsonStr(EntryDate()) & ",""header"":{" & hdr & "},""lines"":[" & lines_ & "]}"
+    r = HttpCall("POST", "/api/xl/daily_sales/save", body)
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub PostDailySales()
+    Dim r As String
+    If MsgBox("Post " & EntryDate() & " to the GL? It locks the day.", vbYesNo + vbQuestion) <> vbYes Then Exit Sub
+    r = HttpCall("POST", "/api/xl/daily_sales/post", "{""date"":" & JsonStr(EntryDate()) & "}")
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+' ---- Bar Sales -------------------------------------------------------------
+Private Function BarRowOf(ws As Worksheet, ByVal fieldName As String) As Long
+    Dim r As Long, last As Long
+    last = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+    For r = 5 To last
+        If CStr(ws.Cells(r, 1).Value) = fieldName Then
+            BarRowOf = r
+            Exit Function
+        End If
+    Next r
+End Function
+
+Public Sub GetBarSales()
+    Dim r As String, ws As Worksheet, rows_ As Variant, cols As Variant, i As Long, rw As Long
+    r = HttpCall("GET", "/api/xl/bar_sales?format=tsv&date=" & EntryDate(), "")
+    If Failed(r) Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Bar Sales")
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            If cols(0) = "FIELD" Then
+                rw = BarRowOf(ws, cols(1))
+                If rw > 0 Then ws.Cells(rw, 3).Value = cols(2)
+            ElseIf cols(0) = "LINE" Then
+                rw = BarRowOf(ws, cols(1))
+                If rw > 0 Then
+                    ws.Cells(rw, 3).Value = cols(2)
+                    ws.Cells(rw, 4).Value = cols(3)
+                End If
+            ElseIf cols(0) = "STATUS" Then
+                SayResult "Loaded bar sales " & EntryDate() & " (" & cols(1) & ")"
+            End If
+        End If
+    Next i
+End Sub
+
+Public Sub SendBarSales()
+    Dim ws As Worksheet, r As String, body As String, flds As String, rw As Long, last As Long
+    Dim k As String
+    Set ws = ThisWorkbook.Worksheets("Bar Sales")
+    last = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+    For rw = 5 To last
+        k = Trim$(CStr(ws.Cells(rw, 1).Value))
+        If k <> "" And k <> "Line key" Then
+            If flds <> "" Then flds = flds & ","
+            If Left$(k, 5) = "line:" Then
+                ' record-only line: qty in column C, amount in column D
+                k = Mid$(k, 6)
+                flds = flds & """qty_" & k & """:" & JsonStr(ws.Cells(rw, 3).Value) & _
+                       ",""amt_" & k & """:" & JsonNum(ws.Cells(rw, 4).Value)
+            Else
+                flds = flds & """" & k & """:" & JsonStr(ws.Cells(rw, 3).Value)
+            End If
+        End If
+    Next rw
+    body = "{""date"":" & JsonStr(EntryDate()) & ",""fields"":{" & flds & "},""issues"":[]}"
+    r = HttpCall("POST", "/api/xl/bar_sales/save", body)
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub PostBarSales()
+    Dim r As String
+    If MsgBox("Post bar sales for " & EntryDate() & " to the GL?", vbYesNo + vbQuestion) <> vbYes Then Exit Sub
+    r = HttpCall("POST", "/api/xl/bar_sales/post", "{""date"":" & JsonStr(EntryDate()) & "}")
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+'''
+
+
+# ---------------- Keys & workbook download ----------------
+
+@app.route('/excel_keys', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Settings')
+def excel_keys():
+    """Create and switch off the keys the Excel workbook signs in with."""
+    if request.method == 'POST':
+        action = request.form.get('action')
+        try:
+            if action == 'create':
+                user_pk = int(request.form.get('user_pk') or 0)
+                label = (request.form.get('label') or '').strip()[:100] or 'Excel workbook'
+                if not user_pk:
+                    flash('Pick the user this key belongs to.', 'danger')
+                else:
+                    new_key = ''.join(random.choice(string.ascii_letters + string.digits) for _ in range(40))
+                    db.execute_query("""
+                        INSERT INTO excel_api_keys (api_key, user_pk, label, created_by) VALUES (%s, %s, %s, %s)
+                    """, (new_key, user_pk, label, get_current_user_pk()), commit=True)
+                    flash(f'Key created: {new_key} - copy it into the workbook Setup sheet now.', 'success')
+            elif action == 'toggle':
+                db.execute_query("UPDATE excel_api_keys SET is_active = 1 - is_active WHERE id = %s",
+                                 (request.form.get('id'),), commit=True)
+                flash('Key updated.', 'success')
+            elif action == 'delete':
+                db.execute_query("DELETE FROM excel_api_keys WHERE id = %s", (request.form.get('id'),), commit=True)
+                flash('Key deleted - any workbook using it can no longer send data.', 'success')
+        except Exception as e:
+            flash(f'Could not update keys: {e}', 'danger')
+        return redirect(url_for('excel_keys'))
+
+    keys = db.execute_query("""
+        SELECT k.*, l.User_Name, l.User_Code
+        FROM excel_api_keys k LEFT JOIN Login_Table l ON l.id = k.user_pk
+        ORDER BY k.id DESC
+    """) or []
+    users = db.execute_query("SELECT id, User_Name, User_Code FROM Login_Table ORDER BY User_Name") or []
+    return render_template('excel_keys.html', keys=keys, users=users,
+                           base_url=request.url_root.rstrip('/'))
+
+
+@app.route('/excel_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Settings')
+def excel_workbook():
+    """Build the data-entry workbook: entry sheets, master lists and the
+    macro code, so Excel can send a day straight into this system."""
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('excel_keys'))
+
+    base_url = request.url_root.rstrip('/')
+    head_fill = PatternFill('solid', fgColor='0F6CBD')
+    head_font = Font(bold=True, color='FFFFFF')
+    title_font = Font(bold=True, size=13)
+    note_font = Font(italic=True, color='605E5C')
+    input_fill = PatternFill('solid', fgColor='FFF9E0')
+
+    wb = Workbook()
+
+    def head_row(ws, row, labels, widths=None):
+        for i, label in enumerate(labels, start=1):
+            c = ws.cell(row=row, column=i, value=label)
+            c.fill, c.font = head_fill, head_font
+            c.alignment = Alignment(horizontal='center', wrap_text=True)
+            if widths:
+                ws.column_dimensions[get_column_letter(i)].width = widths[i - 1]
+        ws.freeze_panes = ws.cell(row=row + 1, column=1)
+
+    # ---- Setup
+    ws = wb.active
+    ws.title = 'Setup'
+    ws['A1'] = 'Suwin ERP - Excel Data Entry'
+    ws['A1'].font = title_font
+    rows = [
+        ('Server URL', base_url, 'Your system address - do not change'),
+        ('API Key', '', 'Paste the key from Settings > Excel Keys'),
+        ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are entering (YYYY-MM-DD)'),
+        ('Last result', '', 'Filled in by the buttons'),
+    ]
+    for i, (k, v, note) in enumerate(rows, start=3):
+        ws.cell(row=i, column=1, value=k).font = Font(bold=True)
+        c = ws.cell(row=i, column=2, value=v)
+        c.fill = input_fill
+        ws.cell(row=i, column=3, value=note).font = note_font
+    ws.column_dimensions['A'].width = 16
+    ws.column_dimensions['B'].width = 46
+    ws.column_dimensions['C'].width = 52
+    steps = [
+        '',
+        'How to use this workbook',
+        '1. Settings > Excel Keys on the website: create a key and paste it in B4 above.',
+        '2. Save this file as Excel Macro-Enabled Workbook (.xlsm).',
+        '3. Right-click the file > Properties > tick Unblock (Windows blocks files from the internet).',
+        '4. Press Alt+F11, File > Import File, choose SuwinERP.bas (downloaded with this workbook),',
+        '   or copy the code from the VBA Code sheet into a new module.',
+        '5. Back in Excel: Developer > Macros > TestConnection to check the key works.',
+        '',
+        'The buttons (Developer > Macros, or add buttons to the sheet):',
+        '   TestConnection   - checks the server and key',
+        '   GetDailySales    - loads the Entry Date day into Daily Sales',
+        '   SendDailySales   - sends Daily Sales to the system (saves as Parked)',
+        '   GetBarSales      - loads the Entry Date day into Bar Sales',
+        '   SendBarSales     - sends Bar Sales to the system (saves as Parked)',
+        '   RefreshLists     - reloads the Lists sheet (categories and accounts)',
+        '',
+        'Nothing is posted to the GL from Excel unless you run PostDailySales / PostBarSales,',
+        'and those need an accountant key. Saving always lands as Parked, exactly like the website.',
+    ]
+    for i, line in enumerate(steps, start=8):
+        c = ws.cell(row=i, column=1, value=line)
+        if line.startswith('How to'):
+            c.font = Font(bold=True, size=12)
+
+    # ---- Daily Sales
+    ws = wb.create_sheet('Daily Sales')
+    ws['A1'] = 'Daily Sales Entry - type in the yellow columns, then run SendDailySales'
+    ws['A1'].font = title_font
+    ws['A2'] = 'Date comes from the Setup sheet (B5).'
+    ws['A2'].font = note_font
+    head_row(ws, 4, ['Category ID', 'Group', 'Description', 'Particulars', 'Nos', 'Bill No', 'Amount'],
+             [11, 14, 30, 26, 10, 14, 14])
+    r = 5
+    for c in _daily_sales_categories():
+        ws.cell(row=r, column=1, value=c['id'])
+        ws.cell(row=r, column=2, value=c['category_group'])
+        ws.cell(row=r, column=3, value=c['description'])
+        ws.cell(row=r, column=4, value=c['particulars'])
+        for col in (5, 6, 7):
+            ws.cell(row=r, column=col).fill = input_fill
+        ws.cell(row=r, column=7).number_format = '#,##0.00'
+        r += 1
+    ws.cell(row=r + 1, column=3, value='TOTAL').font = Font(bold=True)
+    tc = ws.cell(row=r + 1, column=7, value=f'=SUM(G5:G{r - 1})')
+    tc.font, tc.number_format = Font(bold=True), '#,##0.00'
+
+    # Header figures, read by the macro from this block
+    hr = r + 3
+    ws.cell(row=hr, column=1, value='Day figures').font = Font(bold=True, size=12)
+    header_fields = [
+        ('narration', 'Narration'), ('total_expenditure', 'Total Expenditure'), ('cash_float', 'Cash Float'),
+        ('cash_amount', 'Cash'), ('credit_card_sampath_amount', 'Card - Sampath'),
+        ('credit_card_hnb_amount', 'Card - HNB'), ('bank_transfer_amount', 'Bank Transfer'),
+        ('bank_transfer_2_amount', 'Bank Transfer 2'), ('telephone_income', 'Telephone'),
+        ('petty_cash', 'Petty Cash (from takings)'),
+        ('misc_expense_1_label', 'Misc 1 - Label'), ('misc_expense_1_amount', 'Misc 1 - Amount'),
+        ('misc_expense_2_label', 'Misc 2 - Label'), ('misc_expense_2_amount', 'Misc 2 - Amount'),
+        ('misc_expense_3_label', 'Misc 3 - Label'), ('misc_expense_3_amount', 'Misc 3 - Amount'),
+    ]
+    for i, (key, label) in enumerate(header_fields):
+        ws.cell(row=hr + 1 + i, column=1, value=key).font = Font(color='808080')
+        ws.cell(row=hr + 1 + i, column=2, value=label).font = Font(bold=True)
+        cell = ws.cell(row=hr + 1 + i, column=3)
+        cell.fill = input_fill
+        if not key.endswith('label') and key != 'narration':
+            cell.number_format = '#,##0.00'
+
+    # ---- Bar Sales
+    ws = wb.create_sheet('Bar Sales')
+    ws['A1'] = 'Bar Sales Record - type in the yellow cells, then run SendBarSales'
+    ws['A1'].font = title_font
+    ws['A2'] = 'Service Charge and Cash Sales are worked out by the system when you send.'
+    ws['A2'].font = note_font
+    head_row(ws, 4, ['Field', 'Description', 'Value'], [28, 42, 16])
+    bs_fields = [('narration', 'Narration'), ('commission_rate', 'Credit Card Service Charge %')]
+    for sec, label in BAR_SALES_SECTIONS:
+        for part, plabel in (('sales', 'Sales'), ('card', 'Credit Card'), ('bank', 'Bank Transfer')):
+            bs_fields.append((f'{sec}_{part}', f'{label} - {plabel}'))
+    bs_fields.append(('cash_to_management', 'Cash Received to Management'))
+    r = 5
+    for key, label in bs_fields:
+        ws.cell(row=r, column=1, value=key).font = Font(color='808080')
+        ws.cell(row=r, column=2, value=label).font = Font(bold=True)
+        c = ws.cell(row=r, column=3)
+        c.fill = input_fill
+        if key != 'narration':
+            c.number_format = '#,##0.00'
+        r += 1
+    r += 2
+    ws.cell(row=r, column=1, value='Record-only lines').font = Font(bold=True, size=12)
+    r += 1
+    head_row(ws, r, ['Line key', 'Description', 'Qty', 'Amount'], [28, 42, 12, 16])
+    r += 1
+    for key, label, group, has_qty in BAR_SALES_RECORD_LINES:
+        ws.cell(row=r, column=1, value='line:' + key).font = Font(color='808080')
+        ws.cell(row=r, column=2, value=label)
+        if has_qty:
+            ws.cell(row=r, column=3).fill = input_fill
+        c = ws.cell(row=r, column=4)
+        c.fill, c.number_format = input_fill, '#,##0.00'
+        r += 1
+
+    # ---- Lists
+    ws = wb.create_sheet('Lists')
+    ws['A1'] = 'Master lists - run RefreshLists to update from the system'
+    ws['A1'].font = title_font
+    head_row(ws, 3, ['GL Accounts'], [46])
+    for i, a in enumerate(db.execute_query(
+            "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [], start=4):
+        ws.cell(row=i, column=1, value=a['account_name'])
+
+    # ---- VBA code, so it can be pasted even without the .bas file
+    ws = wb.create_sheet('VBA Code')
+    ws['A1'] = 'Macro code - Alt+F11, Insert > Module, paste everything below (or import SuwinERP.bas)'
+    ws['A1'].font = title_font
+    ws.column_dimensions['A'].width = 120
+    for i, line in enumerate(_XL_VBA_CODE.splitlines(), start=3):
+        ws.cell(row=i, column=1, value=line)
+
+    from io import BytesIO
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    resp = make_response(buf.read())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP_DataEntry.xlsx'
+    return resp
+
+
+@app.route('/excel_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Settings')
+def excel_workbook_macro():
+    """The macro module, ready to import into the workbook (Alt+F11 > Import File)."""
+    resp = make_response(_XL_VBA_CODE)
+    resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP.bas'
+    return resp
 
 
 if __name__ == '__main__':

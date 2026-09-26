@@ -66,6 +66,7 @@ def run_migrations(conn):
         _migrate_daily_sales_petty_cash(cursor)
         _migrate_daily_sales_commissions(cursor)
         _migrate_daily_sales_bank2(cursor)
+        _migrate_excel_api_keys(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1746,6 +1747,33 @@ def _migrate_daily_sales_bank2(cursor):
         cursor.execute("SHOW TABLES LIKE 'daily_sales_entries'")
         if cursor.fetchone():
             cursor.execute("ALTER TABLE daily_sales_entries ADD COLUMN bank_transfer_2_amount DOUBLE NOT NULL DEFAULT 0")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_excel_api_keys(cursor):
+    """Keys the Excel workbook uses to talk to this system over HTTPS. Each key
+    belongs to a Login_Table user, so entries sent from Excel carry that
+    user's name and obey that user's permissions."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS excel_api_keys (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                api_key VARCHAR(64) NOT NULL,
+                user_pk INT NOT NULL,
+                label VARCHAR(100) NULL,
+                is_active TINYINT NOT NULL DEFAULT 1,
+                created_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+                created_by INT NULL,
+                last_used DATETIME NULL,
+                last_action VARCHAR(100) NULL,
+                UNIQUE KEY api_key_UNIQUE (api_key),
+                INDEX idx_xlkey_user (user_pk)
+            )
+        """)
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")

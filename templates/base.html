@@ -970,6 +970,7 @@
                 <div class="menu-category">Settings</div>
                 {% if 'email_settings' not in menu_disabled %}<a href="/email_settings" class="nav-link"><i class="fas fa-envelope-open-text"></i> <span class="nav-text">Email Settings</span></a>{% endif %}
                 {% if 'period_close' not in menu_disabled %}<a href="/financial_period_close" class="nav-link"><i class="fas fa-lock"></i> <span class="nav-text">Financial Period Close</span></a>{% endif %}
+                {% if 'excel_keys' not in menu_disabled and check_permission("Access_Settings") %}<a href="/excel_keys" class="nav-link"><i class="fas fa-file-excel"></i> <span class="nav-text">Excel Data Entry</span></a>{% endif %}
 
                 <!-- Custom items added by superadmin -->
                 {% if custom_menu_items %}
