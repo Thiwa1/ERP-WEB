@@ -22815,14 +22815,39 @@ def _mgmt_export_book(cur, prev):
     row = xl.total_row(ws, row, 'TOTAL', [total_pie, 100 if total_pie else 0])
     xl.finish(ws, 3)
     if pie:
+        # Chart data: biggest first, slices under 2% grouped as "Other", so the
+        # labels never pile up. The table on the left keeps every line.
+        big = sorted([(l, a) for l, a in pie if total_pie and a / total_pie >= 0.02], key=lambda x: -x[1])
+        other = sum(a for l, a in pie if not (total_pie and a / total_pie >= 0.02))
+        chart_rows = big + ([('Other (each under 2%)', other)] if other else [])
+        ws.cell(row=first - 1, column=22, value='Chart data').font = xl.Font(bold=True, size=9, color=xl.GREY_TEXT)
+        for i, (lbl, amt) in enumerate(chart_rows):
+            ws.cell(row=first + i, column=22, value=lbl).font = xl.Font(size=9, color=xl.GREY_TEXT)
+            ws.cell(row=first + i, column=23, value=round(amt, 2)).number_format = xl.NUM_FMT
+        ws.column_dimensions['V'].width = 30
+        ws.column_dimensions['W'].width = 14
+        last = first + len(chart_rows) - 1
         ch = PieChart()
         ch.title = f"{cur['month_label']} Sales Analysis"
-        ch.add_data(Reference(ws, min_col=2, min_row=first, max_row=first + len(pie) - 1), titles_from_data=False)
-        ch.set_categories(Reference(ws, min_col=1, min_row=first, max_row=first + len(pie) - 1))
+        ch.add_data(Reference(ws, min_col=23, min_row=first, max_row=last), titles_from_data=False)
+        ch.set_categories(Reference(ws, min_col=22, min_row=first, max_row=last))
         ch.dataLabels = DataLabelList()
         ch.dataLabels.showPercent = True
-        ch.height, ch.width = 11, 17
+        ch.dataLabels.showVal = False
+        ch.dataLabels.showCatName = False
+        ch.dataLabels.showSerName = False
+        ch.dataLabels.showLegendKey = False
+        ch.dataLabels.showLeaderLines = True
+        ch.dataLabels.position = 'bestFit'
+        ch.dataLabels.numFmt = '0%'
+        ch.legend.position = 'r'
+        ch.height, ch.width = 13, 22
         ws.add_chart(ch, 'E5')
+        ws.print_area = f'A1:T{max(row, 32)}'
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     # ---- Day Summary
     daily = _mgmt_daily(cur)
