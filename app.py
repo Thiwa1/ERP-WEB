@@ -28179,7 +28179,7 @@ Public Sub GetDailySales()
     If lastHdr < 0 Then lastHdr = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
     For rw = DailyFirstRow() To lastHdr
         If ws.Cells(rw, 1).Value <> "" And Not IsNumeric(ws.Cells(rw, 1).Value) Then
-            ws.Cells(rw, 3).ClearContents
+            ws.Cells(rw, 3).MergeArea.ClearContents   ' Narration spans C:F
         End If
     Next rw
     ClearBlock ws, "#CREDIT_GIVEN"
