@@ -8,6 +8,8 @@
   <div class="d-flex gap-2 flex-wrap">
     <a href="{{ url_for('excel_workbook') }}" class="btn btn-success btn-sm"><i class="fas fa-download me-1"></i> Download Workbook</a>
     <a href="{{ url_for('excel_workbook_macro') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-code me-1"></i> Download Macro (.bas)</a>
+    <a href="{{ url_for('excel_inventory_workbook') }}" class="btn btn-primary btn-sm"><i class="fas fa-boxes me-1"></i> Inventory Workbook</a>
+    <a href="{{ url_for('excel_inventory_workbook_macro') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-code me-1"></i> Inventory Macro (.bas)</a>
   </div>
 </div>
 
@@ -25,6 +27,11 @@
       <li>Right-click the saved file &rarr; Properties &rarr; tick <strong>Unblock</strong>, or Excel will block the macro.</li>
       <li>Paste the key into the workbook's <strong>Setup</strong> sheet, then run <strong>TestConnection</strong>.</li>
     </ol>
+    <p class="small text-muted mt-2 mb-0">
+      <strong>Inventory Workbook</strong> is separate: GRN entry, Stock Balance and Bin Card. It works without internet &mdash;
+      GRNs are kept as Pending and <strong>Submit Pending</strong> sends only those. Import <em>SuwinInventory.bas</em> into it,
+      then press <strong>Set API Key</strong> on its Home sheet (the key needs Inventory permission).
+    </p>
   </div>
 </div>
 

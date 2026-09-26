@@ -29590,6 +29590,1290 @@ def excel_workbook_macro():
     return resp
 
 
+# =====================================================================
+# Inventory workbook (separate file): GRN entry that works offline,
+# Stock Balance and Bin Card. Only GRNs still marked Pending are sent.
+# =====================================================================
+
+def _inv_window_start(months):
+    """1st of the month `months` months ago - the web Bin Card's default window."""
+    today = date.today()
+    y, m = today.year, today.month - months
+    while m < 1:
+        m += 12
+        y -= 1
+    return date(y, m, 1)
+
+
+def _inv_masters(from_day):
+    """Items with balance, value, prices and opening qty at `from_day`, plus
+    suppliers, locations and jobs - everything the workbook needs offline."""
+    items = db.execute_query("""
+        SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code, ii.inventoy_bach_code AS barcode,
+               ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat, ii.Sub_Catogory AS sub_cat,
+               COALESCE(ii.min_qty, 0) AS min_qty,
+               COALESCE(p.inventory_price_selling, 0) AS selling_price,
+               COALESCE(p.inventory_price_purcharsing, 0) AS cost_price,
+               COALESCE(SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0)), 0) AS qty,
+               COALESCE(SUM(r.inventory_recod_total_value), 0) AS value,
+               COALESCE(SUM(CASE WHEN r.inventory_recod_action_date < %s
+                            THEN COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0)
+                            ELSE 0 END), 0) AS opening
+        FROM inventoy_items ii
+        LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
+        LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
+        WHERE ii.active = 1
+        GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code, ii.inventoy_bach_code, ii.inventoy_items_messurment_unit,
+                 ii.Main_Catogry, ii.Sub_Catogory, ii.min_qty, p.inventory_price_selling, p.inventory_price_purcharsing
+        ORDER BY ii.inventoy_name
+    """, (from_day,)) or []
+    suppliers = db.execute_query("""
+        SELECT supplier_name AS name, COALESCE(suppliers_default_payment_method, '') AS method
+        FROM suppliers WHERE Is_Suplier = 1 AND supplier_name <> 'Direct Payment' ORDER BY supplier_name
+    """) or []
+    locations = [r['n'] for r in (db.execute_query(
+        "SELECT inventory_locations_name AS n FROM inventory_locations ORDER BY inventory_locations_name") or []) if r['n']]
+    jobs = [str(r['n']) for r in (db.execute_query(
+        "SELECT job_number AS n FROM jobs_unit ORDER BY job_number") or []) if r['n'] not in (None, '')]
+    return items, suppliers, locations, jobs
+
+
+def _inv_movements(from_day, to_day):
+    return db.execute_query("""
+        SELECT id, inventory_recod_action_date AS d, inventoy_name AS name, inventoy_code AS code,
+               COALESCE(inventory_recod_moument_in, 0) AS qin, COALESCE(inventory_recod_movment_out, 0) AS qout,
+               inventory_recod_unit_price AS price, inventory_recod_account AS txn, inventory_recodcol_memo AS memo,
+               inventory_recod_location AS loc, inventory_recod_suplier_iv_no AS inv_no,
+               inventory_recod_issue_no AS issue_no, inventory_recod_job_no AS job_no, JV_No AS jv
+        FROM inventory_recod
+        WHERE inventory_recod_action_date BETWEEN %s AND %s
+        ORDER BY inventory_recod_action_date, id
+    """, (from_day, to_day)) or []
+
+
+def _inv_mv_type(m):
+    """What a stock movement was, in words, for the Bin Card."""
+    if m.get('txn'):
+        return str(m['txn'])
+    if float(m['qin'] or 0) and m.get('inv_no'):
+        return 'GRN'
+    if float(m['qout'] or 0) and m.get('issue_no'):
+        return 'Issue'
+    return 'In' if float(m['qin'] or 0) else 'Out'
+
+
+def _inv_mv_ref(m):
+    refs = []
+    if m.get('jv'):
+        refs.append(f"JV-{m['jv']}")
+    if m.get('inv_no'):
+        refs.append(f"Inv {m['inv_no']}")
+    if m.get('issue_no'):
+        refs.append(f"Issue {m['issue_no']}")
+    if m.get('job_no'):
+        refs.append(f"Job {m['job_no']}")
+    return ' / '.join(refs)
+
+
+@app.route('/api/xl/inv/masters', methods=['GET'])
+def xl_inv_masters():
+    """Items with balances (Inventory Balance, all items), suppliers, locations, jobs."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    try:
+        months = max(1, min(60, int(request.args.get('months') or 6)))
+    except ValueError:
+        months = 6
+    from_day = _inv_window_start(months)
+    items, suppliers, locations, jobs = _inv_masters(from_day)
+    rows = [['INFO', date.today().strftime('%Y-%m-%d'), from_day.strftime('%Y-%m-%d'), _company_display_name()]]
+    for i in items:
+        rows.append(['ITEM', i['id'], i['name'] or '', i['code'] or '', i['barcode'] or '', i['unit'] or '',
+                     i['main_cat'] or '', i['sub_cat'] or '', i['min_qty'], i['selling_price'], i['cost_price'],
+                     round(float(i['qty'] or 0), 4), round(float(i['value'] or 0), 2), round(float(i['opening'] or 0), 4)])
+    rows += [['SUP', s['name'], s['method']] for s in suppliers]
+    rows += [['LOC', n] for n in locations]
+    rows += [['JOB', n] for n in jobs]
+    return _xl_tsv(rows)
+
+
+@app.route('/api/xl/inv/movements', methods=['GET'])
+def xl_inv_movements():
+    """Every stock movement in the Bin Card window (default: 6 months to today)."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    try:
+        months = max(1, min(60, int(request.args.get('months') or 6)))
+    except ValueError:
+        months = 6
+    from_day = _inv_window_start(months)
+    rows = [['MV', m['id'], _xl_day(m['d']), m['name'] or '', m['code'] or '', m['qin'], m['qout'],
+             m['price'] if m['price'] is not None else '', _inv_mv_type(m), _inv_mv_ref(m), m['loc'] or '',
+             m['memo'] or ''] for m in _inv_movements(from_day, date(2999, 12, 31))]
+    return _xl_tsv([['FROM', from_day.strftime('%Y-%m-%d')]] + rows)
+
+
+def _xl_sync_log_ready():
+    """Per-company record of what the workbooks already sent (by the workbook's
+    own reference), so a GRN is never posted twice if the line drops mid-send."""
+    if not db.execute_query("SHOW TABLES LIKE 'excel_sync_log'"):
+        db.execute_query("""
+            CREATE TABLE excel_sync_log (
+                client_ref VARCHAR(64) NOT NULL PRIMARY KEY,
+                kind VARCHAR(20) NOT NULL,
+                jv_no BIGINT NULL,
+                created_by INT NULL,
+                created_date DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+
+@app.route('/api/xl/inv/grn', methods=['POST'])
+def xl_inv_grn():
+    """Post one GRN recorded offline in the workbook - same service the web GRN uses."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    b = _xl_body()
+    ref = str(b.get('ref') or '').strip()[:64]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'ref': ref, 'message': msg}, 400)
+
+    if not ref:
+        return fail('Missing GRN reference.')
+    _xl_sync_log_ready()
+    done = db.execute_query("SELECT jv_no FROM excel_sync_log WHERE client_ref = %s", (ref,)) or []
+    if done:
+        return _xl_json({'ok': True, 'ref': ref, 'jv': done[0]['jv_no'],
+                         'message': f"Already in the system (JV {done[0]['jv_no']})."})
+    supplier = str(b.get('supplier') or '').strip()
+    sup = db.execute_query("SELECT supplier_code, sup_id FROM suppliers WHERE supplier_name = %s", (supplier,)) or []
+    if not sup:
+        return fail(f'Supplier "{supplier}" is not in the system.')
+    invoice_no = str(b.get('invoice_no') or '').strip()
+    if not invoice_no:
+        return fail('Supplier invoice number is required.')
+    if db.execute_query("SELECT 1 FROM suppliers_invoice_data WHERE suppliers_invoice_number = %s", (invoice_no,)):
+        return fail(f'Invoice number {invoice_no} is already used in the system.')
+    inv_date = _dse_parse_date(b.get('invoice_date')).strftime('%Y-%m-%d')
+    due_date = _dse_parse_date(b.get('due_date') or inv_date).strftime('%Y-%m-%d')
+    names = [str(l.get('item') or '').strip() for l in b.get('lines') or []]
+    if not names:
+        return fail('The GRN has no item lines.')
+    marks = ','.join(['%s'] * len(names))
+    master = {r['inventoy_name']: r for r in (db.execute_query(f"""
+        SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit FROM inventoy_items
+        WHERE inventoy_name IN ({marks})
+    """, tuple(names)) or [])}
+    items = []
+    for l in b.get('lines') or []:
+        name = str(l.get('item') or '').strip()
+        qty, cost = round(parse_float(l.get('qty')), 4), round(parse_float(l.get('cost')), 4)
+        if name not in master:
+            return fail(f'Item "{name}" is not in the system - press Sync to refresh the item list.')
+        if qty <= 0:
+            return fail(f'Item "{name}": quantity must be more than 0.')
+        if cost < 0:
+            return fail(f'Item "{name}": unit cost cannot be negative.')
+        m = master[name]
+        items.append({'name': name, 'code': m['inventoy_code'], 'unit': m['inventoy_items_messurment_unit'],
+                      'qty': qty, 'cost': cost, 'total': round(qty * cost, 2)})
+    total_value = round(sum(i['total'] for i in items), 2)
+    vat_amount = round(parse_float(b.get('vat_amount')), 2)
+    job = str(b.get('job_no') or '').strip()
+    invoice_info = {'no': invoice_no, 'date': inv_date, 'due_date': due_date,
+                    'narration': str(b.get('narration') or '').strip() or f'GRN - {supplier} - {invoice_no}',
+                    'job_no': int(job) if job.isdigit() else None, 'location': str(b.get('location') or '').strip() or None,
+                    'total_value': total_value, 'vat_rate': round(parse_float(b.get('vat_rate')), 2),
+                    'vat_amount': vat_amount, 'grand_total': round(total_value + vat_amount, 2),
+                    'payment_method': (str(b.get('payment_method') or '').strip().title() or None)}
+    if invoice_info['payment_method'] not in (None, 'Cash', 'Cheque'):
+        invoice_info['payment_method'] = None
+    try:
+        jv_no = services.create_grn(db, get_current_user_id(), {'code': sup[0]['supplier_code'], 'id': sup[0]['sup_id']},
+                                    invoice_info, items)
+    except Exception as e:
+        return fail(f'The system could not save the GRN: {e}')
+    try:
+        db.execute_query("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'GRN', %s, %s)",
+                         (ref, jv_no, user_pk), commit=True)
+    except Exception as e:
+        logging.error(f"excel_sync_log insert failed for {ref}: {e}")
+    try:
+        log_recent_activity('green', f'<strong>GRN JV {jv_no}</strong> from Excel - {supplier} - LKR {invoice_info["grand_total"]:,.2f}')
+    except Exception:
+        pass
+    return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no, 'message': f'Saved as GRN JV {jv_no}.'})
+
+
+@app.route('/excel_inventory_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Settings')
+def excel_inventory_workbook():
+    """The separate Inventory workbook: GRN entry that works offline, GRN
+    Register (Pending / Sent / Synced / Error), Stock Balance and Bin Card.
+    Filled with today's items, balances and 6 months of movements, so it works
+    straight away without internet. Setup and data sheets are hidden."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
+    from openpyxl.workbook.defined_name import DefinedName
+
+    company = _company_display_name()
+    months = 6
+    from_day = _inv_window_start(months)
+    items, suppliers, locations, jobs = _inv_masters(from_day)
+    movements = _inv_movements(from_day, date(2999, 12, 31))
+
+    NAVY, BLUE, PALE, BAND = '1F3864', '0F6CBD', 'EEF3FA', 'DDEBF7'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill, head_font = fill(BLUE), Font(bold=True, color='FFFFFF')
+    input_fill = fill('FFF8DC')
+    note_font = Font(italic=True, color='6B7280', size=9)
+    label_font = Font(bold=True, color='1F2937')
+    QTY, AMT = '#,##0.00;[Red]-#,##0.00;-', '#,##0.00;[Red]-#,##0.00;-'
+
+    wb = Workbook()
+
+    def banner(ws, title, subtitle, c1, c2):
+        ws.merge_cells(start_row=1, start_column=c1, end_row=1, end_column=c2)
+        ws.merge_cells(start_row=2, start_column=c1, end_row=2, end_column=c2)
+        t = ws.cell(row=1, column=c1, value=title)
+        t.font, t.alignment = Font(bold=True, size=16, color='FFFFFF'), Alignment(vertical='center', indent=1)
+        st = ws.cell(row=2, column=c1, value=subtitle)
+        st.font, st.alignment = Font(italic=True, size=10, color=NAVY), Alignment(vertical='center', indent=1)
+        for c in range(c1, c2 + 1):
+            ws.cell(row=1, column=c).fill = fill(NAVY)
+            ws.cell(row=2, column=c).fill = fill(PALE)
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 20
+
+    def head_row(ws, row, labels, first_col=1, widths=None):
+        for i, label in enumerate(labels):
+            c = ws.cell(row=row, column=first_col + i, value=label)
+            c.fill, c.font, c.border = head_fill, head_font, box
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            if widths and widths[i]:
+                ws.column_dimensions[get_column_letter(first_col + i)].width = widths[i]
+        ws.row_dimensions[row].height = 30
+
+    def inp(cell, fmt=None):
+        cell.fill, cell.border = input_fill, box
+        if fmt:
+            cell.number_format = fmt
+
+    def look(ws, tab, freeze=None, landscape=True):
+        ws.sheet_properties.tabColor = tab
+        ws.sheet_view.showGridLines = False
+        if freeze:
+            ws.freeze_panes = freeze
+        ws.page_setup.orientation = 'landscape' if landscape else 'portrait'
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # ---------------- Home ----------------
+    ws = wb.active
+    ws.title = 'Home'
+    look(ws, NAVY, landscape=False)
+    banner(ws, (company + '  -  ' if company else '') + 'Inventory Workbook',
+           'GRN, Stock Balance and Bin Card. Works without internet - Submit sends only Pending GRNs.', 2, 9)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 34
+    ws.column_dimensions['C'].width = 34
+    ws.column_dimensions['D'].width = 3
+    home = [('Status', '=Setup!B6'), ('Last sync with system', '=Setup!B5'),
+            ('GRNs waiting to submit (Pending)', '=COUNTIFS(\'GRN Register\'!T:T,"Pending",\'GRN Register\'!W:W,1)'),
+            ('GRNs with an error', '=COUNTIFS(\'GRN Register\'!T:T,"Error",\'GRN Register\'!W:W,1)'),
+            ('GRNs sent to the system', '=COUNTIFS(\'GRN Register\'!T:T,"Sent",\'GRN Register\'!W:W,1)'
+                                        '+COUNTIFS(\'GRN Register\'!T:T,"Synced",\'GRN Register\'!W:W,1)'),
+            ('Items in stock list', "=COUNTA('Stock Balance'!B6:B20000)"),
+            ('Stock value (incl. pending)', "=SUM('Stock Balance'!N:N)"),
+            ('Items low / out of stock', "=COUNTIF('Stock Balance'!O:O,\"Low\")&\" low  /  \"&COUNTIF('Stock Balance'!O:O,\"Out of stock\")&\" out\"")]
+    for i, (label, formula) in enumerate(home, start=4):
+        ws.cell(row=i, column=2, value=label).font = label_font
+        c = ws.cell(row=i, column=3, value=formula)
+        c.border, c.fill = box, fill('F3F4F6')
+        c.font = Font(bold=True, color=NAVY, size=12 if i in (6, 7) else 11)
+        c.alignment = Alignment(horizontal='left')
+        ws.row_dimensions[i].height = 22
+    ws['C6'].fill = fill('FFF4CE')
+    ws['C7'].fill = fill('FDE7E9')
+    ws['C10'].number_format = AMT
+    guide = [
+        'How it works',
+        '1. New GRN: fill GRN Entry (pick supplier and items from the lists) and press Save GRN. It is kept here as Pending -',
+        '   no internet needed. Stock Balance and Bin Card include it straight away.',
+        '2. Submit Pending: when online, sends only the Pending (and Error) GRNs. Each one sent is marked Sent with its JV.',
+        '   A GRN is never posted twice - the system remembers each workbook GRN.',
+        '3. Sync from System: downloads items, suppliers, stock balances and 6 months of movements for the Bin Card.',
+        '4. Bin Card: pick an item and dates and press Show Bin Card - works offline.',
+        'First time: save this file as .xlsm, Unblock it (right-click > Properties), import SuwinInventory.bas (Alt+F11 >',
+        'File > Import File), then press Set API Key. Use a key from Settings > Excel Data Entry on the website.',
+    ]
+    for i, line in enumerate(guide, start=13):
+        c = ws.cell(row=i, column=2, value=line)
+        c.font = Font(bold=True, size=12, color=NAVY) if i == 13 else Font(color='1F2937')
+    for c in range(2, 10):
+        ws.cell(row=13, column=c).fill = fill(BAND)
+
+    # ---------------- GRN Entry ----------------
+    ws = wb.create_sheet('GRN Entry')
+    look(ws, '107C10', freeze='A11')
+    banner(ws, 'GRN Entry (Goods Received Note)', 'Fill the yellow cells, then Save GRN. Saved GRNs wait as Pending '
+           'until you Submit Pending.', 2, 10)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJ', (40, 16, 10, 14, 14, 16, 26, 18, 18)):
+        ws.column_dimensions[col].width = w
+    heads = [(4, 'Supplier', 'Invoice No'), (5, 'Invoice Date', 'Due Date'), (6, 'Location', 'Job No'),
+             (7, 'Payment Method', 'VAT Rate %')]
+    for rw, left, right in heads:
+        ws.cell(row=rw, column=2, value=left).font = label_font
+        ws.cell(row=rw, column=5, value=right).font = label_font
+        ws.merge_cells(start_row=rw, start_column=3, end_row=rw, end_column=4)
+        inp(ws.cell(row=rw, column=3))
+        inp(ws.cell(row=rw, column=4))
+        inp(ws.cell(row=rw, column=6))
+    ws['C5'] = date.today()
+    ws['C5'].number_format = 'yyyy-mm-dd'
+    ws['F5'].number_format = 'yyyy-mm-dd'
+    ws['F7'].number_format = '0.00'
+    ws['B8'] = 'Narration'
+    ws['B8'].font = label_font
+    ws.merge_cells('C8:G8')
+    inp(ws['C8'])
+    for rw, label, formula, is_input in ((4, 'Total Value', '=SUM(G11:G60)', False),
+                                         (5, 'VAT Amount (from invoice)', None, True),
+                                         (6, 'Grand Total', '=I4+I5', False)):
+        ws.cell(row=rw, column=8, value=label).font = label_font
+        c = ws.cell(row=rw, column=9, value=formula)
+        c.number_format, c.border = AMT, box
+        c.font = Font(bold=True, color=NAVY, size=12 if rw == 6 else 11)
+        c.fill = input_fill if is_input else fill('E8F3E8' if rw == 6 else 'F3F4F6')
+    ws['H7'] = 'Next GRN ref'
+    ws['H7'].font = note_font
+    ws['I7'] = '=Setup!B7&"-"&TEXT(Setup!B8,"0000")'
+    ws['I7'].font = note_font
+    head_row(ws, 10, ['Item (pick from list)', 'Code', 'Unit', 'Qty', 'Unit Cost', 'Line Total', 'Stock now',
+                      'Last cost'], first_col=2)
+    for rw in range(11, 61):
+        inp(ws.cell(row=rw, column=2))
+        ws.cell(row=rw, column=3, value=f'=IF(B{rw}="","",IFERROR(INDEX(Items!$C:$C,MATCH(B{rw},Items!$B:$B,0)),"not in list"))')
+        ws.cell(row=rw, column=4, value=f'=IF(B{rw}="","",IFERROR(INDEX(Items!$E:$E,MATCH(B{rw},Items!$B:$B,0)),""))')
+        inp(ws.cell(row=rw, column=5), '#,##0.####')
+        inp(ws.cell(row=rw, column=6), AMT)
+        t = ws.cell(row=rw, column=7, value=f'=IF(OR(E{rw}="",F{rw}=""),"",ROUND(E{rw}*F{rw},2))')
+        t.number_format = AMT
+        s = ws.cell(row=rw, column=8, value=f'=IF(B{rw}="","",IFERROR(INDEX(\'Stock Balance\'!$M:$M,MATCH(B{rw},\'Stock Balance\'!$B:$B,0)),""))')
+        s.number_format = QTY
+        lc = ws.cell(row=rw, column=9, value=f'=IF(B{rw}="","",IFERROR(INDEX(Items!$J:$J,MATCH(B{rw},Items!$B:$B,0)),""))')
+        lc.number_format = AMT
+        for col in (3, 4, 7, 8, 9):
+            ws.cell(row=rw, column=col).border = box
+            ws.cell(row=rw, column=col).font = Font(color='374151')
+    dv_item = DataValidation(type='list', formula1='ItemList', allow_blank=True, showErrorMessage=True,
+                             errorTitle='Item', error='Pick an item from the list (press Sync if it is new).')
+    dv_sup = DataValidation(type='list', formula1='SupplierList', allow_blank=True, showErrorMessage=True,
+                            errorTitle='Supplier', error='Pick a supplier from the list.')
+    dv_loc = DataValidation(type='list', formula1='LocationList', allow_blank=True, showErrorMessage=False)
+    dv_job = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
+    dv_pay = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=True)
+    for dv in (dv_item, dv_sup, dv_loc, dv_job, dv_pay):
+        ws.add_data_validation(dv)
+    dv_item.add('B11:B60')
+    dv_sup.add('C4')
+    dv_loc.add('C6')
+    dv_job.add('F6')
+    dv_pay.add('C7')
+
+    # ---------------- GRN Register ----------------
+    ws = wb.create_sheet('GRN Register')
+    look(ws, 'CA5010', freeze='A4')
+    banner(ws, 'GRN Register', 'Every GRN saved in this workbook, one row per item. Status: Pending = not sent yet, '
+           'Sent = in the system (JV shown), Error = see Message and Submit again.', 1, 12)
+    reg_heads = ['GRN Ref', 'Line', 'Saved At', 'Supplier', 'Invoice No', 'Invoice Date', 'Due Date', 'Location', 'Job',
+                 'Payment', 'VAT Rate %', 'VAT Amount', 'Narration', 'Item', 'Code', 'Unit', 'Qty', 'Unit Cost',
+                 'Line Total', 'Status', 'System JV', 'Message', 'First']
+    head_row(ws, 3, reg_heads, widths=[13, 6, 17, 28, 14, 12, 12, 14, 8, 10, 9, 13, 26, 30, 12, 8, 10, 12, 14, 10, 11,
+                                       44, 6])
+    ws.column_dimensions['W'].hidden = True
+    for status, color in (('Pending', 'FFF4CE'), ('Error', 'FDE7E9'), ('Sent', 'E8F0FB'), ('Synced', 'E8F3E8')):
+        ws.conditional_formatting.add('A4:V20000', FormulaRule(formula=[f'$T4="{status}"'], fill=fill(color)))
+    ws.auto_filter.ref = 'A3:V3'
+
+    # ---------------- Stock Balance ----------------
+    ws = wb.create_sheet('Stock Balance')
+    look(ws, '8764B8', freeze='C6')
+    banner(ws, 'Stock Balance  -  All Items', 'System balance at the last sync plus GRNs recorded here and not yet '
+           'synced. Same list as Inventory Balance (all items) on the website.', 1, 15)
+    summary = [('Items', "=MAX(0,COUNTA(B6:B20000))"), ('Total value', '=SUM(N6:N20000)'),
+               ('Low stock', '=COUNTIF(O6:O20000,"Low")'), ('Out of stock', '=COUNTIF(O6:O20000,"Out of stock")')]
+    for i, (label, formula) in enumerate(summary):
+        col = (2, 6, 9, 12)[i]
+        ws.cell(row=3, column=col, value=label).font = label_font
+        c = ws.cell(row=3, column=col + 1, value=formula)
+        c.font, c.border, c.fill = Font(bold=True, size=12, color=NAVY), box, fill('F3F4F6')
+        c.number_format = AMT if label == 'Total value' else '#,##0'
+    sb_heads = ['No', 'Item Name', 'Item Code', 'Barcode', 'Unit', 'Category Main', 'Category Sub', 'Min Qty',
+                'Selling Price', 'Cost Price', 'System Qty', 'Pending In (this workbook)', 'Current Qty', 'Total Value',
+                'Status']
+    head_row(ws, 5, sb_heads, widths=[6, 34, 13, 14, 8, 16, 16, 10, 13, 13, 12, 13, 12, 15, 13])
+    ws.auto_filter.ref = 'A5:O5'
+    ws.conditional_formatting.add('A6:O20000', FormulaRule(formula=['$O6="Out of stock"'], fill=fill('FDE7E9'),
+                                                           font=Font(color='A4262C')))
+    ws.conditional_formatting.add('A6:O20000', FormulaRule(formula=['$O6="Low"'], fill=fill('FFF4CE')))
+    ws.conditional_formatting.add('L6:L20000', FormulaRule(formula=['$L6>0'], font=Font(bold=True, color='CA5010')))
+
+    def balance_row(ws, rw, n, i):
+        vals = [n, i['name'], i['code'], i['barcode'], i['unit'], i['main_cat'], i['sub_cat'], float(i['min_qty'] or 0),
+                float(i['selling_price'] or 0), float(i['cost_price'] or 0), round(float(i['qty'] or 0), 4)]
+        for col, v in enumerate(vals, start=1):
+            c = ws.cell(row=rw, column=col, value=v)
+            c.border = box
+            if col >= 8:
+                c.number_format = QTY
+        ws.cell(row=rw, column=12, value=f"=SUMIFS('GRN Register'!$Q:$Q,'GRN Register'!$N:$N,$B{rw},"
+                                         f"'GRN Register'!$T:$T,\"<>Synced\")")
+        ws.cell(row=rw, column=13, value=f'=K{rw}+L{rw}')
+        ws.cell(row=rw, column=14, value=f"={round(float(i['value'] or 0), 2)}+SUMIFS('GRN Register'!$S:$S,"
+                                         f"'GRN Register'!$N:$N,$B{rw},'GRN Register'!$T:$T,\"<>Synced\")")
+        ws.cell(row=rw, column=15, value=f'=IF(M{rw}<=0,"Out of stock",IF(AND(H{rw}>0,M{rw}<H{rw}),"Low","OK"))')
+        for col in (12, 13, 14, 15):
+            c = ws.cell(row=rw, column=col)
+            c.border = box
+            c.number_format = AMT if col == 14 else QTY
+        ws.cell(row=rw, column=13).font = Font(bold=True)
+
+    for n, i in enumerate(items, start=1):
+        balance_row(ws, 5 + n, n, i)
+
+    # ---------------- Bin Card ----------------
+    ws = wb.create_sheet('Bin Card')
+    look(ws, '038387', freeze='A9', landscape=False)
+    banner(ws, 'Bin Card', 'Pick the item and dates, then Show Bin Card. Includes GRNs recorded here that are '
+           'not synced yet. Works offline.', 2, 10)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJ', (13, 12, 34, 14, 16, 12, 13, 12, 22)):
+        ws.column_dimensions[col].width = w
+    for rw, label in ((3, 'Item'), (4, 'From date'), (5, 'To date')):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        ws.merge_cells(start_row=rw, start_column=3, end_row=rw, end_column=4)
+        inp(ws.cell(row=rw, column=3))
+        inp(ws.cell(row=rw, column=4))
+    ws['C4'], ws['C5'] = from_day, date.today()
+    ws['C4'].number_format = ws['C5'].number_format = 'yyyy-mm-dd'
+    for rw, label in ((3, 'Code'), (4, 'Unit'), (5, 'Min Qty'), (6, 'Current balance')):
+        ws.cell(row=rw, column=6, value=label).font = label_font
+        c = ws.cell(row=rw, column=7)
+        c.border, c.fill, c.font = box, fill('F3F4F6'), Font(bold=True, color=NAVY)
+    dv_bin = DataValidation(type='list', formula1='ItemList', allow_blank=True, showErrorMessage=False)
+    ws.add_data_validation(dv_bin)
+    dv_bin.add('C3')
+    ws['B7'] = 'Movements before the From date are shown as the opening balance.'
+    ws['B7'].font = note_font
+    head_row(ws, 8, ['Date', 'Type', 'Reference', 'Location', 'Qty In', 'Qty Out', 'Balance', 'Unit Price', 'Note'],
+             first_col=2)
+
+    # ---------------- hidden data sheets ----------------
+    ws = wb.create_sheet('Items')
+    ws.append(['ID', 'Name', 'Code', 'Barcode', 'Unit', 'Main Cat', 'Sub Cat', 'Min Qty', 'Selling', 'Cost',
+               'System Qty', 'System Value', 'Opening at window start'])
+    for i in items:
+        ws.append([i['id'], i['name'], i['code'], i['barcode'], i['unit'], i['main_cat'], i['sub_cat'],
+                   float(i['min_qty'] or 0), float(i['selling_price'] or 0), float(i['cost_price'] or 0),
+                   round(float(i['qty'] or 0), 4), round(float(i['value'] or 0), 2), round(float(i['opening'] or 0), 4)])
+    ws.sheet_state = 'hidden'
+
+    ws = wb.create_sheet('Movements')
+    ws.append(['ID', 'Date', 'Item', 'Code', 'Qty In', 'Qty Out', 'Unit Price', 'Type', 'Reference', 'Location', 'Memo'])
+    for m in movements:
+        d = m['d']
+        ws.append([m['id'], d if hasattr(d, 'year') else None, m['name'], m['code'], float(m['qin'] or 0),
+                   float(m['qout'] or 0), float(m['price']) if m['price'] is not None else None, _inv_mv_type(m),
+                   _inv_mv_ref(m), m['loc'], m['memo']])
+        ws.cell(row=ws.max_row, column=2).number_format = 'yyyy-mm-dd'
+    ws.sheet_state = 'hidden'
+
+    ws = wb.create_sheet('Lists')
+    ws.append(['Suppliers', 'Payment method', 'Locations', 'Jobs'])
+    for k in range(max(len(suppliers), len(locations), len(jobs))):
+        ws.append([suppliers[k]['name'] if k < len(suppliers) else None,
+                   suppliers[k]['method'] if k < len(suppliers) else None,
+                   locations[k] if k < len(locations) else None,
+                   jobs[k] if k < len(jobs) else None])
+    ws.sheet_state = 'hidden'
+
+    ws = wb.create_sheet('Setup')
+    setup = [('Server URL', request.url_root.rstrip('/')), ('API Key', ''),
+             ('Last sync', datetime.now().strftime('%Y-%m-%d %H:%M') + ' (workbook download)'),
+             ('Last result', 'Ready - works offline'),
+             ('Workbook ID', 'XL' + ''.join(random.choice(string.ascii_uppercase + string.digits) for _ in range(6))),
+             ('Next GRN number', 1), ('Bin card months', months), ('Window from', from_day.strftime('%Y-%m-%d'))]
+    for i, (k, v) in enumerate(setup, start=3):
+        ws.cell(row=i, column=1, value=k)
+        ws.cell(row=i, column=2, value=v)
+    ws.sheet_state = 'veryHidden'
+
+    for name, ref in (('ItemList', 'OFFSET(Items!$B$2,0,0,MAX(1,COUNTA(Items!$B:$B)-1),1)'),
+                      ('SupplierList', 'OFFSET(Lists!$A$2,0,0,MAX(1,COUNTA(Lists!$A:$A)-1),1)'),
+                      ('LocationList', 'OFFSET(Lists!$C$2,0,0,MAX(1,COUNTA(Lists!$C:$C)-1),1)'),
+                      ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)')):
+        dn = DefinedName(name, attr_text=ref)
+        try:
+            wb.defined_names[name] = dn
+        except TypeError:
+            wb.defined_names.append(dn)
+
+    wb.active = 0
+    buf = BytesIO()
+    wb.save(buf)
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f'attachment; filename=SuwinERP_Inventory_{date.today():%Y%m%d}.xlsx'
+    return resp
+
+
+@app.route('/excel_inventory_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Settings')
+def excel_inventory_workbook_macro():
+    """The Inventory workbook's macro module (import with Alt+F11 > File > Import File)."""
+    code = _XL_INV_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinInventory.bas'
+    return resp
+
+
+_XL_INV_VBA_CODE = r'''Attribute VB_Name = "SuwinInventory"
+Option Explicit
+
+' ===================================================================
+'  Suwin ERP - Inventory workbook (GRN, Stock Balance, Bin Card)
+'  Everything is recorded in this workbook first and works offline.
+'  Submit Pending sends only GRNs still marked Pending (or Error).
+' ===================================================================
+
+Private Const REG_FIRST As Long = 4      ' first data row of GRN Register
+Private Const SB_FIRST As Long = 6       ' first data row of Stock Balance
+Private Const BIN_FIRST As Long = 9      ' first data row of Bin Card
+Private Const GRN_FIRST As Long = 11     ' first / last item line on GRN Entry
+Private Const GRN_LAST As Long = 60
+
+Private Function SetupSheet() As Worksheet
+    Set SetupSheet = ThisWorkbook.Worksheets("Setup")
+End Function
+
+Private Function Sh(ByVal nm As String) As Worksheet
+    Set Sh = ThisWorkbook.Worksheets(nm)
+End Function
+
+Private Function ServerUrl() As String
+    ServerUrl = Trim$(CStr(SetupSheet().Range("B3").Value))
+    Do While Right$(ServerUrl, 1) = "/"
+        ServerUrl = Left$(ServerUrl, Len(ServerUrl) - 1)
+    Loop
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+End Function
+
+Private Sub SayResult(ByVal msg As String)
+    SetupSheet().Range("B6").Value = Format$(Now, "yyyy-mm-dd hh:nn") & "  " & msg
+    Application.StatusBar = False
+End Sub
+
+Private Function Txt(ByVal s As String) As Variant
+    If s = "" Then Txt = Empty Else Txt = "'" & s
+End Function
+
+Private Function DateOf(ByVal s As String) As Variant
+    If Len(s) >= 10 Then
+        DateOf = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
+    Else
+        DateOf = Empty
+    End If
+End Function
+
+Private Function Ymd(ByVal v As Variant) As String
+    If IsDate(v) Then Ymd = Format$(CDate(v), "yyyy-mm-dd") Else Ymd = Trim$(CStr(v))
+End Function
+
+' ---- HTTP -----------------------------------------------------------------
+' Returns the reply text. status_ = HTTP status, or 0 when the server could not be reached (offline).
+Private Function Http(ByVal method As String, ByVal path As String, ByVal body As String, ByRef status_ As Long) As String
+    Dim xh As Object
+    status_ = 0
+    If ApiKey() = "" Then Exit Function
+    On Error GoTo Offline
+    Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.setTimeouts 5000, 5000, 20000, 120000
+    xh.Open method, ServerUrl() & path, False
+    xh.setRequestHeader "X-API-Key", ApiKey()
+    xh.setRequestHeader "Content-Type", "application/json"
+    If method = "POST" Then xh.send body Else xh.send
+    status_ = xh.Status
+    Http = xh.responseText
+    Exit Function
+Offline:
+    status_ = 0
+    Http = Err.Description
+End Function
+
+Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim p As Long, q As Long, needle As String
+    needle = """" & keyName & """:"
+    p = InStr(1, jsonText, needle, vbTextCompare)
+    If p = 0 Then Exit Function
+    p = p + Len(needle)
+    Do While p <= Len(jsonText) And Mid$(jsonText, p, 1) = " "
+        p = p + 1
+    Loop
+    If Mid$(jsonText, p, 1) = """" Then
+        p = p + 1
+        q = p
+        Do While q <= Len(jsonText)
+            If Mid$(jsonText, q, 1) = "\" Then
+                q = q + 2
+            ElseIf Mid$(jsonText, q, 1) = """" Then
+                Exit Do
+            Else
+                q = q + 1
+            End If
+        Loop
+    Else
+        q = p
+        Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
+            q = q + 1
+        Loop
+    End If
+    JsonValue = Replace(Replace(Mid$(jsonText, p, q - p), "\/", "/"), "\""", """")
+End Function
+
+Private Function JsonStr(ByVal v As Variant) As String
+    Dim s As String
+    s = CStr(v)
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCrLf, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    JsonStr = """" & s & """"
+End Function
+
+Private Function JsonNum(ByVal v As Variant) As String
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        JsonNum = "0"
+    ElseIf IsNumeric(v) Then
+        JsonNum = Replace(CStr(CDbl(v)), ",", ".")
+    Else
+        JsonNum = "0"
+    End If
+End Function
+
+Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
+    Jq = """" & key & """:" & jsonValue
+End Function
+
+Private Function ServerError(ByVal status_ As Long, ByVal reply As String) As String
+    Dim m As String
+    m = JsonValue(reply, "message")
+    If m = "" Then m = JsonValue(reply, "error")
+    If m = "" Then m = "HTTP " & status_
+    ServerError = m
+End Function
+
+' Save only once the file is a macro-enabled workbook (.xlsm), so Excel never asks
+Private Sub SaveIfMacro()
+    On Error Resume Next
+    If ThisWorkbook.FileFormat = 52 Then ThisWorkbook.Save
+End Sub
+
+' ---- Opening the workbook --------------------------------------------------
+Public Sub Auto_Open()
+    Dim r As String, st As Long, pend As Long
+    On Error Resume Next
+    HideSystemSheets
+    AddButtons
+    Sh("Home").Activate
+    On Error GoTo 0
+    If ApiKey() = "" Then
+        SayResult "No API key yet - working offline"
+        MsgBox "Welcome to the Suwin ERP Inventory workbook." & vbCrLf & vbCrLf & _
+               "It works offline. To send GRNs to the system, press Set API Key on the Home sheet " & _
+               "and paste a key from Settings > Excel Data Entry on the website.", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    Application.StatusBar = "Suwin ERP: checking the connection..."
+    r = Http("GET", "/api/xl/ping", "", st)
+    Application.StatusBar = False
+    If st <> 200 Then
+        If st = 0 Then
+            SayResult "Offline - using the data synced on " & SetupSheet().Range("B5").Value
+        Else
+            SayResult "Not connected: " & ServerError(st, r)
+        End If
+        Exit Sub
+    End If
+    SayResult "Online as " & JsonValue(r, "user")
+    pend = PendingCount()
+    If pend > 0 Then
+        If MsgBox(pend & " GRN(s) are waiting as Pending." & vbCrLf & "Submit them to the system now?", _
+                  vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then SubmitPending
+    End If
+    SyncFromSystem True
+End Sub
+
+Private Sub HideSystemSheets()
+    SetupSheet().Visible = 2          ' xlSheetVeryHidden
+    Sh("Items").Visible = 0            ' xlSheetHidden
+    Sh("Movements").Visible = 0
+    Sh("Lists").Visible = 0
+End Sub
+
+Public Sub SetApiKey()
+    Dim k As String, cur As String
+    cur = ApiKey()
+    If cur <> "" Then cur = Left$(cur, 4) & String$(8, "*") & Right$(cur, 4)
+    k = InputBox("Paste the API key from Settings > Excel Data Entry on the website." & vbCrLf & vbCrLf & _
+                 "Current key: " & IIf(cur = "", "(none)", cur) & vbCrLf & "Server: " & ServerUrl(), "Suwin ERP - API Key")
+    If Trim$(k) = "" Then Exit Sub
+    SetupSheet().Range("B4").Value = Trim$(k)
+    TestConnection
+End Sub
+
+Public Sub TestConnection()
+    Dim r As String, st As Long
+    r = Http("GET", "/api/xl/ping", "", st)
+    If st = 200 Then
+        SayResult "Online as " & JsonValue(r, "user")
+        MsgBox "Connected as " & JsonValue(r, "user") & ".", vbInformation, "Suwin ERP"
+    ElseIf st = 0 Then
+        SayResult "Offline"
+        MsgBox "No connection to " & ServerUrl() & ". You can keep working - GRNs stay Pending.", vbExclamation, "Suwin ERP"
+    Else
+        SayResult "Not connected: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+' ---- GRN Register helpers --------------------------------------------------
+Private Function RegLast() As Long
+    Dim ws As Worksheet
+    Set ws = Sh("GRN Register")
+    RegLast = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+    If RegLast < REG_FIRST - 1 Then RegLast = REG_FIRST - 1
+End Function
+
+Private Function PendingCount() As Long
+    Dim ws As Worksheet, rw As Long, st As String
+    Set ws = Sh("GRN Register")
+    For rw = REG_FIRST To RegLast()
+        st = CStr(ws.Cells(rw, 20).Value)
+        If ws.Cells(rw, 23).Value = 1 And (st = "Pending" Or st = "Error") Then PendingCount = PendingCount + 1
+    Next rw
+End Function
+
+' ---- Save a GRN in the workbook (no internet needed) ----------------------
+Public Sub SaveGRN()
+    Dim ws As Worksheet, reg As Worksheet, rw As Long, n As Long, outRow As Long, ref As String
+    Dim supplier As String, invNo As String, lines As Long, item As String, msg As String, k As Long
+    Dim invDate As Variant, dueDate As Variant
+    Set ws = Sh("GRN Entry")
+    Set reg = Sh("GRN Register")
+    supplier = Trim$(CStr(ws.Range("C4").Value))
+    invNo = Trim$(CStr(ws.Range("F4").Value))
+    invDate = ws.Range("C5").Value
+    dueDate = ws.Range("F5").Value
+    If supplier = "" Then MsgBox "Pick the supplier (C4).", vbExclamation, "Suwin ERP": ws.Range("C4").Select: Exit Sub
+    If IsError(Application.Match(supplier, Sh("Lists").Range("A:A"), 0)) Then
+        MsgBox "Supplier """ & supplier & """ is not in the list. Pick it from the dropdown, or Sync if it is new.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If invNo = "" Then MsgBox "Type the supplier's invoice number (F4).", vbExclamation, "Suwin ERP": ws.Range("F4").Select: Exit Sub
+    If Not IsDate(invDate) Then MsgBox "Type the invoice date (C5).", vbExclamation, "Suwin ERP": ws.Range("C5").Select: Exit Sub
+    If Not IsDate(dueDate) Then dueDate = invDate
+    For rw = REG_FIRST To RegLast()
+        If LCase$(Trim$(CStr(reg.Cells(rw, 5).Value))) = LCase$(invNo) And reg.Cells(rw, 20).Value <> "Error" Then
+            MsgBox "Invoice " & invNo & " is already in the GRN Register (" & reg.Cells(rw, 1).Value & ").", _
+                   vbExclamation, "Suwin ERP"
+            Exit Sub
+        End If
+    Next rw
+    For rw = GRN_FIRST To GRN_LAST
+        item = Trim$(CStr(ws.Cells(rw, 2).Value))
+        If item <> "" Or ws.Cells(rw, 5).Value <> "" Or ws.Cells(rw, 6).Value <> "" Then
+            If item = "" Then MsgBox "Line " & (rw - GRN_FIRST + 1) & ": pick the item.", vbExclamation, "Suwin ERP": Exit Sub
+            If IsError(Application.Match(item, Sh("Items").Range("B:B"), 0)) Then
+                MsgBox "Line " & (rw - GRN_FIRST + 1) & ": """ & item & """ is not in the item list.", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            If Not IsNumeric(ws.Cells(rw, 5).Value) Or Val(CStr(ws.Cells(rw, 5).Value)) <= 0 Then
+                MsgBox "Line " & (rw - GRN_FIRST + 1) & " (" & item & "): type a quantity above 0.", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            If Not IsNumeric(ws.Cells(rw, 6).Value) Or ws.Cells(rw, 6).Value = "" Then
+                MsgBox "Line " & (rw - GRN_FIRST + 1) & " (" & item & "): type the unit cost.", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            lines = lines + 1
+        End If
+    Next rw
+    If lines = 0 Then MsgBox "Add at least one item line.", vbExclamation, "Suwin ERP": Exit Sub
+
+    ref = SetupSheet().Range("B7").Value & "-" & Format$(SetupSheet().Range("B8").Value, "0000")
+    outRow = RegLast() + 1
+    For rw = GRN_FIRST To GRN_LAST
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" Then
+            n = n + 1
+            reg.Cells(outRow, 1).Value = ref
+            reg.Cells(outRow, 2).Value = n
+            reg.Cells(outRow, 3).Value = Now
+            reg.Cells(outRow, 3).NumberFormat = "yyyy-mm-dd hh:mm"
+            reg.Cells(outRow, 4).Value = supplier
+            reg.Cells(outRow, 5).Value = Txt(invNo)
+            reg.Cells(outRow, 6).Value = CDate(invDate)
+            reg.Cells(outRow, 7).Value = CDate(dueDate)
+            reg.Range(reg.Cells(outRow, 6), reg.Cells(outRow, 7)).NumberFormat = "yyyy-mm-dd"
+            reg.Cells(outRow, 8).Value = ws.Range("C6").Value
+            reg.Cells(outRow, 9).Value = Txt(CStr(ws.Range("F6").Value))
+            reg.Cells(outRow, 10).Value = ws.Range("C7").Value
+            reg.Cells(outRow, 11).Value = Val(CStr(ws.Range("F7").Value))
+            reg.Cells(outRow, 12).Value = Val(CStr(ws.Range("I5").Value))
+            reg.Cells(outRow, 13).Value = ws.Range("C8").Value
+            reg.Cells(outRow, 14).Value = ws.Cells(rw, 2).Value
+            reg.Cells(outRow, 15).Value = Txt(CStr(ws.Cells(rw, 3).Value))
+            reg.Cells(outRow, 16).Value = ws.Cells(rw, 4).Value
+            reg.Cells(outRow, 17).Value = CDbl(ws.Cells(rw, 5).Value)
+            reg.Cells(outRow, 18).Value = CDbl(ws.Cells(rw, 6).Value)
+            reg.Cells(outRow, 19).Value = Round(CDbl(ws.Cells(rw, 5).Value) * CDbl(ws.Cells(rw, 6).Value), 2)
+            reg.Cells(outRow, 20).Value = "Pending"
+            reg.Cells(outRow, 22).Value = "Saved offline - press Submit Pending to send"
+            reg.Cells(outRow, 23).Value = IIf(n = 1, 1, 0)
+            reg.Range(reg.Cells(outRow, 17), reg.Cells(outRow, 19)).NumberFormat = "#,##0.00"
+            reg.Range(reg.Cells(outRow, 12), reg.Cells(outRow, 12)).NumberFormat = "#,##0.00"
+            reg.Range(reg.Cells(outRow, 1), reg.Cells(outRow, 22)).Borders.LineStyle = 1
+            reg.Range(reg.Cells(outRow, 1), reg.Cells(outRow, 22)).Borders.Color = RGB(200, 206, 216)
+            outRow = outRow + 1
+        End If
+    Next rw
+    SetupSheet().Range("B8").Value = SetupSheet().Range("B8").Value + 1
+    ClearGRN True
+    SayResult "GRN " & ref & " saved as Pending (" & n & " line(s))"
+    msg = "GRN " & ref & " saved in this workbook as Pending (" & n & " item line(s))." & vbCrLf & _
+          "Stock Balance and Bin Card already include it." & vbCrLf & vbCrLf & "Submit pending GRNs to the system now?"
+    SaveIfMacro
+    If MsgBox(msg, vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then SubmitPending
+End Sub
+
+Public Sub ClearGRN(Optional ByVal silent As Boolean = False)
+    Dim ws As Worksheet
+    Set ws = Sh("GRN Entry")
+    If Not silent Then
+        If MsgBox("Clear the GRN form?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    ws.Range("C4").MergeArea.ClearContents
+    ws.Range("F4").ClearContents
+    ws.Range("F5").ClearContents
+    ws.Range("C6").MergeArea.ClearContents
+    ws.Range("F6").ClearContents
+    ws.Range("F7").ClearContents
+    ws.Range("C8").MergeArea.ClearContents
+    ws.Range("I5").ClearContents
+    ws.Range("B" & GRN_FIRST & ":B" & GRN_LAST).ClearContents
+    ws.Range("E" & GRN_FIRST & ":F" & GRN_LAST).ClearContents
+    ws.Range("C5").Value = Date
+    ws.Activate
+    ws.Range("C4").Select
+End Sub
+
+Public Sub NewGRN()
+    Sh("GRN Entry").Activate
+    Sh("GRN Entry").Range("C4").Select
+End Sub
+
+' ---- Send only Pending / Error GRNs ----------------------------------------
+Public Sub SubmitPending()
+    Dim reg As Worksheet, rw As Long, r2 As Long, ref As String, body As String, lines_ As String
+    Dim r As String, st As Long, sent As Long, bad As Long, total As Long, msg As String, last As Long
+    Set reg = Sh("GRN Register")
+    If ApiKey() = "" Then SetApiKey: If ApiKey() = "" Then Exit Sub
+    last = RegLast()
+    total = PendingCount()
+    If total = 0 Then MsgBox "Nothing to submit - no Pending GRNs.", vbInformation, "Suwin ERP": Exit Sub
+    For rw = REG_FIRST To last
+        If reg.Cells(rw, 23).Value = 1 And (reg.Cells(rw, 20).Value = "Pending" Or reg.Cells(rw, 20).Value = "Error") Then
+            ref = CStr(reg.Cells(rw, 1).Value)
+            lines_ = ""
+            For r2 = rw To last
+                If CStr(reg.Cells(r2, 1).Value) = ref Then
+                    If lines_ <> "" Then lines_ = lines_ & ","
+                    lines_ = lines_ & "{" & Jq("item", JsonStr(reg.Cells(r2, 14).Value)) & "," & _
+                             Jq("qty", JsonNum(reg.Cells(r2, 17).Value)) & "," & Jq("cost", JsonNum(reg.Cells(r2, 18).Value)) & "}"
+                End If
+            Next r2
+            body = "{" & Jq("ref", JsonStr(ref)) & "," & Jq("supplier", JsonStr(reg.Cells(rw, 4).Value)) & "," & _
+                   Jq("invoice_no", JsonStr(reg.Cells(rw, 5).Value)) & "," & _
+                   Jq("invoice_date", JsonStr(Ymd(reg.Cells(rw, 6).Value))) & "," & _
+                   Jq("due_date", JsonStr(Ymd(reg.Cells(rw, 7).Value))) & "," & _
+                   Jq("location", JsonStr(reg.Cells(rw, 8).Value)) & "," & Jq("job_no", JsonStr(reg.Cells(rw, 9).Value)) & "," & _
+                   Jq("payment_method", JsonStr(reg.Cells(rw, 10).Value)) & "," & _
+                   Jq("vat_rate", JsonNum(reg.Cells(rw, 11).Value)) & "," & Jq("vat_amount", JsonNum(reg.Cells(rw, 12).Value)) & "," & _
+                   Jq("narration", JsonStr(reg.Cells(rw, 13).Value)) & "," & Jq("lines", "[" & lines_ & "]") & "}"
+            Application.StatusBar = "Suwin ERP: sending GRN " & ref & " (" & (sent + bad + 1) & " of " & total & ")..."
+            r = Http("POST", "/api/xl/inv/grn", body, st)
+            If st = 0 Then
+                msg = "Could not reach the system - you are offline." & vbCrLf & _
+                      "Nothing more was sent; the rest stay Pending."
+                Exit For
+            ElseIf st = 401 Or st = 403 Then
+                msg = ServerError(st, r)
+                Exit For
+            End If
+            For r2 = rw To last
+                If CStr(reg.Cells(r2, 1).Value) = ref Then
+                    If st = 200 Then
+                        reg.Cells(r2, 20).Value = "Sent"
+                        reg.Cells(r2, 21).Value = JsonValue(r, "jv")
+                    Else
+                        reg.Cells(r2, 20).Value = "Error"
+                    End If
+                    reg.Cells(r2, 22).Value = Format$(Now, "yyyy-mm-dd hh:nn") & "  " & ServerError(st, r)
+                End If
+            Next r2
+            If st = 200 Then sent = sent + 1 Else bad = bad + 1
+        End If
+    Next rw
+    Application.StatusBar = False
+    SayResult "Submit: " & sent & " sent, " & bad & " with errors, " & PendingCount() - bad & " still pending"
+    SaveIfMacro
+    If sent > 0 Then SyncFromSystem True
+    If msg = "" Then msg = sent & " GRN(s) sent to the system." & IIf(bad > 0, vbCrLf & bad & " had errors - see Message in the GRN Register, fix and Submit again.", "")
+    MsgBox msg, IIf(bad > 0 Or sent = 0, vbExclamation, vbInformation), "Suwin ERP"
+End Sub
+
+' ---- Download items, balances and movements --------------------------------
+Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
+    Dim r As String, st As Long, rows_ As Variant, cols As Variant, i As Long, j As Long, n As Long
+    Dim items() As Variant, ns As Long, nl As Long, nj As Long, lst As Worksheet, itm As Worksheet
+    Dim sb As Worksheet, mv As Worksheet, months As Long, mvData() As Variant, m As Long, reg As Worksheet, rw As Long
+    If ApiKey() = "" Then
+        If Not quiet Then SetApiKey
+        If ApiKey() = "" Then Exit Sub
+    End If
+    months = Val(CStr(SetupSheet().Range("B9").Value))
+    If months < 1 Then months = 6
+    Application.StatusBar = "Suwin ERP: downloading items and balances..."
+    r = Http("GET", "/api/xl/inv/masters?format=tsv&months=" & months, "", st)
+    If st <> 200 Then
+        Application.StatusBar = False
+        If st = 0 Then SayResult "Offline - sync skipped" Else SayResult "Sync failed: " & ServerError(st, r)
+        If Not quiet Then MsgBox IIf(st = 0, "You are offline - nothing was changed.", ServerError(st, r)), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Left$(rows_(i), 5) = "ITEM" & vbTab Then n = n + 1
+    Next i
+    Application.ScreenUpdating = False
+    Set itm = Sh("Items")
+    Set lst = Sh("Lists")
+    Set sb = Sh("Stock Balance")
+    itm.Range("A2:M20000").ClearContents
+    lst.Range("A2:D5000").ClearContents
+    If n > 0 Then ReDim items(1 To n, 1 To 13)
+    n = 0
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            Select Case cols(0)
+            Case "INFO"
+                SetupSheet().Range("B10").Value = cols(2)
+            Case "ITEM"
+                n = n + 1
+                For j = 1 To 13
+                    If j >= 8 Then items(n, j) = Val(cols(j)) Else items(n, j) = cols(j)
+                Next j
+            Case "SUP"
+                ns = ns + 1
+                lst.Cells(1 + ns, 1).Value = cols(1)
+                lst.Cells(1 + ns, 2).Value = cols(2)
+            Case "LOC"
+                nl = nl + 1
+                lst.Cells(1 + nl, 3).Value = cols(1)
+            Case "JOB"
+                nj = nj + 1
+                lst.Cells(1 + nj, 4).Value = Txt(cols(1))
+            End Select
+        End If
+    Next i
+    itm.Range("C:D").NumberFormat = "@"
+    If n > 0 Then itm.Range("A2").Resize(n, 13).Value = items
+
+    ' Stock Balance: values from the system + formulas for what is pending here
+    If sb.AutoFilterMode Then sb.AutoFilterMode = False
+    sb.Range("A" & SB_FIRST & ":O20000").ClearContents
+    sb.Range("A" & SB_FIRST & ":O20000").Borders.LineStyle = -4142
+    If n > 0 Then
+        Dim sbv() As Variant
+        ReDim sbv(1 To n, 1 To 11)
+        For i = 1 To n
+            sbv(i, 1) = i
+            For j = 2 To 11
+                sbv(i, j) = items(i, j)
+            Next j
+        Next i
+        sb.Range("C" & SB_FIRST).Resize(n, 2).NumberFormat = "@"
+        sb.Range("A" & SB_FIRST).Resize(n, 11).Value = sbv
+        With sb.Range("L" & SB_FIRST).Resize(n, 1)
+            .Formula = "=SUMIFS('GRN Register'!$Q:$Q,'GRN Register'!$N:$N,$B" & SB_FIRST & ",'GRN Register'!$T:$T,""<>Synced"")"
+        End With
+        sb.Range("M" & SB_FIRST).Resize(n, 1).Formula = "=K" & SB_FIRST & "+L" & SB_FIRST
+        sb.Range("N" & SB_FIRST).Resize(n, 1).Formula = "=Items!L2+SUMIFS('GRN Register'!$S:$S,'GRN Register'!$N:$N,$B" & _
+            SB_FIRST & ",'GRN Register'!$T:$T,""<>Synced"")"
+        sb.Range("O" & SB_FIRST).Resize(n, 1).Formula = "=IF(M" & SB_FIRST & "<=0,""Out of stock"",IF(AND(H" & SB_FIRST & _
+            ">0,M" & SB_FIRST & "<H" & SB_FIRST & "),""Low"",""OK""))"
+        sb.Range("H" & SB_FIRST).Resize(n, 7).NumberFormat = "#,##0.00;[Red]-#,##0.00;-"
+        sb.Range("M" & SB_FIRST).Resize(n, 1).Font.Bold = True
+        With sb.Range("A" & SB_FIRST).Resize(n, 15).Borders
+            .LineStyle = 1
+            .Color = RGB(200, 206, 216)
+        End With
+    End If
+    sb.Range("A5:O5").AutoFilter
+
+    ' Movements for the Bin Card
+    Application.StatusBar = "Suwin ERP: downloading stock movements for the Bin Card..."
+    r = Http("GET", "/api/xl/inv/movements?format=tsv&months=" & months, "", st)
+    If st = 200 Then
+        Set mv = Sh("Movements")
+        mv.Range("A2:K200000").ClearContents
+        rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+        m = 0
+        For i = 0 To UBound(rows_)
+            If Left$(rows_(i), 3) = "MV" & vbTab Then m = m + 1
+        Next i
+        If m > 0 Then
+            ReDim mvData(1 To m, 1 To 11)
+            m = 0
+            For i = 0 To UBound(rows_)
+                If Left$(rows_(i), 3) = "MV" & vbTab Then
+                    cols = Split(rows_(i), vbTab)
+                    m = m + 1
+                    mvData(m, 1) = Val(cols(1))
+                    mvData(m, 2) = DateOf(cols(2))
+                    mvData(m, 3) = cols(3)
+                    mvData(m, 4) = cols(4)
+                    mvData(m, 5) = Val(cols(5))
+                    mvData(m, 6) = Val(cols(6))
+                    If cols(7) <> "" Then mvData(m, 7) = Val(cols(7))
+                    mvData(m, 8) = cols(8)
+                    mvData(m, 9) = cols(9)
+                    mvData(m, 10) = cols(10)
+                    If UBound(cols) >= 11 Then mvData(m, 11) = cols(11)
+                End If
+            Next i
+            mv.Range("D2").Resize(m, 1).NumberFormat = "@"
+            mv.Range("A2").Resize(m, 11).Value = mvData
+            mv.Range("B2").Resize(m, 1).NumberFormat = "yyyy-mm-dd"
+        End If
+        ' The system now includes every GRN that was Sent - they no longer count as pending here
+        Set reg = Sh("GRN Register")
+        For rw = REG_FIRST To RegLast()
+            If reg.Cells(rw, 20).Value = "Sent" Then reg.Cells(rw, 20).Value = "Synced"
+        Next rw
+        SetupSheet().Range("B5").Value = Format$(Now, "yyyy-mm-dd hh:nn")
+        SayResult "Synced: " & n & " items, " & m & " movements (from " & SetupSheet().Range("B10").Value & ")"
+    Else
+        SayResult "Items updated, but movements could not be downloaded: " & ServerError(st, r)
+    End If
+    Application.ScreenUpdating = True
+    Application.StatusBar = False
+    SaveIfMacro
+    If Not quiet Then MsgBox "Synced with the system." & vbCrLf & n & " items, " & m & " stock movements.", vbInformation, "Suwin ERP"
+End Sub
+
+' ---- Bin Card (offline) ----------------------------------------------------
+Public Sub ShowBinCard()
+    Dim ws As Worksheet, mv As Worksheet, reg As Worksheet, itm As Worksheet, item As String
+    Dim dFrom As Date, dTo As Date, winFrom As Date, bal As Double, opening As Double, minQ As Double
+    Dim rw As Long, last As Long, n As Long, i As Long, j As Long, k As Long, pos As Variant
+    Dim d() As Variant, tIn As Double, tOut As Double, tmp As Variant, outRow As Long
+    Set ws = Sh("Bin Card")
+    Set mv = Sh("Movements")
+    Set reg = Sh("GRN Register")
+    Set itm = Sh("Items")
+    item = Trim$(CStr(ws.Range("C3").Value))
+    If item = "" Then MsgBox "Pick the item (C3).", vbExclamation, "Suwin ERP": ws.Range("C3").Select: Exit Sub
+    pos = Application.Match(item, itm.Range("B:B"), 0)
+    If IsError(pos) Then MsgBox """" & item & """ is not in the item list.", vbExclamation, "Suwin ERP": Exit Sub
+    winFrom = DateOf(CStr(SetupSheet().Range("B10").Value))
+    If IsDate(ws.Range("C4").Value) Then dFrom = CDate(ws.Range("C4").Value) Else dFrom = winFrom
+    If IsDate(ws.Range("C5").Value) Then dTo = CDate(ws.Range("C5").Value) Else dTo = Date
+    If dFrom < winFrom Then
+        MsgBox "This workbook holds movements from " & Format$(winFrom, "yyyy-mm-dd") & ". The Bin Card starts there." & _
+               vbCrLf & "(Increase 'Bin card months' by syncing with more months if you need older history.)", _
+               vbInformation, "Suwin ERP"
+        dFrom = winFrom
+        ws.Range("C4").Value = winFrom
+    End If
+    Application.ScreenUpdating = False
+    ws.Range("G3").Value = Txt(CStr(itm.Cells(pos, 3).Value))
+    ws.Range("G4").Value = itm.Cells(pos, 5).Value
+    minQ = Val(CStr(itm.Cells(pos, 8).Value))
+    ws.Range("G5").Value = minQ
+    ws.Range("G6").Value = Application.WorksheetFunction.SumIfs(Sh("Stock Balance").Range("M:M"), _
+                                                                Sh("Stock Balance").Range("B:B"), item)
+    ws.Range("G5:G6").NumberFormat = "#,##0.00"
+    opening = Val(CStr(itm.Cells(pos, 13).Value))      ' balance at the start of the synced window
+
+    ' Collect: system movements + GRNs recorded here that the system does not have yet
+    last = mv.Cells(mv.Rows.Count, 1).End(-4162).Row
+    ReDim d(1 To 8, 1 To 1)
+    n = 0
+    For rw = 2 To last
+        If mv.Cells(rw, 3).Value = item And IsDate(mv.Cells(rw, 2).Value) Then
+            If mv.Cells(rw, 2).Value < dFrom Then
+                opening = opening + mv.Cells(rw, 5).Value - mv.Cells(rw, 6).Value
+            ElseIf mv.Cells(rw, 2).Value <= dTo Then
+                n = n + 1
+                ReDim Preserve d(1 To 8, 1 To n)
+                d(1, n) = mv.Cells(rw, 2).Value: d(2, n) = mv.Cells(rw, 8).Value: d(3, n) = mv.Cells(rw, 9).Value
+                d(4, n) = mv.Cells(rw, 10).Value: d(5, n) = mv.Cells(rw, 5).Value: d(6, n) = mv.Cells(rw, 6).Value
+                d(7, n) = mv.Cells(rw, 7).Value: d(8, n) = mv.Cells(rw, 11).Value
+            End If
+        End If
+    Next rw
+    For rw = REG_FIRST To RegLast()
+        If reg.Cells(rw, 14).Value = item And reg.Cells(rw, 20).Value <> "Synced" And IsDate(reg.Cells(rw, 6).Value) Then
+            If reg.Cells(rw, 6).Value < dFrom Then
+                opening = opening + reg.Cells(rw, 17).Value
+            ElseIf reg.Cells(rw, 6).Value <= dTo Then
+                n = n + 1
+                ReDim Preserve d(1 To 8, 1 To n)
+                d(1, n) = reg.Cells(rw, 6).Value
+                d(2, n) = "GRN (" & reg.Cells(rw, 20).Value & ")"
+                d(3, n) = reg.Cells(rw, 1).Value & " / Inv " & reg.Cells(rw, 5).Value & IIf(reg.Cells(rw, 21).Value <> "", " / JV-" & reg.Cells(rw, 21).Value, "")
+                d(4, n) = reg.Cells(rw, 8).Value: d(5, n) = reg.Cells(rw, 17).Value: d(6, n) = 0
+                d(7, n) = reg.Cells(rw, 18).Value: d(8, n) = "Recorded in this workbook"
+            End If
+        End If
+    Next rw
+    ' sort by date (stable insertion sort)
+    For i = 2 To n
+        For j = i To 2 Step -1
+            If d(1, j) < d(1, j - 1) Then
+                For k = 1 To 8
+                    tmp = d(k, j): d(k, j) = d(k, j - 1): d(k, j - 1) = tmp
+                Next k
+            Else
+                Exit For
+            End If
+        Next j
+    Next i
+
+    ws.Range("B" & BIN_FIRST & ":J20000").Clear
+    outRow = BIN_FIRST
+    ws.Cells(outRow, 2).Value = dFrom
+    ws.Cells(outRow, 3).Value = "Opening"
+    ws.Cells(outRow, 4).Value = "Balance brought forward"
+    ws.Cells(outRow, 8).Value = opening
+    ws.Range(ws.Cells(outRow, 2), ws.Cells(outRow, 10)).Interior.Color = RGB(221, 235, 247)
+    ws.Range(ws.Cells(outRow, 2), ws.Cells(outRow, 10)).Font.Bold = True
+    bal = opening
+    For i = 1 To n
+        outRow = outRow + 1
+        bal = bal + d(5, i) - d(6, i)
+        tIn = tIn + d(5, i)
+        tOut = tOut + d(6, i)
+        ws.Cells(outRow, 2).Value = d(1, i)
+        ws.Cells(outRow, 3).Value = d(2, i)
+        ws.Cells(outRow, 4).Value = d(3, i)
+        ws.Cells(outRow, 5).Value = d(4, i)
+        If d(5, i) <> 0 Then ws.Cells(outRow, 6).Value = d(5, i)
+        If d(6, i) <> 0 Then ws.Cells(outRow, 7).Value = d(6, i)
+        ws.Cells(outRow, 8).Value = bal
+        ws.Cells(outRow, 9).Value = d(7, i)
+        ws.Cells(outRow, 10).Value = d(8, i)
+        If minQ > 0 And bal < minQ Then ws.Cells(outRow, 8).Font.Color = RGB(196, 43, 28)
+        If Left$(CStr(d(2, i)), 4) = "GRN " Then ws.Range(ws.Cells(outRow, 2), ws.Cells(outRow, 10)).Interior.Color = RGB(255, 244, 206)
+        If d(5, i) > 0 Then ws.Cells(outRow, 6).Font.Color = RGB(16, 124, 16)
+        If d(6, i) > 0 Then ws.Cells(outRow, 7).Font.Color = RGB(164, 38, 44)
+    Next i
+    outRow = outRow + 1
+    ws.Cells(outRow, 2).Value = dTo
+    ws.Cells(outRow, 3).Value = "Closing"
+    ws.Cells(outRow, 4).Value = "Totals for the period"
+    ws.Cells(outRow, 6).Value = tIn
+    ws.Cells(outRow, 7).Value = tOut
+    ws.Cells(outRow, 8).Value = bal
+    With ws.Range(ws.Cells(outRow, 2), ws.Cells(outRow, 10))
+        .Font.Bold = True
+        .Interior.Color = RGB(232, 243, 232)
+        .Borders(8).LineStyle = 1
+        .Borders(9).LineStyle = -4119
+    End With
+    ws.Range("B" & BIN_FIRST & ":B" & outRow).NumberFormat = "yyyy-mm-dd"
+    ws.Range("F" & BIN_FIRST & ":I" & outRow).NumberFormat = "#,##0.00;[Red]-#,##0.00;"
+    With ws.Range("B" & BIN_FIRST & ":J" & outRow).Borders
+        .LineStyle = 1
+        .Color = RGB(200, 206, 216)
+    End With
+    Application.ScreenUpdating = True
+    ws.Activate
+    SayResult "Bin card: " & item & " - " & n & " movement(s), closing " & Format$(bal, "#,##0.00")
+End Sub
+
+Public Sub GoBinCard()
+    Sh("Bin Card").Activate
+    Sh("Bin Card").Range("C3").Select
+End Sub
+
+Public Sub GoStockBalance()
+    Sh("Stock Balance").Activate
+End Sub
+
+' ---- Buttons ---------------------------------------------------------------
+Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant, _
+                       Optional ByVal vertical As Boolean = False)
+    Dim ws As Worksheet, i As Long, x As Double, y As Double, btn As Object
+    Set ws = Sh(sheetName)
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 4) = "inb_" Then ws.Buttons(i).Delete
+    Next i
+    x = ws.Range(anchor).Left
+    y = ws.Range(anchor).Top + 4
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, y, 120, 28)
+        btn.Name = "inb_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        If vertical Then y = y + 34 Else x = x + 126
+    Next i
+End Sub
+
+Public Sub AddButtons()
+    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "Submit Pending", "SubmitPending", "Sync from System", _
+                                   "SyncFromSystem", "Stock Balance", "GoStockBalance", "Bin Card", "GoBinCard", _
+                                   "Set API Key", "SetApiKey"), True
+    PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending")
+    PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
+    PutButtons "Stock Balance", "Q1", Array("Sync from System", "SyncFromSystem", "Bin Card", "GoBinCard")
+    PutButtons "Bin Card", "L1", Array("Show Bin Card", "ShowBinCard")
+End Sub
+'''
+
+
 if __name__ == '__main__':
     app.run(port=5000)
 application = app
