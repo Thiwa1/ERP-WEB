@@ -27132,6 +27132,55 @@ def _xl_json(payload, status=200):
     return Response(json.dumps(payload, default=str), status=status, mimetype='application/json')
 
 
+def _xl_ensure_key_index():
+    """Master-DB table that maps each Excel key to its company database."""
+    master_db.execute_query("""
+        CREATE TABLE IF NOT EXISTS excel_key_index (
+            api_key VARCHAR(64) NOT NULL PRIMARY KEY,
+            db_name VARCHAR(255) NOT NULL
+        )
+    """)
+
+
+def _xl_register_key(api_key, db_name):
+    try:
+        _xl_ensure_key_index()
+        master_db.execute_query(
+            "REPLACE INTO excel_key_index (api_key, db_name) VALUES (%s, %s)",
+            (api_key, db_name), commit=True)
+    except Exception as e:
+        logging.error(f"Excel key index: could not register key: {e}")
+
+
+def _xl_find_key_db(key):
+    """Return the company database that holds this key, or None.
+    Uses the master index; for keys made before the index existed it looks
+    through each company database once and records what it finds."""
+    try:
+        _xl_ensure_key_index()
+        hit = master_db.execute_query(
+            "SELECT db_name FROM excel_key_index WHERE api_key = %s", (key,)) or []
+        if hit and is_safe_db_name(hit[0]['db_name']):
+            return hit[0]['db_name']
+        candidates = [r['db_name'] for r in
+                      (master_db.execute_query("SELECT db_name FROM tenants") or [])]
+        candidates.append(db_config['database'])
+        for name in dict.fromkeys(candidates):
+            if not name or not is_safe_db_name(name):
+                continue
+            try:
+                found = master_db.execute_query(
+                    f"SELECT id FROM `{name}`.excel_api_keys WHERE api_key = %s", (key,)) or []
+            except Exception:
+                continue  # company not set up for Excel keys yet
+            if found:
+                _xl_register_key(key, name)
+                return name
+    except Exception as e:
+        logging.error(f"Excel key lookup failed: {e}")
+    return None
+
+
 def _xl_auth(*required_perms):
     """Authenticate the Excel workbook and adopt its user for this request.
     Returns (user_pk, None) or (None, error response)."""
@@ -27139,6 +27188,12 @@ def _xl_auth(*required_perms):
            or (request.get_json(silent=True) or {}).get('key') or '').strip()
     if not key:
         return None, _xl_json({'ok': False, 'error': 'No API key. Put your key in the workbook Setup sheet.'}, 401)
+    # The workbook has no login session, so first work out which company
+    # database this key belongs to - otherwise the lookup runs against the
+    # default database and every company key looks invalid.
+    tenant_db = _xl_find_key_db(key)
+    if tenant_db:
+        session['db_name'] = tenant_db
     rows = db.execute_query("""
         SELECT k.id, k.user_pk, k.is_active, l.User_Code, l.User_Name
         FROM excel_api_keys k LEFT JOIN Login_Table l ON l.id = k.user_pk
@@ -27724,6 +27779,7 @@ def excel_keys():
                     db.execute_query("""
                         INSERT INTO excel_api_keys (api_key, user_pk, label, created_by) VALUES (%s, %s, %s, %s)
                     """, (new_key, user_pk, label, get_current_user_pk()), commit=True)
+                    _xl_register_key(new_key, get_session_db_name())
                     flash(f'Key created: {new_key} - copy it into the workbook Setup sheet now.', 'success')
             elif action == 'toggle':
                 db.execute_query("UPDATE excel_api_keys SET is_active = 1 - is_active WHERE id = %s",
@@ -27933,8 +27989,11 @@ def excel_workbook():
 @has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Settings')
 def excel_workbook_macro():
     """The macro module, ready to import into the workbook (Alt+F11 > Import File)."""
-    resp = make_response(_XL_VBA_CODE)
-    resp.headers['Content-Type'] = 'text/plain; charset=utf-8'
+    # The VBA editor on Windows only imports a .bas file correctly with
+    # Windows (CRLF) line endings.
+    code = _XL_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP.bas'
     return resp
 
