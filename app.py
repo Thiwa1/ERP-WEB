@@ -22182,6 +22182,48 @@ def _mgmt_lines(active_only=True):
     return lines
 
 
+def _ensure_table(name, ddl):
+    """Create a table only when it doesn't exist. (On this server 'CREATE TABLE IF NOT EXISTS' on an existing
+    table comes back as a warning that is raised as an error, so check first and never let it block a save.)"""
+    try:
+        if db.execute_query("SHOW TABLES LIKE %s", (name,)):
+            return
+        db.execute_query(ddl, commit=True)
+    except Exception as e:
+        logging.error(f"ensure table {name}: {e}")
+
+
+def _mgmt_src_text(line_id):
+    """A line's sources as one readable string, for the mapping change log."""
+    parts = []
+    for s in db.execute_query("""
+        SELECT source_type, gl_account, sub_account_code, purchase_category, sign
+        FROM mgmt_acc_sources WHERE line_id = %s ORDER BY id""", (line_id,)) or []:
+        sign = '-' if int(s['sign'] or 1) < 0 else '+'
+        if s['source_type'] == 'PURCH':
+            parts.append(f"{sign} Purchases: {s['purchase_category']}")
+        else:
+            parts.append(f"{sign} {' '.join(str(s['gl_account'] or '').split())}"
+                         + (f" / sub {s['sub_account_code']}" if s['sub_account_code'] else ' / all subs'))
+    return ', '.join(parts)
+
+
+def _mgmt_log(line_id, label, action, before, after):
+    _ensure_table('mgmt_acc_mapping_log', """
+        CREATE TABLE mgmt_acc_mapping_log (
+          id INT NOT NULL AUTO_INCREMENT, changed_at DATETIME NOT NULL, changed_by VARCHAR(100) NULL,
+          line_id INT NULL, line_label VARCHAR(150) NULL, action VARCHAR(20) NOT NULL,
+          before_text TEXT NULL, after_text TEXT NULL, PRIMARY KEY (id), INDEX idx_mal_time (changed_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+    try:
+        db.execute_query("""
+            INSERT INTO mgmt_acc_mapping_log (changed_at, changed_by, line_id, line_label, action, before_text, after_text)
+            VALUES (NOW(), %s, %s, %s, %s, %s, %s)""",
+            (session.get('username') or '', line_id, (label or '')[:150], action, before, after), commit=True)
+    except Exception as e:
+        logging.error(f"Mapping log error: {e}")
+
+
 def _mgmt_compute(period_raw):
     period, start, end, prev_period = _mgmt_period(period_raw)
     lines = _mgmt_lines()
@@ -22221,6 +22263,16 @@ def _mgmt_compute(period_raw):
         amount = 0.0
         if ln['is_manual']:
             amount = manual.get(ln['id'], 0.0)
+            # The typed-in amount covers the GL accounts linked to this line, so they count as
+            # mapped (not listed under "Not mapped") even though they aren't added up here.
+            for s in ln['sources']:
+                key = ' '.join(str(s['gl_account'] or '').split()).lower()
+                if s['source_type'] == 'PURCH' or not key:
+                    continue
+                if s['sub_account_code']:
+                    mapped_pairs.add((key, int(s['sub_account_code'])))
+                else:
+                    mapped_whole.add(key)
         else:
             for s in ln['sources']:
                 sign = -1 if int(s['sign'] or 1) < 0 else 1
@@ -22234,11 +22286,11 @@ def _mgmt_compute(period_raw):
                     pair = (key, int(s['sub_account_code']))
                     dr, cr = gl_pair.get(pair, (0.0, 0.0, None))[:2]
                     mapped_pairs.add(pair)
-                    used.setdefault(pair, []).append(ln['label'])
+                    used.setdefault(pair, []).append((ln['label'], sign))
                 else:
                     dr, cr = gl_acct.get(key, [0.0, 0.0, None])[:2]
                     mapped_whole.add(key)
-                    used.setdefault((key, None), []).append(ln['label'])
+                    used.setdefault((key, None), []).append((ln['label'], sign))
                 amount += sign * ((cr - dr) if kind == 'income' else (dr - cr))
         ln['amount'] = round(amount, 2)
         if ln['section'] in sections:
@@ -22254,22 +22306,50 @@ def _mgmt_compute(period_raw):
     sub_names = {}
     for r in db.execute_query("SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or []:
         sub_names[(' '.join(str(r['sub_new_account'] or '').split()).lower(), int(r['sub_account_code'] or 0))] = r['sub_sub_accaount_name']
-    unmapped = []
+    ignored_keys = set()
+    try:
+        for r in db.execute_query("SELECT gl_account, sub_account_code FROM mgmt_acc_ignored") or []:
+            ignored_keys.add((' '.join(str(r['gl_account'] or '').split()).lower(), int(r['sub_account_code'] or 0)))
+    except Exception:
+        pass   # table not created yet
+    unmapped, ignored = [], []
     for (key, sub), (dr, cr, name) in gl_pair.items():
         kind = inc_exp.get(key)
         if not kind or key in mapped_whole or (key, sub) in mapped_pairs:
             continue
         amt = round((cr - dr) if kind == 'income' else (dr - cr), 2)
+        if (key, sub) in ignored_keys:
+            ignored.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
+                            'kind': kind, 'amount': amt})
+            continue
         if abs(amt) < 0.005:
             continue
         unmapped.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
                          'kind': kind, 'amount': amt})
     unmapped.sort(key=lambda u: (u['kind'], -abs(u['amount'])))
+    # Ignored accounts with no activity this month are still listed so they can be restored
+    seen = {(' '.join(str(i['account'] or '').split()).lower(), i['sub_code']) for i in ignored}
+    for key, sub in ignored_keys - seen:
+        name = gl_acct[key][2] if key in gl_acct else key
+        ignored.append({'account': name, 'sub_code': sub, 'sub_name': sub_names.get((key, sub), ''),
+                        'kind': inc_exp.get(key, ''), 'amount': 0.0})
+    ignored.sort(key=lambda u: (str(u['account']).lower(), u['sub_code']))
+    # Counted more than once: for each sub-account, add up how many times it is counted -
+    # "+ all sub-accounts" counts every sub once, "+ sub" / "- sub" add / take away one.
+    # More than once (or taken away without being added) means the amounts are wrong.
     duplicates = []
-    for (key, sub), labels in used.items():
-        if len(labels) > 1 or (sub is not None and key in mapped_whole):
-            name = gl_acct.get(key, [0, 0, key])[2] if key in gl_acct else key
-            duplicates.append(f"{name}{' / sub ' + str(sub) if sub else ''}: " + ', '.join(sorted(set(labels))))
+    for key in {k for k, _ in used}:
+        whole = used.get((key, None), [])
+        wsum = sum(sg for _, sg in whole)
+        name = gl_acct[key][2] if key in gl_acct else key
+        for (k2, sub), entries in used.items():
+            if k2 != key or sub is None:
+                continue
+            c = wsum + sum(sg for _, sg in entries)
+            if c > 1 or c < 0:
+                duplicates.append(f"{name} / sub {sub}: counted {c} times - " + ', '.join(sorted({l for l, _ in whole + entries})))
+        if wsum > 1 or wsum < 0:
+            duplicates.append(f"{name} (all sub-accounts): counted {wsum} times - " + ', '.join(sorted({l for l, _ in whole})))
 
     # Stock - opening defaults to last month's closing
     mrow = db.execute_query("SELECT * FROM mgmt_acc_months WHERE period = %s", (period,)) or []
@@ -22315,7 +22395,7 @@ def _mgmt_compute(period_raw):
 
     return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
             'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
-            'unmapped': unmapped, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
+            'unmapped': unmapped, 'ignored': ignored, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
             'sales_pct': sales_pct}
 
 
@@ -22327,6 +22407,9 @@ def management_account():
     prev = _mgmt_compute(cur['prev_period'])
     prev_amounts = {l['id']: l['amount'] for sec in prev['sections'].values() for l in sec}
     return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
+                           pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
+                           pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
+                           daily=_mgmt_daily(cur),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -22367,6 +22450,246 @@ def management_account_save():
     return redirect(url_for('management_account', month=period, tab=f.get('tab') or 'note3'))
 
 
+def _mgmt_var(cur_v, prev_v, better):
+    """Variance of one figure: change, % change and whether it is favourable.
+    better = 1 when a higher figure is good (income / profit), -1 when lower is good (costs)."""
+    c, p = float(cur_v or 0), float(prev_v or 0)
+    diff = round(c - p, 2)
+    pct = (diff / abs(p) * 100) if abs(p) >= 0.005 else None
+    fav = None
+    if better and abs(diff) >= 0.005:
+        fav = (diff > 0) == (better > 0)
+    return {'diff': diff, 'pct': pct, 'fav': fav}
+
+
+def _mgmt_pl_rows(t, pt):
+    """The P&L as rows (same order and wording as the Excel export), each with
+    this month, last month and the variance. kind: sec / sec_red / item / total / gp / np / pct."""
+    rows = []
+
+    def add(kind, label, key=None, better=0, note=''):
+        r = {'kind': kind, 'label': label, 'note': note}
+        if key:
+            r['cur'], r['prev'] = t.get(key), pt.get(key)
+            r.update(_mgmt_var(r['cur'], r['prev'], better))
+            if kind == 'pct':
+                r['pct'] = None   # a margin's change is already in percentage points
+        rows.append(r)
+
+    add('sec', 'Sales')
+    add('item', 'Room & Restaurant Revenue', 'sales_rr', 1, '1')
+    add('item', 'Bar Sales', 'sales_bar', 1, '2')
+    add('total', 'Total Sales', 'sales', 1)
+    add('sec_red', 'Less: Cost of Sales (Note 3)')
+    add('item', 'Bar', 'cogs_bar', -1, '3')
+    add('item', 'Food', 'cogs_food', -1, '3')
+    add('total', 'Total Cost of Sales', 'cogs', -1)
+    add('gp', 'Gross Profit', 'gross_profit', 1)
+    add('item', 'Add: Service Charges', 'service', 1)
+    add('total', '', 'after_service', 1)
+    add('sec_red', 'Less: Expenses')
+    for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8'):
+        add('item', MGMT_SECTION_LABEL[n].split(' - ', 1)[-1], n, -1, n[-1])
+    add('total', 'Total Expenses', 'expenses', -1)
+    add('np', 'Net Profit', 'net_profit', 1)
+    add('pct', 'Gross Profit Margin %', 'gp_margin', 1)
+    add('pct', 'Net Profit Margin %', 'np_margin', 1)
+    return rows
+
+
+def _mgmt_note_rows(cur, prev):
+    """Per note section: its lines with this month, last month and variance."""
+    out = []
+    for sec, label, kind in MGMT_SECTIONS:
+        if sec.startswith('PURCH'):
+            continue
+        better = 1 if kind == 'income' else -1
+        pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
+        lines = []
+        for l in cur['sections'].get(sec, []):
+            r = {'label': l['label'], 'cur': l['amount'], 'prev': pmap.get(l['id'], 0.0)}
+            r.update(_mgmt_var(r['cur'], r['prev'], better))
+            lines.append(r)
+        tc = round(sum(l['amount'] for l in cur['sections'].get(sec, [])), 2)
+        tp = round(sum(l['amount'] for l in prev['sections'].get(sec, [])), 2)
+        tot = {'cur': tc, 'prev': tp}
+        tot.update(_mgmt_var(tc, tp, better))
+        out.append({'sec': sec, 'label': label, 'kind': kind, 'lines': lines, 'total': tot})
+    return out
+
+
+# ---- Sales pie chart (drawn like the accountant's Excel "Pi-Chart": Office 2007 theme
+#      colours, pale gradient slices, value labels with leader lines, legend underneath) ----
+_MGMT_PIE_BASE = ['4F81BD', 'C0504D', '9BBB59', '8064A2', '4BACC6', 'F79646']
+
+
+def _mgmt_pie_colour(i):
+    """Excel's pie point colours: the 6 accents, then darker / lighter variants of them."""
+    rgb = [int(_MGMT_PIE_BASE[i % 6][k:k + 2], 16) for k in (0, 2, 4)]
+    mod, off = [(1, 0), (.6, 0), (.8, .2), (.8, 0), (.6, .4), (.5, 0)][min(i // 6, 5)]
+    return tuple(min(255, round(c * mod + 255 * off)) for c in rgb)
+
+
+def _mgmt_pie_svg(items, title, width=660, radius=150):
+    """items: [(label, amount)]. Returns an inline SVG string."""
+    import math
+    from markupsafe import escape
+    hexc = lambda c: '#%02x%02x%02x' % c
+    tint = lambda c, t: tuple(round(v * t + 255 * (1 - t)) for v in c)
+    shade = lambda c, t: tuple(round(v * t) for v in c)
+    cols = 4
+    legend_rows = (len(items) + cols - 1) // cols
+    cx, cy = width / 2, 64 + radius
+    height = cy + radius + 46 + legend_rows * 15 + 10
+    total = sum(a for _, a in items if a > 0)
+    out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width:.0f} {height:.0f}" width="100%" '
+           f'style="max-width:{width}px;font-family:Calibri,Carlito,\'Segoe UI\',Arial,sans-serif" role="img" aria-label="{escape(title)}">',
+           '<defs>']
+    for i, _ in enumerate(items):
+        c = _mgmt_pie_colour(i)
+        out.append(f'<linearGradient id="pg{i}" x1="0" y1="0" x2="0" y2="1">'
+                   f'<stop offset="0" stop-color="{hexc(tint(c, .55))}"/><stop offset=".35" stop-color="{hexc(tint(c, .42))}"/>'
+                   f'<stop offset="1" stop-color="{hexc(tint(c, .22))}"/></linearGradient>')
+    out.append('</defs>')
+    out.append(f'<rect x=".5" y=".5" width="{width - 1:.0f}" height="{height - 1:.0f}" fill="#fff" stroke="#d9d9d9"/>')
+    out.append(f'<text x="14" y="28" font-size="14" fill="#7f7f7f">{escape(title)}</text>')
+    labels = []
+    if total > 0:
+        ang = 0.0
+        for i, (lbl, amt) in enumerate(items):
+            if amt <= 0:
+                continue
+            frac = amt / total
+            a0, a1 = ang, ang + frac * 2 * math.pi
+            ang = a1
+            c = _mgmt_pie_colour(i)
+            pt = lambda a, r=radius: (cx + r * math.sin(a), cy - r * math.cos(a))
+            if frac >= 0.9999:
+                out.append(f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{radius}" fill="url(#pg{i})" stroke="{hexc(shade(c, .95))}" stroke-width=".75"/>')
+            else:
+                (x0, y0), (x1, y1) = pt(a0), pt(a1)
+                out.append(f'<path d="M{cx:.1f},{cy:.1f} L{x0:.2f},{y0:.2f} A{radius},{radius} 0 {1 if a1 - a0 > math.pi else 0} 1 {x1:.2f},{y1:.2f} Z" '
+                           f'fill="url(#pg{i})" stroke="{hexc(shade(c, .95))}" stroke-width=".75"/>')
+            mid = (a0 + a1) / 2
+            labels.append({'mid': mid, 'frac': frac, 'text': '{:,.2f}'.format(amt), 'pt': pt})
+        # Big slices: value inside. Small ones: outside with a leader line, spread so they don't overlap.
+        sides = {1: [], -1: []}
+        for L in labels:
+            if L['frac'] >= 0.06:
+                x, y = L['pt'](L['mid'], radius * .62)
+                out.append(f'<text x="{x:.1f}" y="{y + 3:.1f}" font-size="9" fill="#595959" text-anchor="middle">{L["text"]}</text>')
+            else:
+                side = 1 if math.sin(L['mid']) >= 0 else -1
+                L['y'] = cy - (radius + 16) * math.cos(L['mid'])
+                sides[side].append(L)
+        for side, lst in sides.items():
+            lst.sort(key=lambda L: L['y'])
+            for k in range(1, len(lst)):
+                lst[k]['y'] = max(lst[k]['y'], lst[k - 1]['y'] + 11)
+            over = (lst[-1]['y'] - (cy + radius + 26)) if lst else 0
+            if over > 0:
+                for L in lst:
+                    L['y'] -= over
+                for k in range(len(lst) - 2, -1, -1):
+                    lst[k]['y'] = min(lst[k]['y'], lst[k + 1]['y'] - 11)
+            for L in lst:
+                ax, ay = L['pt'](L['mid'])
+                ex, ey = L['pt'](L['mid'], radius + 10)
+                tx = cx + side * (radius + 34)
+                out.append(f'<polyline points="{ax:.1f},{ay:.1f} {ex:.1f},{ey:.1f} {tx - side * 3:.1f},{L["y"]:.1f}" fill="none" stroke="#a6a6a6" stroke-width=".75"/>')
+                out.append(f'<text x="{tx:.1f}" y="{L["y"] + 3:.1f}" font-size="9" fill="#595959" text-anchor="{"start" if side > 0 else "end"}">{L["text"]}</text>')
+    else:
+        out.append(f'<text x="{cx:.0f}" y="{cy:.0f}" font-size="12" fill="#7f7f7f" text-anchor="middle">No sales this month</text>')
+    ly = cy + radius + 46
+    colw = (width - 40) / cols
+    for i, (lbl, _amt) in enumerate(items):
+        x = 20 + (i % cols) * colw
+        y = ly + (i // cols) * 15
+        c = _mgmt_pie_colour(i)
+        out.append(f'<rect x="{x:.1f}" y="{y - 7:.1f}" width="7" height="7" fill="url(#pg{i})" stroke="{hexc(c)}" stroke-width=".75"/>'
+                   f'<text x="{x + 11:.1f}" y="{y:.1f}" font-size="9" fill="#595959">{escape(lbl)}</text>')
+    out.append('</svg>')
+    return '\n'.join(out)
+
+
+def _mgmt_pie_items(cur):
+    """Note 1 then Note 2 lines, in report order - the same list as the Pi-Chart sheet."""
+    return [(l['label'], float(l['amount'] or 0)) for sec in ('NOTE1', 'NOTE2') for l in cur['sections'].get(sec, [])]
+
+
+def _mgmt_daily(cur):
+    """Day Summary (the workbook's "Day Sumory" sheet): one row per day of the month,
+    one column per Note 1 / Service / Note 2 line, from that day's GL movements on the
+    line's mapped accounts. Manual lines have no daily split - only their month total."""
+    from datetime import timedelta
+    start, end = cur['start'], cur['end']
+    pair, acct = {}, {}
+    for r in db.execute_query("""
+        SELECT entry_effective_date AS d, account_name, COALESCE(entry_sub_account_code, 0) AS sub,
+               COALESCE(SUM(enty_values_DR), 0) AS dr, COALESCE(SUM(enty_values_CR), 0) AS cr
+        FROM entry_details
+        WHERE entry_effective_date BETWEEN %s AND %s AND entry_deleted = 0
+        GROUP BY entry_effective_date, account_name, COALESCE(entry_sub_account_code, 0)
+    """, (start, end)) or []:
+        d = r['d'].date() if hasattr(r['d'], 'date') else r['d']
+        key = ' '.join(str(r['account_name'] or '').split()).lower()
+        dr, cr = float(r['dr'] or 0), float(r['cr'] or 0)
+        pair[(d, key, int(r['sub'] or 0))] = (dr, cr)
+        a = acct.setdefault((d, key), [0.0, 0.0])
+        a[0] += dr
+        a[1] += cr
+
+    def day_amount(ln, d):
+        amt = 0.0
+        for s in ln['sources']:
+            if s['source_type'] == 'PURCH':
+                continue
+            key = ' '.join(str(s['gl_account'] or '').split()).lower()
+            if not key:
+                continue
+            sign = -1 if int(s['sign'] or 1) < 0 else 1
+            dr, cr = (pair.get((d, key, int(s['sub_account_code'])), (0.0, 0.0)) if s['sub_account_code']
+                      else acct.get((d, key), (0.0, 0.0)))
+            amt += sign * (cr - dr)
+        return round(amt, 2)
+
+    groups = [(sec, cur['sections'].get(sec, [])) for sec in ('NOTE1', 'SERVICE', 'NOTE2')]
+    days = []
+    d = start
+    while d <= end:
+        vals = {}
+        for _sec, lines in groups:
+            for ln in lines:
+                vals[ln['id']] = None if ln['is_manual'] else day_amount(ln, d)
+        rr = round(sum(vals[l['id']] or 0 for sec, ls in groups if sec != 'NOTE2' for l in ls), 2)
+        bar = round(sum(vals[l['id']] or 0 for sec, ls in groups if sec == 'NOTE2' for l in ls), 2)
+        days.append({'date': d, 'vals': vals, 'rr_total': rr, 'bar_total': bar, 'grand': round(rr + bar, 2)})
+        d += timedelta(days=1)
+    totals = {l['id']: float(l['amount'] or 0) for _sec, ls in groups for l in ls}
+    rr_t = round(sum(totals[l['id']] for sec, ls in groups if sec != 'NOTE2' for l in ls), 2)
+    bar_t = round(sum(totals[l['id']] for sec, ls in groups if sec == 'NOTE2' for l in ls), 2)
+    return {'groups': groups, 'days': days, 'totals': totals, 'rr_total': rr_t, 'bar_total': bar_t,
+            'grand': round(rr_t + bar_t, 2), 'has_manual': any(l['is_manual'] for _s, ls in groups for l in ls)}
+
+
+@app.route('/management_account/print')
+@login_required
+@has_permission('Access_Reports')
+def management_account_print():
+    """Printable Management Account laid out like the Excel export.
+    part = pl / variance / sales / notes / note3 / pct / pie / day / all."""
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    part = request.args.get('part') or 'pl'
+    parts = ['pl', 'variance', 'sales', 'notes', 'note3', 'pct', 'pie', 'day'] if part == 'all' else [part]
+    return render_template('management_account_print.html', cur=cur, prev=prev, parts=parts,
+                           pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
+                           pie_items=_mgmt_pie_items(cur),
+                           pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis") if 'pie' in parts else '',
+                           daily=_mgmt_daily(cur) if 'day' in parts else None,
+                           company_name=_company_display_name(), printed_on=datetime.now())
+
+
 @app.route('/management_account/export')
 @login_required
 @has_permission('Access_Reports')
@@ -22404,6 +22727,30 @@ def management_account_export():
     row = xl.item_row(ws, row, 'Gross Profit Margin %', [t['gp_margin'] or 0, pt['gp_margin'] or 0])
     row = xl.item_row(ws, row, 'Net Profit Margin %', [t['np_margin'] or 0, pt['np_margin'] or 0])
     xl.finish(ws, 3)
+
+    ws = wb.create_sheet('Variance Analysis')
+    vhead = ['Description', cur['month_label'], prev['month_label'], 'Variance (Rs)', 'Variance %']
+    row = xl.title_block(ws, 5, company, 'VARIANCE ANALYSIS', f"{cur['month_label']} compared with {prev['month_label']}")
+    row = xl.header_row(ws, row, vhead)
+    for r in _mgmt_pl_rows(t, pt):
+        if r['kind'] in ('sec', 'sec_red'):
+            row = xl.section_row(ws, row, 5, r['label'], **({'color': xl.RED_DARK, 'bg': 'FDECEA'} if r['kind'] == 'sec_red' else {}))
+            continue
+        vals = [r['cur'] or 0, r['prev'] or 0, r['diff'], r['pct'] or 0]
+        label = r['label'] + (f" (Note {r['note']})" if r['note'] else '')
+        if r['kind'] == 'item' or r['kind'] == 'pct':
+            row = xl.item_row(ws, row, label, vals, color=('107C10' if r['fav'] else 'C42B1C' if r['fav'] is False else '333333'))
+        else:
+            row = xl.total_row(ws, row, label, vals, bg={'gp': 'EAF6EA', 'np': 'E8F3FF'}.get(r['kind'], 'F3F3F3'))
+    row += 1
+    for n in _mgmt_note_rows(cur, prev):
+        row = xl.section_row(ws, row, 5, n['label'], **({} if n['kind'] == 'income' else {'color': xl.RED_DARK, 'bg': 'FDECEA'}))
+        for l in n['lines']:
+            row = xl.item_row(ws, row, l['label'], [l['cur'], l['prev'], l['diff'], l['pct'] or 0],
+                              color=('107C10' if l['fav'] else 'C42B1C' if l['fav'] is False else '333333'))
+        tt = n['total']
+        row = xl.total_row(ws, row, 'TOTAL', [tt['cur'], tt['prev'], tt['diff'], tt['pct'] or 0])
+    xl.finish(ws, 5)
 
     for sec, label, _kind in MGMT_SECTIONS:
         if sec.startswith('PURCH'):
@@ -22451,10 +22798,36 @@ def management_account_mapping():
             flash('Could not read the mapping - please try again.', 'danger')
             return redirect(url_for('management_account_mapping'))
         valid_sections = {k for k, _, _ in MGMT_SECTIONS}
+        n_changed = 0
         try:
+            if payload.get('ignore'):
+                _ensure_table('mgmt_acc_ignored', """
+                    CREATE TABLE mgmt_acc_ignored (
+                      id INT NOT NULL AUTO_INCREMENT, gl_account VARCHAR(150) NOT NULL,
+                      sub_account_code INT NOT NULL DEFAULT 0, PRIMARY KEY (id),
+                      UNIQUE KEY acct_sub_UNIQUE (gl_account, sub_account_code)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                """)
+            for ig in payload.get('ignore') or []:
+                acct = ' '.join(str(ig.get('account') or '').split())[:150]
+                sub = str(ig.get('sub') or '').strip()
+                if acct:
+                    code = int(sub) if sub.isdigit() else 0
+                    if not db.execute_query("SELECT id FROM mgmt_acc_ignored WHERE gl_account = %s AND sub_account_code = %s", (acct, code)):
+                        db.execute_query("INSERT INTO mgmt_acc_ignored (gl_account, sub_account_code) VALUES (%s, %s)",
+                                         (acct, code), commit=True)
+            for ig in payload.get('unignore') or []:
+                acct = ' '.join(str(ig.get('account') or '').split())[:150]
+                sub = str(ig.get('sub') or '').strip()
+                if acct:
+                    db.execute_query("DELETE FROM mgmt_acc_ignored WHERE gl_account = %s AND sub_account_code = %s",
+                                     (acct, int(sub) if sub.isdigit() else 0), commit=True)
             for lid in payload.get('deleted') or []:
                 if str(lid).isdigit():
+                    old = db.execute_query("SELECT label FROM mgmt_acc_lines WHERE id = %s", (int(lid),)) or []
+                    before = _mgmt_src_text(int(lid))
                     db.execute_query("DELETE FROM mgmt_acc_lines WHERE id = %s", (int(lid),), commit=True)
+                    _mgmt_log(int(lid), old[0]['label'] if old else '', 'deleted', before, '')
             for ln in payload.get('lines') or []:
                 section = ln.get('section')
                 label = ' '.join(str(ln.get('label') or '').split())[:150]
@@ -22463,8 +22836,14 @@ def management_account_mapping():
                 cost_base = ln.get('cost_base') if ln.get('cost_base') in ('BAR', 'FOOD') else None
                 order = int(parse_float(ln.get('order')) or 0)
                 is_manual = 1 if ln.get('is_manual') else 0
+                before, is_new = '', True
                 if str(ln.get('id') or '').isdigit():
                     line_id = int(ln['id'])
+                    is_new = False
+                    old = (db.execute_query("SELECT label, section, is_manual FROM mgmt_acc_lines WHERE id = %s", (line_id,)) or [{}])[0]
+                    before = _mgmt_src_text(line_id)
+                    if old and (old.get('label') != label or old.get('section') != section or int(old.get('is_manual') or 0) != is_manual):
+                        before = f"[{old.get('section')} | {old.get('label')}{' | manual' if old.get('is_manual') else ''}] " + before
                     db.execute_query("""
                         UPDATE mgmt_acc_lines SET section=%s, label=%s, display_order=%s, cost_base=%s, is_manual=%s, is_active=1
                         WHERE id=%s
@@ -22475,8 +22854,14 @@ def management_account_mapping():
                         VALUES (%s, %s, %s, %s, %s)
                     """, (section, label, order, cost_base, is_manual), commit=True)
                 db.execute_query("DELETE FROM mgmt_acc_sources WHERE line_id = %s", (line_id,), commit=True)
+                seen_src = set()
                 for s in ln.get('sources') or []:
                     sign = -1 if str(s.get('sign')) == '-1' else 1
+                    sig = (s.get('type'), ' '.join(str(s.get('account') or '').split()).lower(), str(s.get('sub') or ''),
+                           str(s.get('category') or '').strip().lower(), sign)
+                    if sig in seen_src:
+                        continue   # the same source twice on one line would count it twice
+                    seen_src.add(sig)
                     if s.get('type') == 'PURCH':
                         cat = str(s.get('category') or '').strip()[:100]
                         if cat:
@@ -22492,7 +22877,17 @@ def management_account_mapping():
                                 INSERT INTO mgmt_acc_sources (line_id, source_type, gl_account, sub_account_code, sign)
                                 VALUES (%s, 'GL', %s, %s, %s)
                             """, (line_id, acct, int(sub) if sub.isdigit() and int(sub) else None, sign), commit=True)
-            flash('Management Account mapping saved.', 'success')
+                after = _mgmt_src_text(line_id)
+                if is_new or after != before:
+                    _mgmt_log(line_id, label, 'added' if is_new else 'changed', before, after)
+                    n_changed += 1
+            for ig in payload.get('ignore') or []:
+                _mgmt_log(None, f"{ig.get('account')}{' / sub ' + str(ig.get('sub')) if ig.get('sub') else ''}", 'ignored', '', '')
+            for ig in payload.get('unignore') or []:
+                _mgmt_log(None, f"{ig.get('account')}{' / sub ' + str(ig.get('sub')) if ig.get('sub') else ''}", 'restored', '', '')
+            n_changed += len(payload.get('deleted') or [])
+            flash(f'Management Account mapping saved - {n_changed} line(s) changed.' if n_changed
+                  else 'Management Account mapping saved - no line changed.', 'success')
         except Exception as e:
             flash(f'Error saving mapping: {str(e)}', 'danger')
         return redirect(url_for('management_account_mapping', month=request.form.get('month') or ''))
@@ -22513,19 +22908,48 @@ def management_account_mapping():
     categories = db.execute_query("""
         SELECT DISTINCT Main_Catogry AS c FROM inventoy_items WHERE Main_Catogry IS NOT NULL AND Main_Catogry <> '' ORDER BY Main_Catogry
     """) or []
-    sub_accounts = {}
+    # Sub-accounts per GL account, keyed by the account name in lower case with single spaces
+    # (the page looks them up the same way, so 'Bar Income' / 'BAR  INCOME' still match).
+    # Sub-accounts are often saved with active left empty, so only an explicit 0 hides one;
+    # any sub-account code that actually has GL entries is listed too.
+    _k = lambda v: ' '.join(str(v or '').split()).lower()
+    sub_accounts, seen = {}, set()
     for r in db.execute_query("""
-        SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account WHERE active = 1
-        ORDER BY sub_sub_accaount_name
+        SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
+        WHERE COALESCE(active, 1) <> 0 ORDER BY sub_sub_accaount_name
     """) or []:
-        sub_accounts.setdefault(r['sub_new_account'], []).append({'code': r['sub_account_code'], 'name': r['sub_sub_accaount_name']})
+        key = _k(r['sub_new_account'])
+        if not key or not r['sub_account_code'] or (key, int(r['sub_account_code'])) in seen:
+            continue
+        seen.add((key, int(r['sub_account_code'])))
+        sub_accounts.setdefault(key, []).append({'code': r['sub_account_code'], 'name': r['sub_sub_accaount_name']})
+    try:
+        names = {int(r['sub_account_code']): r['sub_sub_accaount_name'] for r in (db.execute_query(
+            "SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account") or []) if r['sub_account_code']}
+        for r in db.execute_query("""
+            SELECT DISTINCT account_name, entry_sub_account_code AS sub FROM entry_details
+            WHERE entry_deleted = 0 AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code <> 0
+              AND entry_effective_date >= DATE_SUB(CURDATE(), INTERVAL 24 MONTH)
+        """) or []:
+            key, code = _k(r['account_name']), int(r['sub'])
+            if key and (key, code) not in seen:
+                seen.add((key, code))
+                sub_accounts.setdefault(key, []).append({'code': code, 'name': names.get(code) or f'code {code}'})
+    except Exception:
+        pass
     for ln in lines:
         ln['amount'] = amounts.get(ln['id'], 0)
         for s in ln['sources']:
             s.pop('id', None)
+    try:
+        history = db.execute_query("""
+            SELECT changed_at, changed_by, line_label, action, before_text, after_text
+            FROM mgmt_acc_mapping_log ORDER BY id DESC LIMIT 100""") or []
+    except Exception:
+        history = []
     return render_template('management_account_mapping.html', lines=lines, sections=MGMT_SECTIONS,
                            accounts=accounts, categories=[c['c'] for c in categories],
-                           sub_accounts=sub_accounts, cur=cur, month=cur['period'])
+                           sub_accounts=sub_accounts, cur=cur, month=cur['period'], history=history)
 
 
 # ================================================================

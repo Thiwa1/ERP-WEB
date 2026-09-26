@@ -12,10 +12,20 @@
   table.mm { width:100%; border-collapse:collapse; font-size:0.8rem; }
   table.mm td, table.mm th { border-bottom:1px solid #eee; padding:4px 6px; vertical-align:top; }
   table.mm th { background:#fafafa; font-size:0.72rem; text-transform:uppercase; color:#666; }
-  .mm-src { display:flex; gap:4px; align-items:center; margin-bottom:3px; flex-wrap:wrap; }
+  .mm-src { display:flex; gap:4px; align-items:center; margin-bottom:2px; flex-wrap:nowrap; }
+  .mm-src .form-control, .mm-src .form-select { flex:0 0 auto; }
+  .mm-srcs { overflow-x:auto; }
+  table.mm .mm-line .form-select { padding-right:22px !important; background-position:right 5px center; background-size:12px 10px; }
+  table.mm .mm-line .mm-add-src { font-size:0.75rem; padding:0 !important; border:0 !important; box-shadow:none !important; background:none !important; }
+  table.mm .mm-line td { padding:3px 6px; }
+  table.mm .mm-line .form-control-sm, table.mm .mm-line .form-select-sm { font-size:0.78rem; padding:2px 6px; min-height:0; height:26px; }
   .mm-src .form-control, .mm-src .form-select { font-size:0.76rem; padding:2px 6px; height:26px; }
   .mm-amt { font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; }
   .mm-save-bar { position:sticky; top:0; z-index:40; background:#fff; padding:8px 0; }
+  .mm-src.mm-dup .form-control, .mm-src.mm-dup .form-select { border-color:#dc3545; background-color:#fff5f5; }
+  .mm-dup-row td { vertical-align:middle; }
+  .mm-dup-opt { display:inline-flex; align-items:center; gap:4px; margin:2px 12px 2px 0; white-space:nowrap; }
+  .mm-dup-opt.off { color:#999; text-decoration:line-through; }
 </style>
 
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
@@ -43,7 +53,7 @@
 <div class="mm-card">
   <div class="mm-head"><strong class="text-danger"><i class="fas fa-exclamation-triangle me-1"></i> Not mapped in {{ cur.month_label }} ({{ cur.unmapped | length }})</strong>
     <span class="small text-muted">The best-matching line is pre-selected by name &mdash; check it, change any that are wrong, then
-      <strong>Link all suggested</strong> and <strong>Save Mapping</strong>.</span>
+      <strong>Link all suggested</strong> and <strong>Save Mapping</strong>. Use <strong>Ignore</strong> for an account that should stay out of the report.</span>
     <button type="button" class="btn btn-sm btn-primary" onclick="mmLinkAll()"><i class="fas fa-magic me-1"></i> Link all suggested</button></div>
   <div class="mm-body">
     <table class="mm">
@@ -58,6 +68,8 @@
             <span class="mm-score small text-nowrap"></span>
             <button type="button" class="btn btn-sm btn-outline-primary" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
                     onclick="mmLink(this)">Link</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary mm-ignore-btn" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
+                    title="Leave this account out of the report - it stops showing here" onclick="mmIgnore(this)">Ignore</button>
           </td>
         </tr>
         {% endfor %}
@@ -67,7 +79,62 @@
 </div>
 {% endif %}
 
+{% if cur.ignored %}
+<div class="mm-card">
+  <div class="mm-head"><strong class="text-secondary"><i class="fas fa-eye-slash me-1"></i> Ignored accounts ({{ cur.ignored | length }})</strong>
+    <span class="small text-muted">Left out of the report and hidden from "Not mapped". <strong>Restore</strong> one to see it there again.</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="var b=document.getElementById('mmIgnBody'); b.style.display = b.style.display === 'none' ? '' : 'none';">Show / hide</button></div>
+  <div class="mm-body" id="mmIgnBody" style="display:none;">
+    <table class="mm">
+      <thead><tr><th>Account</th><th>Sub-account</th><th>Type</th><th class="text-end">Amount ({{ cur.month_label }})</th><th></th></tr></thead>
+      <tbody>
+        {% for u in cur.ignored %}
+        <tr>
+          <td>{{ u.account }}</td><td>{{ u.sub_name or ('(none)' if not u.sub_code else 'code ' ~ u.sub_code) }}</td>
+          <td>{{ (u.kind or '') | title }}</td><td class="mm-amt">{{ '{:,.2f}'.format(u.amount) }}</td>
+          <td class="text-end"><button type="button" class="btn btn-sm btn-outline-primary" data-account="{{ u.account }}" data-sub="{{ u.sub_code or '' }}"
+                onclick="mmRestore(this)">Restore</button></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
+<div class="mm-card" id="mmDupCard" style="display:none;">
+  <div class="mm-head"><strong class="text-danger"><i class="fas fa-clone me-1"></i> Mapped more than once (<span id="mmDupCount">0</span>)</strong>
+    <span class="small text-muted">These accounts are counted on more than one line, so their amounts are added twice.
+      <strong>Untick</strong> the lines that should <em>not</em> use the account, then <strong>Save Mapping</strong>.</span></div>
+  <div class="mm-body">
+    <table class="mm">
+      <thead><tr><th style="width:30%">Account / category</th><th>Used on lines (ticked = keep)</th></tr></thead>
+      <tbody id="mmDupBody"></tbody>
+    </table>
+  </div>
+</div>
+
 <div id="mmSections"></div>
+
+<div class="mm-card">
+  <div class="mm-head"><strong><i class="fas fa-history me-1"></i> Change history</strong>
+    <span class="small text-muted">Every saved change to the mapping, newest first (last 100).</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="var b=document.getElementById('mmHist'); b.style.display = b.style.display === 'none' ? '' : 'none';">Show / hide</button></div>
+  <div class="mm-body" id="mmHist" style="display:none;">
+    <table class="mm">
+      <thead><tr><th style="width:130px">When</th><th style="width:100px">By</th><th style="width:18%">Line</th><th style="width:70px">Action</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        {% for h in history %}
+        <tr><td class="text-nowrap">{{ h.changed_at.strftime('%d/%m/%Y %H:%M') if h.changed_at else '' }}</td><td>{{ h.changed_by }}</td>
+          <td>{{ h.line_label }}</td><td>{{ h.action }}</td>
+          <td class="text-muted">{{ h.before_text or '' }}</td><td>{{ h.after_text or '' }}</td></tr>
+        {% else %}
+        <tr><td colspan="6" class="text-muted">No changes recorded yet &mdash; changes are recorded from now on.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 
 <datalist id="mmAccounts">{% for a in accounts %}<option value="{{ a.account_name }}">{% endfor %}</datalist>
 
@@ -77,17 +144,29 @@ const MM_LINES = {{ lines | tojson }};
 const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
 const MM_DELETED = [];
+const MM_IGNORE = [];
+const MM_UNIGNORE = [];
 let mmNewId = 0;
+let mmSrcUid = 0;
 
 function mmEsc(v) { return String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
 function mmFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function mmDirty() { document.getElementById('mmDirty').style.display = ''; }
+function mmDirty() { document.getElementById('mmDirty').style.display = ''; mmCheckDupes(); }
+// Only lines that were actually edited are sent on Save, so nothing else can be rewritten by accident.
+function mmMark(el) { const tr = el && el.closest ? el.closest('.mm-line') : null; if (tr) tr.dataset.changed = '1'; }
+document.addEventListener('change', function(e) { mmMark(e.target); }, true);
+document.addEventListener('input', function(e) { mmMark(e.target); }, true);
+function mmRemoveSrc(icon) { mmMark(icon); icon.parentNode.remove(); mmDirty(); }
 
+function mmSubKey(account) { return String(account || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
 function mmSubOptions(account, selected) {
-  const subs = MM_SUBS[account] || [];
+  const subs = (MM_SUBS[mmSubKey(account)] || []).slice();
+  const sel = String(selected || '');
+  // Keep a saved sub-account selectable even if it isn't in the list, so saving never drops it
+  if (sel && sel !== '0' && !subs.some(function(s) { return String(s.code) === sel; })) subs.push({code: sel, name: 'code ' + sel});
   let h = '<option value="">' + (subs.length ? 'All sub-accounts' : '(no sub-accounts)') + '</option>';
   subs.forEach(function(s) {
-    h += '<option value="' + s.code + '"' + (String(s.code) === String(selected || '') ? ' selected' : '') + '>' + mmEsc(s.name) + '</option>';
+    h += '<option value="' + s.code + '"' + (String(s.code) === sel ? ' selected' : '') + '>' + mmEsc(s.name) + '</option>';
   });
   return h;
 }
@@ -98,13 +177,13 @@ function mmSourceHtml(s) {
   let cats = '<option value="">- category -</option>';
   MM_CATS.forEach(function(c) { cats += '<option' + (c === s.purchase_category ? ' selected' : '') + '>' + mmEsc(c) + '</option>'; });
   if (s.purchase_category && MM_CATS.indexOf(s.purchase_category) === -1) cats += '<option selected>' + mmEsc(s.purchase_category) + '</option>';
-  return '<div class="mm-src">' +
-    '<select class="form-select mm-s-type" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
+  return '<div class="mm-src" data-uid="' + (++mmSrcUid) + '">' +
+    '<select class="form-select mm-s-type no-select2" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
     '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
-    '<select class="form-select mm-s-sub" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
-    '<select class="form-select mm-s-cat" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
-    '<select class="form-select mm-s-sign" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
-    '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="this.parentNode.remove(); mmDirty();"></i>' +
+    '<select class="form-select mm-s-sub no-select2" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
+    '<select class="form-select mm-s-cat no-select2" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
+    '<select class="form-select mm-s-sign no-select2" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
+    '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="mmRemoveSrc(this)"></i>' +
   '</div>';
 }
 
@@ -113,14 +192,15 @@ function mmLineHtml(l) {
   let srcs = '';
   (l.sources || []).forEach(function(s) { srcs += mmSourceHtml(s); });
   return '<tr class="mm-line" data-id="' + mmEsc(l.id) + '" data-section="' + l.section + '">' +
-    '<td style="width:60px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
-    '<td style="width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
-      (incomeSales ? '<select class="form-select form-select-sm mt-1 mm-cost" onchange="mmDirty()"><option value="">Cost %: none</option>' +
+    '<td style="width:56px;min-width:56px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
+    '<td style="min-width:200px;width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
+      '<div class="d-flex align-items-center gap-2 mt-1">' +
+      (incomeSales ? '<select class="form-select form-select-sm mm-cost no-select2" style="width:auto" onchange="mmDirty()"><option value="">Cost %: none</option>' +
         '<option value="BAR"' + (l.cost_base === 'BAR' ? ' selected' : '') + '>Cost %: Bar</option>' +
         '<option value="FOOD"' + (l.cost_base === 'FOOD' ? ' selected' : '') + '>Cost %: Food</option></select>' : '') +
-      '<label class="small mt-1 d-block"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual (type each month)</label></td>' +
+      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual</label></div></td>' +
     '<td><div class="mm-srcs">' + srcs + '</div>' +
-      '<button type="button" class="btn btn-sm btn-link p-0" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
+      '<button type="button" class="btn btn-sm btn-link p-0 mm-add-src" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
     '<td class="mm-amt" style="width:110px">' + (l.id && !String(l.id).startsWith('new') ? mmFmt(l.amount) : '') + '</td>' +
     '<td style="width:30px"><i class="fas fa-trash text-danger" style="cursor:pointer" title="Delete line" onclick="mmDeleteLine(this)"></i></td>' +
   '</tr>';
@@ -155,6 +235,7 @@ function mmAcctChanged(inp) {
   mmDirty();
 }
 function mmAddSource(btn, s) {
+  mmMark(btn);
   btn.closest('td').querySelector('.mm-srcs').insertAdjacentHTML('beforeend', mmSourceHtml(s));
   mmDirty();
 }
@@ -231,7 +312,7 @@ function mmSuggestAll() {
   document.querySelectorAll('.mm-unmapped').forEach(function(row) {
     const sel = row.querySelector('.mm-link-line');
     const badge = row.querySelector('.mm-score');
-    if (row.querySelector('button').disabled) return;
+    if (row.querySelector('button[onclick^="mmLink"]').disabled) return;
     const name = row.dataset.account + ' ' + row.dataset.subName;
     let best = null, bestScore = 0;
     mmLinesOfKind(row.dataset.kind).forEach(function(tr) {
@@ -253,7 +334,7 @@ function mmSuggestAll() {
 function mmLinkAll() {
   let n = 0;
   document.querySelectorAll('.mm-unmapped').forEach(function(row) {
-    const btn = row.querySelector('button');
+    const btn = row.querySelector('button[onclick^="mmLink"]');
     if (!btn.disabled && row.querySelector('.mm-link-line').value) { mmLink(btn); n++; }
   });
   alert(n + ' account(s) linked. Check the lines below, then click Save Mapping.');
@@ -261,7 +342,7 @@ function mmLinkAll() {
 function mmFillEmptyLines() {
   let n = 0;
   document.querySelectorAll('.mm-line').forEach(function(tr) {
-    if (tr.querySelector('.mm-src') || tr.querySelector('.mm-manual').checked) return;
+    if (tr.querySelector('.mm-src:not(.mm-src-off)') || tr.querySelector('.mm-manual').checked) return;
     if (tr.dataset.section.indexOf('PURCH_') === 0) return;   // purchases lines use Purchase categories
     const kind = MM_KIND[tr.dataset.section];
     const label = tr.querySelector('.mm-label').value;
@@ -269,7 +350,7 @@ function mmFillEmptyLines() {
     MM_ACCOUNTS.forEach(function(a) {
       if (kind === 'income' ? !a.account_income : !a.account_expenses) return;
       let sc = mmScore(a.account_name, label), sub = '';
-      (MM_SUBS[a.account_name] || []).forEach(function(s) {
+      (MM_SUBS[mmSubKey(a.account_name)] || []).forEach(function(s) {
         const ss = mmScore(s.name, label);
         if (ss > sc + 0.1) { sc = ss; sub = s.code; }
       });
@@ -299,21 +380,147 @@ function mmLink(btn) {
       label: row.dataset.subName || row.dataset.account, display_order: (count + 1) * 10, sources: []}));
   }
   const tr = document.querySelector('.mm-line[data-id="' + lineId + '"]');
-  mmAddSource(tr.querySelector('.btn-link'), {source_type: 'GL', gl_account: btn.dataset.account, sub_account_code: btn.dataset.sub || '', sign: 1});
+  if (tr.querySelector('.mm-manual').checked && !confirm('"' + tr.querySelector('.mm-label').value + '" is ticked Manual: its amount is typed in each month, so '
+      + 'linked accounts are not added up on that line (the account just stops showing as Not mapped).\n\nLink it anyway?')) return;
+  // Don't add the same account / sub-account to the line twice
+  const already = [...tr.querySelectorAll('.mm-src:not(.mm-src-off)')].some(function(s) {
+    return s.querySelector('.mm-s-type').value === 'GL' && mmSubKey(s.querySelector('.mm-s-acct').value) === mmSubKey(btn.dataset.account)
+      && (s.querySelector('.mm-s-sub').value || '') === String(btn.dataset.sub || '');
+  });
+  if (!already) mmAddSource(tr.querySelector('.btn-link'), {source_type: 'GL', gl_account: btn.dataset.account, sub_account_code: btn.dataset.sub || '', sign: 1});
   btn.closest('tr').style.opacity = '0.4';
   btn.disabled = true;
   btn.textContent = 'Linked';
+  const ign = btn.closest('tr').querySelector('.mm-ignore-btn');
+  if (ign) ign.disabled = true;
   mmFillLinkLists();
+}
+
+// ---- Duplicate mapping check ----------------------------------------------------
+// A GL account (or sub-account) or purchase category used on more than one line is counted twice.
+// "All sub-accounts" of an account plus one of its sub-accounts on another line also counts twice.
+function mmSectionName(key) {
+  const sec = MM_SECTIONS.find(function(s) { return s[0] === key; });
+  return sec ? sec[1] : key;
+}
+function mmCheckDupes() {
+  // Collect every GL / purchase source, per account (or category)
+  const accts = {};
+  document.querySelectorAll('.mm-src').forEach(function(src) {
+    src.classList.remove('mm-dup');
+    const tr = src.closest('.mm-line');
+    if (!tr || tr.querySelector('.mm-manual').checked) return;
+    const type = src.querySelector('.mm-s-type').value;
+    let akey, title, sub = '', subName = '';
+    if (type === 'PURCH') {
+      const cat = src.querySelector('.mm-s-cat').value;
+      if (!cat) return;
+      akey = 'P|' + cat.trim().toLowerCase();
+      title = 'Purchases: ' + cat;
+    } else {
+      const acct = src.querySelector('.mm-s-acct').value.trim();
+      if (!acct) return;
+      akey = 'G|' + acct.replace(/\s+/g, ' ').toLowerCase();
+      title = acct;
+      const subSel = src.querySelector('.mm-s-sub');
+      sub = subSel.value || '';
+      subName = sub && subSel.selectedIndex >= 0 ? subSel.options[subSel.selectedIndex].text : '';
+    }
+    const a = accts[akey] || (accts[akey] = {title: title, isGL: type !== 'PURCH', bySub: {}});
+    (a.bySub[sub] = a.bySub[sub] || {name: subName, items: []}).items.push({src: src, tr: tr});
+  });
+  // For every sub-account, count how many times it ends up in the report: "+ all sub-accounts"
+  // counts every sub once, "+ sub" adds one, "- sub" takes one away. More than 1 = counted twice;
+  // below 0 = taken away but never added. (A "- sub" on a line that has "+ all" is a correct split.)
+  const groups = [];
+  const isOn = function(i) { return !i.src.classList.contains('mm-src-off'); };
+  const sgn = function(i) { return i.src.querySelector('.mm-s-sign').value === '-1' ? -1 : 1; };
+  const cover = function(items) { return items.filter(isOn).reduce(function(a, i) { return a + sgn(i); }, 0); };
+  Object.keys(accts).forEach(function(akey) {
+    const a = accts[akey];
+    const whole = a.bySub[''] ? a.bySub[''].items : [];
+    Object.keys(a.bySub).forEach(function(sub) {
+      if (sub === '') return;
+      const items = whole.concat(a.bySub[sub].items);
+      groups.push({title: a.title + ' / ' + a.bySub[sub].name, items: items, count: cover(items)});
+    });
+    if (whole.length) groups.push({title: a.title + (a.isGL ? ' (all sub-accounts)' : ''), items: whole, count: cover(whole)});
+  });
+  const body = document.getElementById('mmDupBody');
+  let h = '', n = 0;
+  groups.forEach(function(g) {
+    const on = g.items.filter(isOn);
+    const clash = g.count > 1 || g.count < 0;
+    if (!clash && on.length === g.items.length) return;
+    if (clash) { n++; on.forEach(function(i) { i.src.classList.add('mm-dup'); }); }
+    let opts = '';
+    g.items.forEach(function(i) {
+      const off = !isOn(i);
+      const subSel = i.src.querySelector('.mm-s-sub');
+      const isGL = i.src.querySelector('.mm-s-type').value === 'GL';
+      const subTxt = isGL ? ' / ' + (subSel.value && subSel.selectedIndex >= 0 ? subSel.options[subSel.selectedIndex].text : 'all subs') : '';
+      const sign = i.src.querySelector('.mm-s-sign').value === '-1' ? ' (&minus;)' : '';
+      opts += '<label class="mm-dup-opt' + (off ? ' off' : '') + '"><input type="checkbox"' + (off ? '' : ' checked') +
+        ' onchange="mmToggleSrc(' + i.src.dataset.uid + ', this.checked)"> ' +
+        mmEsc(i.tr.querySelector('.mm-label').value || '(new line)') +
+        ' <span class="text-muted small">&middot; ' + mmEsc(mmSectionName(i.tr.dataset.section)) + mmEsc(subTxt) + sign + '</span></label>';
+    });
+    h += '<tr class="mm-dup-row"><td><strong>' + mmEsc(g.title) + '</strong>' +
+      (clash ? ' <span class="small text-danger">counted ' + g.count + '&times;</span>' : ' <span class="badge bg-success">OK now</span>') + '</td><td>' + opts + '</td></tr>';
+  });
+  body.innerHTML = h;
+  document.getElementById('mmDupCount').textContent = n;
+  document.getElementById('mmDupCard').style.display = h ? '' : 'none';
+}
+function mmToggleSrc(uid, keep) {
+  const src = document.querySelector('.mm-src[data-uid="' + uid + '"]');
+  if (!src) return;
+  mmMark(src);
+  src.classList.toggle('mm-src-off', !keep);
+  src.style.display = keep ? '' : 'none';
+  mmDirty();
+}
+
+// ---- Ignore / restore not-mapped accounts (saved with Save Mapping) ----------------
+function mmIgnKey(btn) { return {account: btn.dataset.account, sub: btn.dataset.sub || ''}; }
+function mmIgnIndex(list, k) {
+  return list.findIndex(function(x) { return x.account === k.account && x.sub === k.sub; });
+}
+function mmIgnore(btn) {
+  const row = btn.closest('tr');
+  const link = row.querySelector('button[onclick^="mmLink"]');
+  const k = mmIgnKey(btn), i = mmIgnIndex(MM_IGNORE, k);
+  if (i === -1) {
+    MM_IGNORE.push(k);
+    row.style.opacity = '0.4';
+    row.querySelector('.mm-link-line').disabled = true;
+    link.disabled = true;
+    btn.textContent = 'Undo ignore';
+  } else {
+    MM_IGNORE.splice(i, 1);
+    row.style.opacity = '';
+    row.querySelector('.mm-link-line').disabled = false;
+    link.disabled = false;
+    btn.textContent = 'Ignore';
+  }
+  mmDirty();
+}
+function mmRestore(btn) {
+  const k = mmIgnKey(btn), i = mmIgnIndex(MM_UNIGNORE, k);
+  if (i === -1) { MM_UNIGNORE.push(k); btn.textContent = 'Undo restore'; btn.closest('tr').style.opacity = '0.4'; }
+  else { MM_UNIGNORE.splice(i, 1); btn.textContent = 'Restore'; btn.closest('tr').style.opacity = ''; }
+  mmDirty();
 }
 
 function mmSave() {
   const lines = [];
   let bad = '';
   document.querySelectorAll('.mm-line').forEach(function(tr) {
+    if (!tr.dataset.changed && !String(tr.dataset.id).startsWith('new')) return;   // untouched: leave it exactly as saved
     const label = tr.querySelector('.mm-label').value.trim();
     if (!label) { bad = 'Every line needs a name.'; return; }
     const sources = [];
-    tr.querySelectorAll('.mm-src').forEach(function(s) {
+    tr.querySelectorAll('.mm-src:not(.mm-src-off)').forEach(function(s) {
       const type = s.querySelector('.mm-s-type').value;
       sources.push({type: type, account: s.querySelector('.mm-s-acct').value, sub: s.querySelector('.mm-s-sub').value,
                     category: s.querySelector('.mm-s-cat').value, sign: s.querySelector('.mm-s-sign').value});
@@ -323,7 +530,8 @@ function mmSave() {
                 cost_base: cost ? cost.value : '', is_manual: tr.querySelector('.mm-manual').checked, sources: sources});
   });
   if (bad) { alert(bad); return; }
-  document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED});
+  if (!lines.length && !MM_DELETED.length && !MM_IGNORE.length && !MM_UNIGNORE.length) { alert('Nothing has been changed.'); return; }
+  document.getElementById('mmJson').value = JSON.stringify({lines: lines, deleted: MM_DELETED, ignore: MM_IGNORE, unignore: MM_UNIGNORE});
   window.mmSubmitting = true;
   document.getElementById('mmForm').submit();
 }
@@ -332,5 +540,6 @@ window.addEventListener('beforeunload', function(e) {
 });
 mmRender();
 mmSuggestAll();
+mmCheckDupes();
 </script>
 {% endblock %}
