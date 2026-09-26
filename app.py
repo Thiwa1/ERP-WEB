@@ -27132,14 +27132,24 @@ def _xl_json(payload, status=200):
     return Response(json.dumps(payload, default=str), status=status, mimetype='application/json')
 
 
+_XL_KEY_INDEX_READY = False
+
+
 def _xl_ensure_key_index():
-    """Master-DB table that maps each Excel key to its company database."""
-    master_db.execute_query("""
-        CREATE TABLE IF NOT EXISTS excel_key_index (
-            api_key VARCHAR(64) NOT NULL PRIMARY KEY,
-            db_name VARCHAR(255) NOT NULL
-        )
-    """)
+    """Master-DB table that maps each Excel key to its company database.
+    Checked with SHOW TABLES first: the connection raises on warnings, so a
+    plain CREATE TABLE IF NOT EXISTS fails once the table exists."""
+    global _XL_KEY_INDEX_READY
+    if _XL_KEY_INDEX_READY:
+        return
+    if not master_db.execute_query("SHOW TABLES LIKE 'excel_key_index'"):
+        master_db.execute_query("""
+            CREATE TABLE excel_key_index (
+                api_key VARCHAR(64) NOT NULL PRIMARY KEY,
+                db_name VARCHAR(255) NOT NULL
+            )
+        """)
+    _XL_KEY_INDEX_READY = True
 
 
 def _xl_register_key(api_key, db_name):
@@ -27157,9 +27167,13 @@ def _xl_find_key_db(key):
     Uses the master index; for keys made before the index existed it looks
     through each company database once and records what it finds."""
     try:
-        _xl_ensure_key_index()
-        hit = master_db.execute_query(
-            "SELECT db_name FROM excel_key_index WHERE api_key = %s", (key,)) or []
+        try:
+            _xl_ensure_key_index()
+            hit = master_db.execute_query(
+                "SELECT db_name FROM excel_key_index WHERE api_key = %s", (key,)) or []
+        except Exception as e:
+            logging.error(f"Excel key index unavailable: {e}")
+            hit = []
         if hit and is_safe_db_name(hit[0]['db_name']):
             return hit[0]['db_name']
         candidates = [r['db_name'] for r in
@@ -27300,6 +27314,28 @@ def xl_daily_sales_get():
                   'misc_expense_1_label', 'misc_expense_1_amount', 'misc_expense_2_label',
                   'misc_expense_2_amount', 'misc_expense_3_label', 'misc_expense_3_amount'):
             rows.append(['HEADER', f, (header.get(f) if header else '') or ''])
+        # Credit / advance registers for the day, and what is still open to settle
+        for c in credit_lines:
+            ref = (_xl_ref(c['settles_credit_id'], c.get('settles_invoice_no'), c.get('settles_party_name'))
+                   if c['settles_credit_id'] else '')
+            rows.append(['CREDIT', c['id'], c['credit_type'], c['invoice_no'] or '', c['party_name'] or '',
+                         c['amount'] or 0, c['settle_mode'] or '', ref])
+        for a in advances:
+            rows.append(['ADV', a['id'], a['adv_type'], a['receipt_no'] or '', a['party_name'] or '',
+                         a['amount'] or 0, a['remarks'] or ''])
+        for st in settlements:
+            rows.append(['SETTLE', _xl_ref(st['advance_id'], st.get('receipt_no'), st.get('party_name')),
+                         st['amount'] or 0, st['bill_no'] or '', st['settle_mode'] or '', st['remarks'] or ''])
+        open_items = _daily_sales_open_items(entry_date, header['id'] if header else None)
+        for c in open_items['credits']:
+            if c['balance'] > 0.005:
+                rows.append(['OPENCR', _xl_ref(c['id'], c['invoice_no'], c['party_name'], c['entry_date'],
+                                               c['balance'])])
+        for kind in ('adv_received', 'adv_given'):
+            for a in open_items[kind]:
+                if a['balance'] > 0.005:
+                    rows.append(['OPENADV', a['adv_type'], _xl_ref(a['id'], a['receipt_no'], a['party_name'],
+                                                                  a['entry_date'], a['balance'])])
         return _xl_tsv(rows)
     return _xl_json({
         'ok': True, 'date': entry_date,
@@ -27325,6 +27361,22 @@ def xl_daily_sales_save():
     h = b.get('header') or {}
     misc = [(str(h.get(f'misc_expense_{n}_label') or '').strip(), parse_float(h.get(f'misc_expense_{n}_amount')))
             for n in (1, 2, 3)]
+    # The workbook names what a line settles (a picked "#id ..." entry, or just
+    # the invoice / receipt number) - turn that into the row id the web form sends.
+    if b.get('credit_lines') is not None or b.get('settlements') is not None:
+        existing = db.execute_query("SELECT id FROM daily_sales_entries WHERE entry_date = %s", (entry_date,)) or []
+        open_now = _daily_sales_open_items(entry_date, existing[0]['id'] if existing else None)
+        try:
+            for cl in b.get('credit_lines') or []:
+                if cl.get('credit_type') != 'GIVEN' and not cl.get('settles_credit_id') and cl.get('settles_ref'):
+                    cl['settles_credit_id'] = _xl_pick(cl['settles_ref'], open_now['credits'], 'invoice_no',
+                                                       'Credit Given')
+            for st in b.get('settlements') or []:
+                if not st.get('advance_id') and st.get('advance_ref'):
+                    st['advance_id'] = _xl_pick(st['advance_ref'], open_now['adv_received'] + open_now['adv_given'],
+                                                'receipt_no', 'Advance')
+        except ValueError as e:
+            return _xl_json({'ok': False, 'date': entry_date, 'message': str(e)}, 400)
     ok, message, _jv = _daily_sales_process_entry(
         entry_date, str(h.get('narration') or '').strip(), b.get('lines') or [],
         parse_float(h.get('total_expenditure')), parse_float(h.get('cash_float')),
@@ -27369,6 +27421,231 @@ def xl_daily_sales_post():
         None, 'post', user_pk)
     return _xl_json({'ok': bool(ok and jv_no), 'date': entry_date, 'jv': jv_no, 'message': message},
                     200 if (ok and jv_no) else 400)
+
+
+def _xl_ref(row_id, number, party, on_date=None, balance=None):
+    """How the workbook shows a credit / advance to settle: "#57 INV-100 | John".
+    The leading #id is what the server reads back; the rest is for people."""
+    text = f"#{row_id} {number or '-'} | {party or '-'}"
+    if on_date:
+        text += f" | {on_date}"
+    if balance is not None:
+        text += f" | bal {float(balance):,.2f}"
+    return text
+
+
+def _xl_pick(ref, pool, number_field, what):
+    """Find the open credit / advance a workbook line settles. `ref` is either a
+    picked "#id ..." entry or a typed invoice / receipt number."""
+    ref = str(ref or '').strip()
+    m = re.match(r'#\s*(\d+)', ref)
+    if m:
+        row_id = int(m.group(1))
+        if any(p['id'] == row_id for p in pool):
+            return row_id
+        raise ValueError(f"{what} {ref} is not open on this date - load the day again and pick it from the list.")
+    key = ref.lower()
+    matches = [p for p in pool if str(p.get(number_field) or '').strip().lower() == key] or \
+              [p for p in pool if str(p.get('party_name') or '').strip().lower() == key]
+    still_open = [p for p in matches if float(p.get('balance') or 0) > 0.005]
+    if len(still_open) == 1:
+        return still_open[0]['id']
+    if len(matches) == 1:
+        return matches[0]['id']
+    if not matches:
+        raise ValueError(f"{what} '{ref}' was not found - pick it from the list in the cell.")
+    raise ValueError(f"More than one {what} matches '{ref}' - pick the exact one from the list in the cell.")
+
+
+def _xl_range():
+    """History range from ?from= / ?to= (YYYY-MM-DD); blank means everything."""
+    def one(raw, fallback):
+        try:
+            return datetime.strptime((raw or '').strip(), '%Y-%m-%d').date()
+        except ValueError:
+            return fallback
+    return one(request.args.get('from'), date(1900, 1, 1)), one(request.args.get('to'), date(2999, 12, 31))
+
+
+def _xl_table(cols, types, rows):
+    """History tables: a COLS row, a TYPES row (d = date, n = number, t = text)
+    so the workbook writes real dates and numbers, then the data."""
+    return _xl_tsv([['COLS'] + cols, ['TYPES'] + types] + [['ROW'] + r for r in rows])
+
+
+def _xl_day(v):
+    return v.strftime('%Y-%m-%d') if hasattr(v, 'strftime') else (v or '')
+
+
+@app.route('/api/xl/daily_sales/history', methods=['GET'])
+def xl_daily_sales_history():
+    """Every Daily Sales day in the range, one row per day: the day figures,
+    the register totals and the amount of each sales category."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    d_from, d_to = _xl_range()
+    cats = _daily_sales_categories()
+    entries = db.execute_query("""
+        SELECT * FROM daily_sales_entries WHERE entry_date BETWEEN %s AND %s ORDER BY entry_date
+    """, (d_from, d_to)) or []
+    ids = [e['id'] for e in entries]
+    amounts, regs = {}, {i: ([], [], []) for i in ids}
+    if ids:
+        marks = ','.join(['%s'] * len(ids))
+        for l in db.execute_query(f"""
+                SELECT entry_id, category_id, amount FROM daily_sales_entry_lines WHERE entry_id IN ({marks})
+                """, tuple(ids)) or []:
+            amounts[(l['entry_id'], l['category_id'])] = l['amount']
+        for a in db.execute_query(f"""
+                SELECT entry_id, adv_type, amount FROM daily_sales_advances WHERE entry_id IN ({marks})
+                """, tuple(ids)) or []:
+            regs[a['entry_id']][0].append(a)
+        for st in db.execute_query(f"""
+                SELECT s.entry_id, s.amount, s.settle_mode, a.adv_type
+                FROM daily_sales_advance_settlements s LEFT JOIN daily_sales_advances a ON a.id = s.advance_id
+                WHERE s.entry_id IN ({marks})
+                """, tuple(ids)) or []:
+            regs[st['entry_id']][1].append(st)
+        for c in db.execute_query(f"""
+                SELECT entry_id, credit_type, amount, settle_mode FROM daily_sales_credit_lines WHERE entry_id IN ({marks})
+                """, tuple(ids)) or []:
+            regs[c['entry_id']][2].append(c)
+    fixed = [('Date', 'd', 'entry_date'), ('Status', 't', 'status'), ('JV', 't', 'jv_id'),
+             ('Total Income', 'n', 'total_income'), ('Total Expenditure', 'n', 'total_expenditure'),
+             ('Cash Float', 'n', 'cash_float'), ('Cash', 'n', 'cash_amount'),
+             ('Card - Sampath', 'n', 'credit_card_sampath_amount'), ('Card - HNB', 'n', 'credit_card_hnb_amount'),
+             ('Bank Transfer', 'n', 'bank_transfer_amount'), ('Bank Transfer 2', 'n', 'bank_transfer_2_amount'),
+             ('Telephone', 'n', 'telephone_income'), ('Petty Cash', 'n', 'petty_cash')]
+    reg_cols = [('Advance Received', 'adv_received'), ('Advance Set-off / Refund', 'adv_received_settled'),
+                ('Advance Given', 'adv_given'), ('Advance Recovered', 'adv_given_recovered'),
+                ('Advance Given Set-off', 'adv_given_setoff'), ('Credit Given', 'credit_given'),
+                ('Credit Received (cash)', 'credit_received_cash'), ('Credit Set-off', 'credit_setoff')]
+    cols = [c[0] for c in fixed] + [c[0] for c in reg_cols] + ['Narration'] + [
+        (c['description'] or '') + (f" - {c['particulars']}" if c['particulars'] else '') +
+        (' (Comp)' if c['category_group'] == 'COMPLIMENTARY' else '') for c in cats]
+    types = [c[1] for c in fixed] + ['n'] * len(reg_cols) + ['t'] + ['n'] * len(cats)
+    rows = []
+    for e in entries:
+        t = _daily_sales_register_totals(*regs[e['id']])
+        rows.append([_xl_day(e.get(k)) if k == 'entry_date' else e.get(k) for _l, _t, k in fixed] +
+                    [t[k] for _l, k in reg_cols] + [e.get('narration') or ''] +
+                    [amounts.get((e['id'], c['id']), '') for c in cats])
+    return _xl_table(cols, types, rows)
+
+
+@app.route('/api/xl/daily_sales/credit_history', methods=['GET'])
+def xl_credit_history():
+    """Every Credit Given, Credit Received and Credit Set-off line in the range,
+    with what is still outstanding on each Credit Given."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    d_from, d_to = _xl_range()
+    lines = db.execute_query("""
+        SELECT c.id, e.entry_date, e.status, c.credit_type, c.invoice_no, c.party_name, c.amount, c.settle_mode,
+               g.invoice_no AS settles_invoice_no, g.party_name AS settles_party_name,
+               (SELECT COALESCE(SUM(r.amount), 0) FROM daily_sales_credit_lines r
+                 WHERE r.settles_credit_id = c.id) AS settled
+        FROM daily_sales_credit_lines c
+        JOIN daily_sales_entries e ON e.id = c.entry_id
+        LEFT JOIN daily_sales_credit_lines g ON g.id = c.settles_credit_id
+        WHERE e.entry_date BETWEEN %s AND %s
+        ORDER BY e.entry_date, c.id
+    """, (d_from, d_to)) or []
+    rows = []
+    for c in lines:
+        given = c['credit_type'] == 'GIVEN'
+        kind = 'Credit Given' if given else ('Credit Set-off' if c['settle_mode'] == 'SETOFF' else 'Credit Received')
+        rows.append([_xl_day(c['entry_date']), kind, c['invoice_no'] or '', c['party_name'] or '', c['amount'] or 0,
+                     '' if given else (c['settles_invoice_no'] or ''), '' if given else (c['settles_party_name'] or ''),
+                     c['settled'] if given else '',
+                     round(float(c['amount'] or 0) - float(c['settled'] or 0), 2) if given else '',
+                     c['status']])
+    return _xl_table(['Date', 'Type', 'Invoice / Bill No', 'Party', 'Amount', 'Settles Invoice', 'Settles Party',
+                      'Settled So Far', 'Outstanding', 'Day Status'],
+                     ['d', 't', 't', 't', 'n', 't', 't', 'n', 'n', 't'], rows)
+
+
+@app.route('/api/xl/daily_sales/advance_history', methods=['GET'])
+def xl_advance_history():
+    """Every advance and every advance set-off / refund / recovery in the range."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    d_from, d_to = _xl_range()
+    advs = db.execute_query("""
+        SELECT a.entry_date, a.adv_type, a.receipt_no, a.party_name, a.amount, a.remarks,
+               (SELECT COALESCE(SUM(s.amount), 0) FROM daily_sales_advance_settlements s
+                 WHERE s.advance_id = a.id) AS settled
+        FROM daily_sales_advances a WHERE a.entry_date BETWEEN %s AND %s
+    """, (d_from, d_to)) or []
+    sets = db.execute_query("""
+        SELECT s.entry_date, s.amount, s.bill_no, s.settle_mode, s.remarks,
+               a.adv_type, a.receipt_no, a.party_name, a.entry_date AS advance_date
+        FROM daily_sales_advance_settlements s LEFT JOIN daily_sales_advances a ON a.id = s.advance_id
+        WHERE s.entry_date BETWEEN %s AND %s
+    """, (d_from, d_to)) or []
+    rows = []
+    for a in advs:
+        rows.append([_xl_day(a['entry_date']),
+                     'Advance Received' if a['adv_type'] == 'RECEIVED' else 'Advance Given',
+                     a['receipt_no'] or '', a['party_name'] or '', a['amount'] or 0, '', a['remarks'] or '', '',
+                     a['settled'], round(float(a['amount'] or 0) - float(a['settled'] or 0), 2)])
+    names = {('RECEIVED', 'SETOFF'): 'Advance Set-off', ('RECEIVED', 'REFUND'): 'Advance Refund',
+             ('GIVEN', 'RECOVERED'): 'Advance Given Recovered', ('GIVEN', 'SETOFF'): 'Advance Given Set-off'}
+    for st in sets:
+        rows.append([_xl_day(st['entry_date']), names.get((st['adv_type'], st['settle_mode']), 'Advance Settlement'),
+                     st['receipt_no'] or '', st['party_name'] or '', st['amount'] or 0, st['bill_no'] or '',
+                     st['remarks'] or '', _xl_day(st['advance_date']), '', ''])
+    rows.sort(key=lambda r: r[0])
+    return _xl_table(['Date', 'Type', 'Receipt No', 'Party', 'Amount', 'Bill No', 'Remarks', 'Advance Date',
+                      'Settled So Far', 'Outstanding'],
+                     ['d', 't', 't', 't', 'n', 't', 't', 'd', 'n', 'n'], rows)
+
+
+@app.route('/api/xl/bar_sales/history', methods=['GET'])
+def xl_bar_sales_history():
+    """Every Bar Sales Record day in the range, one row per day."""
+    user_pk, err = _xl_auth('Access_Daily_Sales')
+    if err:
+        return err
+    d_from, d_to = _xl_range()
+    days = db.execute_query("""
+        SELECT * FROM bar_sales_days WHERE entry_date BETWEEN %s AND %s ORDER BY entry_date
+    """, (d_from, d_to)) or []
+    by_day = {}
+    if days:
+        marks = ','.join(['%s'] * len(days))
+        for l in db.execute_query(f"""
+                SELECT day_id, line_key, qty, amount FROM bar_sales_lines WHERE day_id IN ({marks})
+                """, tuple(d['id'] for d in days)) or []:
+            by_day[(l['day_id'], l['line_key'])] = l
+    fixed = [('Date', 'd', 'entry_date'), ('Status', 't', 'status'), ('JV', 't', 'jv_id'),
+             ('Service Charge %', 'n', 'commission_rate')]
+    for sec, label in BAR_SALES_SECTIONS:
+        for part, plabel in (('sales', 'Sales'), ('cash', 'Cash'), ('card', 'Card'), ('bank', 'Bank Transfer'),
+                             ('commission', 'Service Charge')):
+            fixed.append((f'{label} - {plabel}', 'n', f'{sec}_{part}'))
+    fixed.append(('Cash to Management', 'n', 'cash_to_management'))
+    cols = [f[0] for f in fixed] + ['Narration']
+    types = [f[1] for f in fixed] + ['t']
+    for key, label, _grp, has_qty in BAR_SALES_RECORD_LINES:
+        if has_qty:
+            cols.append(f'{label} - Qty')
+            types.append('n')
+        cols.append(f'{label} - Amount')
+        types.append('n')
+    rows = []
+    for d in days:
+        row = [_xl_day(d.get(k)) if k == 'entry_date' else d.get(k) for _l, _t, k in fixed] + [d.get('narration') or '']
+        for key, _label, _grp, has_qty in BAR_SALES_RECORD_LINES:
+            l = by_day.get((d['id'], key)) or {}
+            if has_qty:
+                row.append(l.get('qty', ''))
+            row.append(l.get('amount', ''))
+        rows.append(row)
+    return _xl_table(cols, types, rows)
 
 
 # ---------------- Bar Sales Record ----------------
@@ -27573,6 +27850,9 @@ Public Sub TestConnection()
     r = HttpCall("GET", "/api/xl/ping", "")
     If Failed(r) Then Exit Sub
     SayResult "Connected as " & JsonValue(r, "user") & " (server date " & JsonValue(r, "server_date") & ")"
+    On Error Resume Next
+    AddButtons
+    On Error GoTo 0
     MsgBox "Connected." & vbCrLf & "User: " & JsonValue(r, "user"), vbInformation, "Suwin ERP"
 End Sub
 
@@ -27614,48 +27894,209 @@ Private Function HeaderRowOf(ws As Worksheet, ByVal fieldName As String) As Long
     Next r
 End Function
 
+Private Function NumOrBlank(ByVal s As String) As Variant
+    If Trim$(s) = "" Then
+        NumOrBlank = Empty
+    Else
+        NumOrBlank = Val(s)
+    End If
+End Function
+
+' Text that Excel must not turn into a number, date or formula
+Private Function Txt(ByVal s As String) As Variant
+    If s = "" Then Txt = Empty Else Txt = "'" & s
+End Function
+
+' First data row of a register block (the row after its heading row)
+Private Function BlockStart(ws As Worksheet, ByVal marker As String) As Long
+    Dim r As Long
+    r = HeaderRowOf(ws, marker)
+    If r > 0 Then BlockStart = r + 2
+End Function
+
+Private Function IsMarker(ws As Worksheet, ByVal rw As Long) As Boolean
+    IsMarker = (Left$(CStr(ws.Cells(rw, 1).Value), 1) = "#")
+End Function
+
+Private Sub ClearBlock(ws As Worksheet, ByVal marker As String)
+    Dim rw As Long
+    rw = BlockStart(ws, marker)
+    If rw = 0 Then Exit Sub
+    Do While Not IsMarker(ws, rw) And rw < ws.Rows.Count
+        ws.Range(ws.Cells(rw, 1), ws.Cells(rw, 6)).ClearContents
+        rw = rw + 1
+    Loop
+End Sub
+
+' Next empty line in a block; adds a line if the block is full
+Private Function FreeRow(ws As Worksheet, ByVal marker As String) As Long
+    Dim rw As Long
+    rw = BlockStart(ws, marker)
+    If rw = 0 Then Exit Function
+    Do While Not IsMarker(ws, rw)
+        If Application.WorksheetFunction.CountA(ws.Range(ws.Cells(rw, 1), ws.Cells(rw, 6))) = 0 Then
+            FreeRow = rw
+            Exit Function
+        End If
+        rw = rw + 1
+    Loop
+    ' block full: add a line above the blank spacer row (it takes the formats of the line above)
+    ws.Rows(rw - 1).Insert
+    ws.Range(ws.Cells(rw - 1, 1), ws.Cells(rw - 1, 6)).ClearContents
+    FreeRow = rw - 1
+End Function
+
+Private Function RowIsEmpty(ws As Worksheet, ByVal rw As Long, ByVal lastCol As Long) As Boolean
+    RowIsEmpty = (Application.WorksheetFunction.CountA(ws.Range(ws.Cells(rw, 2), ws.Cells(rw, lastCol))) = 0)
+End Function
+
+Private Function CreditModeLabel(ByVal m As String) As String
+    If m = "SETOFF" Then CreditModeLabel = "Set-off" Else CreditModeLabel = "Cash received"
+End Function
+
+Private Function SettleModeLabel(ByVal m As String) As String
+    Select Case m
+        Case "REFUND": SettleModeLabel = "Refund"
+        Case "RECOVERED": SettleModeLabel = "Recovered"
+        Case Else: SettleModeLabel = "Set-off"
+    End Select
+End Function
+
+Private Function SettleModeCode(ByVal label As String) As String
+    Select Case LCase$(Trim$(label))
+        Case "refund": SettleModeCode = "REFUND"
+        Case "recovered": SettleModeCode = "RECOVERED"
+        Case Else: SettleModeCode = "SETOFF"
+    End Select
+End Function
+
 Public Sub GetDailySales()
-    Dim r As String, ws As Worksheet, rows_ As Variant, cols As Variant, i As Long, rw As Long
+    Dim r As String, ws As Worksheet, lst As Worksheet, rows_ As Variant, cols As Variant
+    Dim i As Long, rw As Long, hrow As Long, status_ As String, nCr As Long, nAdv As Long, lastHdr As Long
     If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
     r = HttpCall("GET", "/api/xl/daily_sales?format=tsv&date=" & EntryDate(), "")
     If Failed(r) Then Exit Sub
+    Application.ScreenUpdating = False
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    Set lst = ThisWorkbook.Worksheets("Lists")
+
+    ' Start from a clean sheet so nothing from another day is left behind
+    For rw = DailyFirstRow() To DailyLastRow(ws)
+        ws.Range(ws.Cells(rw, 5), ws.Cells(rw, 7)).ClearContents
+    Next rw
+    lastHdr = HeaderRowOf(ws, "#CREDIT_GIVEN") - 1
+    If lastHdr < 0 Then lastHdr = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+    For rw = DailyFirstRow() To lastHdr
+        If ws.Cells(rw, 1).Value <> "" And Not IsNumeric(ws.Cells(rw, 1).Value) Then
+            ws.Cells(rw, 3).ClearContents
+        End If
+    Next rw
+    ClearBlock ws, "#CREDIT_GIVEN"
+    ClearBlock ws, "#CREDIT_RECEIVED"
+    ClearBlock ws, "#ADVANCES"
+    ClearBlock ws, "#ADV_SETTLE"
+    lst.Range("C4:D3000").ClearContents
+
     rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
     For i = 0 To UBound(rows_)
         If Trim$(rows_(i)) <> "" Then
             cols = Split(rows_(i), vbTab)
-            If cols(0) = "LINE" Then
-                ' LINE <tab> category_id <tab> nos <tab> bill_no <tab> amount
+            Select Case cols(0)
+            Case "STATUS"
+                status_ = cols(1)
+            Case "LINE"
+                ' LINE | category_id | nos | bill_no | amount
                 For rw = DailyFirstRow() To DailyLastRow(ws)
                     If CStr(ws.Cells(rw, 1).Value) = cols(1) Then
-                        ws.Cells(rw, 5).Value = cols(2)
-                        ws.Cells(rw, 6).Value = cols(3)
-                        ws.Cells(rw, 7).Value = cols(4)
+                        ws.Cells(rw, 5).Value = NumOrBlank(cols(2))
+                        ws.Cells(rw, 6).Value = Txt(cols(3))
+                        ws.Cells(rw, 7).Value = NumOrBlank(cols(4))
                         Exit For
                     End If
                 Next rw
-            ElseIf cols(0) = "HEADER" Then
-                rw = HeaderRowOf(ws, cols(1))
-                If rw > 0 Then ws.Cells(rw, 3).Value = cols(2)
-            ElseIf cols(0) = "STATUS" Then
-                SayResult "Loaded " & EntryDate() & " (" & cols(1) & ")"
-            End If
+            Case "HEADER"
+                hrow = HeaderRowOf(ws, cols(1))
+                If hrow > 0 Then
+                    If cols(1) = "narration" Or Right$(cols(1), 6) = "_label" Then
+                        ws.Cells(hrow, 3).Value = Txt(cols(2))
+                    Else
+                        ws.Cells(hrow, 3).Value = NumOrBlank(cols(2))
+                    End If
+                End If
+            Case "CREDIT"
+                ' CREDIT | id | type | invoice_no | party | amount | mode | settles
+                If cols(2) = "GIVEN" Then
+                    rw = FreeRow(ws, "#CREDIT_GIVEN")
+                    ws.Cells(rw, 1).Value = cols(1)
+                    ws.Cells(rw, 2).Value = Txt(cols(3))
+                    ws.Cells(rw, 3).Value = cols(4)
+                    ws.Cells(rw, 4).Value = NumOrBlank(cols(5))
+                Else
+                    rw = FreeRow(ws, "#CREDIT_RECEIVED")
+                    ws.Cells(rw, 1).Value = cols(1)
+                    ws.Cells(rw, 2).Value = cols(7)
+                    ws.Cells(rw, 3).Value = Txt(cols(3))
+                    ws.Cells(rw, 4).Value = cols(4)
+                    ws.Cells(rw, 5).Value = NumOrBlank(cols(5))
+                    ws.Cells(rw, 6).Value = CreditModeLabel(cols(6))
+                End If
+            Case "ADV"
+                ' ADV | id | type | receipt_no | party | amount | remarks
+                rw = FreeRow(ws, "#ADVANCES")
+                ws.Cells(rw, 1).Value = cols(1)
+                If cols(2) = "GIVEN" Then ws.Cells(rw, 2).Value = "Given" Else ws.Cells(rw, 2).Value = "Received"
+                ws.Cells(rw, 3).Value = Txt(cols(3))
+                ws.Cells(rw, 4).Value = cols(4)
+                ws.Cells(rw, 5).Value = NumOrBlank(cols(5))
+                ws.Cells(rw, 6).Value = cols(6)
+            Case "SETTLE"
+                ' SETTLE | advance | amount | bill_no | mode | remarks
+                rw = FreeRow(ws, "#ADV_SETTLE")
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Cells(rw, 3).Value = NumOrBlank(cols(2))
+                ws.Cells(rw, 4).Value = Txt(cols(3))
+                ws.Cells(rw, 5).Value = SettleModeLabel(cols(4))
+                ws.Cells(rw, 6).Value = cols(5)
+            Case "OPENCR"
+                lst.Cells(4 + nCr, 3).Value = cols(1)
+                nCr = nCr + 1
+            Case "OPENADV"
+                lst.Cells(4 + nAdv, 4).Value = cols(2)
+                nAdv = nAdv + 1
+            End Select
         End If
     Next i
-    If SetupSheet().Range("B6").Value = "" Then SayResult "Loaded " & EntryDate()
+    ws.Range("H2").Value = Txt(EntryDate())
+    Application.ScreenUpdating = True
+    If status_ = "" Then status_ = "New"
+    SayResult "Loaded " & EntryDate() & " (" & status_ & ")"
 End Sub
+
+Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
+    Jq = """" & key & """:" & jsonValue
+End Function
+
+Private Function AddItem(ByVal list_ As String, ByVal item As String) As String
+    If list_ <> "" Then list_ = list_ & ","
+    AddItem = list_ & "{" & item & "}"
+End Function
 
 Public Sub SendDailySales()
     Dim ws As Worksheet, rw As Long, body As String, lines_ As String, hdr As String, r As String
-    Dim fields As Variant, i As Long, hrow As Long
+    Dim fields As Variant, i As Long, hrow As Long, msg As String
+    Dim credits As String, advs As String, sets As String
     If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    If CStr(ws.Range("H2").Value) <> EntryDate() Then
+        MsgBox "Press Load Day for " & EntryDate() & " first, so the saved credit and advances are not lost.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
     For rw = DailyFirstRow() To DailyLastRow(ws)
-        If lines_ <> "" Then lines_ = lines_ & ","
-        lines_ = lines_ & "{""category_id"":" & JsonNum(ws.Cells(rw, 1).Value) & _
-                 ",""nos"":" & JsonStr(ws.Cells(rw, 5).Value) & _
-                 ",""bill_no"":" & JsonStr(ws.Cells(rw, 6).Value) & _
-                 ",""amount"":" & JsonNum(ws.Cells(rw, 7).Value) & "}"
+        lines_ = AddItem(lines_, Jq("category_id", JsonNum(ws.Cells(rw, 1).Value)) & "," & _
+                 Jq("nos", JsonStr(ws.Cells(rw, 5).Value)) & "," & _
+                 Jq("bill_no", JsonStr(ws.Cells(rw, 6).Value)) & "," & _
+                 Jq("amount", JsonNum(ws.Cells(rw, 7).Value)))
     Next rw
     fields = Array("narration", "total_expenditure", "cash_float", "cash_amount", _
                    "credit_card_sampath_amount", "credit_card_hnb_amount", "bank_transfer_amount", _
@@ -27666,23 +28107,85 @@ Public Sub SendDailySales()
         hrow = HeaderRowOf(ws, CStr(fields(i)))
         If hrow > 0 Then
             If hdr <> "" Then hdr = hdr & ","
-            hdr = hdr & """" & fields(i) & """:" & JsonStr(ws.Cells(hrow, 3).Value)
+            hdr = hdr & Jq(CStr(fields(i)), JsonStr(ws.Cells(hrow, 3).Value))
         End If
     Next i
-    body = "{""date"":" & JsonStr(EntryDate()) & ",""header"":{" & hdr & "},""lines"":[" & lines_ & "]}"
+
+    ' Credit Given
+    rw = BlockStart(ws, "#CREDIT_GIVEN")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 4) Then
+            credits = AddItem(credits, Jq("id", JsonStr(ws.Cells(rw, 1).Value)) & "," & _
+                      Jq("credit_type", """GIVEN""") & "," & _
+                      Jq("invoice_no", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                      Jq("party_name", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                      Jq("amount", JsonNum(ws.Cells(rw, 4).Value)))
+        End If
+        rw = rw + 1
+    Loop
+    ' Credit Received / Set-off
+    rw = BlockStart(ws, "#CREDIT_RECEIVED")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 6) Then
+            If Trim$(CStr(ws.Cells(rw, 2).Value)) = "" Then
+                MsgBox "Credit Received line " & (rw - BlockStart(ws, "#CREDIT_RECEIVED") + 1) & _
+                       ": pick which Credit Given it settles (column B).", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            credits = AddItem(credits, Jq("id", JsonStr(ws.Cells(rw, 1).Value)) & "," & _
+                      Jq("credit_type", """RECEIVED""") & "," & _
+                      Jq("settles_ref", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                      Jq("invoice_no", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                      Jq("party_name", JsonStr(ws.Cells(rw, 4).Value)) & "," & _
+                      Jq("amount", JsonNum(ws.Cells(rw, 5).Value)) & "," & _
+                      Jq("settle_mode", IIf(LCase$(Trim$(CStr(ws.Cells(rw, 6).Value))) = "set-off", """SETOFF""", """CASH""")))
+        End If
+        rw = rw + 1
+    Loop
+    ' Advances received / given
+    rw = BlockStart(ws, "#ADVANCES")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 6) Then
+            advs = AddItem(advs, Jq("id", JsonStr(ws.Cells(rw, 1).Value)) & "," & _
+                   Jq("adv_type", IIf(LCase$(Trim$(CStr(ws.Cells(rw, 2).Value))) = "given", """GIVEN""", """RECEIVED""")) & "," & _
+                   Jq("receipt_no", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                   Jq("party_name", JsonStr(ws.Cells(rw, 4).Value)) & "," & _
+                   Jq("amount", JsonNum(ws.Cells(rw, 5).Value)) & "," & _
+                   Jq("remarks", JsonStr(ws.Cells(rw, 6).Value)))
+        End If
+        rw = rw + 1
+    Loop
+    ' Advance set-off / refund / recovered
+    rw = BlockStart(ws, "#ADV_SETTLE")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 6) Then
+            If Trim$(CStr(ws.Cells(rw, 2).Value)) = "" Then
+                MsgBox "Advance set-off line " & (rw - BlockStart(ws, "#ADV_SETTLE") + 1) & _
+                       ": pick which advance it settles (column B).", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            sets = AddItem(sets, Jq("advance_ref", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                   Jq("amount", JsonNum(ws.Cells(rw, 3).Value)) & "," & _
+                   Jq("bill_no", JsonStr(ws.Cells(rw, 4).Value)) & "," & _
+                   Jq("settle_mode", """" & SettleModeCode(CStr(ws.Cells(rw, 5).Value)) & """") & "," & _
+                   Jq("remarks", JsonStr(ws.Cells(rw, 6).Value)))
+        End If
+        rw = rw + 1
+    Loop
+
+    body = "{" & Jq("date", JsonStr(EntryDate())) & "," & Jq("header", "{" & hdr & "}") & "," & _
+           Jq("lines", "[" & lines_ & "]")
+    If BlockStart(ws, "#CREDIT_GIVEN") > 0 Then
+        body = body & "," & Jq("credit_lines", "[" & credits & "]") & "," & _
+               Jq("advances", "[" & advs & "]") & "," & Jq("settlements", "[" & sets & "]")
+    End If
+    body = body & "}"
     r = HttpCall("POST", "/api/xl/daily_sales/save", body)
     If Failed(r) Then Exit Sub
-    SayResult JsonValue(r, "message")
-    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
-End Sub
-
-Public Sub PostDailySales()
-    Dim r As String
-    If MsgBox("Post " & EntryDate() & " to the GL? It locks the day.", vbYesNo + vbQuestion) <> vbYes Then Exit Sub
-    r = HttpCall("POST", "/api/xl/daily_sales/post", "{""date"":" & JsonStr(EntryDate()) & "}")
-    If Failed(r) Then Exit Sub
-    SayResult JsonValue(r, "message")
-    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+    msg = JsonValue(r, "message")
+    GetDailySales   ' reload, so new lines get their row ids
+    SayResult msg
+    MsgBox msg, vbInformation, "Suwin ERP"
 End Sub
 
 ' ---- Bar Sales -------------------------------------------------------------
@@ -27755,6 +28258,132 @@ Public Sub PostBarSales()
     If Failed(r) Then Exit Sub
     SayResult JsonValue(r, "message")
     MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+' ---- History ---------------------------------------------------------------
+Private Function HistoryQuery() As String
+    Dim f As String, t As String
+    f = Trim$(CStr(SetupSheet().Range("B7").Text))
+    t = Trim$(CStr(SetupSheet().Range("B8").Text))
+    If IsDate(SetupSheet().Range("B7").Value) Then f = Format$(CDate(SetupSheet().Range("B7").Value), "yyyy-mm-dd")
+    If IsDate(SetupSheet().Range("B8").Value) Then t = Format$(CDate(SetupSheet().Range("B8").Value), "yyyy-mm-dd")
+    HistoryQuery = "format=tsv&from=" & f & "&to=" & t
+End Function
+
+Private Function LoadTable(ByVal sheetName As String, ByVal path As String) As Long
+    Dim r As String, ws As Worksheet, rows_ As Variant, cols As Variant, types As Variant
+    Dim data() As Variant, i As Long, j As Long, n As Long, m As Long, v As String
+    r = HttpCall("GET", path, "")
+    If Failed(r) Then LoadTable = -1: Exit Function
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    If ws.AutoFilterMode Then ws.AutoFilterMode = False
+    ws.Range(ws.Cells(3, 1), ws.Cells(ws.Rows.Count, 200)).Clear
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Left$(rows_(i), 4) = "ROW" & vbTab Then n = n + 1
+    Next i
+    cols = Split(rows_(0), vbTab)
+    types = Split(rows_(1), vbTab)
+    m = UBound(cols)            ' column 0 is the COLS / TYPES / ROW tag
+    For j = 1 To m
+        With ws.Cells(3, j)
+            .Value = cols(j)
+            .Font.Bold = True
+            .Font.Color = RGB(255, 255, 255)
+            .Interior.Color = RGB(15, 108, 189)
+            .WrapText = True
+        End With
+    Next j
+    If n > 0 Then
+        ReDim data(1 To n, 1 To m)
+        n = 0
+        For i = 2 To UBound(rows_)
+            If Left$(rows_(i), 4) = "ROW" & vbTab Then
+                n = n + 1
+                cols = Split(rows_(i), vbTab)
+                For j = 1 To m
+                    If j <= UBound(cols) Then v = cols(j) Else v = ""
+                    If v = "" Or v = "None" Then
+                        data(n, j) = Empty
+                    ElseIf types(j) = "n" Then
+                        data(n, j) = Val(v)
+                    ElseIf types(j) = "d" And Len(v) >= 10 Then
+                        data(n, j) = DateSerial(CInt(Left$(v, 4)), CInt(Mid$(v, 6, 2)), CInt(Mid$(v, 9, 2)))
+                    Else
+                        data(n, j) = v
+                    End If
+                Next j
+            End If
+        Next i
+        For j = 1 To m
+            Select Case types(j)
+                Case "n": ws.Range(ws.Cells(4, j), ws.Cells(3 + n, j)).NumberFormat = "#,##0.00"
+                Case "d": ws.Range(ws.Cells(4, j), ws.Cells(3 + n, j)).NumberFormat = "yyyy-mm-dd"
+                Case Else: ws.Range(ws.Cells(4, j), ws.Cells(3 + n, j)).NumberFormat = "@"
+            End Select
+        Next j
+        ws.Range(ws.Cells(4, 1), ws.Cells(3 + n, m)).Value = data
+    End If
+    ws.Range(ws.Cells(3, 1), ws.Cells(3 + n, m)).AutoFilter
+    ws.Range(ws.Cells(3, 1), ws.Cells(3 + n, m)).Columns.AutoFit
+    For j = 1 To m
+        If ws.Columns(j).ColumnWidth > 40 Then ws.Columns(j).ColumnWidth = 40
+        If ws.Columns(j).ColumnWidth < 10 Then ws.Columns(j).ColumnWidth = 10
+    Next j
+    LoadTable = n
+End Function
+
+Public Sub GetAllHistory()
+    Dim q As String, a As Long, b As Long, c As Long, d As Long
+    q = HistoryQuery()
+    Application.ScreenUpdating = False
+    a = LoadTable("Sales History", "/api/xl/daily_sales/history?" & q)
+    If a < 0 Then GoTo Done
+    b = LoadTable("Credit History", "/api/xl/daily_sales/credit_history?" & q)
+    If b < 0 Then GoTo Done
+    c = LoadTable("Advance History", "/api/xl/daily_sales/advance_history?" & q)
+    If c < 0 Then GoTo Done
+    d = LoadTable("Bar History", "/api/xl/bar_sales/history?" & q)
+    If d < 0 Then GoTo Done
+    SayResult "History loaded: " & a & " sales days, " & b & " credit lines, " & c & " advance lines, " & d & " bar days"
+    Application.ScreenUpdating = True
+    MsgBox "History loaded." & vbCrLf & a & " daily sales days" & vbCrLf & b & " credit lines" & vbCrLf & _
+           c & " advance lines" & vbCrLf & d & " bar sales days", vbInformation, "Suwin ERP"
+Done:
+    Application.ScreenUpdating = True
+End Sub
+
+' ---- Buttons ---------------------------------------------------------------
+Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant)
+    Dim ws As Worksheet, i As Long, x As Double, btn As Object
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 4) = "xlb_" Then ws.Buttons(i).Delete
+    Next i
+    x = ws.Range(anchor).Left
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, ws.Range(anchor).Top + 2, 96, 26)
+        btn.Name = "xlb_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        x = x + 102
+    Next i
+End Sub
+
+Public Sub AddButtons()
+    PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "Load History", "GetAllHistory")
+    PutButtons "Daily Sales", "J1", Array("Load Day", "GetDailySales", "Submit Day", "SendDailySales", _
+                                          "Post Day", "PostDailySales")
+    PutButtons "Bar Sales", "E1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
+                                        "Post Day", "PostBarSales")
+    PutButtons "Sales History", "H1", Array("Load History", "GetAllHistory")
+    PutButtons "Credit History", "H1", Array("Load History", "GetAllHistory")
+    PutButtons "Advance History", "H1", Array("Load History", "GetAllHistory")
+    PutButtons "Bar History", "H1", Array("Load History", "GetAllHistory")
 End Sub
 '''
 
@@ -27844,6 +28473,8 @@ def excel_workbook():
         ('API Key', '', 'Paste the key from Settings > Excel Keys'),
         ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are entering (YYYY-MM-DD)'),
         ('Last result', '', 'Filled in by the buttons'),
+        ('History From', '', 'First day for the History sheets (YYYY-MM-DD) - blank = from the start'),
+        ('History To', '', 'Last day for the History sheets (YYYY-MM-DD) - blank = up to today'),
     ]
     for i, (k, v, note) in enumerate(rows, start=3):
         ws.cell(row=i, column=1, value=k).font = Font(bold=True)
@@ -27861,20 +28492,22 @@ def excel_workbook():
         '3. Right-click the file > Properties > tick Unblock (Windows blocks files from the internet).',
         '4. Press Alt+F11, File > Import File, choose SuwinERP.bas (downloaded with this workbook),',
         '   or copy the code from the VBA Code sheet into a new module.',
-        '5. Back in Excel: Developer > Macros > TestConnection to check the key works.',
+        '5. Back in Excel: Developer > Macros (Alt+F8) > TestConnection. It checks the key and adds',
+        '   the Load / Submit buttons to every sheet.',
         '',
-        'The buttons (Developer > Macros, or add buttons to the sheet):',
-        '   TestConnection   - checks the server and key',
-        '   GetDailySales    - loads the Entry Date day into Daily Sales',
-        '   SendDailySales   - sends Daily Sales to the system (saves as Parked)',
+        'The buttons (also in Alt+F8):',
+        '   TestConnection   - checks the server and key, and adds the buttons',
+        '   GetDailySales    - Load Day: loads the Entry Date into Daily Sales, with its credit and advances',
+        '   SendDailySales   - Submit Day: sends Daily Sales, Received By, credit and advances (saves as Parked)',
         '   GetBarSales      - loads the Entry Date day into Bar Sales',
-        '   SendBarSales     - sends Bar Sales to the system (saves as Parked)',
-        '   RefreshLists     - reloads the Lists sheet (categories and accounts)',
+        '   SendBarSales     - Submit: sends Bar Sales to the system (saves as Parked)',
+        '   GetAllHistory    - fills Sales History, Credit History, Advance History and Bar History',
+        '   RefreshLists     - reloads the Lists sheet (accounts)',
         '',
         'Nothing is posted to the GL from Excel unless you run PostDailySales / PostBarSales,',
         'and those need an accountant key. Saving always lands as Parked, exactly like the website.',
     ]
-    for i, line in enumerate(steps, start=8):
+    for i, line in enumerate(steps, start=10):
         c = ws.cell(row=i, column=1, value=line)
         if line.startswith('How to'):
             c.font = Font(bold=True, size=12)
@@ -27883,8 +28516,11 @@ def excel_workbook():
     ws = wb.create_sheet('Daily Sales')
     ws['A1'] = 'Daily Sales Entry - type in the yellow columns, then run SendDailySales'
     ws['A1'].font = title_font
-    ws['A2'] = 'Date comes from the Setup sheet (B5).'
+    ws['A2'] = 'Date comes from the Setup sheet (B5). Press Load Day first, type, then Submit Day.'
     ws['A2'].font = note_font
+    ws['H1'] = 'Loaded day'
+    ws['H1'].font = Font(bold=True)
+    ws['H2'].font = Font(bold=True, color='0F6CBD')
     head_row(ws, 4, ['Category ID', 'Group', 'Description', 'Particulars', 'Nos', 'Bill No', 'Amount'],
              [11, 14, 30, 26, 10, 14, 14])
     r = 5
@@ -27914,6 +28550,7 @@ def excel_workbook():
         ('misc_expense_2_label', 'Misc 2 - Label'), ('misc_expense_2_amount', 'Misc 2 - Amount'),
         ('misc_expense_3_label', 'Misc 3 - Label'), ('misc_expense_3_amount', 'Misc 3 - Amount'),
     ]
+    ws.cell(row=hr, column=2, value='Received By (cash entry) and expenses').font = note_font
     for i, (key, label) in enumerate(header_fields):
         ws.cell(row=hr + 1 + i, column=1, value=key).font = Font(color='808080')
         ws.cell(row=hr + 1 + i, column=2, value=label).font = Font(bold=True)
@@ -27921,6 +28558,50 @@ def excel_workbook():
         cell.fill = input_fill
         if not key.endswith('label') and key != 'narration':
             cell.number_format = '#,##0.00'
+
+    # Credit and advance registers. Each block starts at a "#NAME" marker in
+    # column A (read by the macro); column A of a line holds its saved row id.
+    from openpyxl.worksheet.datavalidation import DataValidation
+    dv_credit = DataValidation(type='list', formula1='=Lists!$C$4:$C$3000', allow_blank=True, showErrorMessage=False)
+    dv_adv = DataValidation(type='list', formula1='=Lists!$D$4:$D$3000', allow_blank=True, showErrorMessage=False)
+    dv_cmode = DataValidation(type='list', formula1='"Cash received,Set-off"', allow_blank=True)
+    dv_atype = DataValidation(type='list', formula1='"Received,Given"', allow_blank=True)
+    dv_smode = DataValidation(type='list', formula1='"Set-off,Refund,Recovered"', allow_blank=True)
+    for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode):
+        ws.add_data_validation(dv)
+    blocks = [
+        ('#CREDIT_GIVEN', 'Credit Given (debtors)',
+         ['Row ID', 'Invoice No', 'Party', 'Amount'], {4: '#,##0.00'}, {}),
+        ('#CREDIT_RECEIVED', 'Credit Received / Credit Set-off',
+         ['Row ID', 'Settles Credit Given (pick)', 'Receipt / Bill No', 'Party', 'Amount', 'Mode'],
+         {5: '#,##0.00'}, {2: dv_credit, 6: dv_cmode}),
+        ('#ADVANCES', 'Advance Received / Advance Given',
+         ['Row ID', 'Type', 'Receipt No', 'Party', 'Amount', 'Remarks'], {5: '#,##0.00'}, {2: dv_atype}),
+        ('#ADV_SETTLE', 'Advance Set-off / Refund / Recovered',
+         ['', 'Advance (pick)', 'Amount', 'Bill No', 'Mode', 'Remarks'], {3: '#,##0.00'}, {2: dv_adv, 5: dv_smode}),
+    ]
+    r = hr + len(header_fields) + 3
+    for marker, title, heads, fmts, dvs in blocks:
+        ws.cell(row=r, column=1, value=marker).font = Font(color='808080')
+        ws.cell(row=r, column=2, value=title).font = Font(bold=True, size=12)
+        r += 1
+        for i, label in enumerate(heads, start=1):
+            c = ws.cell(row=r, column=i, value=label)
+            c.fill, c.font = head_fill, head_font
+        r += 1
+        for _ in range(15):
+            ws.cell(row=r, column=1).font = Font(color='808080')
+            for col in range(2, len(heads) + 1):
+                c = ws.cell(row=r, column=col)
+                c.fill = input_fill
+                if col in fmts:
+                    c.number_format = fmts[col]
+                if col in dvs:
+                    dvs[col].add(c)
+            r += 1
+        r += 1
+    ws.cell(row=r, column=1, value='#END').font = Font(color='808080')
+    ws.column_dimensions['B'].width = 44
 
     # ---- Bar Sales
     ws = wb.create_sheet('Bar Sales')
@@ -27957,14 +28638,31 @@ def excel_workbook():
         c.fill, c.number_format = input_fill, '#,##0.00'
         r += 1
 
+    # ---- History sheets (filled by GetAllHistory)
+    for title, note in (('Sales History', 'Daily Sales - one row per day'),
+                        ('Credit History', 'Credit Given, Credit Received and Credit Set-off'),
+                        ('Advance History', 'Advances and their set-offs, refunds and recoveries'),
+                        ('Bar History', 'Bar Sales Record - one row per day')):
+        ws = wb.create_sheet(title)
+        ws['A1'] = f'{note} - press Load History (range from Setup B7 / B8)'
+        ws['A1'].font = title_font
+
     # ---- Lists
     ws = wb.create_sheet('Lists')
     ws['A1'] = 'Master lists - run RefreshLists to update from the system'
     ws['A1'].font = title_font
-    head_row(ws, 3, ['GL Accounts'], [46])
+    head_row(ws, 3, ['GL Accounts', '', 'Open Credit Given', 'Open Advances'], [46, 4, 60, 60])
     for i, a in enumerate(db.execute_query(
             "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [], start=4):
         ws.cell(row=i, column=1, value=a['account_name'])
+    open_now = _daily_sales_open_items(date.today().strftime('%Y-%m-%d'))
+    for i, c in enumerate([c for c in open_now['credits'] if c['balance'] > 0.005], start=4):
+        ws.cell(row=i, column=3, value=_xl_ref(c['id'], c['invoice_no'], c['party_name'], c['entry_date'],
+                                               c['balance']))
+    for i, a in enumerate([a for a in open_now['adv_received'] + open_now['adv_given'] if a['balance'] > 0.005],
+                          start=4):
+        ws.cell(row=i, column=4, value=_xl_ref(a['id'], a['receipt_no'], a['party_name'], a['entry_date'],
+                                               a['balance']))
 
     # ---- VBA code, so it can be pasted even without the .bas file
     ws = wb.create_sheet('VBA Code')
@@ -27980,7 +28678,7 @@ def excel_workbook():
     buf.seek(0)
     resp = make_response(buf.read())
     resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP_DataEntry.xlsx'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP_DataEntry_v2.xlsx'
     return resp
 
 
