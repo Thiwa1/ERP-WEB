@@ -27648,6 +27648,200 @@ def xl_bar_sales_history():
     return _xl_table(cols, types, rows)
 
 
+def _xl_run_view(view, path, form):
+    """Run one of the website's own POST handlers for the workbook, so Excel
+    follows exactly the same rules as the web page. The workbook's user and
+    company are carried into that request. Returns (ok, [messages])."""
+    who = {k: session.get(k) for k in ('user_pk', 'user_id', 'username', 'db_name', 'tenant_id')}
+    with app.test_request_context(path, method='POST', data=form):
+        for k, v in who.items():
+            if v is not None:
+                session[k] = v
+        view()
+        flashed = flask.get_flashed_messages(with_categories=True)
+    msgs = [re.sub(r'<[^>]+>', '', m) for _c, m in flashed]
+    ok = any(c == 'success' for c, _m in flashed) and not any(c == 'danger' for c, _m in flashed)
+    return ok, msgs
+
+
+# ---------------- Payments (Cash / Cheque) and the Payment Ready List ----------------
+
+@app.route('/api/xl/payables', methods=['GET'])
+def xl_payables():
+    """Every outstanding supplier invoice (the Payment Ready List), plus the
+    cash and bank accounts payments can be made from."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    rows, _total, _ready = _grn_payment_ready_rows('', '', '')
+    out = [['INV', r['id'], _xl_day(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '',
+            r['amount'] or 0, r['method'] or '', 'Yes' if r['ready'] else 'No'] for r in rows]
+    for c in db.execute_query("SELECT cash_book_account_name AS n FROM cash_book ORDER BY cash_book_account_name") or []:
+        if c['n']:
+            out.append(['CASHACC', c['n']])
+    for b in db.execute_query("SELECT bank_bookcol_account_number AS n FROM bank_book ORDER BY bank_bookcol_account_number") or []:
+        if b['n']:
+            out.append(['BANKACC', b['n']])
+    return _xl_tsv(out)
+
+
+@app.route('/api/xl/payables/ready', methods=['POST'])
+def xl_payables_ready():
+    """Save the Payment Method and Ready ticks from the workbook's list."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    changed = 0
+    for it in _xl_body().get('items') or []:
+        inv = str(it.get('id') or '').strip()
+        if not inv.isdigit():
+            continue
+        method = str(it.get('method') or '').strip().title()
+        method = method if method in ('Cash', 'Cheque') else None
+        ready = 1 if str(it.get('ready') or '').strip().lower() in ('yes', 'y', '1', 'true') else 0
+        db.execute_query("""
+            UPDATE suppliers_invoice_data SET suppliers_invoice_payment_method = %s, suppliers_invoice_payment_ready = %s
+            WHERE s_i_id = %s AND COALESCE(suppliers_oustanding_delete, 0) = 0
+        """, (method, ready, int(inv)), commit=True)
+        changed += 1
+    return _xl_json({'ok': True, 'message': f'Payment Ready List updated ({changed} invoice(s)).'})
+
+
+@app.route('/api/xl/payments/submit', methods=['POST'])
+def xl_payment_submit():
+    """Pay one supplier's invoices by Cash or Cheque - handed to the web page's
+    own Cash Payment / Bank Payment handler (vouchers, JV, cash / bank book,
+    WHT and postdated cheques all work the same way)."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    b = _xl_body()
+    pay_by = str(b.get('pay_by') or '').strip().lower()
+    account = str(b.get('account') or '').strip()
+    pay_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    lines = [(str(l.get('id') or '').strip(), round(parse_float(l.get('amount')), 2)) for l in b.get('lines') or []]
+    lines = [(i, a) for i, a in lines if i.isdigit() and a > 0]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'message': msg}, 400)
+
+    if pay_by not in ('cash', 'cheque'):
+        return fail('Choose Cash or Cheque in "Pay By".')
+    if not account:
+        return fail('Choose the ' + ('cash account' if pay_by == 'cash' else 'bank account') + ' to pay from.')
+    if not lines:
+        return fail('Type an amount in "Pay Now" for at least one invoice.')
+    if pay_by == 'cheque' and not str(b.get('cheque_no') or '').strip():
+        return fail('Type the cheque number.')
+    accounts = [r['n'] for r in (db.execute_query(
+        "SELECT cash_book_account_name AS n FROM cash_book" if pay_by == 'cash'
+        else "SELECT bank_bookcol_account_number AS n FROM bank_book") or [])]
+    if account not in accounts:
+        return fail(f'"{account}" is not a {pay_by} account in the system - pick it from the list.')
+    ids = [int(i) for i, _a in lines]
+    marks = ','.join(['%s'] * len(ids))
+    invs = {str(r['id']): r for r in (db.execute_query(f"""
+        SELECT s.s_i_id AS id, s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_oustanding AS outstanding,
+               sup.supplier_name AS supplier
+        FROM suppliers_invoice_data s JOIN suppliers sup ON sup.sup_id = s.suppliers_invoice_buinding_supplier
+        WHERE s.s_i_id IN ({marks}) AND COALESCE(s.suppliers_oustanding_delete, 0) = 0
+    """, tuple(ids)) or [])}
+    suppliers = {invs[i]['supplier'] for i, _a in lines if i in invs}
+    if len(invs) != len(set(ids)):
+        return fail('Some invoices are no longer outstanding - press Load Payables and try again.')
+    if len(suppliers) != 1:
+        return fail('One payment is for one supplier - fill "Pay Now" for one supplier at a time.')
+    for i, amt in lines:
+        if amt - float(invs[i]['outstanding'] or 0) > 0.01:
+            return fail(f"Invoice {invs[i]['invoice_no']}: paying {amt:,.2f} but only "
+                        f"{float(invs[i]['outstanding'] or 0):,.2f} is outstanding.")
+    supplier = suppliers.pop()
+    form = {'supplier': supplier, 'payment_date': pay_date,
+            'narration': str(b.get('narration') or '').strip() or f'Payment to {supplier}',
+            'wht_amount': str(round(parse_float(b.get('wht')), 2)),
+            'manual_voucher': str(b.get('manual_voucher') or '').strip()}
+    for i, amt in lines:
+        form[f'payment_{i}'] = str(amt)
+    if pay_by == 'cash':
+        form['cash_account'] = account
+        ok, msgs = _xl_run_view(cash_payment_submit, '/cash_payment/submit', form)
+    else:
+        form.update({'bank_account': account, 'cheque_no': str(b.get('cheque_no')).strip(),
+                     'post_date': _dse_parse_date(b.get('post_date')).strftime('%Y-%m-%d')
+                     if str(b.get('post_date') or '').strip() else ''})
+        from werkzeug.datastructures import MultiDict
+        md = MultiDict(form)
+        for i, _amt in lines:
+            md.add('inv_id[]', i)
+        ok, msgs = _xl_run_view(bank_payment_submit, '/bank_payment_submit', md)
+    return _xl_json({'ok': ok, 'message': ' '.join(msgs) or ('Done.' if ok else 'The payment was not saved.')},
+                    200 if ok else 400)
+
+
+# ---------------- Management Account ----------------
+
+@app.route('/api/xl/management_account', methods=['GET'])
+def xl_management_account():
+    """The month's Management Account as rows the workbook lays out:
+    P&L with last month and variance, the notes, cost of sales and sales %."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
+    prev = _mgmt_compute(cur['prev_period'])
+    t, st = cur['t'], cur['stock']
+    rows = [['INFO', cur['period'], cur['month_label'], prev['month_label'], _company_display_name(),
+             cur.get('remarks') or ''],
+            ['STOCK', 'opening', st['bar']['opening'], st['food']['opening'], st['hk']['opening']],
+            ['STOCK', 'closing', st['bar']['closing'], st['food']['closing'], st['hk']['closing']],
+            ['TITLE', 'Trading Profit & Loss Account - with Variance']]
+    for r in _mgmt_pl_rows(t, prev['t']):
+        label = r['label'] + (f" (Note {r['note']})" if r.get('note') else '')
+        if r['kind'] in ('sec', 'sec_red'):
+            rows.append(['SEC' if r['kind'] == 'sec' else 'SECR', label])
+        else:
+            fav = '' if r.get('fav') is None else ('1' if r['fav'] else '0')
+            rows.append([r['kind'].upper(), label, r.get('cur') or 0, r.get('prev') or 0, r.get('diff') or 0,
+                         '' if r.get('pct') is None else round(r['pct'], 2), fav])
+    rows.append(['TITLE', 'Notes to the Accounts'])
+    for n in _mgmt_note_rows(cur, prev):
+        rows.append(['SEC' if n['kind'] == 'income' else 'SECR', n['label']])
+        for l in n['lines']:
+            fav = '' if l.get('fav') is None else ('1' if l['fav'] else '0')
+            rows.append(['ITEM', l['label'], l['cur'], l['prev'], l['diff'],
+                         '' if l.get('pct') is None else round(l['pct'], 2), fav])
+        tt = n['total']
+        rows.append(['TOTAL', 'Total', tt['cur'], tt['prev'], tt['diff'],
+                     '' if tt.get('pct') is None else round(tt['pct'], 2), ''])
+    rows.append(['TITLE', 'Note 3 - Cost of Sales  (Bar / Food / Housekeeping)'])
+    rows.append(['HEAD3', 'Description', 'Bar', 'Food', 'Housekeeping'])
+    rows.append(['ROW3', 'Opening Stock', st['bar']['opening'], st['food']['opening'], st['hk']['opening']])
+    rows.append(['ROW3', 'Add: Purchases', t['purch_bar'], t['purch_food'], t['purch_hk']])
+    rows.append(['ROW3', 'Less: Closing Stock', st['bar']['closing'], st['food']['closing'], st['hk']['closing']])
+    rows.append(['TOT3', 'Cost of Sales', t['cogs_bar'], t['cogs_food'], t['cogs_hk']])
+    rows.append(['ROW3', 'Sales base', t['base_bar'], t['base_food'], 0])
+    rows.append(['PCT3', 'Cost %', t['cost_pct_bar'] or 0, t['cost_pct_food'] or 0, 0])
+    rows.append(['TITLE', 'Sales Percentage Analysis'])
+    for sp in cur['sales_pct']:
+        rows.append(['SALESPCT', sp['label'], sp['amount'], sp['pct']])
+    return _xl_tsv(rows)
+
+
+@app.route('/api/xl/management_account/save', methods=['POST'])
+def xl_management_account_save():
+    """Save the month's opening / closing stock and remarks from the workbook."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    b = _xl_body()
+    form = {'month': str(b.get('month') or ''), 'remarks': str(b.get('remarks') or ''), 'tab': 'note3'}
+    for k in ('opening_bar', 'opening_food', 'opening_hk', 'closing_bar', 'closing_food', 'closing_hk'):
+        v = b.get(k)
+        form[k] = '' if v in (None, '') else str(v)
+    ok, msgs = _xl_run_view(management_account_save, '/management_account/save', form)
+    return _xl_json({'ok': ok, 'message': ' '.join(msgs)}, 200 if ok else 400)
+
+
 # ---------------- Bar Sales Record ----------------
 
 @app.route('/api/xl/bar_sales', methods=['GET'])
@@ -27709,10 +27903,7 @@ def xl_bar_sales_post():
     if days[0]['status'] == 'Posted':
         return _xl_json({'ok': False, 'message': f'{entry_date} is already posted (JV {days[0]["jv_id"]}).'}, 400)
     # Reuse the web Post route so the GL rules stay in one place
-    with app.test_request_context('/bar_sales/post', method='POST', data={'entry_date': entry_date}):
-        session['user_pk'] = user_pk
-        bar_sales_post()
-        messages = [m for _c, m in flask.get_flashed_messages(with_categories=True)]
+    _ok, messages = _xl_run_view(bar_sales_post, '/bar_sales/post', {'entry_date': entry_date})
     after = db.execute_query("SELECT status, jv_id FROM bar_sales_days WHERE entry_date = %s", (entry_date,)) or [{}]
     posted = after[0].get('status') == 'Posted'
     return _xl_json({'ok': posted, 'date': entry_date, 'jv': after[0].get('jv_id'),
@@ -28365,12 +28556,12 @@ Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal 
     Next i
     x = ws.Range(anchor).Left
     For i = LBound(specs) To UBound(specs) Step 2
-        Set btn = ws.Buttons.Add(x, ws.Range(anchor).Top + 2, 96, 26)
+        Set btn = ws.Buttons.Add(x, ws.Range(anchor).Top + 4, 110, 28)
         btn.Name = "xlb_" & i
         btn.Caption = specs(i)
         btn.OnAction = specs(i + 1)
         btn.Font.Bold = True
-        x = x + 102
+        x = x + 116
     Next i
 End Sub
 
@@ -28378,12 +28569,374 @@ Public Sub AddButtons()
     PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "Load History", "GetAllHistory")
     PutButtons "Daily Sales", "J1", Array("Load Day", "GetDailySales", "Submit Day", "SendDailySales", _
                                           "Post Day", "PostDailySales")
-    PutButtons "Bar Sales", "E1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
+    PutButtons "Bar Sales", "F1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
                                         "Post Day", "PostBarSales")
-    PutButtons "Sales History", "H1", Array("Load History", "GetAllHistory")
-    PutButtons "Credit History", "H1", Array("Load History", "GetAllHistory")
-    PutButtons "Advance History", "H1", Array("Load History", "GetAllHistory")
-    PutButtons "Bar History", "H1", Array("Load History", "GetAllHistory")
+    PutButtons "Payments", "J1", Array("Load Payables", "LoadPayables", "Save Ready List", "SaveReadyList", _
+                                       "Submit Payment", "SubmitPayment")
+    PutButtons "Management Account", "I1", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock")
+    PutButtons "Sales History", "I1", Array("Load History", "GetAllHistory")
+    PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
+    PutButtons "Advance History", "I1", Array("Load History", "GetAllHistory")
+    PutButtons "Bar History", "I1", Array("Load History", "GetAllHistory")
+End Sub
+
+' ---- Runs by itself when the workbook opens --------------------------------
+Public Sub Auto_Open()
+    Dim r As String
+    On Error Resume Next
+    SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
+    AddButtons
+    On Error GoTo 0
+    If ApiKey() = "" Then
+        SetupSheet().Activate
+        SetupSheet().Range("B4").Select
+        MsgBox "Welcome to Suwin ERP Excel Data Entry." & vbCrLf & vbCrLf & _
+               "Paste your API key in B4 of this Setup sheet, then press Test Connection.", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    r = HttpCall("GET", "/api/xl/ping", "")
+    If Failed(r) Then Exit Sub
+    SayResult "Connected as " & JsonValue(r, "user") & " - loading " & EntryDate()
+    Application.StatusBar = "Suwin ERP: loading today's Daily Sales and Bar Sales..."
+    GetDailySales
+    GetBarSales
+    Application.StatusBar = False
+    ThisWorkbook.Worksheets("Daily Sales").Activate
+    SayResult "Connected as " & JsonValue(r, "user") & " - loaded " & EntryDate()
+End Sub
+
+Private Function DateText(ByVal v As Variant, ByVal fmt As String) As String
+    If IsDate(v) Then
+        DateText = Format$(CDate(v), fmt)
+    Else
+        DateText = Trim$(CStr(v))
+    End If
+End Function
+
+Private Function JsonNumOrNull(ByVal v As Variant) As String
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        JsonNumOrNull = "null"
+    Else
+        JsonNumOrNull = JsonNum(v)
+    End If
+End Function
+
+Private Sub StyleRange(rg As Range, Optional ByVal bold As Boolean = False, Optional ByVal back As Long = -1, _
+                       Optional ByVal fore As Long = -1)
+    rg.Font.Bold = bold
+    If back >= 0 Then rg.Interior.Color = back
+    If fore >= 0 Then rg.Font.Color = fore
+End Sub
+
+' ---- Payments and the Payment Ready List -----------------------------------
+Private Function PaySheet() As Worksheet
+    Set PaySheet = ThisWorkbook.Worksheets("Payments")
+End Function
+
+Private Function PayLastRow() As Long
+    Dim ws As Worksheet
+    Set ws = PaySheet()
+    PayLastRow = ws.Cells(ws.Rows.Count, 1).End(-4162).Row
+    If PayLastRow < 14 Then PayLastRow = 13
+End Function
+
+Public Sub LoadPayables()
+    Dim r As String, ws As Worksheet, lst As Worksheet, rows_ As Variant, cols As Variant
+    Dim data() As Variant, i As Long, n As Long, nc As Long, nb As Long, total As Double
+    r = HttpCall("GET", "/api/xl/payables?format=tsv", "")
+    If Failed(r) Then Exit Sub
+    Application.ScreenUpdating = False
+    Set ws = PaySheet()
+    Set lst = ThisWorkbook.Worksheets("Lists")
+    If ws.AutoFilterMode Then ws.AutoFilterMode = False
+    With ws.Range("A14:H20000")
+        .ClearContents
+        .Borders.LineStyle = -4142
+        .Interior.Pattern = -4142
+    End With
+    lst.Range("F4:G300").ClearContents
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Left$(rows_(i), 4) = "INV" & vbTab Then n = n + 1
+    Next i
+    If n > 0 Then ReDim data(1 To n, 1 To 7)
+    n = 0
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            Select Case cols(0)
+            Case "INV"
+                ' INV | id | date | supplier | invoice_no | outstanding | method | ready
+                n = n + 1
+                data(n, 1) = cols(1)
+                If Len(cols(2)) >= 10 Then
+                    data(n, 2) = DateSerial(CInt(Left$(cols(2), 4)), CInt(Mid$(cols(2), 6, 2)), CInt(Mid$(cols(2), 9, 2)))
+                End If
+                data(n, 3) = cols(3)
+                data(n, 4) = cols(4)
+                data(n, 5) = Val(cols(5))
+                data(n, 6) = cols(6)
+                data(n, 7) = cols(7)
+                total = total + Val(cols(5))
+            Case "CASHACC"
+                lst.Cells(4 + nc, 6).Value = cols(1)
+                nc = nc + 1
+            Case "BANKACC"
+                lst.Cells(4 + nb, 7).Value = cols(1)
+                nb = nb + 1
+            End Select
+        End If
+    Next i
+    If n > 0 Then
+        ws.Range("D14:D" & 13 + n).NumberFormat = "@"
+        ws.Range("B14:B" & 13 + n).NumberFormat = "yyyy-mm-dd"
+        ws.Range("E14:E" & 13 + n).NumberFormat = "#,##0.00"
+        ws.Range("H14:H" & 13 + n).NumberFormat = "#,##0.00;[Red]-#,##0.00;"
+        ws.Range("A14:G" & 13 + n).Value = data
+        With ws.Range("B14:H" & 13 + n)
+            .Borders.LineStyle = 1
+            .Borders.Color = RGB(200, 206, 216)
+        End With
+        ws.Range("F14:G" & 13 + n).Interior.Color = RGB(238, 243, 250)
+        ws.Range("H14:H" & 13 + n).Interior.Color = RGB(255, 248, 220)
+        For i = 14 To 13 + n
+            If ws.Cells(i, 7).Value = "Yes" Then ws.Cells(i, 7).Font.Color = RGB(16, 124, 16) Else ws.Cells(i, 7).Font.Color = RGB(96, 96, 96)
+        Next i
+    End If
+    ws.Range("B13:H" & 13 + n).AutoFilter
+    Application.ScreenUpdating = True
+    SayResult "Payables loaded: " & n & " invoice(s), outstanding " & Format$(total, "#,##0.00")
+End Sub
+
+Public Sub SaveReadyList()
+    Dim ws As Worksheet, rw As Long, items As String, r As String
+    Set ws = PaySheet()
+    For rw = 14 To PayLastRow()
+        If Trim$(CStr(ws.Cells(rw, 1).Value)) <> "" Then
+            items = AddItem(items, Jq("id", JsonStr(ws.Cells(rw, 1).Value)) & "," & _
+                    Jq("method", JsonStr(ws.Cells(rw, 6).Value)) & "," & _
+                    Jq("ready", JsonStr(ws.Cells(rw, 7).Value)))
+        End If
+    Next rw
+    If items = "" Then MsgBox "Press Load Payables first.", vbExclamation, "Suwin ERP": Exit Sub
+    r = HttpCall("POST", "/api/xl/payables/ready", "{" & Jq("items", "[" & items & "]") & "}")
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub SubmitPayment()
+    Dim ws As Worksheet, rw As Long, lines_ As String, r As String, body As String
+    Dim supplier As String, total As Double, cnt As Long, payBy As String, msg As String
+    Set ws = PaySheet()
+    payBy = Trim$(CStr(ws.Range("C4").Value))
+    For rw = 14 To PayLastRow()
+        If Trim$(CStr(ws.Cells(rw, 1).Value)) <> "" And Val(CStr(ws.Cells(rw, 8).Value)) > 0 Then
+            If supplier = "" Then supplier = CStr(ws.Cells(rw, 3).Value)
+            If CStr(ws.Cells(rw, 3).Value) <> supplier Then
+                MsgBox "Pay Now has amounts for more than one supplier (" & supplier & " and " & _
+                       ws.Cells(rw, 3).Value & ")." & vbCrLf & "One payment is for one supplier.", vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            If ws.Cells(rw, 8).Value - ws.Cells(rw, 5).Value > 0.01 Then
+                MsgBox "Invoice " & ws.Cells(rw, 4).Value & ": Pay Now is more than the outstanding amount.", _
+                       vbExclamation, "Suwin ERP"
+                Exit Sub
+            End If
+            lines_ = AddItem(lines_, Jq("id", JsonStr(ws.Cells(rw, 1).Value)) & "," & Jq("amount", JsonNum(ws.Cells(rw, 8).Value)))
+            total = total + ws.Cells(rw, 8).Value
+            cnt = cnt + 1
+        End If
+    Next rw
+    If cnt = 0 Then MsgBox "Type an amount in Pay Now (column H) for the invoices to pay.", vbExclamation, "Suwin ERP": Exit Sub
+    If payBy <> "Cash" And payBy <> "Cheque" Then MsgBox "Choose Cash or Cheque in Pay By (C4).", vbExclamation, "Suwin ERP": Exit Sub
+    If Trim$(CStr(ws.Range("C5").Value)) = "" Then MsgBox "Choose the account to pay from (C5).", vbExclamation, "Suwin ERP": Exit Sub
+    If payBy = "Cheque" And Trim$(CStr(ws.Range("C7").Value)) = "" Then MsgBox "Type the cheque number (C7).", vbExclamation, "Suwin ERP": Exit Sub
+    msg = "Pay " & Format$(total, "#,##0.00") & " to " & supplier & vbCrLf & _
+          cnt & " invoice(s), by " & payBy & " from " & ws.Range("C5").Value
+    If payBy = "Cheque" Then msg = msg & vbCrLf & "Cheque No " & ws.Range("C7").Value
+    If Trim$(CStr(ws.Range("C8").Value)) <> "" Then msg = msg & " dated " & DateText(ws.Range("C8").Value, "yyyy-mm-dd")
+    If Val(CStr(ws.Range("C10").Value)) > 0 Then msg = msg & vbCrLf & "WHT " & Format$(ws.Range("C10").Value, "#,##0.00")
+    If MsgBox(msg & vbCrLf & vbCrLf & "This posts to the ledger. Continue?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    body = "{" & Jq("pay_by", JsonStr(payBy)) & "," & Jq("account", JsonStr(ws.Range("C5").Value)) & "," & _
+           Jq("date", JsonStr(DateText(ws.Range("C6").Value, "yyyy-mm-dd"))) & "," & _
+           Jq("cheque_no", JsonStr(ws.Range("C7").Value)) & "," & _
+           Jq("post_date", JsonStr(DateText(ws.Range("C8").Value, "yyyy-mm-dd"))) & "," & _
+           Jq("narration", JsonStr(ws.Range("C9").Value)) & "," & _
+           Jq("wht", JsonNum(ws.Range("C10").Value)) & "," & _
+           Jq("manual_voucher", JsonStr(ws.Range("C11").Value)) & "," & _
+           Jq("lines", "[" & lines_ & "]") & "}"
+    r = HttpCall("POST", "/api/xl/payments/submit", body)
+    If Failed(r) Then Exit Sub
+    msg = JsonValue(r, "message")
+    ws.Range("C7:C11").ClearContents
+    LoadPayables
+    SayResult msg
+    MsgBox msg, vbInformation, "Suwin ERP"
+End Sub
+
+' ---- Management Account ----------------------------------------------------
+Private Function MgmtSheet() As Worksheet
+    Set MgmtSheet = ThisWorkbook.Worksheets("Management Account")
+End Function
+
+Private Sub MgmtHeader(ws As Worksheet, ByVal rw As Long, ByVal labels As Variant)
+    Dim j As Long
+    For j = LBound(labels) To UBound(labels)
+        With ws.Cells(rw, 2 + j - LBound(labels))
+            .Value = labels(j)
+            .Font.Bold = True
+            .Font.Color = RGB(255, 255, 255)
+            .Interior.Color = RGB(15, 108, 189)
+            .HorizontalAlignment = IIf(j = LBound(labels), -4131, -4152)
+        End With
+    Next j
+End Sub
+
+Public Sub LoadMonth()
+    Dim ws As Worksheet, r As String, rows_ As Variant, cols As Variant, i As Long, rw As Long, month_ As String
+    Dim curLabel As String, prevLabel As String, pieFirst As Long, pieLast As Long, co As Object, k As String
+    Const AMT As String = "#,##0.00;[Red]-#,##0.00;-"
+    Set ws = MgmtSheet()
+    month_ = DateText(ws.Range("C3").Value, "yyyy-mm")
+    r = HttpCall("GET", "/api/xl/management_account?format=tsv&month=" & month_, "")
+    If Failed(r) Then Exit Sub
+    Application.ScreenUpdating = False
+    ws.Range("B11:H3000").Clear
+    If ws.ChartObjects.Count > 0 Then ws.ChartObjects.Delete
+    rw = 11
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            k = cols(0)
+            Select Case k
+            Case "INFO"
+                ws.Range("C3").NumberFormat = "@"
+                ws.Range("C3").Value = cols(1)
+                curLabel = cols(2)
+                prevLabel = cols(3)
+                ws.Range("B2").Value = cols(4) & "  -  " & curLabel
+                ws.Range("C8").Value = cols(5)
+            Case "STOCK"
+                If cols(1) = "opening" Then
+                    ws.Range("C6").Value = Val(cols(2)): ws.Range("D6").Value = Val(cols(3)): ws.Range("E6").Value = Val(cols(4))
+                Else
+                    ws.Range("C7").Value = Val(cols(2)): ws.Range("D7").Value = Val(cols(3)): ws.Range("E7").Value = Val(cols(4))
+                End If
+            Case "TITLE"
+                rw = rw + 1
+                With ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7))
+                    .Interior.Color = RGB(31, 56, 100)
+                    .Font.Color = RGB(255, 255, 255)
+                    .Font.Bold = True
+                    .Font.Size = 12
+                End With
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Rows(rw).RowHeight = 22
+                rw = rw + 1
+                If InStr(cols(1), "Profit") > 0 Or InStr(cols(1), "Notes") > 0 Then
+                    MgmtHeader ws, rw, Array("Description", curLabel, prevLabel, "Variance (Rs)", "Variance %", "")
+                    rw = rw + 1
+                ElseIf InStr(cols(1), "Sales Percentage") > 0 Then
+                    MgmtHeader ws, rw, Array("Sales Location", "Revenue", "%")
+                    rw = rw + 1
+                    pieFirst = rw
+                End If
+            Case "SEC", "SECR"
+                ws.Cells(rw, 2).Value = cols(1)
+                If k = "SEC" Then
+                    StyleRange ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7)), True, RGB(221, 235, 247), RGB(31, 56, 100)
+                Else
+                    StyleRange ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 7)), True, RGB(253, 236, 234), RGB(164, 38, 44)
+                End If
+                rw = rw + 1
+            Case "ITEM", "TOTAL", "GP", "NP", "PCT"
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Cells(rw, 3).Value = Val(cols(2))
+                ws.Cells(rw, 4).Value = Val(cols(3))
+                ws.Cells(rw, 5).Value = Val(cols(4))
+                If cols(5) <> "" Then ws.Cells(rw, 6).Value = Val(cols(5)) / 100
+                ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).NumberFormat = IIf(k = "PCT", "0.00""%""", AMT)
+                ws.Cells(rw, 6).NumberFormat = "0.0%;[Red]-0.0%;-"
+                If UBound(cols) >= 6 Then
+                    If cols(6) = "1" Then ws.Range(ws.Cells(rw, 5), ws.Cells(rw, 6)).Font.Color = RGB(16, 124, 16)
+                    If cols(6) = "0" Then ws.Range(ws.Cells(rw, 5), ws.Cells(rw, 6)).Font.Color = RGB(196, 43, 28)
+                End If
+                If k = "ITEM" Or k = "PCT" Then
+                    ws.Cells(rw, 2).IndentLevel = 1
+                Else
+                    ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Font.Bold = True
+                    ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 6)).Borders(8).LineStyle = 1   ' top line
+                    If k = "GP" Then ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Interior.Color = RGB(232, 243, 232)
+                    If k = "NP" Then
+                        ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 6)).Interior.Color = RGB(232, 243, 255)
+                        ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 6)).Borders(9).LineStyle = -4119   ' double bottom
+                    End If
+                End If
+                rw = rw + 1
+            Case "HEAD3"
+                MgmtHeader ws, rw, Array(cols(1), cols(2), cols(3), cols(4))
+                rw = rw + 1
+            Case "ROW3", "TOT3", "PCT3"
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Cells(rw, 3).Value = Val(cols(2))
+                ws.Cells(rw, 4).Value = Val(cols(3))
+                ws.Cells(rw, 5).Value = Val(cols(4))
+                ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).NumberFormat = IIf(k = "PCT3", "0.00""%""", AMT)
+                If k = "TOT3" Then
+                    ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 5)).Font.Bold = True
+                    ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 5)).Borders(8).LineStyle = 1
+                End If
+                rw = rw + 1
+            Case "SALESPCT"
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Cells(rw, 3).Value = Val(cols(2))
+                ws.Cells(rw, 4).Value = Val(cols(3)) / 100
+                ws.Cells(rw, 3).NumberFormat = AMT
+                ws.Cells(rw, 4).NumberFormat = "0.0%"
+                pieLast = rw
+                rw = rw + 1
+            End Select
+        End If
+    Next i
+    If pieFirst > 0 And pieLast >= pieFirst Then
+        ws.Cells(rw, 2).Value = "Total"
+        ws.Cells(rw, 3).Formula = "=SUM(C" & pieFirst & ":C" & pieLast & ")"
+        ws.Cells(rw, 3).NumberFormat = AMT
+        ws.Range(ws.Cells(rw, 2), ws.Cells(rw, 4)).Font.Bold = True
+        ws.Range(ws.Cells(rw, 3), ws.Cells(rw, 4)).Borders(8).LineStyle = 1
+        Set co = ws.ChartObjects.Add(ws.Cells(pieFirst - 2, 9).Left, ws.Cells(pieFirst - 2, 9).Top, 420, 300)
+        co.Chart.ChartType = 5   ' xlPie
+        co.Chart.SetSourceData ws.Range(ws.Cells(pieFirst, 2), ws.Cells(pieLast, 3))
+        co.Chart.HasTitle = True
+        co.Chart.ChartTitle.Text = curLabel & " Sales Analysis"
+        co.Chart.SeriesCollection(1).HasDataLabels = True
+        co.Chart.SeriesCollection(1).DataLabels.ShowPercentage = True
+        co.Chart.SeriesCollection(1).DataLabels.ShowValue = False
+    End If
+    ws.Columns("B:G").VerticalAlignment = -4108
+    Application.ScreenUpdating = True
+    ws.Activate
+    SayResult "Management Account loaded: " & curLabel
+End Sub
+
+Public Sub SaveStock()
+    Dim ws As Worksheet, r As String, body As String
+    Set ws = MgmtSheet()
+    body = "{" & Jq("month", JsonStr(DateText(ws.Range("C3").Value, "yyyy-mm"))) & "," & _
+           Jq("opening_bar", JsonNumOrNull(ws.Range("C6").Value)) & "," & _
+           Jq("opening_food", JsonNumOrNull(ws.Range("D6").Value)) & "," & _
+           Jq("opening_hk", JsonNumOrNull(ws.Range("E6").Value)) & "," & _
+           Jq("closing_bar", JsonNumOrNull(ws.Range("C7").Value)) & "," & _
+           Jq("closing_food", JsonNumOrNull(ws.Range("D7").Value)) & "," & _
+           Jq("closing_hk", JsonNumOrNull(ws.Range("E7").Value)) & "," & _
+           Jq("remarks", JsonStr(ws.Range("C8").Value)) & "}"
+    r = HttpCall("POST", "/api/xl/management_account/save", body)
+    If Failed(r) Then Exit Sub
+    LoadMonth
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
 End Sub
 '''
 
@@ -28435,111 +28988,180 @@ def excel_keys():
 @login_required
 @has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Settings')
 def excel_workbook():
-    """Build the data-entry workbook: entry sheets, master lists and the
-    macro code, so Excel can send a day straight into this system."""
+    """Build the data-entry workbook: Home, Daily Sales, Bar Sales, Payments,
+    Management Account, the history sheets, master lists and the macro code.
+    The macros find things by the keys in the (hidden) column A, so the
+    layout can be styled freely as long as those keys stay put."""
     try:
         from openpyxl import Workbook
-        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
         from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.datavalidation import DataValidation
     except ImportError:
         flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
         return redirect(url_for('excel_keys'))
 
     base_url = request.url_root.rstrip('/')
-    head_fill = PatternFill('solid', fgColor='0F6CBD')
-    head_font = Font(bold=True, color='FFFFFF')
-    title_font = Font(bold=True, size=13)
-    note_font = Font(italic=True, color='605E5C')
-    input_fill = PatternFill('solid', fgColor='FFF9E0')
+    company = _company_display_name()
+    NAVY, BLUE, PALE, BAND = '1F3864', '0F6CBD', 'EEF3FA', 'DDEBF7'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill, head_font = fill(BLUE), Font(bold=True, color='FFFFFF')
+    input_fill = fill('FFF8DC')
+    note_font = Font(italic=True, color='6B7280', size=9)
+    key_font = Font(color='9CA3AF', size=8)
+    label_font = Font(bold=True, color='1F2937')
 
     wb = Workbook()
 
-    def head_row(ws, row, labels, widths=None):
-        for i, label in enumerate(labels, start=1):
-            c = ws.cell(row=row, column=i, value=label)
-            c.fill, c.font = head_fill, head_font
-            c.alignment = Alignment(horizontal='center', wrap_text=True)
-            if widths:
-                ws.column_dimensions[get_column_letter(i)].width = widths[i - 1]
-        ws.freeze_panes = ws.cell(row=row + 1, column=1)
+    def banner(ws, title, subtitle, c1, c2):
+        ws.merge_cells(start_row=1, start_column=c1, end_row=1, end_column=c2)
+        ws.merge_cells(start_row=2, start_column=c1, end_row=2, end_column=c2)
+        t = ws.cell(row=1, column=c1, value=title)
+        t.font, t.fill = Font(bold=True, size=16, color='FFFFFF'), fill(NAVY)
+        t.alignment = Alignment(vertical='center', indent=1)
+        st = ws.cell(row=2, column=c1, value=subtitle)
+        st.font, st.fill = Font(italic=True, size=10, color='1F3864'), fill(PALE)
+        st.alignment = Alignment(vertical='center', indent=1)
+        for c in range(c1, c2 + 1):
+            ws.cell(row=1, column=c).fill = fill(NAVY)
+            ws.cell(row=2, column=c).fill = fill(PALE)
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 20
 
-    # ---- Setup
+    def head_row(ws, row, labels, first_col=1, widths=None):
+        for i, label in enumerate(labels):
+            c = ws.cell(row=row, column=first_col + i, value=label)
+            c.fill, c.font, c.border = head_fill, head_font, box
+            c.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            if widths and widths[i]:
+                ws.column_dimensions[get_column_letter(first_col + i)].width = widths[i]
+        ws.row_dimensions[row].height = 30
+
+    def band(ws, row, text, c1, c2, color=BAND, font_color=NAVY):
+        for c in range(c1, c2 + 1):
+            ws.cell(row=row, column=c).fill = fill(color)
+        cell = ws.cell(row=row, column=c1, value=text)
+        cell.font = Font(bold=True, size=12, color=font_color)
+        ws.row_dimensions[row].height = 22
+
+    def inp(cell, fmt=None):
+        cell.fill, cell.border = input_fill, box
+        if fmt:
+            cell.number_format = fmt
+
+    def sheet_setup(ws, tab, freeze=None, hide_a=False, landscape=True):
+        ws.sheet_properties.tabColor = tab
+        ws.sheet_view.showGridLines = False
+        ws.sheet_view.zoomScale = 100
+        if freeze:
+            ws.freeze_panes = freeze
+        if hide_a:
+            ws.column_dimensions['A'].hidden = True
+        ws.page_setup.orientation = 'landscape' if landscape else 'portrait'
+        ws.page_setup.fitToWidth = 1
+        ws.page_setup.fitToHeight = 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.print_options.horizontalCentered = True
+
+    AMT = '#,##0.00;[Red]-#,##0.00;-'
+
+    # ================= Setup (home page) =================
     ws = wb.active
     ws.title = 'Setup'
-    ws['A1'] = 'Suwin ERP - Excel Data Entry'
-    ws['A1'].font = title_font
+    sheet_setup(ws, NAVY, landscape=False)
+    banner(ws, f'{company}  -  Excel Data Entry' if company else 'Suwin ERP  -  Excel Data Entry', 'Connected to your Suwin ERP system. Macros run by themselves '
+           'when the workbook opens.', 1, 8)
+    ws.column_dimensions['A'].width = 22
+    ws.column_dimensions['B'].width = 44
+    ws.column_dimensions['C'].width = 58
+    ws.column_dimensions['D'].width = 3
     rows = [
         ('Server URL', base_url, 'Your system address - do not change'),
-        ('API Key', '', 'Paste the key from Settings > Excel Keys'),
-        ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are entering (YYYY-MM-DD)'),
+        ('API Key', '', 'Paste the key from Settings > Excel Data Entry'),
+        ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are working on (set to today on opening)'),
         ('Last result', '', 'Filled in by the buttons'),
         ('History From', '', 'First day for the History sheets (YYYY-MM-DD) - blank = from the start'),
         ('History To', '', 'Last day for the History sheets (YYYY-MM-DD) - blank = up to today'),
     ]
     for i, (k, v, note) in enumerate(rows, start=3):
-        ws.cell(row=i, column=1, value=k).font = Font(bold=True)
+        ws.cell(row=i, column=1, value=k).font = label_font
         c = ws.cell(row=i, column=2, value=v)
-        c.fill = input_fill
+        inp(c)
         ws.cell(row=i, column=3, value=note).font = note_font
-    ws.column_dimensions['A'].width = 16
-    ws.column_dimensions['B'].width = 46
-    ws.column_dimensions['C'].width = 52
-    steps = [
-        '',
-        'How to use this workbook',
-        '1. Settings > Excel Keys on the website: create a key and paste it in B4 above.',
-        '2. Save this file as Excel Macro-Enabled Workbook (.xlsm).',
-        '3. Right-click the file > Properties > tick Unblock (Windows blocks files from the internet).',
-        '4. Press Alt+F11, File > Import File, choose SuwinERP.bas (downloaded with this workbook),',
-        '   or copy the code from the VBA Code sheet into a new module.',
-        '5. Back in Excel: Developer > Macros (Alt+F8) > TestConnection. It checks the key and adds',
-        '   the Load / Submit buttons to every sheet.',
-        '',
-        'The buttons (also in Alt+F8):',
-        '   TestConnection   - checks the server and key, and adds the buttons',
-        '   GetDailySales    - Load Day: loads the Entry Date into Daily Sales, with its credit and advances',
-        '   SendDailySales   - Submit Day: sends Daily Sales, Received By, credit and advances (saves as Parked)',
-        '   GetBarSales      - loads the Entry Date day into Bar Sales',
-        '   SendBarSales     - Submit: sends Bar Sales to the system (saves as Parked)',
-        '   GetAllHistory    - fills Sales History, Credit History, Advance History and Bar History',
-        '   RefreshLists     - reloads the Lists sheet (accounts)',
-        '',
-        'Nothing is posted to the GL from Excel unless you run PostDailySales / PostBarSales,',
-        'and those need an accountant key. Saving always lands as Parked, exactly like the website.',
+        ws.row_dimensions[i].height = 20
+    ws['B6'].fill = fill('F3F4F6')
+    ws['B6'].font = Font(bold=True, color='0F6CBD')
+    band(ws, 10, 'What is in this workbook', 1, 3)
+    guide = [
+        ('Daily Sales', 'Load Day, type the day - sales, Received By (cash entry), credit given, credit '
+                        'received / set-off, advances and advance set-off - then Submit Day.'),
+        ('Bar Sales', 'Load Day, type the bar and bar food takings, then Submit.'),
+        ('Payments', 'Load Payables shows every outstanding supplier invoice. Tick Method / Ready and press '
+                     'Save Ready List, or type "Pay Now" amounts for one supplier and Submit Payment (Cash or Cheque).'),
+        ('Management Account', 'Type the month, Load Month for the P&L with variance, notes, cost of sales and sales %. '
+                               'Type opening / closing stock and Save Stock.'),
+        ('History sheets', 'Load History fills Sales, Credit, Advance and Bar history (range from B7 / B8).'),
+        ('Lists', 'Accounts and open items used by the dropdowns - kept up to date by the buttons.'),
     ]
-    for i, line in enumerate(steps, start=10):
+    for i, (name, text) in enumerate(guide, start=11):
+        nc = ws.cell(row=i, column=1, value=name)
+        nc.font, nc.alignment = Font(bold=True, color=BLUE), Alignment(vertical='top')
+        c = ws.cell(row=i, column=2, value=text)
+        ws.merge_cells(start_row=i, start_column=2, end_row=i, end_column=3)
+        c.alignment = Alignment(wrap_text=True, vertical='top')
+        ws.row_dimensions[i].height = 32
+    band(ws, 18, 'First time on a computer', 1, 3)
+    steps = [
+        '1. Save this file as Excel Macro-Enabled Workbook (.xlsm).',
+        '2. Right-click the file > Properties > tick Unblock (Windows blocks files from the internet).',
+        '3. Open it, press Alt+F11, File > Import File, choose SuwinERP.bas. Close the editor.',
+        '4. Paste your key in B4, save, close and open the file again - it connects, adds the buttons and loads today.',
+        'Nothing is posted to the GL from Excel except Post Day and payments, which need an accountant key.',
+    ]
+    for i, line in enumerate(steps, start=19):
         c = ws.cell(row=i, column=1, value=line)
-        if line.startswith('How to'):
-            c.font = Font(bold=True, size=12)
+        ws.merge_cells(start_row=i, start_column=1, end_row=i, end_column=3)
+        c.font = note_font if line.startswith('Nothing') else Font(color='1F2937')
 
-    # ---- Daily Sales
+    # ================= Daily Sales =================
     ws = wb.create_sheet('Daily Sales')
-    ws['A1'] = 'Daily Sales Entry - type in the yellow columns, then run SendDailySales'
-    ws['A1'].font = title_font
-    ws['A2'] = 'Date comes from the Setup sheet (B5). Press Load Day first, type, then Submit Day.'
-    ws['A2'].font = note_font
+    sheet_setup(ws, '107C10', freeze='C5', hide_a=True)
+    banner(ws, 'Daily Sales Entry', 'Load Day  >  type in the yellow cells  >  Submit Day. The date comes from Setup B5.', 2, 7)
     ws['H1'] = 'Loaded day'
-    ws['H1'].font = Font(bold=True)
-    ws['H2'].font = Font(bold=True, color='0F6CBD')
+    ws['H1'].font, ws['H1'].fill = Font(bold=True, color='FFFFFF'), fill(BLUE)
+    ws['H2'].font, ws['H2'].fill, ws['H2'].border = Font(bold=True, size=12, color=NAVY), fill(PALE), box
+    ws['H1'].alignment = ws['H2'].alignment = Alignment(horizontal='center', vertical='center')
+    ws.column_dimensions['H'].width = 14
     head_row(ws, 4, ['Category ID', 'Group', 'Description', 'Particulars', 'Nos', 'Bill No', 'Amount'],
-             [11, 14, 30, 26, 10, 14, 14])
+             widths=[8, 16, 30, 26, 10, 14, 16])
     r = 5
     for c in _daily_sales_categories():
-        ws.cell(row=r, column=1, value=c['id'])
-        ws.cell(row=r, column=2, value=c['category_group'])
-        ws.cell(row=r, column=3, value=c['description'])
-        ws.cell(row=r, column=4, value=c['particulars'])
-        for col in (5, 6, 7):
-            ws.cell(row=r, column=col).fill = input_fill
-        ws.cell(row=r, column=7).number_format = '#,##0.00'
+        comp = c['category_group'] == 'COMPLIMENTARY'
+        ws.cell(row=r, column=1, value=c['id']).font = key_font
+        g = ws.cell(row=r, column=2, value=c['category_group'].title())
+        g.font = Font(bold=True, size=9, color='A4262C' if comp else '107C10')
+        for col, v in ((3, c['description']), (4, c['particulars'])):
+            cell = ws.cell(row=r, column=col, value=v)
+            cell.border = box
+            if comp:
+                cell.fill = fill('FDF3F4')
+        g.border = box
+        inp(ws.cell(row=r, column=5), '#,##0')
+        inp(ws.cell(row=r, column=6))
+        inp(ws.cell(row=r, column=7), AMT)
         r += 1
-    ws.cell(row=r + 1, column=3, value='TOTAL').font = Font(bold=True)
-    tc = ws.cell(row=r + 1, column=7, value=f'=SUM(G5:G{r - 1})')
-    tc.font, tc.number_format = Font(bold=True), '#,##0.00'
+    last = r - 1
+    for i, (label, formula) in enumerate((
+            ('Total Sales lines', f'=SUMIF(B5:B{last},"Sales",G5:G{last})'),
+            ('Total Complimentary', f'=SUMIF(B5:B{last},"Complimentary",G5:G{last})')), start=r + 1):
+        ws.cell(row=i, column=4, value=label).font = label_font
+        tc = ws.cell(row=i, column=7, value=formula)
+        tc.font, tc.number_format, tc.fill, tc.border = Font(bold=True), AMT, fill('E8F3E8'), box
 
-    # Header figures, read by the macro from this block
-    hr = r + 3
-    ws.cell(row=hr, column=1, value='Day figures').font = Font(bold=True, size=12)
+    hr = r + 4
+    band(ws, hr, 'Received By (cash entry) and day expenses', 2, 7)
     header_fields = [
         ('narration', 'Narration'), ('total_expenditure', 'Total Expenditure'), ('cash_float', 'Cash Float'),
         ('cash_amount', 'Cash'), ('credit_card_sampath_amount', 'Card - Sampath'),
@@ -28550,66 +29172,79 @@ def excel_workbook():
         ('misc_expense_2_label', 'Misc 2 - Label'), ('misc_expense_2_amount', 'Misc 2 - Amount'),
         ('misc_expense_3_label', 'Misc 3 - Label'), ('misc_expense_3_amount', 'Misc 3 - Amount'),
     ]
-    ws.cell(row=hr, column=2, value='Received By (cash entry) and expenses').font = note_font
+    rows_of = {}
     for i, (key, label) in enumerate(header_fields):
-        ws.cell(row=hr + 1 + i, column=1, value=key).font = Font(color='808080')
-        ws.cell(row=hr + 1 + i, column=2, value=label).font = Font(bold=True)
-        cell = ws.cell(row=hr + 1 + i, column=3)
-        cell.fill = input_fill
-        if not key.endswith('label') and key != 'narration':
-            cell.number_format = '#,##0.00'
+        rw = hr + 1 + i
+        rows_of[key] = rw
+        ws.cell(row=rw, column=1, value=key).font = key_font
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        inp(ws.cell(row=rw, column=3), None if key.endswith('label') or key == 'narration' else AMT)
+    ws.merge_cells(start_row=rows_of['narration'], start_column=3, end_row=rows_of['narration'], end_column=6)
+    tr = hr + len(header_fields) + 1
+    ws.cell(row=tr, column=2, value='Total Received (cash + cards + bank)').font = Font(bold=True, color=NAVY)
+    rec = '+'.join(f'C{rows_of[k]}' for k in ('cash_amount', 'credit_card_sampath_amount', 'credit_card_hnb_amount',
+                                              'bank_transfer_amount', 'bank_transfer_2_amount'))
+    tc = ws.cell(row=tr, column=3, value=f'={rec}')
+    tc.font, tc.number_format, tc.fill, tc.border = Font(bold=True), AMT, fill('E8F3E8'), box
 
-    # Credit and advance registers. Each block starts at a "#NAME" marker in
-    # column A (read by the macro); column A of a line holds its saved row id.
-    from openpyxl.worksheet.datavalidation import DataValidation
-    dv_credit = DataValidation(type='list', formula1='=Lists!$C$4:$C$3000', allow_blank=True, showErrorMessage=False)
-    dv_adv = DataValidation(type='list', formula1='=Lists!$D$4:$D$3000', allow_blank=True, showErrorMessage=False)
+    dv_credit = DataValidation(type='list', formula1='Lists!$C$4:$C$3000', allow_blank=True, showErrorMessage=False)
+    dv_adv = DataValidation(type='list', formula1='Lists!$D$4:$D$3000', allow_blank=True, showErrorMessage=False)
     dv_cmode = DataValidation(type='list', formula1='"Cash received,Set-off"', allow_blank=True)
     dv_atype = DataValidation(type='list', formula1='"Received,Given"', allow_blank=True)
     dv_smode = DataValidation(type='list', formula1='"Set-off,Refund,Recovered"', allow_blank=True)
     for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode):
         ws.add_data_validation(dv)
     blocks = [
-        ('#CREDIT_GIVEN', 'Credit Given (debtors)',
-         ['Row ID', 'Invoice No', 'Party', 'Amount'], {4: '#,##0.00'}, {}),
-        ('#CREDIT_RECEIVED', 'Credit Received / Credit Set-off',
-         ['Row ID', 'Settles Credit Given (pick)', 'Receipt / Bill No', 'Party', 'Amount', 'Mode'],
-         {5: '#,##0.00'}, {2: dv_credit, 6: dv_cmode}),
-        ('#ADVANCES', 'Advance Received / Advance Given',
-         ['Row ID', 'Type', 'Receipt No', 'Party', 'Amount', 'Remarks'], {5: '#,##0.00'}, {2: dv_atype}),
-        ('#ADV_SETTLE', 'Advance Set-off / Refund / Recovered',
-         ['', 'Advance (pick)', 'Amount', 'Bill No', 'Mode', 'Remarks'], {3: '#,##0.00'}, {2: dv_adv, 5: dv_smode}),
+        ('#CREDIT_GIVEN', 'Credit Given (debtors)', 'FFF4CE',
+         ['Row ID', 'Invoice No', 'Party', 'Amount'], {4: AMT}, {}, 4),
+        ('#CREDIT_RECEIVED', 'Credit Received / Credit Set-off', 'E8F3E8',
+         ['Row ID', 'Settles Credit Given (pick from list)', 'Receipt / Bill No', 'Party', 'Amount', 'Mode'],
+         {5: AMT}, {2: dv_credit, 6: dv_cmode}, 5),
+        ('#ADVANCES', 'Advance Received / Advance Given', 'E8F0FB',
+         ['Row ID', 'Type', 'Receipt No', 'Party', 'Amount', 'Remarks'], {5: AMT}, {2: dv_atype}, 5),
+        ('#ADV_SETTLE', 'Advance Set-off / Refund / Recovered', 'F3E8FB',
+         ['', 'Advance (pick from list)', 'Amount', 'Bill No', 'Mode', 'Remarks'], {3: AMT},
+         {2: dv_adv, 5: dv_smode}, 3),
     ]
-    r = hr + len(header_fields) + 3
-    for marker, title, heads, fmts, dvs in blocks:
-        ws.cell(row=r, column=1, value=marker).font = Font(color='808080')
-        ws.cell(row=r, column=2, value=title).font = Font(bold=True, size=12)
+    r = tr + 3
+    for marker, title, color, heads, fmts, dvs, amt_col in blocks:
+        ws.cell(row=r, column=1, value=marker).font = key_font
+        band(ws, r, title, 2, 7, color=color)
+        marker_row = r
         r += 1
         for i, label in enumerate(heads, start=1):
+            if i == 1:
+                ws.cell(row=r, column=1, value=label).font = key_font
+                continue
             c = ws.cell(row=r, column=i, value=label)
-            c.fill, c.font = head_fill, head_font
+            c.fill, c.font, c.border = head_fill, head_font, box
+            c.alignment = Alignment(horizontal='center', wrap_text=True)
         r += 1
+        first = r
         for _ in range(15):
-            ws.cell(row=r, column=1).font = Font(color='808080')
+            ws.cell(row=r, column=1).font = key_font
             for col in range(2, len(heads) + 1):
                 c = ws.cell(row=r, column=col)
-                c.fill = input_fill
-                if col in fmts:
-                    c.number_format = fmts[col]
+                inp(c, fmts.get(col))
                 if col in dvs:
                     dvs[col].add(c)
             r += 1
+        # block total on the marker row (the macro never clears that row)
+        L = get_column_letter(amt_col)
+        tot = ws.cell(row=marker_row, column=7, value=f'=SUM({L}{first}:{L}{r})')
+        tot.font, tot.number_format = Font(bold=True, color=NAVY), AMT
         r += 1
-    ws.cell(row=r, column=1, value='#END').font = Font(color='808080')
-    ws.column_dimensions['B'].width = 44
+    ws.cell(row=r, column=1, value='#END').font = key_font
+    ws.column_dimensions['B'].width = 40
 
-    # ---- Bar Sales
+    # ================= Bar Sales =================
     ws = wb.create_sheet('Bar Sales')
-    ws['A1'] = 'Bar Sales Record - type in the yellow cells, then run SendBarSales'
-    ws['A1'].font = title_font
-    ws['A2'] = 'Service Charge and Cash Sales are worked out by the system when you send.'
-    ws['A2'].font = note_font
-    head_row(ws, 4, ['Field', 'Description', 'Value'], [28, 42, 16])
+    sheet_setup(ws, 'CA5010', freeze='A5', hide_a=True, landscape=False)
+    banner(ws, 'Bar Sales Record', 'Load Day  >  type in the yellow cells  >  Submit. Service charge and cash '
+           'sales are worked out by the system.', 2, 4)
+    head_row(ws, 4, ['Field', 'Description', 'Value', ''], widths=[28, 42, 16, 16])
+    ws.cell(row=4, column=4).fill = PatternFill(fill_type=None)
+    ws.cell(row=4, column=4).border = Border()
     bs_fields = [('narration', 'Narration'), ('commission_rate', 'Credit Card Service Charge %')]
     for sec, label in BAR_SALES_SECTIONS:
         for part, plabel in (('sales', 'Sales'), ('card', 'Credit Card'), ('bank', 'Bank Transfer')):
@@ -28617,41 +29252,116 @@ def excel_workbook():
     bs_fields.append(('cash_to_management', 'Cash Received to Management'))
     r = 5
     for key, label in bs_fields:
-        ws.cell(row=r, column=1, value=key).font = Font(color='808080')
-        ws.cell(row=r, column=2, value=label).font = Font(bold=True)
-        c = ws.cell(row=r, column=3)
-        c.fill = input_fill
-        if key != 'narration':
-            c.number_format = '#,##0.00'
+        ws.cell(row=r, column=1, value=key).font = key_font
+        ws.cell(row=r, column=2, value=label).font = label_font
+        inp(ws.cell(row=r, column=3), None if key == 'narration' else ('0.00' if key == 'commission_rate' else AMT))
         r += 1
-    r += 2
-    ws.cell(row=r, column=1, value='Record-only lines').font = Font(bold=True, size=12)
     r += 1
-    head_row(ws, r, ['Line key', 'Description', 'Qty', 'Amount'], [28, 42, 12, 16])
+    band(ws, r, 'Record-only lines (not posted)', 2, 4)
+    r += 1
+    head_row(ws, r, ['Line key', 'Description', 'Qty', 'Amount'])
+    ws.cell(row=r, column=1).value = 'Line key'
     r += 1
     for key, label, group, has_qty in BAR_SALES_RECORD_LINES:
-        ws.cell(row=r, column=1, value='line:' + key).font = Font(color='808080')
-        ws.cell(row=r, column=2, value=label)
+        ws.cell(row=r, column=1, value='line:' + key).font = key_font
+        ws.cell(row=r, column=2, value=f'{label}  ({group})').border = box
         if has_qty:
-            ws.cell(row=r, column=3).fill = input_fill
-        c = ws.cell(row=r, column=4)
-        c.fill, c.number_format = input_fill, '#,##0.00'
+            inp(ws.cell(row=r, column=3), '#,##0')
+        inp(ws.cell(row=r, column=4), AMT)
         r += 1
 
-    # ---- History sheets (filled by GetAllHistory)
-    for title, note in (('Sales History', 'Daily Sales - one row per day'),
-                        ('Credit History', 'Credit Given, Credit Received and Credit Set-off'),
-                        ('Advance History', 'Advances and their set-offs, refunds and recoveries'),
-                        ('Bar History', 'Bar Sales Record - one row per day')):
-        ws = wb.create_sheet(title)
-        ws['A1'] = f'{note} - press Load History (range from Setup B7 / B8)'
-        ws['A1'].font = title_font
+    # ================= Payments =================
+    ws = wb.create_sheet('Payments')
+    sheet_setup(ws, '8764B8', freeze='C14', hide_a=True)
+    banner(ws, 'Supplier Payments  -  Cash / Cheque', 'Load Payables  >  tick Method / Ready and Save Ready List, '
+           'or type Pay Now for ONE supplier  >  Submit Payment.', 2, 8)
+    band(ws, 3, 'Payment details', 2, 3)
+    pay_rows = [('Pay By', 'Cheque'), ('Pay From (account)', ''), ('Payment Date', date.today().strftime('%Y-%m-%d')),
+                ('Cheque No', ''), ('Cheque Date (if post-dated)', ''), ('Narration', ''),
+                ('WHT Amount', ''), ('Manual Voucher No (optional)', '')]
+    for i, (label, v) in enumerate(pay_rows, start=4):
+        ws.cell(row=i, column=2, value=label).font = label_font
+        inp(ws.cell(row=i, column=3, value=v or None), AMT if label == 'WHT Amount' else None)
+    dv_payby = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=False)
+    dv_acct = DataValidation(type='list', formula1='IF($C$4="Cash",Lists!$F$4:$F$300,Lists!$G$4:$G$300)',
+                             allow_blank=True, showErrorMessage=False)
+    dv_method = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=True)
+    dv_ready = DataValidation(type='list', formula1='"Yes,No"', allow_blank=True)
+    for dv in (dv_payby, dv_acct, dv_method, dv_ready):
+        ws.add_data_validation(dv)
+    dv_payby.add('C4')
+    dv_acct.add('C5')
+    band(ws, 3, 'Summary', 5, 8)
+    summary = [('Total Pay Now', '=SUM(H14:H20000)'), ('Less: WHT', '=N(C10)'), ('Net payment', '=F4-F5'),
+               ('Invoices selected', '=COUNTIF(H14:H20000,">0")')]
+    for i, (label, formula) in enumerate(summary, start=4):
+        ws.cell(row=i, column=5, value=label).font = label_font
+        c = ws.cell(row=i, column=6, value=formula)
+        c.font, c.border = Font(bold=True, color=NAVY, size=12 if i == 6 else 11), box
+        c.number_format = AMT if i <= 6 else '0'
+        c.fill = fill('E8F3E8' if i == 6 else 'F3F4F6')
+    ws['E9'] = 'One payment = one supplier. Clear Pay Now of other suppliers first.'
+    ws['E9'].font = note_font
+    head_row(ws, 13, ['Invoice ID', 'Invoice Date', 'Supplier', 'Invoice No', 'Outstanding', 'Method', 'Ready',
+                      'Pay Now'], widths=[8, 13, 34, 18, 16, 11, 9, 16])
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 34
+    ws.column_dimensions['E'].width = 18
+    ws.column_dimensions['F'].width = 16
+    for rw in range(14, 1014):
+        dv_method.add(f'F{rw}')
+        dv_ready.add(f'G{rw}')
+    ws['B12'] = 'Payment Ready List: Method and Ready are saved with Save Ready List (no ledger effect).'
+    ws['B12'].font = note_font
 
-    # ---- Lists
+    # ================= Management Account =================
+    ws = wb.create_sheet('Management Account')
+    sheet_setup(ws, '038387', landscape=False)
+    banner(ws, 'Management Account', 'Type the month (YYYY-MM)  >  Load Month. Opening / closing stock: type and '
+           'Save Stock (accountant key).', 2, 7)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 46
+    for col in 'CDEF':
+        ws.column_dimensions[col].width = 17
+    ws.column_dimensions['G'].width = 12
+    ws['B3'] = 'Month (YYYY-MM)'
+    ws['B3'].font = label_font
+    inp(ws['C3'])
+    ws['C3'] = date.today().strftime('%Y-%m')
+    ws['C3'].number_format = '@'
+    band(ws, 5, 'Stock for the month', 2, 5)
+    for i, h in enumerate(['Bar', 'Food', 'Housekeeping'], start=3):
+        c = ws.cell(row=5, column=i, value=h)
+        c.font, c.alignment = Font(bold=True, color=NAVY), Alignment(horizontal='center')
+    for rw, label in ((6, 'Opening Stock'), (7, 'Closing Stock')):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        for col in (3, 4, 5):
+            inp(ws.cell(row=rw, column=col), AMT)
+    ws['B8'] = 'Remarks'
+    ws['B8'].font = label_font
+    ws.merge_cells('C8:E8')
+    inp(ws['C8'])
+    ws['B10'] = 'The report appears below when you press Load Month.'
+    ws['B10'].font = note_font
+
+    # ================= History sheets (filled by GetAllHistory) =================
+    for title, note, tab in (('Sales History', 'Daily Sales - one row per day', '5B9BD5'),
+                             ('Credit History', 'Credit Given, Credit Received and Credit Set-off', '5B9BD5'),
+                             ('Advance History', 'Advances and their set-offs, refunds and recoveries', '5B9BD5'),
+                             ('Bar History', 'Bar Sales Record - one row per day', '5B9BD5')):
+        ws = wb.create_sheet(title)
+        sheet_setup(ws, tab, freeze='B4')
+        banner(ws, title, f'{note}  -  press Load History (range from Setup B7 / B8)', 1, 7)
+
+    # ================= Lists =================
     ws = wb.create_sheet('Lists')
-    ws['A1'] = 'Master lists - run RefreshLists to update from the system'
-    ws['A1'].font = title_font
-    head_row(ws, 3, ['GL Accounts', '', 'Open Credit Given', 'Open Advances'], [46, 4, 60, 60])
+    sheet_setup(ws, '7F7F7F')
+    banner(ws, 'Lists', 'Used by the dropdowns - kept up to date by the buttons. No need to edit.', 1, 7)
+    head_row(ws, 3, ['GL Accounts', '', 'Open Credit Given', 'Open Advances', '', 'Cash Accounts', 'Bank Accounts'],
+             widths=[46, 3, 60, 60, 3, 30, 30])
+    for c in (2, 5):
+        ws.cell(row=3, column=c).fill = PatternFill(fill_type=None)
+        ws.cell(row=3, column=c).border = Border()
     for i, a in enumerate(db.execute_query(
             "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [], start=4):
         ws.cell(row=i, column=1, value=a['account_name'])
@@ -28663,22 +29373,32 @@ def excel_workbook():
                           start=4):
         ws.cell(row=i, column=4, value=_xl_ref(a['id'], a['receipt_no'], a['party_name'], a['entry_date'],
                                                a['balance']))
+    for col, sql in ((6, "SELECT cash_book_account_name AS n FROM cash_book ORDER BY cash_book_account_name"),
+                     (7, "SELECT bank_bookcol_account_number AS n FROM bank_book ORDER BY bank_bookcol_account_number")):
+        try:
+            names = [x['n'] for x in (db.execute_query(sql) or []) if x['n']]
+        except Exception:
+            names = []
+        for i, n in enumerate(names, start=4):
+            ws.cell(row=i, column=col, value=n)
 
-    # ---- VBA code, so it can be pasted even without the .bas file
+    # ================= VBA code, so it can be pasted even without the .bas file =================
     ws = wb.create_sheet('VBA Code')
+    ws.sheet_properties.tabColor = 'BFBFBF'
     ws['A1'] = 'Macro code - Alt+F11, Insert > Module, paste everything below (or import SuwinERP.bas)'
-    ws['A1'].font = title_font
+    ws['A1'].font = Font(bold=True, size=13)
     ws.column_dimensions['A'].width = 120
     for i, line in enumerate(_XL_VBA_CODE.splitlines(), start=3):
-        ws.cell(row=i, column=1, value=line)
+        ws.cell(row=i, column=1, value=line).font = Font(name='Consolas', size=9)
 
+    wb.active = 0
     from io import BytesIO
     buf = BytesIO()
     wb.save(buf)
     buf.seek(0)
     resp = make_response(buf.read())
     resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP_DataEntry_v2.xlsx'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinERP_DataEntry_v3.xlsx'
     return resp
 
 
