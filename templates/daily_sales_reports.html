@@ -64,6 +64,9 @@
     <button type="button" class="btn btn-outline-primary btn-sm" onclick="rpJump('{{ today_date }}')">Today</button>
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpPrint(false)" title="Print the tab you are on"><i class="fas fa-print me-1"></i> Print</button>
     <button type="button" class="btn btn-outline-secondary btn-sm" onclick="rpPrint(true)" title="Print R1 and R2, each on its own page"><i class="fas fa-print me-1"></i> Print R1 + R2</button>
+    <a href="{{ url_for('daily_sales_reports_export', date=as_of) }}" class="btn btn-sm fw-semibold"
+       style="background:#107C41;color:#fff;" title="Download R1 and R2 as an Excel file">
+      <i class="fas fa-file-excel me-1"></i> Excel</a>
     <a href="{{ url_for('daily_sales_outstanding', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-search-dollar me-1"></i> Outstanding</a>
     <a href="{{ url_for('daily_sales_report_mapping') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-sitemap me-1"></i> Row Mapping</a>
     <a href="{{ url_for('daily_sales_entry', date=as_of) }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-cash-register me-1"></i> Entry</a>

@@ -27947,6 +27947,25 @@ def xl_management_account_export():
     return xl.workbook_response(_mgmt_export_book(cur, prev), f"Management_Account_{cur['period']}.xlsx")
 
 
+@app.route('/api/xl/vat/export', methods=['GET'])
+def xl_vat_export():
+    """The VAT schedules as a workbook - the Excel workbook copies these
+    sheets in as "VAT ...". ?view=purchases gives only the purchases sheets."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    import excel_export as xl
+    d_from, d_to = _xl_range()
+    if d_to.year == 2999:
+        d_to = date.today()
+    from_date = d_from.strftime('%Y-%m-%d')
+    to_date = d_to.strftime('%Y-%m-%d')
+    wb, name = _vat_export_book(from_date, to_date, request.args.get('view') == 'purchases')
+    if wb is None:
+        return _xl_json({'ok': False, 'error': 'Company is not VAT registered - switch VAT on in Company Profile.'}, 400)
+    return xl.workbook_response(wb, f'{name}_{from_date}_to_{to_date}.xlsx')
+
+
 @app.route('/api/xl/supplier_payments', methods=['GET'])
 def xl_supplier_payments():
     """Supplier payment history (cash and bank / cheque), newest first."""
@@ -28718,6 +28737,8 @@ Public Sub AddButtons()
                                        "Submit Payment", "SubmitPayment", "Payment History", "LoadPaymentHistory")
     PutButtons "Payment History", "I1", Array("Load History", "LoadPaymentHistory")
     PutButtons "Management Account", "I1", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock")
+    EnsureSheet "VAT Report", "VAT Report"
+    PutButtons "VAT Report", "I1", Array("Load VAT", "LoadVAT", "Purchases only", "LoadVATPurchases")
     PutButtons "Sales History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Advance History", "I1", Array("Load History", "GetAllHistory")
@@ -29084,6 +29105,68 @@ Public Sub LoadMonth()
     SayResult "Management Account loaded: " & curLabel & " (" & n & " sheets)"
 End Sub
 
+' ---- VAT report ------------------------------------------------------------
+' Copy every sheet of the downloaded VAT report into this workbook as "VAT ..."
+Private Function ImportVATSheets(ByVal file As String) As Long
+    Dim src As Workbook, sh As Worksheet, i As Long, lastSh As Worksheet, n As Long
+    Application.DisplayAlerts = False
+    For i = ThisWorkbook.Worksheets.Count To 1 Step -1
+        If Left$(ThisWorkbook.Worksheets(i).Name, 4) = "VAT " And ThisWorkbook.Worksheets(i).Name <> "VAT Report" Then
+            ThisWorkbook.Worksheets(i).Delete
+        End If
+    Next i
+    Set src = Workbooks.Open(Filename:=file, ReadOnly:=True)
+    Set lastSh = ThisWorkbook.Worksheets("VAT Report")
+    For Each sh In src.Worksheets
+        sh.Copy After:=lastSh
+        Set lastSh = ThisWorkbook.ActiveSheet
+        lastSh.Name = Left$("VAT " & sh.Name, 31)
+        lastSh.Tab.Color = RGB(193, 156, 0)
+        n = n + 1
+    Next sh
+    src.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    On Error Resume Next
+    Kill file
+    On Error GoTo 0
+    ImportVATSheets = n
+End Function
+
+Private Sub LoadVATInner(ByVal purchasesOnly As Boolean)
+    Dim ws As Worksheet, fromD As String, toD As String, file As String, n As Long, view_ As String
+    Set ws = ThisWorkbook.Worksheets("VAT Report")
+    fromD = DateText(ws.Range("C3").Value, "yyyy-mm-dd")
+    toD = DateText(ws.Range("C4").Value, "yyyy-mm-dd")
+    If fromD = "" Or toD = "" Then
+        MsgBox "Put the From and To dates in C3 and C4 first.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If purchasesOnly Then view_ = "&view=purchases"
+    Application.ScreenUpdating = False
+    Application.StatusBar = "Suwin ERP: downloading the VAT report..."
+    file = Environ$("TEMP") & "\SuwinVAT_" & Format$(Now, "yyyymmdd_hhnnss") & ".xlsx"
+    If DownloadFile("/api/xl/vat/export?from=" & fromD & "&to=" & toD & view_, file) Then
+        n = ImportVATSheets(file)
+    End If
+    Application.StatusBar = False
+    ThisWorkbook.Activate
+    Application.ScreenUpdating = True
+    If n > 0 Then
+        On Error Resume Next
+        ThisWorkbook.Worksheets("VAT Schedule 02 Purchases").Activate
+        On Error GoTo 0
+        SayResult "VAT report loaded: " & fromD & " to " & toD & " (" & n & " sheets)"
+    End If
+End Sub
+
+Public Sub LoadVAT()
+    LoadVATInner False
+End Sub
+
+Public Sub LoadVATPurchases()
+    LoadVATInner True
+End Sub
+
 Public Sub SaveStock()
     Dim ws As Worksheet, r As String, body As String, manual As String, rw As Long
     Set ws = MgmtSheet()
@@ -29282,6 +29365,8 @@ def excel_workbook():
                      'Save Ready List, or type "Pay Now" amounts for one supplier and Submit Payment (Cash or Cheque).'),
         ('Management Account', 'Type the month, Load Month for the P&L with variance, notes, cost of sales and sales %. '
                                'Type opening / closing stock and Save Stock.'),
+        ('VAT Report', 'Type the From and To dates, then Load VAT for the schedules (or Purchases only for '
+                       'Schedule 02 on its own). They arrive as "VAT ..." sheets.'),
         ('History sheets', 'Load History fills Sales, Credit, Advance and Bar history (range from B7 / B8).'),
         ('Lists', 'Accounts and open items used by the dropdowns - kept up to date by the buttons.'),
     ]
@@ -29523,6 +29608,27 @@ def excel_workbook():
     inp(ws['C8'])
     ws['B10'] = 'The report appears below when you press Load Month.'
     ws['B10'].font = note_font
+
+    # ================= VAT Report =================
+    ws = wb.create_sheet('VAT Report')
+    sheet_setup(ws, 'C19C00', landscape=False)
+    banner(ws, 'VAT Report', 'Type the From and To dates  >  Load VAT. The schedules arrive as "VAT ..." sheets. '
+           'Purchases only brings Schedule 02 on its own.', 2, 7)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 46
+    for col in 'CDEF':
+        ws.column_dimensions[col].width = 17
+    for rw, label, value in ((3, 'From Date', date.today().replace(day=1)),
+                             (4, 'To Date', date.today())):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        cell = ws.cell(row=rw, column=3, value=value)
+        inp(cell)
+        cell.number_format = 'yyyy-mm-dd'
+    ws['B6'] = 'Load VAT brings: Summary, Schedule 01 Sales, Schedule 02 Purchases, Imports, Credit/Debit Notes,'
+    ws['B7'] = 'Deemed Input and Schedule 02 Amendments - each as its own "VAT ..." sheet.'
+    ws['B8'] = 'The old VAT sheets are replaced each time you load, so nothing goes stale.'
+    for rw in (6, 7, 8):
+        ws.cell(row=rw, column=2).font = note_font
 
     # ================= History sheets (filled by GetAllHistory) =================
     for title, note, tab in (('Sales History', 'Daily Sales - one row per day', '5B9BD5'),
@@ -30900,21 +31006,31 @@ def vat_report_export():
 
 
 def _vat_report_export_build():
-    from vat_helper import VATReportGenerator
     try:
         import excel_export as xl
     except ImportError:
         flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
         return redirect(url_for('vat_report'))
-
     from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
     to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
     purchases_only = request.args.get('view') == 'purchases'
+    wb, name = _vat_export_book(from_date, to_date, purchases_only)
+    if wb is None:
+        flash('Company is not VAT Registered.', 'warning')
+        return redirect(url_for('vat_report'))
+    return xl.workbook_response(wb, f'{name}_{from_date}_to_{to_date}.xlsx')
+
+
+def _vat_export_book(from_date, to_date, purchases_only=False):
+    """The VAT schedules as a workbook. Returns (workbook, name), or
+    (None, None) when the company is not VAT registered. Used by the web
+    export and by the Excel data-entry workbook."""
+    from vat_helper import VATReportGenerator
+    import excel_export as xl
 
     generator = VATReportGenerator(db, from_date, to_date)
     if not generator.check_vat_registered():
-        flash('Company is not VAT Registered.', 'warning')
-        return redirect(url_for('vat_report'))
+        return None, None
     d = generator.generate()
     company = _company_display_name()
     period = f'{from_date} to {to_date}'
@@ -30999,8 +31115,7 @@ def _vat_report_export_build():
           ['Date', 'Invoice No', 'Supplier', 'TIN', 'Description', 'Value', 'VAT'],
           d['schedule_02_amendment'], ['date', 'invoice_no', 'supplier', 'tin', 'description', 'value', 'vat'], (6, 7))
 
-    name = 'VAT_Purchases' if purchases_only else 'VAT_Report'
-    return xl.workbook_response(wb, f'{name}_{from_date}_to_{to_date}.xlsx')
+    return wb, ('VAT_Purchases' if purchases_only else 'VAT_Report')
 
 
 # ---------------- Daily Revenue Report & Cash Book to Excel ----------------

@@ -91,66 +91,68 @@
                         <i class="fas fa-sync me-1"></i> Generate Report
                     </button>
                 </div>
+                <div class="col-auto">
+                    <a href="/vat_report/export?from_date={{ from_date }}&to_date={{ to_date }}{{ '&view=purchases' if purchases_only }}"
+                       class="btn btn-sm fw-semibold" style="background:#107C41;color:#fff;"
+                       title="Download these schedules as an Excel file">
+                        <i class="fas fa-file-excel me-1"></i> Excel
+                    </a>
+                </div>
+                <div class="col-auto">
+                    {% if purchases_only %}
+                    <input type="hidden" name="view" value="purchases">
+                    <a href="/vat_report?from_date={{ from_date }}&to_date={{ to_date }}"
+                       class="btn btn-sm btn-outline-secondary fw-semibold">
+                        <i class="fas fa-list me-1"></i> Show all schedules
+                    </a>
+                    {% else %}
+                    <a href="/vat_report?from_date={{ from_date }}&to_date={{ to_date }}&view=purchases"
+                       class="btn btn-sm btn-outline-primary fw-semibold" title="Show only the purchases (input tax) schedules">
+                        <i class="fas fa-shopping-cart me-1"></i> Purchases only
+                    </a>
+                    {% endif %}
+                </div>
             </form>
         </div>
     </div>
 
     {% if vat_enabled %}
 
-    <!-- Tabs -->
+    <!-- Tabs. In "Purchases only" view just the input-tax schedules are listed. -->
     <ul class="nav vat-tabs mb-0" id="vatTabs" role="tablist">
+        {% set vat_tabs = [
+            ('summary', 'Summary', false),
+            ('schedule01', 'Schedule 01 (Sales/Output)', false),
+            ('schedule02', 'Schedule 02 (Purchases/Input)', true),
+            ('schedule03', 'Schedule 03 (Imports)', false),
+            ('schedule04', 'Schedule 04 (Credit/Debit Notes)', false),
+            ('schedule05', 'Schedule 05 (Deemed Input)', false),
+            ('schedule07', 'Schedule 07 (Service Export)', false),
+            ('schedule01amd', 'Schedule 01 Amd', false),
+            ('schedule02amd', 'Schedule 02 Amd', true),
+            ('schedule03amd', 'Schedule 03 Amd', false),
+            ('schedule04amd', 'Schedule 04 Amd', false),
+            ('schedule05amd', 'Schedule 05 Amd', false),
+            ('schedule06amd', 'Schedule 06 Amd', false),
+            ('schedule07amd', 'Schedule 07 Amd', false),
+            ('reconciliation', 'Reconciliation', false)
+        ] %}
+        {% set first_tab = 'schedule02' if purchases_only else 'summary' %}
+        {% for tab_id, tab_label, is_purchase in vat_tabs %}
+          {% if is_purchase or not purchases_only %}
         <li class="nav-item" role="presentation">
-            <button class="nav-link active" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab">Summary</button>
+            <button class="nav-link {{ 'active' if tab_id == first_tab }}" id="{{ tab_id }}-tab" data-bs-toggle="tab"
+                    data-bs-target="#{{ tab_id }}" type="button" role="tab">{{ tab_label }}</button>
         </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule01-tab" data-bs-toggle="tab" data-bs-target="#schedule01" type="button" role="tab">Schedule 01 (Sales/Output)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule02-tab" data-bs-toggle="tab" data-bs-target="#schedule02" type="button" role="tab">Schedule 02 (Purchases/Input)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule03-tab" data-bs-toggle="tab" data-bs-target="#schedule03" type="button" role="tab">Schedule 03 (Imports)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule04-tab" data-bs-toggle="tab" data-bs-target="#schedule04" type="button" role="tab">Schedule 04 (Credit/Debit Notes)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule05-tab" data-bs-toggle="tab" data-bs-target="#schedule05" type="button" role="tab">Schedule 05 (Deemed Input)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule07-tab" data-bs-toggle="tab" data-bs-target="#schedule07" type="button" role="tab">Schedule 07 (Service Export)</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule01amd-tab" data-bs-toggle="tab" data-bs-target="#schedule01amd" type="button" role="tab">Schedule 01 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule02amd-tab" data-bs-toggle="tab" data-bs-target="#schedule02amd" type="button" role="tab">Schedule 02 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule03amd-tab" data-bs-toggle="tab" data-bs-target="#schedule03amd" type="button" role="tab">Schedule 03 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule04amd-tab" data-bs-toggle="tab" data-bs-target="#schedule04amd" type="button" role="tab">Schedule 04 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule05amd-tab" data-bs-toggle="tab" data-bs-target="#schedule05amd" type="button" role="tab">Schedule 05 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule06amd-tab" data-bs-toggle="tab" data-bs-target="#schedule06amd" type="button" role="tab">Schedule 06 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="schedule07amd-tab" data-bs-toggle="tab" data-bs-target="#schedule07amd" type="button" role="tab">Schedule 07 Amd</button>
-        </li>
-        <li class="nav-item" role="presentation">
-            <button class="nav-link" id="reconciliation-tab" data-bs-toggle="tab" data-bs-target="#reconciliation" type="button" role="tab">Reconciliation</button>
-        </li>
+          {% endif %}
+        {% endfor %}
     </ul>
 
     <!-- Tab Content -->
     <div class="tab-content" id="vatTabsContent">
 
         <!-- SUMMARY -->
-        <div class="tab-pane fade show active" id="summary" role="tabpanel">
+        <div class="tab-pane fade {{ "" if purchases_only else "show active" }}" id="summary" role="tabpanel">
             <div class="report-card" style="border-radius:0 12px 12px 12px;">
                 <div class="card-body">
                     <h6 class="tab-section-title mb-3"><i class="fas fa-chart-pie me-2" style="color:#C19C00;"></i>VAT Summary &mdash; {{ from_date }} to {{ to_date }}</h6>
@@ -295,7 +297,7 @@
         </div>
 
         <!-- SCHEDULE 02 (Purchases) -->
-        <div class="tab-pane fade" id="schedule02" role="tabpanel">
+        <div class="tab-pane fade {{ "show active" if purchases_only }}" id="schedule02" role="tabpanel">
             <div class="report-card" style="border-radius:0 12px 12px 12px;">
                 <div class="card-body">
                     <div class="d-flex justify-content-between align-items-center mb-3">
