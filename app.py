@@ -28806,6 +28806,79 @@ Private Sub PutSetupButton(ByVal ws As Worksheet)
     On Error GoTo 0
 End Sub
 
+' ---- Search a dropdown ------------------------------------------------------
+' Excel's own dropdowns cannot be typed into, so: click the cell, press
+' Ctrl+Shift+F (or the Find button), type part of the name and pick it.
+' Works on any cell that has a list dropdown - accounts, cash accounts,
+' suppliers, the open credit / advance pickers.
+Public Sub PickFromList()
+    Dim cell As Range, src As String, ws As Worksheet, v As Variant, all_ As Collection
+    Dim hits As Collection, i As Long, term As String, msg As String, pick As String, n As Long
+    Set cell = ActiveCell
+    If cell Is Nothing Then Exit Sub
+    src = ""
+    On Error Resume Next
+    src = cell.Validation.Formula1
+    On Error GoTo 0
+    If src = "" Then
+        MsgBox "Click a cell with a dropdown first (an account, a supplier, a credit or advance to settle).", _
+               vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    Set all_ = New Collection
+    If Left$(src, 1) = "=" Then src = Mid$(src, 2)
+    If Left$(src, 1) = """" Then
+        ' A fixed list like "Cash received,Set-off"
+        For Each v In Split(Replace(src, """", ""), ",")
+            all_.Add CStr(v)
+        Next v
+    Else
+        ' The source can be a plain range (Lists!$A$4:$A$3000), a name, or a
+        ' name built on OFFSET (ItemList) - Evaluate copes with all three.
+        Dim rng As Range
+        On Error Resume Next
+        Set rng = Application.Range(src)
+        If rng Is Nothing Then Set rng = Application.Evaluate(src)
+        If rng Is Nothing Then Set rng = ThisWorkbook.Names(src).RefersToRange
+        On Error GoTo 0
+        If Not rng Is Nothing Then
+            For Each v In rng
+                If Trim$(CStr(v.Value)) <> "" Then all_.Add CStr(v.Value)
+                If all_.Count > 20000 Then Exit For
+            Next v
+        End If
+    End If
+    If all_.Count = 0 Then
+        MsgBox "That list is empty - press Load Day or Load Payables first to fill the Lists sheet.", _
+               vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+
+    term = Trim$(InputBox("Type part of the name (blank = show the first 30):", "Suwin ERP - find in list"))
+    If StrPtr(term) = 0 Then Exit Sub        ' Cancel
+    Set hits = New Collection
+    For i = 1 To all_.Count
+        If term = "" Or InStr(1, all_(i), term, vbTextCompare) > 0 Then hits.Add all_(i)
+        If hits.Count >= 30 Then Exit For
+    Next i
+    If hits.Count = 0 Then
+        MsgBox "Nothing matches """ & term & """.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If hits.Count = 1 Then
+        cell.Value = hits(1)
+        Exit Sub
+    End If
+    For i = 1 To hits.Count
+        msg = msg & i & "   " & hits(i) & vbCrLf
+    Next i
+    pick = Trim$(InputBox(msg & vbCrLf & "Type the number you want:", "Suwin ERP - " & hits.Count & " matches", "1"))
+    If pick = "" Then Exit Sub
+    If Not IsNumeric(pick) Then Exit Sub
+    n = CLng(pick)
+    If n >= 1 And n <= hits.Count Then cell.Value = hits(n)
+End Sub
+
 ' ---- Setup: one button per sheet, so you never hunt through the tabs -------
 Private Sub GoSheet(ByVal sheetName As String)
     On Error Resume Next
@@ -28870,12 +28943,13 @@ End Sub
 Public Sub AddButtons()
     PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "Load History", "GetAllHistory")
     PutButtons "Daily Sales", "J1", Array("Load Day", "GetDailySales", "Submit Day", "SendDailySales", _
-                                          "Post Day", "PostDailySales")
+                                          "Post Day", "PostDailySales", "Find in list", "PickFromList")
     PutButtons "Bar Sales", "F1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
-                                        "Post Day", "PostBarSales")
+                                        "Post Day", "PostBarSales", "Find in list", "PickFromList")
     EnsureSheet "Payment History", "Supplier Payment History"
     PutButtons "Payments", "J1", Array("Load Payables", "LoadPayables", "Save Ready List", "SaveReadyList", _
-                                       "Submit Payment", "SubmitPayment", "Payment History", "LoadPaymentHistory")
+                                       "Submit Payment", "SubmitPayment", "Payment History", "LoadPaymentHistory", _
+                                       "Find in list", "PickFromList")
     PutButtons "Payment History", "I1", Array("Load History", "LoadPaymentHistory")
     PutButtons "Management Account", "I1", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock")
     EnsureSheet "VAT Report", "VAT Report"
@@ -28900,6 +28974,7 @@ Public Sub Auto_Open()
     On Error Resume Next
     SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
     AddButtons
+    Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
     On Error GoTo 0
     If ApiKey() = "" Then
         SetupSheet().Activate
@@ -29586,6 +29661,9 @@ def excel_workbook():
                          'and Month To Date. They arrive as "RPT ..." sheets.'),
         ('History sheets', 'Load History fills Sales, Credit, Advance and Bar history (range from B7 / B8).'),
         ('Lists', 'Accounts and open items used by the dropdowns - kept up to date by the buttons.'),
+        ('Find in a dropdown', 'Click the cell, then press Ctrl+Shift+F (or the Find in list button). Type part '
+                               'of the name, pick the number - for accounts, cash accounts, suppliers and the '
+                               'credit / advance pickers.'),
     ]
     for i, (name, text) in enumerate(guide, start=11):
         nc = ws.cell(row=i, column=1, value=name)
@@ -30055,6 +30133,16 @@ def xl_inv_masters():
     rows += [['SUP', s['name'], s['method']] for s in suppliers]
     rows += [['LOC', n] for n in locations]
     rows += [['JOB', n] for n in jobs]
+    # Income / expense accounts and their sub-accounts, for the SRN sheet
+    for a in (db.execute_query("""
+            SELECT account_name FROM new_account_table
+            WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+            ORDER BY account_name""") or []):
+        rows.append(['ACC', a['account_name']])
+    for s in (db.execute_query("""
+            SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
+            WHERE active = 1 ORDER BY sub_sub_accaount_name""") or []):
+        rows.append(['SUB', s['sub_new_account'] or '', f"{s['sub_account_code']} - {s['sub_sub_accaount_name']}"])
     return _xl_tsv(rows)
 
 
@@ -30167,6 +30255,93 @@ def xl_inv_grn():
     except Exception:
         pass
     return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no, 'message': f'Saved as GRN JV {jv_no}.'})
+
+
+@app.route('/api/xl/inv/srn', methods=['POST'])
+def xl_inv_srn():
+    """Post one Service Entry (SRN) from the workbook - runs the website's own
+    Service Entry save, so the GL rules and checks are identical."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    b = _xl_body()
+    ref = str(b.get('ref') or '').strip()[:64]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'ref': ref, 'message': msg}, 400)
+
+    if not ref:
+        return fail('Missing SRN reference.')
+    _xl_sync_log_ready()
+    done = db.execute_query("SELECT jv_no FROM excel_sync_log WHERE client_ref = %s", (ref,)) or []
+    if done:
+        return _xl_json({'ok': True, 'ref': ref, 'jv': done[0]['jv_no'],
+                         'message': f"Already in the system (JV {done[0]['jv_no']})."})
+
+    supplier = str(b.get('supplier') or '').strip()
+    sup = db.execute_query("SELECT sup_id FROM suppliers WHERE supplier_name = %s AND Is_Suplier = 1",
+                           (supplier,)) or []
+    if not sup:
+        return fail(f'Supplier "{supplier}" is not in the system.')
+    invoice_no = str(b.get('invoice_no') or '').strip()
+    if not invoice_no:
+        return fail('Supplier invoice number is required.')
+    if db.execute_query("SELECT 1 FROM suppliers_invoice_data WHERE suppliers_invoice_number = %s", (invoice_no,)):
+        return fail(f'Invoice number {invoice_no} is already used in the system.')
+
+    valid_accounts = {a['account_name'] for a in (db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+    """) or [])}
+    entries, total = [], 0.0
+    for l in b.get('lines') or []:
+        account = str(l.get('account') or '').strip()
+        amount = round(parse_float(l.get('amount')), 2)
+        if not account and not amount:
+            continue
+        if account not in valid_accounts:
+            return fail(f'Account "{account}" is not an income or expense account in the system.')
+        if amount <= 0:
+            return fail(f'Account "{account}": the amount must be more than 0.')
+        sub = str(l.get('sub_account') or '').strip()
+        entries.append({'account': account, 'sub_account': sub.split(' - ')[0].strip() if sub else '',
+                        'job_no': str(l.get('job_no') or '').strip(),
+                        'memo': str(l.get('memo') or '').strip(), 'dr': amount})
+        total += amount
+    if not entries:
+        return fail('The SRN has no account lines.')
+
+    inv_date = _dse_parse_date(b.get('invoice_date')).strftime('%Y-%m-%d')
+    form = {
+        'supplier_id': str(sup[0]['sup_id']),
+        'effective_date': _dse_parse_date(b.get('effective_date') or inv_date).strftime('%Y-%m-%d'),
+        'invoice_number': invoice_no,
+        'invoice_date': inv_date,
+        'due_date': _dse_parse_date(b.get('due_date') or inv_date).strftime('%Y-%m-%d'),
+        'main_narration': str(b.get('narration') or '').strip() or f'Service Entry - {supplier} - {invoice_no}',
+        'header_job_number': str(b.get('job_no') or '').strip(),
+        'include_vat': '1' if parse_float(b.get('vat_rate')) else '0',
+        'vat_rate': str(round(parse_float(b.get('vat_rate')), 2)),
+        'entries_json': json.dumps(entries),
+        'total_amount': str(round(total, 2)),
+        'entry_currency': '',
+        'exchange_rate': '1',
+    }
+    ok, msgs = _xl_run_view(save_service_entry, '/service_entry/save', form)
+    if not ok:
+        return fail(' '.join(msgs) or 'The system could not save the Service Entry.')
+    jv = db.execute_query("""
+        SELECT suppliers_invoice_JV AS jv FROM suppliers_invoice_data
+        WHERE suppliers_invoice_number = %s ORDER BY s_i_id DESC LIMIT 1
+    """, (invoice_no,)) or []
+    jv_no = jv[0]['jv'] if jv else None
+    try:
+        db.execute_query("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'SRN', %s, %s)",
+                         (ref, jv_no, user_pk), commit=True)
+    except Exception as e:
+        logging.error(f"excel_sync_log insert failed for {ref}: {e}")
+    return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no,
+                     'message': f'Saved as Service Entry JV {jv_no}.' if jv_no else ' '.join(msgs)})
 
 
 @app.route('/excel_inventory_workbook', methods=['GET'])
@@ -30414,6 +30589,66 @@ def excel_inventory_workbook():
     for n, i in enumerate(items, start=1):
         balance_row(ws, 5 + n, n, i)
 
+    # ---------------- SRN Entry (Service Entry) ----------------
+    ws = wb.create_sheet('SRN Entry')
+    look(ws, '8764B8', freeze='A11')
+    banner(ws, 'SRN Entry (Service Entry)', 'Services and expenses with no stock - fill the yellow cells, then '
+           'Submit SRN. Needs internet (it posts straight to the system).', 2, 10)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJ', (40, 16, 10, 14, 14, 16, 26, 18, 18)):
+        ws.column_dimensions[col].width = w
+    for rw, left, right in ((4, 'Supplier', 'Invoice No'), (5, 'Invoice Date', 'Due Date'),
+                            (6, 'Effective Date', 'Job No (whole invoice)'), (7, 'VAT Rate %', '')):
+        ws.cell(row=rw, column=2, value=left).font = label_font
+        if right:
+            ws.cell(row=rw, column=5, value=right).font = label_font
+            inp(ws.cell(row=rw, column=6))
+        ws.merge_cells(start_row=rw, start_column=3, end_row=rw, end_column=4)
+        inp(ws.cell(row=rw, column=3))
+        inp(ws.cell(row=rw, column=4))
+    ws['C5'] = date.today()
+    ws['C5'].number_format = 'yyyy-mm-dd'
+    ws['F5'].number_format = 'yyyy-mm-dd'
+    ws['C6'] = date.today()
+    ws['C6'].number_format = 'yyyy-mm-dd'
+    ws['C7'].number_format = '0.00'
+    ws['B8'] = 'Narration'
+    ws['B8'].font = label_font
+    ws.merge_cells('C8:G8')
+    inp(ws['C8'])
+    for rw, label, formula in ((4, 'Total Value', '=SUM(F11:F60)'),
+                               (5, 'VAT Amount', '=ROUND(I4*C7/100,2)'),
+                               (6, 'Grand Total', '=I4+I5')):
+        ws.cell(row=rw, column=8, value=label).font = label_font
+        c = ws.cell(row=rw, column=9, value=formula)
+        c.number_format, c.border = AMT, box
+        c.font = Font(bold=True, color=NAVY, size=12 if rw == 6 else 11)
+        c.fill = fill('E8F3E8' if rw == 6 else 'F3F4F6')
+    head_row(ws, 10, ['Account (pick from list)', 'Sub Account', 'Job No', 'Narration / Memo', 'Amount'],
+             first_col=2, widths=[40, 28, 12, 34, 16])
+    dv_acc = DataValidation(type='list', formula1='AccountList', allow_blank=True, showErrorMessage=True,
+                            errorTitle='Account', error='Pick an income or expense account from the list '
+                                                        '(press Sync from System if it is new).')
+    dv_sub = DataValidation(type='list', formula1='SubAccountList', allow_blank=True, showErrorMessage=False)
+    dv_sjob = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
+    dv_ssup = DataValidation(type='list', formula1='SupplierList', allow_blank=True, showErrorMessage=True,
+                             errorTitle='Supplier', error='Pick a supplier from the list.')
+    for dv in (dv_acc, dv_sub, dv_sjob, dv_ssup):
+        ws.add_data_validation(dv)
+    dv_ssup.add(ws['C4'])
+    dv_sjob.add(ws['F6'])
+    for rw in range(11, 61):
+        inp(ws.cell(row=rw, column=2))
+        inp(ws.cell(row=rw, column=3))
+        inp(ws.cell(row=rw, column=4))
+        inp(ws.cell(row=rw, column=5))
+        inp(ws.cell(row=rw, column=6), AMT)
+        dv_acc.add(ws.cell(row=rw, column=2))
+        dv_sub.add(ws.cell(row=rw, column=3))
+        dv_sjob.add(ws.cell(row=rw, column=4))
+    ws['B62'] = 'Each line is debited to its account; the total (with VAT) is credited to Account Payable.'
+    ws['B62'].font = note_font
+
     # ---------------- Bin Card ----------------
     ws = wb.create_sheet('Bin Card')
     look(ws, '038387', freeze='A9', landscape=False)
@@ -30462,12 +30697,21 @@ def excel_inventory_workbook():
     ws.sheet_state = 'hidden'
 
     ws = wb.create_sheet('Lists')
-    ws.append(['Suppliers', 'Payment method', 'Locations', 'Jobs'])
-    for k in range(max(len(suppliers), len(locations), len(jobs))):
+    accounts = [a['account_name'] for a in (db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE account_active = 1 AND (account_income = 1 OR account_expenses = 1)
+        ORDER BY account_name""") or [])]
+    sub_accounts = [f"{s['sub_account_code']} - {s['sub_sub_accaount_name']}" for s in (db.execute_query("""
+        SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
+        WHERE active = 1 ORDER BY sub_sub_accaount_name""") or [])]
+    ws.append(['Suppliers', 'Payment method', 'Locations', 'Jobs', 'Accounts (SRN)', 'Sub accounts (SRN)'])
+    for k in range(max(len(suppliers), len(locations), len(jobs), len(accounts), len(sub_accounts))):
         ws.append([suppliers[k]['name'] if k < len(suppliers) else None,
                    suppliers[k]['method'] if k < len(suppliers) else None,
                    locations[k] if k < len(locations) else None,
-                   jobs[k] if k < len(jobs) else None])
+                   jobs[k] if k < len(jobs) else None,
+                   accounts[k] if k < len(accounts) else None,
+                   sub_accounts[k] if k < len(sub_accounts) else None])
     ws.sheet_state = 'hidden'
 
     ws = wb.create_sheet('Setup')
@@ -30484,7 +30728,9 @@ def excel_inventory_workbook():
     for name, ref in (('ItemList', 'OFFSET(Items!$B$2,0,0,MAX(1,COUNTA(Items!$B:$B)-1),1)'),
                       ('SupplierList', 'OFFSET(Lists!$A$2,0,0,MAX(1,COUNTA(Lists!$A:$A)-1),1)'),
                       ('LocationList', 'OFFSET(Lists!$C$2,0,0,MAX(1,COUNTA(Lists!$C:$C)-1),1)'),
-                      ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)')):
+                      ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)'),
+                      ('AccountList', 'OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1)'),
+                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)')):
         dn = DefinedName(name, attr_text=ref)
         try:
             wb.defined_names[name] = dn
@@ -30648,6 +30894,12 @@ End Function
 
 Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
     Jq = """" & key & """:" & jsonValue
+End Function
+
+' Build a JSON array a piece at a time: AddItem(list, "...") adds {...}
+Private Function AddItem(ByVal list_ As String, ByVal fields As String) As String
+    If list_ <> "" Then list_ = list_ & ","
+    AddItem = list_ & "{" & fields & "}"
 End Function
 
 Private Function ServerError(ByVal status_ As Long, ByVal reply As String) As String
@@ -30842,6 +31094,90 @@ Public Sub SaveGRN()
     If MsgBox(msg, vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then SubmitPending
 End Sub
 
+' ---- SRN (Service Entry) ---------------------------------------------------
+' Services and expenses with no stock. Unlike a GRN this is not queued: it
+' posts straight to the system, so it needs internet.
+Public Sub SubmitSRN()
+    Dim ws As Worksheet, rw As Long, lines As String, body As String, r As String
+    Dim supplier As String, invNo As String, ref As String, st As Long, total As Double
+    Dim acct As String, amt As Double
+    Set ws = Sh("SRN Entry")
+    supplier = Trim$(CStr(ws.Range("C4").Value))
+    invNo = Trim$(CStr(ws.Range("F4").Value))
+    If supplier = "" Then MsgBox "Pick the supplier (C4).", vbExclamation, "Suwin ERP": ws.Range("C4").Select: Exit Sub
+    If invNo = "" Then MsgBox "Type the supplier invoice number (F4).", vbExclamation, "Suwin ERP": ws.Range("F4").Select: Exit Sub
+    For rw = 11 To 60
+        acct = Trim$(CStr(ws.Cells(rw, 2).Value))
+        amt = Val(Replace(CStr(ws.Cells(rw, 6).Value), ",", ""))
+        If acct <> "" And amt > 0 Then
+            lines = AddItem(lines, Jq("account", JsonStr(acct)) & "," & _
+                    Jq("sub_account", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                    Jq("job_no", JsonStr(ws.Cells(rw, 4).Value)) & "," & _
+                    Jq("memo", JsonStr(ws.Cells(rw, 5).Value)) & "," & _
+                    Jq("amount", JsonNum(ws.Cells(rw, 6).Value)))
+            total = total + amt
+        ElseIf acct <> "" And amt <= 0 Then
+            MsgBox "Line " & rw & ": type an amount for """ & acct & """.", vbExclamation, "Suwin ERP"
+            ws.Cells(rw, 6).Select
+            Exit Sub
+        End If
+    Next rw
+    If lines = "" Then MsgBox "Type at least one account line with an amount.", vbExclamation, "Suwin ERP": Exit Sub
+    If MsgBox("Post this Service Entry to the system?" & vbCrLf & vbCrLf & _
+              supplier & "  -  " & invNo & vbCrLf & "Total " & Format$(total, "#,##0.00"), _
+              vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+
+    ref = Trim$(CStr(SetupSheet().Range("B7").Value)) & "-SRN-" & invNo
+    body = "{" & Jq("ref", JsonStr(ref)) & "," & Jq("supplier", JsonStr(supplier)) & "," & _
+           Jq("invoice_no", JsonStr(invNo)) & "," & _
+           Jq("invoice_date", JsonStr(Ymd(ws.Range("C5").Value))) & "," & _
+           Jq("due_date", JsonStr(Ymd(ws.Range("F5").Value))) & "," & _
+           Jq("effective_date", JsonStr(Ymd(ws.Range("C6").Value))) & "," & _
+           Jq("job_no", JsonStr(ws.Range("F6").Value)) & "," & _
+           Jq("vat_rate", JsonNum(ws.Range("C7").Value)) & "," & _
+           Jq("narration", JsonStr(ws.Range("C8").Value)) & "," & _
+           Jq("lines", "[" & lines & "]") & "}"
+    Application.StatusBar = "Suwin ERP: posting the Service Entry..."
+    r = Http("POST", "/api/xl/inv/srn", body, st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "No internet connection - an SRN has to be posted online. Try again when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If JsonValue(r, "ok") = "true" Then
+        SayResult JsonValue(r, "message")
+        MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+        ClearSRN True
+    Else
+        MsgBox JsonValue(r, "message") & JsonValue(r, "error"), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+Public Sub ClearSRN(Optional ByVal silent As Boolean = False)
+    Dim ws As Worksheet
+    Set ws = Sh("SRN Entry")
+    If Not silent Then
+        If MsgBox("Clear the SRN form?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    ws.Range("C4").MergeArea.ClearContents
+    ws.Range("F4").ClearContents
+    ws.Range("F5").ClearContents
+    ws.Range("F6").ClearContents
+    ws.Range("C7").MergeArea.ClearContents
+    ws.Range("C8").MergeArea.ClearContents
+    ws.Range("B11:F60").ClearContents
+    ws.Range("C5").Value = Date
+    ws.Range("C6").Value = Date
+    ws.Activate
+    ws.Range("C4").Select
+End Sub
+
+Public Sub GoSRN()
+    Sh("SRN Entry").Activate
+    Sh("SRN Entry").Range("C4").Select
+End Sub
+
 Public Sub ClearGRN(Optional ByVal silent As Boolean = False)
     Dim ws As Worksheet
     Set ws = Sh("GRN Entry")
@@ -30931,7 +31267,7 @@ End Sub
 ' ---- Download items, balances and movements --------------------------------
 Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
     Dim r As String, st As Long, rows_ As Variant, cols As Variant, i As Long, j As Long, n As Long
-    Dim items() As Variant, ns As Long, nl As Long, nj As Long, lst As Worksheet, itm As Worksheet
+    Dim items() As Variant, ns As Long, nl As Long, nj As Long, na As Long, nsa As Long, lst As Worksheet, itm As Worksheet
     Dim sb As Worksheet, mv As Worksheet, months As Long, mvData() As Variant, m As Long, reg As Worksheet, rw As Long
     If ApiKey() = "" Then
         If Not quiet Then SetApiKey
@@ -30956,7 +31292,7 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
     Set lst = Sh("Lists")
     Set sb = Sh("Stock Balance")
     itm.Range("A2:M20000").ClearContents
-    lst.Range("A2:D5000").ClearContents
+    lst.Range("A2:F20000").ClearContents
     If n > 0 Then ReDim items(1 To n, 1 To 13)
     n = 0
     For i = 0 To UBound(rows_)
@@ -30980,6 +31316,12 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
             Case "JOB"
                 nj = nj + 1
                 lst.Cells(1 + nj, 4).Value = Txt(cols(1))
+            Case "ACC"
+                na = na + 1
+                lst.Cells(1 + na, 5).Value = cols(1)
+            Case "SUB"
+                nsa = nsa + 1
+                lst.Cells(1 + nsa, 6).Value = cols(2)
             End Select
         End If
     Next i
@@ -31209,6 +31551,11 @@ Public Sub GoStockBalance()
     Sh("Stock Balance").Activate
 End Sub
 
+Public Sub GoGRN()
+    Sh("GRN Entry").Activate
+    Sh("GRN Entry").Range("C4").Select
+End Sub
+
 ' ---- Buttons ---------------------------------------------------------------
 Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant, _
                        Optional ByVal vertical As Boolean = False)
@@ -31229,11 +31576,81 @@ Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal 
     Next i
 End Sub
 
+' ---- Search a dropdown ------------------------------------------------------
+' Excel's own dropdowns cannot be typed into: click the cell, press Ctrl+Shift+F
+' (or the Find in list button), type part of the name and pick it.
+Public Sub PickFromList()
+    Dim cell As Range, src As String, v As Variant, all_ As Collection
+    Dim hits As Collection, i As Long, term As String, msg As String, pick As String, n As Long
+    Set cell = ActiveCell
+    If cell Is Nothing Then Exit Sub
+    src = ""
+    On Error Resume Next
+    src = cell.Validation.Formula1
+    On Error GoTo 0
+    If src = "" Then
+        MsgBox "Click a cell with a dropdown first (an item, a supplier, a category).", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    Set all_ = New Collection
+    If Left$(src, 1) = "=" Then src = Mid$(src, 2)
+    If Left$(src, 1) = """" Then
+        For Each v In Split(Replace(src, """", ""), ",")
+            all_.Add CStr(v)
+        Next v
+    Else
+        ' The source can be a plain range (Lists!$A$4:$A$3000), a name, or a
+        ' name built on OFFSET (ItemList) - Evaluate copes with all three.
+        Dim rng As Range
+        On Error Resume Next
+        Set rng = Application.Range(src)
+        If rng Is Nothing Then Set rng = Application.Evaluate(src)
+        If rng Is Nothing Then Set rng = ThisWorkbook.Names(src).RefersToRange
+        On Error GoTo 0
+        If Not rng Is Nothing Then
+            For Each v In rng
+                If Trim$(CStr(v.Value)) <> "" Then all_.Add CStr(v.Value)
+                If all_.Count > 20000 Then Exit For
+            Next v
+        End If
+    End If
+    If all_.Count = 0 Then
+        MsgBox "That list is empty - press Sync from System first.", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    term = Trim$(InputBox("Type part of the name (blank = show the first 30):", "Suwin ERP - find in list"))
+    If StrPtr(term) = 0 Then Exit Sub
+    Set hits = New Collection
+    For i = 1 To all_.Count
+        If term = "" Or InStr(1, all_(i), term, vbTextCompare) > 0 Then hits.Add all_(i)
+        If hits.Count >= 30 Then Exit For
+    Next i
+    If hits.Count = 0 Then
+        MsgBox "Nothing matches """ & term & """.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If hits.Count = 1 Then
+        cell.Value = hits(1)
+        Exit Sub
+    End If
+    For i = 1 To hits.Count
+        msg = msg & i & "   " & hits(i) & vbCrLf
+    Next i
+    pick = Trim$(InputBox(msg & vbCrLf & "Type the number you want:", "Suwin ERP - " & hits.Count & " matches", "1"))
+    If pick = "" Or Not IsNumeric(pick) Then Exit Sub
+    n = CLng(pick)
+    If n >= 1 And n <= hits.Count Then cell.Value = hits(n)
+End Sub
+
 Public Sub AddButtons()
-    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "Submit Pending", "SubmitPending", "Sync from System", _
-                                   "SyncFromSystem", "Stock Balance", "GoStockBalance", "Bin Card", "GoBinCard", _
-                                   "Set API Key", "SetApiKey"), True
-    PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending")
+    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "Submit Pending", "SubmitPending", _
+                                   "Sync from System", "SyncFromSystem", "Stock Balance", "GoStockBalance", _
+                                   "Bin Card", "GoBinCard", "Set API Key", "SetApiKey"), True
+    Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
+    PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending", _
+                                        "Find in list", "PickFromList", "SRN Entry", "GoSRN")
+    PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
+                                        "Find in list", "PickFromList", "GRN Entry", "GoGRN")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
     PutButtons "Stock Balance", "Q1", Array("Sync from System", "SyncFromSystem", "Bin Card", "GoBinCard")
     PutButtons "Bin Card", "L1", Array("Show Bin Card", "ShowBinCard")
