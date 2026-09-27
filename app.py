@@ -14691,6 +14691,9 @@ def vat_report():
             return render_template('vat_report.html', vat_enabled=False)
 
         report_data = generator.generate()
+        # "Purchases only" hides everything except the input-tax (purchases)
+        # schedules, for when only the purchase side is being checked.
+        report_data['purchases_only'] = request.args.get('view') == 'purchases'
         return render_template('vat_report.html', **report_data)
     except Exception as e:
         import traceback
@@ -27308,8 +27311,11 @@ def _xl_auth(*required_perms):
         FROM excel_api_keys k LEFT JOIN Login_Table l ON l.id = k.user_pk
         WHERE k.api_key = %s
     """, (key,)) or []
-    if not rows or not rows[0]['is_active']:
-        return None, _xl_json({'ok': False, 'error': 'This API key is not valid or has been switched off.'}, 401)
+    if not rows:
+        return None, _xl_json({'ok': False, 'error': f'No key like this exists (it ends with "{key[-6:]}"). '
+                                                     'Copy it again from Settings > Excel Data Entry, with no spaces.'}, 401)
+    if not rows[0]['is_active']:
+        return None, _xl_json({'ok': False, 'error': 'This key has been switched off on the Excel Data Entry page.'}, 401)
     row = rows[0]
     session['user_pk'] = row['user_pk']
     session['user_id'] = row['User_Code'] or row['User_Name']
@@ -30872,6 +30878,233 @@ Public Sub AddButtons()
     PutButtons "Bin Card", "L1", Array("Show Bin Card", "ShowBinCard")
 End Sub
 '''
+
+
+
+
+# ---------------- VAT report to Excel ----------------
+
+@app.route('/vat_report/export', methods=['GET'])
+@login_required
+@has_permission('Access_Reports')
+def vat_report_export():
+    """The VAT schedules as a workbook - one sheet per schedule.
+    ?view=purchases gives only the purchases (input tax) sheets."""
+    try:
+        return _vat_report_export_build()
+    except Exception as e:
+        logging.error(f'VAT Excel export failed: {e}', exc_info=True)
+        flash(f'Could not build the VAT Excel file: {e}', 'danger')
+        return redirect(url_for('vat_report', from_date=request.args.get('from_date'),
+                                to_date=request.args.get('to_date'), view=request.args.get('view')))
+
+
+def _vat_report_export_build():
+    from vat_helper import VATReportGenerator
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('vat_report'))
+
+    from_date = request.args.get('from_date', date.today().replace(day=1).strftime('%Y-%m-%d'))
+    to_date = request.args.get('to_date', date.today().strftime('%Y-%m-%d'))
+    purchases_only = request.args.get('view') == 'purchases'
+
+    generator = VATReportGenerator(db, from_date, to_date)
+    if not generator.check_vat_registered():
+        flash('Company is not VAT Registered.', 'warning')
+        return redirect(url_for('vat_report'))
+    d = generator.generate()
+    company = _company_display_name()
+    period = f'{from_date} to {to_date}'
+
+    def sheet(wb, title, heading, columns, rows, fields, num_cols):
+        """One schedule per sheet: heading, column titles, the rows, then a
+        total under each amount column."""
+        ws = wb.create_sheet(title[:31])
+        n = len(columns)
+        r = xl.title_block(ws, n, company, heading, period)
+        r = xl.header_row(ws, r, columns)
+        for row in rows or []:
+            r = xl.data_row(ws, r, [row.get(f) for f in fields], num_cols=num_cols)
+        if not rows:
+            ws.cell(row=r, column=1, value='No entries for this period.')
+        else:
+            ws.cell(row=r, column=1, value='TOTAL').font = xl.Font(bold=True)
+            for col in num_cols:
+                total = sum(float(row.get(fields[col - 1]) or 0) for row in rows)
+                c = ws.cell(row=r, column=col, value=total)
+                c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+        xl.finish(ws, n, first_col_width=16, num_col_width=18)
+        return ws
+
+    wb, first = xl.new_workbook('Purchases' if purchases_only else 'Summary')
+    if purchases_only:
+        # Schedule 02 straight onto the first sheet
+        n = 7
+        r = xl.title_block(first, n, company, 'Schedule 02 - Input Tax (Purchases)', period)
+        r = xl.header_row(first, r, ['Date', 'Invoice No', 'Supplier', 'TIN', 'Description', 'Value (excl. VAT)', 'Input VAT'])
+        for row in d['schedule_02']:
+            r = xl.data_row(first, r, [row.get('date'), row.get('invoice_no'), row.get('supplier'), row.get('tin'),
+                                       row.get('description'), row.get('value'), row.get('vat')], num_cols=(6, 7))
+        if not d['schedule_02']:
+            first.cell(row=r, column=1, value='No purchases for this period.')
+            r += 1
+        else:
+            first.cell(row=r, column=5, value='TOTAL').font = xl.Font(bold=True)
+            for col, val in ((6, d['summary']['total_input_value']), (7, d['summary']['total_input_vat'])):
+                c = first.cell(row=r, column=col, value=float(val or 0))
+                c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+        xl.finish(first, n, first_col_width=14, num_col_width=18)
+    else:
+        # Summary sheet
+        s = d['summary']
+        r = xl.title_block(first, 3, company, 'VAT Summary', period)
+        r = xl.header_row(first, r, ['Description', 'Value', 'VAT'])
+        r = xl.section_row(first, r, 3, 'Output (Sales)')
+        r = xl.item_row(first, r, 'Schedule 01 - Sales', [s['total_output_value'], s['total_output_vat']])
+        r = xl.item_row(first, r, 'Schedule 01 Amendments', [s['total_sched01_amd_value'], s['total_sched01_amd_vat']])
+        r = xl.section_row(first, r, 3, 'Input (Purchases)')
+        r = xl.item_row(first, r, 'Schedule 02 - Purchases', [s['total_input_value'], s['total_input_vat']])
+        r = xl.item_row(first, r, 'Schedule 02 Amendments', [s['total_sched02_amd_value'], s['total_sched02_amd_vat']])
+        r = xl.item_row(first, r, 'Schedule 03 - Imports', [0, s['total_sched03_vat']])
+        r = xl.item_row(first, r, 'Schedule 04 - Credit/Debit Notes', [s['total_sched04_value'], s['total_sched04_vat']])
+        r = xl.item_row(first, r, 'Schedule 05 - Deemed Input', [s['total_sched05_liable'], s['total_sched05_credit']])
+        r = xl.total_row(first, r, 'NET VAT PAYABLE / (REFUNDABLE)', [0, s['net_vat']])
+        xl.finish(first, 3, first_col_width=42, num_col_width=20)
+
+        sheet(wb, 'Schedule 01 Sales', 'Schedule 01 - Output Tax (Sales)',
+              ['Date', 'Invoice No', 'Purchaser', 'TIN', 'Description', 'Value (excl. VAT)', 'Output VAT'],
+              d['schedule_01'], ['date', 'invoice_no', 'purchaser', 'tin', 'description', 'value', 'vat'], (6, 7))
+
+    if not purchases_only:
+        sheet(wb, 'Schedule 02 Purchases', 'Schedule 02 - Input Tax (Purchases)',
+              ['Date', 'Invoice No', 'Supplier', 'TIN', 'Description', 'Value (excl. VAT)', 'Input VAT'],
+              d['schedule_02'], ['date', 'invoice_no', 'supplier', 'tin', 'description', 'value', 'vat'], (6, 7))
+        sheet(wb, 'Schedule 03 Imports', 'Schedule 03 - Imports',
+              ['Serial', 'CusDec Date', 'CusDec No', 'Serial ID', 'VAT Deferred', 'VAT Upfront', 'Disallowed'],
+              d['schedule_03'], ['serial_no', 'cusdec_date', 'cusdec_no', 'cusdec_serial_id',
+                                 'vat_deferred', 'vat_upfront', 'disallowed'], (5, 6, 7))
+        sheet(wb, 'Schedule 04 Notes', 'Schedule 04 - Credit & Debit Notes',
+              ['TIN', 'Invoice Date', 'Invoice No', 'Type', 'Note Date', 'Note No', 'Value', 'VAT'],
+              d['schedule_04'], ['tin', 'invoice_date', 'invoice_no', 'type', 'note_date', 'note_no', 'value', 'vat'], (7, 8))
+        sheet(wb, 'Schedule 05 Deemed', 'Schedule 05 - Deemed Input',
+              ['Date', 'Invoice No', 'NIC', 'Tax File', 'Supplier', 'Cost (liable)', 'Cost (non-liable)', 'Deemed Credit'],
+              d['schedule_05'], ['date', 'invoice_no', 'nic', 'tax_file', 'supplier',
+                                 'cost_liable', 'cost_non_liable', 'deemed_credit'], (6, 7, 8))
+
+    # Amendments to purchases go in either view
+    sheet(wb, 'Schedule 02 Amd', 'Schedule 02 - Amendments (Purchases)',
+          ['Date', 'Invoice No', 'Supplier', 'TIN', 'Description', 'Value', 'VAT'],
+          d['schedule_02_amendment'], ['date', 'invoice_no', 'supplier', 'tin', 'description', 'value', 'vat'], (6, 7))
+
+    name = 'VAT_Purchases' if purchases_only else 'VAT_Report'
+    return xl.workbook_response(wb, f'{name}_{from_date}_to_{to_date}.xlsx')
+
+
+# ---------------- Daily Revenue Report & Cash Book to Excel ----------------
+
+@app.route('/daily_sales_entry/reports/export', methods=['GET'])
+@login_required
+@has_any_permission('Access_Daily_Sales', 'Access_Accounting', 'Access_Reports')
+def daily_sales_reports_export():
+    """R1 Daily Revenue Report and R2 Cash Book as a workbook, one sheet each."""
+    try:
+        return _daily_sales_reports_export_build()
+    except Exception as e:
+        logging.error(f'Daily reports Excel export failed: {e}', exc_info=True)
+        flash(f'Could not build the Excel file: {e}', 'danger')
+        return redirect(url_for('daily_sales_reports', date=request.args.get('date')))
+
+
+def _daily_sales_reports_export_build():
+    try:
+        import excel_export as xl
+    except ImportError:
+        flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('daily_sales_reports'))
+
+    as_of = _dse_parse_date(request.args.get('date'))
+    d = _daily_sales_report_data(as_of)
+    company = _company_display_name()
+    period = f"To Day: {as_of}   |   Month To Date: {d['month_start']} to {as_of}"
+    head = ['Description', 'To Day', 'Month To Date']
+
+    # ---- R1
+    wb, ws = xl.new_workbook('R1 Daily Revenue')
+    r = xl.title_block(ws, 3, company, 'DAILY REVENUE REPORT (R1)', period)
+    r = xl.header_row(ws, r, head)
+    r = xl.section_row(ws, r, 3, 'Occupancy & Counts')
+    for s in d['r1_stats']:
+        if s['type'] == 'OCCUPANCY':
+            label = f"{s['label']} ({s['rooms'] or 0} rooms)"
+            r = xl.data_row(ws, r, [label,
+                                    f"{s['today']:.2f}%" if s['today'] is not None else '-',
+                                    f"{s['mtd']:.2f}%" if s['mtd'] is not None else '-'])
+        else:
+            r = xl.item_row(ws, r, s['label'], [s['today'], s['mtd']])
+    r = xl.section_row(ws, r, 3, 'Revenue')
+    for row in d['r1_revenue']:
+        r = xl.item_row(ws, r, row['label'], [row['today'], row['mtd']])
+    r = xl.total_row(ws, r, 'TOTAL REVENUE', [d['r1_total'][0], d['r1_total'][1]])
+    if d['r1_unmapped']:
+        r = xl.section_row(ws, r, 3, 'Other Daily Sales lines not in the report rows')
+        for u in d['r1_unmapped']:
+            r = xl.item_row(ws, r, ('(Less) ' if u['deduct'] else '') + u['label'], [u['today'], u['mtd']])
+    r = xl.section_row(ws, r, 3, 'Cross-check - where the revenue above was entered')
+    r = xl.item_row(ws, r, 'Total Income as per Daily Sales Entry (bar excluded)', [d['total_income'][0], d['total_income'][1]])
+    r = xl.item_row(ws, r, 'Add: Bar Sales Record (Bar + Bar Food)', [d['bar_income'][0], d['bar_income'][1]])
+    r = xl.total_row(ws, r, 'Total entered', [d['income_check'][0], d['income_check'][1]])
+    xl.finish(ws, 3, first_col_width=46, num_col_width=20)
+
+    # ---- R2
+    ws = wb.create_sheet('R2 Cash Book')
+    r = xl.title_block(ws, 3, company, 'CASH BOOK RECORD (R2)', period)
+    r = xl.header_row(ws, r, ['Payment Method', 'To Day', 'Month To Date'])
+    for label, pair in (('Cash', d['cash']), ('Credit Card - Sampath Bank', d['sampath']),
+                        ('Credit Card - HNB Bank', d['hnb']), ('Bank', d['bank']),
+                        ('Credit Card - other account', d['card_other'])):
+        if label.endswith('other account') and not (pair[0] or pair[1]):
+            continue
+        r = xl.item_row(ws, r, label, [pair[0], pair[1]])
+    r = xl.total_row(ws, r, 'TOTAL COLLECTIONS', [d['collections'][0], d['collections'][1]])
+
+    def name_table(title, rows, extra_col=None):
+        nonlocal r
+        r = xl.section_row(ws, r, 3, title)
+        if not rows:
+            ws.cell(row=r, column=1, value='None.')
+            r += 1
+            return
+        for row in rows:
+            label = row.get('name') or row.get('label') or ''
+            if row.get('refs'):
+                label += '  (' + ', '.join(row['refs'][:4]) + ')'
+            r = xl.item_row(ws, r, label, [row.get('today', 0), row.get('mtd', 0)])
+        r = xl.total_row(ws, r, 'Total', [sum(x.get('today', 0) for x in rows), sum(x.get('mtd', 0) for x in rows)])
+
+    name_table('Debtors (Credit Given)', d['debtors'])
+    name_table('Creditors (Credit Received / Set-off)', d['creditors'])
+    name_table('Petty Cash Expenses', d['petty'])
+    if d['commission']:
+        name_table('Commission / Set-off (kept by agents)', d['commission'])
+
+    for title, rows in (('Advance Debtors (Advance Given)', d['adv_debtors']),
+                        ('Advance Creditors (Advance Received)', d['adv_creditors'])):
+        r = xl.section_row(ws, r, 3, title)
+        if not rows:
+            ws.cell(row=r, column=1, value='None.')
+            r += 1
+            continue
+        r = xl.header_row(ws, r, ['Name / Receipt No / Date', 'Received', 'Settled'])
+        for row in rows:
+            label = f"{row['name']}  {row['receipt_no']}  {row['date']}".strip()
+            r = xl.item_row(ws, r, label, [row['mtd'], row['settled_mtd']])
+        r = xl.total_row(ws, r, 'Total', [sum(x['mtd'] for x in rows), sum(x['settled_mtd'] for x in rows)])
+    xl.finish(ws, 3, first_col_width=52, num_col_width=20)
+
+    return xl.workbook_response(wb, f'Daily_Revenue_CashBook_{as_of}.xlsx')
 
 
 if __name__ == '__main__':
