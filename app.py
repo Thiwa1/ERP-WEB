@@ -30496,6 +30496,17 @@ def excel_inventory_workbook():
     ws['H7'].font = note_font
     ws['I7'] = '=Setup!B7&"-"&TEXT(Setup!B8,"0000")'
     ws['I7'].font = note_font
+    # Type here and the Item dropdowns below list only what matches
+    ws['B9'] = 'Type to filter items >'
+    ws['B9'].font = note_font
+    inp(ws['C9'])
+    ws['C9'].font = Font(bold=True, color='107C10')
+    ws['D9'] = 'part of the name; blank = all'
+    ws['D9'].font = note_font
+    ws['F9'] = 'Filter suppliers >'
+    ws['F9'].font = note_font
+    inp(ws['G9'])
+    ws['G9'].font = Font(bold=True, color='107C10')
     head_row(ws, 10, ['Item (pick from list)', 'Code', 'Unit', 'Qty', 'Unit Cost', 'Line Total', 'Stock now',
                       'Last cost'], first_col=2)
     for rw in range(11, 61):
@@ -30513,9 +30524,9 @@ def excel_inventory_workbook():
         for col in (3, 4, 7, 8, 9):
             ws.cell(row=rw, column=col).border = box
             ws.cell(row=rw, column=col).font = Font(color='374151')
-    dv_item = DataValidation(type='list', formula1='ItemList', allow_blank=True, showErrorMessage=True,
+    dv_item = DataValidation(type='list', formula1='FilteredItemList', allow_blank=True, showErrorMessage=True,
                              errorTitle='Item', error='Pick an item from the list (press Sync if it is new).')
-    dv_sup = DataValidation(type='list', formula1='SupplierList', allow_blank=True, showErrorMessage=True,
+    dv_sup = DataValidation(type='list', formula1='FilteredSupplierList', allow_blank=True, showErrorMessage=True,
                             errorTitle='Supplier', error='Pick a supplier from the list.')
     dv_loc = DataValidation(type='list', formula1='LocationList', allow_blank=True, showErrorMessage=False)
     dv_job = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
@@ -30624,9 +30635,16 @@ def excel_inventory_workbook():
         c.number_format, c.border = AMT, box
         c.font = Font(bold=True, color=NAVY, size=12 if rw == 6 else 11)
         c.fill = fill('E8F3E8' if rw == 6 else 'F3F4F6')
+    # Type here and the Account dropdowns below list only what matches
+    ws['B9'] = 'Type to filter accounts >'
+    ws['B9'].font = note_font
+    inp(ws['C9'])
+    ws['C9'].font = Font(bold=True, color='8764B8')
+    ws['D9'] = 'leave blank for all'
+    ws['D9'].font = note_font
     head_row(ws, 10, ['Account (pick from list)', 'Sub Account', 'Job No', 'Narration / Memo', 'Amount'],
              first_col=2, widths=[40, 28, 12, 34, 16])
-    dv_acc = DataValidation(type='list', formula1='AccountList', allow_blank=True, showErrorMessage=True,
+    dv_acc = DataValidation(type='list', formula1='FilteredAccountList', allow_blank=True, showErrorMessage=True,
                             errorTitle='Account', error='Pick an income or expense account from the list '
                                                         '(press Sync from System if it is new).')
     dv_sub = DataValidation(type='list', formula1='SubAccountList', allow_blank=True, showErrorMessage=False)
@@ -30712,6 +30730,23 @@ def excel_inventory_workbook():
                    jobs[k] if k < len(jobs) else None,
                    accounts[k] if k < len(accounts) else None,
                    sub_accounts[k] if k < len(sub_accounts) else None])
+    # Filter columns: the names matching what was typed in the sheet's filter
+    # cell, in order, so the dropdowns get shorter as you type. AGGREGATE(15,6,..)
+    # picks the n-th matching row and ignores the errors from the rest.
+    ws['H1'] = 'Items matching GRN filter'
+    ws['I1'] = 'Suppliers matching GRN filter'
+    ws['J1'] = 'Accounts matching SRN filter'
+    for rw in range(2, 152):
+        n = rw - 1
+        ws.cell(row=rw, column=8, value=(
+            "=IFERROR(INDEX(Items!$B$2:$B$8000,AGGREGATE(15,6,(ROW(Items!$B$2:$B$8000)-1)"
+            "/(ISNUMBER(SEARCH('GRN Entry'!$C$9,Items!$B$2:$B$8000))),%d)),\"\")" % n))
+        ws.cell(row=rw, column=9, value=(
+            "=IFERROR(INDEX(Lists!$A$2:$A$3000,AGGREGATE(15,6,(ROW(Lists!$A$2:$A$3000)-1)"
+            "/(ISNUMBER(SEARCH('GRN Entry'!$G$9,Lists!$A$2:$A$3000))),%d)),\"\")" % n))
+        ws.cell(row=rw, column=10, value=(
+            "=IFERROR(INDEX(Lists!$E$2:$E$3000,AGGREGATE(15,6,(ROW(Lists!$E$2:$E$3000)-1)"
+            "/(ISNUMBER(SEARCH('SRN Entry'!$C$9,Lists!$E$2:$E$3000))),%d)),\"\")" % n))
     ws.sheet_state = 'hidden'
 
     ws = wb.create_sheet('Setup')
@@ -30730,7 +30765,14 @@ def excel_inventory_workbook():
                       ('LocationList', 'OFFSET(Lists!$C$2,0,0,MAX(1,COUNTA(Lists!$C:$C)-1),1)'),
                       ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)'),
                       ('AccountList', 'OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1)'),
-                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)')):
+                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)'),
+                      # Only the rows that match what was typed in the filter cell
+                      ('FilteredItemList',
+                       "OFFSET(Lists!$H$2,0,0,MAX(1,MIN(150,COUNTIF(Items!$B:$B,\"*\"&'GRN Entry'!$C$9&\"*\"))),1)"),
+                      ('FilteredSupplierList',
+                       "OFFSET(Lists!$I$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$A:$A,\"*\"&'GRN Entry'!$G$9&\"*\"))),1)"),
+                      ('FilteredAccountList',
+                       "OFFSET(Lists!$J$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$E:$E,\"*\"&'SRN Entry'!$C$9&\"*\"))),1)")):
         dn = DefinedName(name, attr_text=ref)
         try:
             wb.defined_names[name] = dn
