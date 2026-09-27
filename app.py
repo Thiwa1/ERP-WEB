@@ -30524,10 +30524,8 @@ def excel_inventory_workbook():
         for col in (3, 4, 7, 8, 9):
             ws.cell(row=rw, column=col).border = box
             ws.cell(row=rw, column=col).font = Font(color='374151')
-    dv_item = DataValidation(type='list', formula1='FilteredItemList', allow_blank=True, showErrorMessage=True,
-                             errorTitle='Item', error='Pick an item from the list (press Sync if it is new).')
-    dv_sup = DataValidation(type='list', formula1='FilteredSupplierList', allow_blank=True, showErrorMessage=True,
-                            errorTitle='Supplier', error='Pick a supplier from the list.')
+    dv_item = DataValidation(type="list", formula1="FilteredItemList", allow_blank=True, showErrorMessage=False)
+    dv_sup = DataValidation(type="list", formula1="FilteredSupplierList", allow_blank=True, showErrorMessage=False)
     dv_loc = DataValidation(type='list', formula1='LocationList', allow_blank=True, showErrorMessage=False)
     dv_job = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
     dv_pay = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=True)
@@ -30644,9 +30642,7 @@ def excel_inventory_workbook():
     ws['D9'].font = note_font
     head_row(ws, 10, ['Account (pick from list)', 'Sub Account', 'Job No', 'Narration / Memo', 'Amount'],
              first_col=2, widths=[40, 28, 12, 34, 16])
-    dv_acc = DataValidation(type='list', formula1='FilteredAccountList', allow_blank=True, showErrorMessage=True,
-                            errorTitle='Account', error='Pick an income or expense account from the list '
-                                                        '(press Sync from System if it is new).')
+    dv_acc = DataValidation(type="list", formula1="FilteredAccountList", allow_blank=True, showErrorMessage=False)
     dv_sub = DataValidation(type='list', formula1='SubAccountList', allow_blank=True, showErrorMessage=False)
     dv_sjob = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
     dv_ssup = DataValidation(type='list', formula1='SupplierList', allow_blank=True, showErrorMessage=True,
@@ -30766,13 +30762,17 @@ def excel_inventory_workbook():
                       ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)'),
                       ('AccountList', 'OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1)'),
                       ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)'),
-                      # Only the rows that match what was typed in the filter cell
+                      # Blank filter cell = the whole list, so nothing ever goes
+                      # missing; type in it and the dropdown narrows to matches.
                       ('FilteredItemList',
-                       "OFFSET(Lists!$H$2,0,0,MAX(1,MIN(150,COUNTIF(Items!$B:$B,\"*\"&'GRN Entry'!$C$9&\"*\"))),1)"),
+                       "IF('GRN Entry'!$C$9=\"\",OFFSET(Items!$B$2,0,0,MAX(1,COUNTA(Items!$B:$B)-1),1),"
+                       "OFFSET(Lists!$H$2,0,0,MAX(1,MIN(150,COUNTIF(Items!$B:$B,\"*\"&'GRN Entry'!$C$9&\"*\"))),1))"),
                       ('FilteredSupplierList',
-                       "OFFSET(Lists!$I$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$A:$A,\"*\"&'GRN Entry'!$G$9&\"*\"))),1)"),
+                       "IF('GRN Entry'!$G$9=\"\",OFFSET(Lists!$A$2,0,0,MAX(1,COUNTA(Lists!$A:$A)-1),1),"
+                       "OFFSET(Lists!$I$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$A:$A,\"*\"&'GRN Entry'!$G$9&\"*\"))),1))"),
                       ('FilteredAccountList',
-                       "OFFSET(Lists!$J$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$E:$E,\"*\"&'SRN Entry'!$C$9&\"*\"))),1)")):
+                       "IF('SRN Entry'!$C$9=\"\",OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1),"
+                       "OFFSET(Lists!$J$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$E:$E,\"*\"&'SRN Entry'!$C$9&\"*\"))),1))")):
         dn = DefinedName(name, attr_text=ref)
         try:
             wb.defined_names[name] = dn
