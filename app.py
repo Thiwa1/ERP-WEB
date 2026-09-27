@@ -28806,6 +28806,60 @@ Private Sub PutSetupButton(ByVal ws As Worksheet)
     On Error GoTo 0
 End Sub
 
+' ---- Setup: one button per sheet, so you never hunt through the tabs -------
+Private Sub GoSheet(ByVal sheetName As String)
+    On Error Resume Next
+    ThisWorkbook.Worksheets(sheetName).Activate
+    If Err.Number <> 0 Then MsgBox "The sheet """ & sheetName & """ is not in this workbook.", vbExclamation, "Suwin ERP"
+    On Error GoTo 0
+End Sub
+
+Public Sub GoDailySales()
+    GoSheet "Daily Sales"
+End Sub
+Public Sub GoBarSales()
+    GoSheet "Bar Sales"
+End Sub
+Public Sub GoPayments()
+    GoSheet "Payments"
+End Sub
+Public Sub GoManagementAccount()
+    GoSheet "Management Account"
+End Sub
+Public Sub GoVATReport()
+    GoSheet "VAT Report"
+End Sub
+Public Sub GoDailyReport()
+    GoSheet "Daily Report"
+End Sub
+Public Sub GoSalesHistory()
+    GoSheet "Sales History"
+End Sub
+Public Sub GoLists()
+    GoSheet "Lists"
+End Sub
+
+' Adds to the Setup sheet without disturbing the Test Connection / Load History
+' buttons (those are named xlb_*, these are xlb_nav_*).
+Private Sub PutNavButtons(ByVal anchor As String, ByVal specs As Variant)
+    Dim ws As Worksheet, i As Long, x As Double, btn As Object
+    Set ws = ThisWorkbook.Worksheets("Setup")
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 8) = "xlb_nav_" And ws.Buttons(i).TopLeftCell.Row = ws.Range(anchor).Row Then
+            ws.Buttons(i).Delete
+        End If
+    Next i
+    x = ws.Range(anchor).Left
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, ws.Range(anchor).Top + 2, 124, 26)
+        btn.Name = "xlb_nav_" & ws.Range(anchor).Row & "_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        x = x + 130
+    Next i
+End Sub
+
 Public Sub AddSetupButtons()
     Dim ws As Worksheet
     For Each ws In ThisWorkbook.Worksheets
@@ -28832,6 +28886,11 @@ Public Sub AddButtons()
     PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Advance History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Bar History", "I1", Array("Load History", "GetAllHistory")
+    ' Go to a sheet straight from Setup
+    PutNavButtons "E10", Array("Daily Sales", "GoDailySales", "Bar Sales", "GoBarSales", _
+                               "Payments", "GoPayments", "Management Acc", "GoManagementAccount")
+    PutNavButtons "E12", Array("VAT Report", "GoVATReport", "Daily Report", "GoDailyReport", _
+                               "History", "GoSalesHistory", "Lists", "GoLists")
     AddSetupButtons
 End Sub
 
@@ -29506,6 +29565,11 @@ def excel_workbook():
         ws.row_dimensions[i].height = 20
     ws['B6'].fill = fill('F3F4F6')
     ws['B6'].font = Font(bold=True, color='0F6CBD')
+    # The macro puts the "go to sheet" buttons on rows 10 and 12 of column E
+    ws['E9'] = 'Go to'
+    ws['E9'].font = Font(bold=True, color=NAVY, size=11)
+    for col in 'EFGH':
+        ws.column_dimensions[col].width = 18
     band(ws, 10, 'What is in this workbook', 1, 3)
     guide = [
         ('Daily Sales', 'Load Day, type the day - sales, Received By (cash entry), credit given, credit '
@@ -29611,7 +29675,9 @@ def excel_workbook():
     dv_atype = DataValidation(type='list', formula1='"Received,Given"', allow_blank=True)
     dv_smode = DataValidation(type='list', formula1='"Set-off,Refund,Recovered"', allow_blank=True)
     dv_account = DataValidation(type='list', formula1='Lists!$A$4:$A$3000', allow_blank=True, showErrorMessage=False)
-    for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode, dv_account):
+    # Petty cash is paid from a cash account, so that box lists only those
+    dv_cash = DataValidation(type='list', formula1='Lists!$F$4:$F$3000', allow_blank=True, showErrorMessage=False)
+    for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode, dv_account, dv_cash):
         ws.add_data_validation(dv)
     blocks = [
         ('#CREDIT_GIVEN', 'Credit Given (debtors)', 'FFF4CE',
@@ -29627,7 +29693,7 @@ def excel_workbook():
         # Petty cash: Dr the Petty Cash Account with the total, Cr each line's account
         ('#PETTY', 'Petty Cash (Dr Petty Cash Account / Cr each line account)', 'FDF0E4',
          ['', 'Description', 'Account (Cr)', 'Petty Cash Account (Dr)', 'Amount', 'Voucher No'],
-         {5: AMT}, {3: dv_account, 4: dv_account}, 5),
+         {5: AMT}, {3: dv_account, 4: dv_cash}, 5),
         # Commission kept by agents (PickMe and the like): Dr the account
         ('#COMMISSION', 'Commission / Set-off (Dr the account)', 'E4F0FD',
          ['', 'Description', 'Account (Dr)', 'Amount'], {4: AMT}, {3: dv_account}, 4),
