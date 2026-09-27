@@ -27427,6 +27427,12 @@ def xl_daily_sales_get():
         for st in settlements:
             rows.append(['SETTLE', _xl_ref(st['advance_id'], st.get('receipt_no'), st.get('party_name')),
                          st['amount'] or 0, st['bill_no'] or '', st['settle_mode'] or '', st['remarks'] or ''])
+        for p in _daily_sales_petty_rows(header['id'] if header else None):
+            rows.append(['PETTY', p['description'] or '', p['expense_account'] or '', p['sub_account_name'] or '',
+                         p['cash_account'] or '', p['amount'] or 0, p['voucher_no'] or ''])
+        for cm in _daily_sales_commission_rows(header['id'] if header else None):
+            rows.append(['COMM', cm['description'] or '', cm['gl_account'] or '', cm['sub_account_name'] or '',
+                         cm['amount'] or 0])
         open_items = _daily_sales_open_items(entry_date, header['id'] if header else None)
         for c in open_items['credits']:
             if c['balance'] > 0.005:
@@ -27947,6 +27953,16 @@ def xl_management_account_export():
     return xl.workbook_response(_mgmt_export_book(cur, prev), f"Management_Account_{cur['period']}.xlsx")
 
 
+@app.route('/api/xl/daily_reports/export', methods=['GET'])
+def xl_daily_reports_export():
+    """R1 Daily Revenue Report and R2 Cash Book as a workbook - the Excel
+    workbook copies these sheets in as "RPT ..."."""
+    user_pk, err = _xl_auth('Access_Reports')
+    if err:
+        return err
+    return _daily_sales_reports_export_build()
+
+
 @app.route('/api/xl/vat/export', methods=['GET'])
 def xl_vat_export():
     """The VAT schedules as a workbook - the Excel workbook copies these
@@ -28344,6 +28360,8 @@ Public Sub GetDailySales()
     ClearBlock ws, "#CREDIT_RECEIVED"
     ClearBlock ws, "#ADVANCES"
     ClearBlock ws, "#ADV_SETTLE"
+    ClearBlock ws, "#PETTY"
+    ClearBlock ws, "#COMMISSION"
     lst.Range("C4:D3000").ClearContents
 
     rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
@@ -28406,6 +28424,20 @@ Public Sub GetDailySales()
                 ws.Cells(rw, 4).Value = Txt(cols(3))
                 ws.Cells(rw, 5).Value = SettleModeLabel(cols(4))
                 ws.Cells(rw, 6).Value = cols(5)
+            Case "PETTY"
+                ' PETTY | description | account (Cr) | sub account | petty cash account (Dr) | amount | voucher
+                rw = FreeRow(ws, "#PETTY")
+                ws.Cells(rw, 2).Value = Txt(cols(1))
+                ws.Cells(rw, 3).Value = cols(2)
+                ws.Cells(rw, 4).Value = cols(4)
+                ws.Cells(rw, 5).Value = NumOrBlank(cols(5))
+                If UBound(cols) >= 6 Then ws.Cells(rw, 6).Value = Txt(cols(6))
+            Case "COMM"
+                ' COMM | description | account (Dr) | sub account | amount
+                rw = FreeRow(ws, "#COMMISSION")
+                ws.Cells(rw, 2).Value = Txt(cols(1))
+                ws.Cells(rw, 3).Value = cols(2)
+                ws.Cells(rw, 4).Value = NumOrBlank(cols(4))
             Case "OPENCR"
                 lst.Cells(4 + nCr, 3).Value = cols(1)
                 nCr = nCr + 1
@@ -28433,7 +28465,7 @@ End Function
 Public Sub SendDailySales()
     Dim ws As Worksheet, rw As Long, body As String, lines_ As String, hdr As String, r As String
     Dim fields As Variant, i As Long, hrow As Long, msg As String
-    Dim credits As String, advs As String, sets As String
+    Dim credits As String, advs As String, sets As String, petty As String, comm As String
     If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
     If CStr(ws.Range("H2").Value) <> EntryDate() Then
@@ -28522,11 +28554,38 @@ Public Sub SendDailySales()
         rw = rw + 1
     Loop
 
+    ' Petty cash lines
+    rw = BlockStart(ws, "#PETTY")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 6) Then
+            petty = AddItem(petty, Jq("description", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                    Jq("expense_account", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                    Jq("cash_account", JsonStr(ws.Cells(rw, 4).Value)) & "," & _
+                    Jq("amount", JsonNum(ws.Cells(rw, 5).Value)) & "," & _
+                    Jq("voucher_no", JsonStr(ws.Cells(rw, 6).Value)))
+        End If
+        rw = rw + 1
+    Loop
+    ' Commission / set-off lines
+    rw = BlockStart(ws, "#COMMISSION")
+    Do While rw > 0 And Not IsMarker(ws, rw)
+        If Not RowIsEmpty(ws, rw, 4) Then
+            comm = AddItem(comm, Jq("description", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                   Jq("gl_account", JsonStr(ws.Cells(rw, 3).Value)) & "," & _
+                   Jq("amount", JsonNum(ws.Cells(rw, 4).Value)))
+        End If
+        rw = rw + 1
+    Loop
+
     body = "{" & Jq("date", JsonStr(EntryDate())) & "," & Jq("header", "{" & hdr & "}") & "," & _
            Jq("lines", "[" & lines_ & "]")
     If BlockStart(ws, "#CREDIT_GIVEN") > 0 Then
         body = body & "," & Jq("credit_lines", "[" & credits & "]") & "," & _
                Jq("advances", "[" & advs & "]") & "," & Jq("settlements", "[" & sets & "]")
+    End If
+    If BlockStart(ws, "#PETTY") > 0 Then
+        body = body & "," & Jq("petty_lines", "[" & petty & "]") & "," & _
+               Jq("commission_lines", "[" & comm & "]")
     End If
     body = body & "}"
     r = HttpCall("POST", "/api/xl/daily_sales/save", body)
@@ -28656,8 +28715,8 @@ Private Function LoadTable(ByVal sheetName As String, ByVal path As String) As L
                         data(n, j) = Empty
                     ElseIf types(j) = "n" Then
                         data(n, j) = Val(v)
-                    ElseIf types(j) = "d" And Len(v) >= 10 Then
-                        data(n, j) = DateSerial(CInt(Left$(v, 4)), CInt(Mid$(v, 6, 2)), CInt(Mid$(v, 9, 2)))
+                    ElseIf types(j) = "d" Then
+                        data(n, j) = SafeDate(v)
                     Else
                         data(n, j) = v
                     End If
@@ -28726,6 +28785,34 @@ Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal 
     Next i
 End Sub
 
+' Every sheet gets a "Setup" button top-right, so you can always get back
+' without hunting through the tabs (including the loaded MA / VAT / RPT sheets).
+Public Sub GoSetup()
+    ThisWorkbook.Worksheets("Setup").Activate
+    ThisWorkbook.Worksheets("Setup").Range("B5").Select
+End Sub
+
+Private Sub PutSetupButton(ByVal ws As Worksheet)
+    Dim i As Long, btn As Object
+    On Error Resume Next
+    For i = ws.Buttons.Count To 1 Step -1
+        If ws.Buttons(i).Name = "xlb_setup" Then ws.Buttons(i).Delete
+    Next i
+    Set btn = ws.Buttons.Add(ws.Range("A1").Left + 6, ws.Range("A1").Top + 4, 86, 24)
+    btn.Name = "xlb_setup"
+    btn.Caption = "< Setup"
+    btn.OnAction = "GoSetup"
+    btn.Font.Bold = True
+    On Error GoTo 0
+End Sub
+
+Public Sub AddSetupButtons()
+    Dim ws As Worksheet
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name <> "Setup" Then PutSetupButton ws
+    Next ws
+End Sub
+
 Public Sub AddButtons()
     PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "Load History", "GetAllHistory")
     PutButtons "Daily Sales", "J1", Array("Load Day", "GetDailySales", "Submit Day", "SendDailySales", _
@@ -28739,10 +28826,13 @@ Public Sub AddButtons()
     PutButtons "Management Account", "I1", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock")
     EnsureSheet "VAT Report", "VAT Report"
     PutButtons "VAT Report", "I1", Array("Load VAT", "LoadVAT", "Purchases only", "LoadVATPurchases")
+    EnsureSheet "Daily Report", "Daily Revenue Report & Cash Book"
+    PutButtons "Daily Report", "I1", Array("Load Report", "LoadDailyReport")
     PutButtons "Sales History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Advance History", "I1", Array("Load History", "GetAllHistory")
     PutButtons "Bar History", "I1", Array("Load History", "GetAllHistory")
+    AddSetupButtons
 End Sub
 
 ' ---- Runs by itself when the workbook opens --------------------------------
@@ -28776,6 +28866,21 @@ Private Function DateText(ByVal v As Variant, ByVal fmt As String) As String
     Else
         DateText = Trim$(CStr(v))
     End If
+End Function
+
+' Server dates arrive as yyyy-mm-dd (a time after it is fine). Anything else -
+' blank, "None", text in a date column - comes back Empty instead of stopping
+' the macro on a type error.
+Private Function SafeDate(ByVal s As String) As Variant
+    On Error GoTo Bad
+    SafeDate = Empty
+    s = Trim$(s)
+    If Len(s) < 10 Then Exit Function
+    If Not (IsNumeric(Left$(s, 4)) And IsNumeric(Mid$(s, 6, 2)) And IsNumeric(Mid$(s, 9, 2))) Then Exit Function
+    SafeDate = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
+    Exit Function
+Bad:
+    SafeDate = Empty
 End Function
 
 Private Function JsonNumOrNull(ByVal v As Variant) As String
@@ -28834,9 +28939,7 @@ Public Sub LoadPayables()
                 ' INV | id | date | supplier | invoice_no | outstanding | method | ready
                 n = n + 1
                 data(n, 1) = cols(1)
-                If Len(cols(2)) >= 10 Then
-                    data(n, 2) = DateSerial(CInt(Left$(cols(2), 4)), CInt(Mid$(cols(2), 6, 2)), CInt(Mid$(cols(2), 9, 2)))
-                End If
+                data(n, 2) = SafeDate(cols(2))
                 data(n, 3) = cols(3)
                 data(n, 4) = cols(4)
                 data(n, 5) = Val(cols(5))
@@ -29099,6 +29202,7 @@ Public Sub LoadMonth()
     Application.StatusBar = False
     ThisWorkbook.Activate
     Application.ScreenUpdating = True
+    AddSetupButtons
     On Error Resume Next
     ThisWorkbook.Worksheets("MA P&L").Activate
     On Error GoTo 0
@@ -29132,6 +29236,51 @@ Private Function ImportVATSheets(ByVal file As String) As Long
     ImportVATSheets = n
 End Function
 
+' ---- Daily Revenue Report & Cash Book --------------------------------------
+Public Sub LoadDailyReport()
+    Dim ws As Worksheet, src As Workbook, sh As Worksheet, lastSh As Worksheet
+    Dim d As String, file As String, i As Long, n As Long
+    Set ws = ThisWorkbook.Worksheets("Daily Report")
+    d = DateText(ws.Range("C3").Value, "yyyy-mm-dd")
+    If d = "" Then
+        MsgBox "Put the report date in C3 first.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    Application.ScreenUpdating = False
+    Application.StatusBar = "Suwin ERP: downloading the Daily Revenue Report for " & d & "..."
+    file = Environ$("TEMP") & "\SuwinRPT_" & Format$(Now, "yyyymmdd_hhnnss") & ".xlsx"
+    If DownloadFile("/api/xl/daily_reports/export?date=" & d, file) Then
+        Application.DisplayAlerts = False
+        For i = ThisWorkbook.Worksheets.Count To 1 Step -1
+            If Left$(ThisWorkbook.Worksheets(i).Name, 4) = "RPT " Then ThisWorkbook.Worksheets(i).Delete
+        Next i
+        Set src = Workbooks.Open(Filename:=file, ReadOnly:=True)
+        Set lastSh = ws
+        For Each sh In src.Worksheets
+            sh.Copy After:=lastSh
+            Set lastSh = ThisWorkbook.ActiveSheet
+            lastSh.Name = Left$("RPT " & sh.Name, 31)
+            lastSh.Tab.Color = RGB(16, 124, 65)
+            n = n + 1
+        Next sh
+        src.Close SaveChanges:=False
+        Application.DisplayAlerts = True
+        On Error Resume Next
+        Kill file
+        On Error GoTo 0
+    End If
+    Application.StatusBar = False
+    ThisWorkbook.Activate
+    Application.ScreenUpdating = True
+    If n > 0 Then
+        AddSetupButtons
+        On Error Resume Next
+        ThisWorkbook.Worksheets("RPT R1 Daily Revenue").Activate
+        On Error GoTo 0
+        SayResult "Daily Revenue Report loaded: " & d & " (" & n & " sheets)"
+    End If
+End Sub
+
 Private Sub LoadVATInner(ByVal purchasesOnly As Boolean)
     Dim ws As Worksheet, fromD As String, toD As String, file As String, n As Long, view_ As String
     Set ws = ThisWorkbook.Worksheets("VAT Report")
@@ -29152,6 +29301,7 @@ Private Sub LoadVATInner(ByVal purchasesOnly As Boolean)
     ThisWorkbook.Activate
     Application.ScreenUpdating = True
     If n > 0 Then
+        AddSetupButtons
         On Error Resume Next
         ThisWorkbook.Worksheets("VAT Schedule 02 Purchases").Activate
         On Error GoTo 0
@@ -29359,7 +29509,8 @@ def excel_workbook():
     band(ws, 10, 'What is in this workbook', 1, 3)
     guide = [
         ('Daily Sales', 'Load Day, type the day - sales, Received By (cash entry), credit given, credit '
-                        'received / set-off, advances and advance set-off - then Submit Day.'),
+                        'received / set-off, advances and advance set-off, petty cash and commission / '
+                        'set-off - then Submit Day.'),
         ('Bar Sales', 'Load Day, type the bar and bar food takings, then Submit.'),
         ('Payments', 'Load Payables shows every outstanding supplier invoice. Tick Method / Ready and press '
                      'Save Ready List, or type "Pay Now" amounts for one supplier and Submit Payment (Cash or Cheque).'),
@@ -29367,6 +29518,8 @@ def excel_workbook():
                                'Type opening / closing stock and Save Stock.'),
         ('VAT Report', 'Type the From and To dates, then Load VAT for the schedules (or Purchases only for '
                        'Schedule 02 on its own). They arrive as "VAT ..." sheets.'),
+        ('Daily Report', 'Type the date, then Load Report for R1 Daily Revenue and R2 Cash Book, with To Day '
+                         'and Month To Date. They arrive as "RPT ..." sheets.'),
         ('History sheets', 'Load History fills Sales, Credit, Advance and Bar history (range from B7 / B8).'),
         ('Lists', 'Accounts and open items used by the dropdowns - kept up to date by the buttons.'),
     ]
@@ -29457,7 +29610,8 @@ def excel_workbook():
     dv_cmode = DataValidation(type='list', formula1='"Cash received,Set-off"', allow_blank=True)
     dv_atype = DataValidation(type='list', formula1='"Received,Given"', allow_blank=True)
     dv_smode = DataValidation(type='list', formula1='"Set-off,Refund,Recovered"', allow_blank=True)
-    for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode):
+    dv_account = DataValidation(type='list', formula1='Lists!$A$4:$A$3000', allow_blank=True, showErrorMessage=False)
+    for dv in (dv_credit, dv_adv, dv_cmode, dv_atype, dv_smode, dv_account):
         ws.add_data_validation(dv)
     blocks = [
         ('#CREDIT_GIVEN', 'Credit Given (debtors)', 'FFF4CE',
@@ -29470,6 +29624,13 @@ def excel_workbook():
         ('#ADV_SETTLE', 'Advance Set-off / Refund / Recovered', 'F3E8FB',
          ['', 'Advance (pick from list)', 'Amount', 'Bill No', 'Mode', 'Remarks'], {3: AMT},
          {2: dv_adv, 5: dv_smode}, 3),
+        # Petty cash: Dr the Petty Cash Account with the total, Cr each line's account
+        ('#PETTY', 'Petty Cash (Dr Petty Cash Account / Cr each line account)', 'FDF0E4',
+         ['', 'Description', 'Account (Cr)', 'Petty Cash Account (Dr)', 'Amount', 'Voucher No'],
+         {5: AMT}, {3: dv_account, 4: dv_account}, 5),
+        # Commission kept by agents (PickMe and the like): Dr the account
+        ('#COMMISSION', 'Commission / Set-off (Dr the account)', 'E4F0FD',
+         ['', 'Description', 'Account (Dr)', 'Amount'], {4: AMT}, {3: dv_account}, 4),
     ]
     r = tr + 3
     for marker, title, color, heads, fmts, dvs, amt_col in blocks:
@@ -29628,6 +29789,27 @@ def excel_workbook():
     ws['B7'] = 'Deemed Input and Schedule 02 Amendments - each as its own "VAT ..." sheet.'
     ws['B8'] = 'The old VAT sheets are replaced each time you load, so nothing goes stale.'
     for rw in (6, 7, 8):
+        ws.cell(row=rw, column=2).font = note_font
+
+    # ================= Daily Revenue Report & Cash Book =================
+    ws = wb.create_sheet('Daily Report')
+    sheet_setup(ws, '107C41', landscape=False)
+    banner(ws, 'Daily Revenue Report & Cash Book', 'Type the date  >  Load Report. R1 and R2 arrive as "RPT ..." '
+           'sheets, with To Day and Month To Date.', 2, 7)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 46
+    for col in 'CDEF':
+        ws.column_dimensions[col].width = 17
+    ws['B3'] = 'Report Date'
+    ws['B3'].font = label_font
+    cell = ws['C3']
+    inp(cell)
+    cell.value = date.today()
+    cell.number_format = 'yyyy-mm-dd'
+    ws['B5'] = 'RPT R1 Daily Revenue: occupancy, every revenue row, Total Revenue and the cross-check.'
+    ws['B6'] = 'RPT R2 Cash Book: collections, debtors, creditors, petty cash, commission and advances.'
+    ws['B7'] = 'The old RPT sheets are replaced each time you load.'
+    for rw in (5, 6, 7):
         ws.cell(row=rw, column=2).font = note_font
 
     # ================= History sheets (filled by GetAllHistory) =================
@@ -30307,12 +30489,19 @@ Private Function Txt(ByVal s As String) As Variant
     If s = "" Then Txt = Empty Else Txt = "'" & s
 End Function
 
+' Server dates arrive as yyyy-mm-dd (a time after it is fine). Anything else -
+' blank, "None", a supplier name in the wrong column - comes back Empty instead
+' of stopping the macro on a type error.
 Private Function DateOf(ByVal s As String) As Variant
-    If Len(s) >= 10 Then
-        DateOf = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
-    Else
-        DateOf = Empty
-    End If
+    On Error GoTo Bad
+    DateOf = Empty
+    s = Trim$(s)
+    If Len(s) < 10 Then Exit Function
+    If Not (IsNumeric(Left$(s, 4)) And IsNumeric(Mid$(s, 6, 2)) And IsNumeric(Mid$(s, 9, 2))) Then Exit Function
+    DateOf = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
+    Exit Function
+Bad:
+    DateOf = Empty
 End Function
 
 Private Function Ymd(ByVal v As Variant) As String
