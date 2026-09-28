@@ -28115,13 +28115,33 @@ Private Function ApiKey() As String
     ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
 End Function
 
+' The day being worked on. H3 of the Daily Sales sheet is the handy one -
+' change it there at any time; Setup B5 follows, so Bar Sales and the history
+' sheets use the same day. Setup B5 is still used if H3 is empty.
 Private Function EntryDate() As String
-    Dim v As Variant
+    Dim v As Variant, ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    On Error GoTo 0
+    If Not ws Is Nothing Then
+        v = ws.Range("H3").Value
+        If IsDate(v) Then
+            EntryDate = Format$(CDate(v), "yyyy-mm-dd")
+            If DateText(SetupSheet().Range("B5").Value, "yyyy-mm-dd") <> EntryDate Then
+                SetupSheet().Range("B5").Value = "'" & EntryDate
+            End If
+            Exit Function
+        End If
+    End If
     v = SetupSheet().Range("B5").Value
     If IsDate(v) Then
         EntryDate = Format$(CDate(v), "yyyy-mm-dd")
     Else
         EntryDate = Trim$(CStr(v))
+    End If
+    ' Keep the sheet's own box showing the same day
+    If Not ws Is Nothing And EntryDate <> "" Then
+        If DateText(ws.Range("H3").Value, "yyyy-mm-dd") <> EntryDate Then ws.Range("H3").Value = CDate(EntryDate)
     End If
 End Function
 
@@ -28338,7 +28358,7 @@ End Function
 Public Sub GetDailySales()
     Dim r As String, ws As Worksheet, lst As Worksheet, rows_ As Variant, cols As Variant
     Dim i As Long, rw As Long, hrow As Long, status_ As String, nCr As Long, nAdv As Long, lastHdr As Long
-    If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
+    If EntryDate() = "" Then MsgBox "Put the date in H3 of this sheet.", vbExclamation: Exit Sub
     r = HttpCall("GET", "/api/xl/daily_sales?format=tsv&date=" & EntryDate(), "")
     If Failed(r) Then Exit Sub
     Application.ScreenUpdating = False
@@ -28466,7 +28486,7 @@ Public Sub SendDailySales()
     Dim ws As Worksheet, rw As Long, body As String, lines_ As String, hdr As String, r As String
     Dim fields As Variant, i As Long, hrow As Long, msg As String
     Dim credits As String, advs As String, sets As String, petty As String, comm As String
-    If EntryDate() = "" Then MsgBox "Put the date in Setup B5.", vbExclamation: Exit Sub
+    If EntryDate() = "" Then MsgBox "Put the date in H3 of this sheet.", vbExclamation: Exit Sub
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
     If CStr(ws.Range("H2").Value) <> EntryDate() Then
         MsgBox "Press Load Day for " & EntryDate() & " first, so the saved credit and advances are not lost.", _
@@ -28973,6 +28993,7 @@ Public Sub Auto_Open()
     Dim r As String
     On Error Resume Next
     SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
+    ThisWorkbook.Worksheets("Daily Sales").Range("H3").Value = Date
     AddButtons
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
     On Error GoTo 0
@@ -29688,12 +29709,22 @@ def excel_workbook():
     # ================= Daily Sales =================
     ws = wb.create_sheet('Daily Sales')
     sheet_setup(ws, '107C10', freeze='C5', hide_a=True)
-    banner(ws, 'Daily Sales Entry', 'Load Day  >  type in the yellow cells  >  Submit Day. The date comes from Setup B5.', 2, 7)
+    banner(ws, "Daily Sales Entry", "Set the date in H3 (or Setup B5)  >  Load Day  >  type in the yellow cells  >  Submit Day.", 2, 7)
     ws['H1'] = 'Loaded day'
     ws['H1'].font, ws['H1'].fill = Font(bold=True, color='FFFFFF'), fill(BLUE)
     ws['H2'].font, ws['H2'].fill, ws['H2'].border = Font(bold=True, size=12, color=NAVY), fill(PALE), box
     ws['H1'].alignment = ws['H2'].alignment = Alignment(horizontal='center', vertical='center')
-    ws.column_dimensions['H'].width = 14
+    ws.column_dimensions["H"].width = 14
+    # Date box on this sheet, so the day can be set without going to Setup
+    g3 = ws["G3"]
+    g3.value = "Date >"
+    g3.font = Font(bold=True, color=NAVY)
+    g3.alignment = Alignment(horizontal="right")
+    inp(ws["H3"])
+    ws["H3"].value = date.today()
+    ws["H3"].number_format = "yyyy-mm-dd"
+    ws["H3"].font = Font(bold=True, size=11, color="107C10")
+    ws["H3"].alignment = Alignment(horizontal="center")
     head_row(ws, 4, ['Category ID', 'Group', 'Description', 'Particulars', 'Nos', 'Bill No', 'Amount'],
              widths=[8, 16, 30, 26, 10, 14, 16])
     r = 5
@@ -31934,6 +31965,526 @@ def _daily_sales_reports_export_build():
     xl.finish(ws, 3, first_col_width=52, num_col_width=20)
 
     return xl.workbook_response(wb, f'Daily_Revenue_CashBook_{as_of}.xlsx')
+
+
+
+
+# ================================================================
+# ── PAYMENT READY LIST WORKBOOK ─────────────────────────────────
+# A workbook of its own for the cheque-prep checklist. It arrives
+# with every outstanding invoice already in it, so it opens and is
+# usable with no internet: tick Method and Ready offline, then press
+# Submit Changes when you are back online. Only the rows you changed
+# are sent, and Sync brings the list up to date again.
+# ================================================================
+
+_XL_READY_VBA_CODE = r'''Attribute VB_Name = "SuwinReady"
+Option Explicit
+
+' ===================================================================
+'  Suwin ERP - Payment Ready List (works offline)
+'  Tick Method / Ready with no internet. Submit Changes sends only
+'  the rows you changed; Sync from System refreshes the list.
+' ===================================================================
+
+Private Const FIRST_ROW As Long = 6      ' first invoice line on the List sheet
+
+Private Function Sh(ByVal nm As String) As Worksheet
+    Set Sh = ThisWorkbook.Worksheets(nm)
+End Function
+
+Private Function SetupSheet() As Worksheet
+    Set SetupSheet = ThisWorkbook.Worksheets("Setup")
+End Function
+
+Private Function ServerUrl() As String
+    ServerUrl = Trim$(CStr(SetupSheet().Range("B3").Value))
+    Do While Right$(ServerUrl, 1) = "/"
+        ServerUrl = Left$(ServerUrl, Len(ServerUrl) - 1)
+    Loop
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+End Function
+
+Private Sub SayResult(ByVal msg As String)
+    SetupSheet().Range("B6").Value = Format$(Now, "yyyy-mm-dd hh:nn") & "   " & msg
+    Sh("Home").Range("C6").Value = msg
+    Application.StatusBar = False
+End Sub
+
+Private Function LastRow() As Long
+    Dim ws As Worksheet
+    Set ws = Sh("Ready List")
+    LastRow = ws.Cells(ws.Rows.Count, 2).End(-4162).Row     ' xlUp on the Id column
+    If LastRow < FIRST_ROW Then LastRow = FIRST_ROW - 1
+End Function
+
+Private Function Txt(ByVal s As String) As Variant
+    If s = "" Or s = "None" Then Txt = Empty Else Txt = "'" & s
+End Function
+
+Private Function SafeDate(ByVal s As String) As Variant
+    On Error GoTo Bad
+    SafeDate = Empty
+    s = Trim$(s)
+    If Len(s) < 10 Then Exit Function
+    If Not (IsNumeric(Left$(s, 4)) And IsNumeric(Mid$(s, 6, 2)) And IsNumeric(Mid$(s, 9, 2))) Then Exit Function
+    SafeDate = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
+    Exit Function
+Bad:
+    SafeDate = Empty
+End Function
+
+Private Function JsonStr(ByVal v As Variant) As String
+    Dim s As String
+    s = CStr(v)
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCrLf, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    JsonStr = """" & s & """"
+End Function
+
+Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
+    Jq = """" & key & """:" & jsonValue
+End Function
+
+Private Function AddItem(ByVal list_ As String, ByVal fields As String) As String
+    If list_ <> "" Then list_ = list_ & ","
+    AddItem = list_ & "{" & fields & "}"
+End Function
+
+Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim p As Long, q As Long, needle As String
+    needle = """" & keyName & """:"
+    p = InStr(1, jsonText, needle, vbTextCompare)
+    If p = 0 Then Exit Function
+    p = p + Len(needle)
+    Do While p <= Len(jsonText) And Mid$(jsonText, p, 1) = " "
+        p = p + 1
+    Loop
+    If Mid$(jsonText, p, 1) = """" Then
+        p = p + 1
+        q = InStr(p, jsonText, """")
+    Else
+        q = p
+        Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
+            q = q + 1
+        Loop
+    End If
+    JsonValue = Replace(Mid$(jsonText, p, q - p), "\/", "/")
+End Function
+
+' status_ comes back 0 when the server could not be reached (offline)
+Private Function Http(ByVal method As String, ByVal path As String, ByVal body As String, ByRef status_ As Long) As String
+    Dim xh As Object
+    status_ = 0
+    If ApiKey() = "" Then Exit Function
+    On Error GoTo Offline
+    Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.setTimeouts 8000, 8000, 20000, 60000
+    xh.Open method, ServerUrl() & path, False
+    xh.setRequestHeader "X-API-Key", ApiKey()
+    xh.setRequestHeader "Content-Type", "application/json"
+    If method = "POST" Then xh.send body Else xh.send
+    status_ = xh.Status
+    Http = xh.responseText
+    Exit Function
+Offline:
+    status_ = 0
+End Function
+
+Private Function ServerError(ByVal status_ As Long, ByVal reply As String) As String
+    Dim m As String
+    m = JsonValue(reply, "message")
+    If m = "" Then m = JsonValue(reply, "error")
+    If m = "" Then m = "HTTP " & status_
+    ServerError = m
+End Function
+
+' ---- Buttons ---------------------------------------------------------------
+Public Sub SetApiKey()
+    Dim k As String
+    k = Trim$(InputBox("Paste the API key from Settings > Excel Data Entry on the website." & vbCrLf & vbCrLf & _
+                       "The key is only needed to Sync and to Submit - ticking works offline.", _
+                       "Suwin ERP - API key", ApiKey()))
+    If k = "" Then Exit Sub
+    SetupSheet().Range("B4").Value = k
+    SayResult "API key saved"
+End Sub
+
+Public Sub SyncFromSystem()
+    Dim r As String, st As Long, rows_ As Variant, cols As Variant, i As Long, rw As Long, ws As Worksheet, n As Long
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    Application.StatusBar = "Suwin ERP: getting the outstanding invoices..."
+    r = Http("GET", "/api/xl/payables?format=tsv", "", st)
+    If st = 0 Then
+        Application.StatusBar = False
+        SayResult "Offline - the list was left as it is"
+        MsgBox "You are offline, so nothing was changed. Keep ticking - press Sync when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        Application.StatusBar = False
+        SayResult "Sync failed: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If CountChanges() > 0 Then
+        If MsgBox("You have " & CountChanges() & " row(s) not sent yet." & vbCrLf & vbCrLf & _
+                  "Sync replaces the list and those ticks are lost." & vbCrLf & _
+                  "Press No, then Submit Changes first.", vbYesNo + vbExclamation, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    Application.ScreenUpdating = False
+    Set ws = Sh("Ready List")
+    ws.Range("B" & FIRST_ROW & ":J20000").ClearContents
+    rw = FIRST_ROW
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            If cols(0) = "INV" Then
+                ws.Cells(rw, 2).Value = cols(1)                  ' Id
+                ws.Cells(rw, 3).Value = SafeDate(cols(2))        ' Invoice date
+                ws.Cells(rw, 4).Value = cols(3)                  ' Supplier
+                ws.Cells(rw, 5).Value = Txt(cols(4))             ' Invoice no
+                ws.Cells(rw, 6).Value = Val(cols(5))             ' Outstanding
+                ws.Cells(rw, 7).Value = cols(6)                  ' Method
+                ws.Cells(rw, 8).Value = cols(7)                  ' Ready
+                ws.Cells(rw, 9).Value = cols(6)                  ' Method as loaded
+                ws.Cells(rw, 10).Value = cols(7)                 ' Ready as loaded
+                rw = rw + 1
+                n = n + 1
+            End If
+        End If
+    Next i
+    SetupSheet().Range("B5").Value = Format$(Now, "yyyy-mm-dd hh:nn")
+    Application.ScreenUpdating = True
+    SayResult "Synced - " & n & " outstanding invoice(s)"
+End Sub
+
+' How many rows differ from what the system last sent us
+Private Function CountChanges() As Long
+    Dim ws As Worksheet, rw As Long, n As Long
+    Set ws = Sh("Ready List")
+    For rw = FIRST_ROW To LastRow()
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" Then
+            If Trim$(CStr(ws.Cells(rw, 7).Value)) <> Trim$(CStr(ws.Cells(rw, 9).Value)) Or _
+               Trim$(CStr(ws.Cells(rw, 8).Value)) <> Trim$(CStr(ws.Cells(rw, 10).Value)) Then n = n + 1
+        End If
+    Next rw
+    CountChanges = n
+End Function
+
+Public Sub ShowChanges()
+    MsgBox CountChanges() & " row(s) changed and not sent yet." & vbCrLf & vbCrLf & _
+           "Column K shows CHANGED on those rows.", vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub SubmitChanges()
+    Dim ws As Worksheet, rw As Long, items As String, r As String, st As Long, n As Long
+    Set ws = Sh("Ready List")
+    For rw = FIRST_ROW To LastRow()
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" Then
+            If Trim$(CStr(ws.Cells(rw, 7).Value)) <> Trim$(CStr(ws.Cells(rw, 9).Value)) Or _
+               Trim$(CStr(ws.Cells(rw, 8).Value)) <> Trim$(CStr(ws.Cells(rw, 10).Value)) Then
+                items = AddItem(items, Jq("id", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                        Jq("method", JsonStr(ws.Cells(rw, 7).Value)) & "," & _
+                        Jq("ready", JsonStr(ws.Cells(rw, 8).Value)))
+                n = n + 1
+            End If
+        End If
+    Next rw
+    If items = "" Then
+        MsgBox "Nothing has changed since the last sync.", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    If MsgBox("Send " & n & " changed row(s) to the system?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    Application.StatusBar = "Suwin ERP: sending " & n & " row(s)..."
+    r = Http("POST", "/api/xl/payables/ready", "{" & Jq("items", "[" & items & "]") & "}", st)
+    Application.StatusBar = False
+    If st = 0 Then
+        SayResult "Offline - nothing was sent"
+        MsgBox "You are offline. Your ticks are kept here - press Submit Changes again when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        SayResult "Submit failed: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    ' Sent: what is on the sheet is now what the system holds
+    For rw = FIRST_ROW To LastRow()
+        ws.Cells(rw, 9).Value = ws.Cells(rw, 7).Value
+        ws.Cells(rw, 10).Value = ws.Cells(rw, 8).Value
+    Next rw
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+End Sub
+
+Public Sub MarkAllReady()
+    Dim ws As Worksheet, c As Range, n As Long
+    Set ws = Sh("Ready List")
+    If TypeName(Selection) <> "Range" Then Exit Sub
+    For Each c In Intersect(Selection.EntireRow, ws.Range("H:H"))
+        If c.Row >= FIRST_ROW And Trim$(CStr(ws.Cells(c.Row, 2).Value)) <> "" Then
+            c.Value = "Yes"
+            n = n + 1
+        End If
+    Next c
+    SayResult n & " row(s) marked Ready"
+End Sub
+
+Public Sub ClearReady()
+    Dim ws As Worksheet, c As Range, n As Long
+    Set ws = Sh("Ready List")
+    If TypeName(Selection) <> "Range" Then Exit Sub
+    For Each c In Intersect(Selection.EntireRow, ws.Range("H:H"))
+        If c.Row >= FIRST_ROW And Trim$(CStr(ws.Cells(c.Row, 2).Value)) <> "" Then
+            c.Value = "No"
+            n = n + 1
+        End If
+    Next c
+    SayResult n & " row(s) set to No"
+End Sub
+
+Public Sub GoList()
+    Sh("Ready List").Activate
+    Sh("Ready List").Range("G" & FIRST_ROW).Select
+End Sub
+
+Public Sub GoHome()
+    Sh("Home").Activate
+End Sub
+
+' ---- Buttons ---------------------------------------------------------------
+Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant, _
+                       Optional ByVal vertical As Boolean = False)
+    Dim ws As Worksheet, i As Long, x As Double, y As Double, btn As Object
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 4) = "xlb_" Then ws.Buttons(i).Delete
+    Next i
+    x = ws.Range(anchor).Left
+    y = ws.Range(anchor).Top + 3
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, y, 132, 28)
+        btn.Name = "xlb_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        If vertical Then y = y + 32 Else x = x + 138
+    Next i
+End Sub
+
+Public Sub AddButtons()
+    PutButtons "Home", "E4", Array("Open Ready List", "GoList", "Sync from System", "SyncFromSystem", _
+                                   "Submit Changes", "SubmitChanges", "Set API Key", "SetApiKey"), True
+    PutButtons "Ready List", "M1", Array("Submit Changes", "SubmitChanges", "Sync from System", "SyncFromSystem", _
+                                         "Mark Ready", "MarkAllReady", "Set to No", "ClearReady", "Home", "GoHome")
+End Sub
+
+Public Sub Auto_Open()
+    On Error Resume Next
+    AddButtons
+    Sh("Home").Activate
+    On Error GoTo 0
+End Sub
+'''
+
+
+@app.route('/excel_ready_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Reports', 'Access_Accounting', 'Access_Settings')
+def excel_ready_workbook():
+    """The Payment Ready List as a workbook of its own, filled with today's
+    outstanding invoices so it works with no internet. Ticks are sent back
+    with Submit Changes."""
+    from io import BytesIO
+    try:
+        from openpyxl import Workbook
+        from openpyxl.formatting.rule import FormulaRule
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.utils import get_column_letter
+        from openpyxl.worksheet.datavalidation import DataValidation
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('grn_payment_ready_list'))
+
+    company = _company_display_name()
+    rows, total, ready_count = _grn_payment_ready_rows('', '', '')
+    NAVY, BLUE, PALE = '1F3864', '0F6CBD', 'EEF3FA'
+    AMT = '#,##0.00'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill, head_font = fill(BLUE), Font(bold=True, color='FFFFFF')
+    input_fill = fill('FFF8DC')
+    note_font = Font(italic=True, color='6B7280', size=9)
+    label_font = Font(bold=True, color='1F2937')
+
+    wb = Workbook()
+
+    def look(ws, tab, freeze=None, landscape=True):
+        ws.sheet_properties.tabColor = tab
+        ws.sheet_view.showGridLines = False
+        if freeze:
+            ws.freeze_panes = freeze
+        ws.page_setup.orientation = 'landscape' if landscape else 'portrait'
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    def banner(ws, title, subtitle, c1, c2):
+        ws.merge_cells(start_row=1, start_column=c1, end_row=1, end_column=c2)
+        ws.merge_cells(start_row=2, start_column=c1, end_row=2, end_column=c2)
+        t = ws.cell(row=1, column=c1, value=title)
+        t.font, t.alignment = Font(bold=True, size=16, color='FFFFFF'), Alignment(vertical='center')
+        s = ws.cell(row=2, column=c1, value=subtitle)
+        s.font = Font(italic=True, color='445566', size=9)
+        for c in range(c1, c2 + 1):
+            ws.cell(row=1, column=c).fill = fill(NAVY)
+            ws.cell(row=2, column=c).fill = fill(PALE)
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 20
+
+    # ---------------- Home ----------------
+    ws = wb.active
+    ws.title = 'Home'
+    look(ws, NAVY, landscape=False)
+    banner(ws, (company + '  -  ' if company else '') + 'Payment Ready List',
+           'Tick Method and Ready with no internet. Submit Changes sends only what you changed.', 2, 8)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 34
+    ws.column_dimensions['C'].width = 40
+    ws.column_dimensions['D'].width = 3
+    for col in 'EFGH':
+        ws.column_dimensions[col].width = 19
+    home = [('Invoices in the list', "=COUNTA('Ready List'!B6:B20000)"),
+            ('Total outstanding', "=SUM('Ready List'!F6:F20000)"),
+            ('Marked Ready', "=COUNTIF('Ready List'!H6:H20000,\"Yes\")"),
+            ('Changed, not sent yet', "=SUMPRODUCT(('Ready List'!B6:B20000<>\"\")*"
+                                      "(('Ready List'!G6:G20000<>'Ready List'!I6:I20000)+"
+                                      "('Ready List'!H6:H20000<>'Ready List'!J6:J20000)>0))"),
+            ('Last result', '')]
+    for i, (label, formula) in enumerate(home, start=4):
+        ws.cell(row=i, column=2, value=label).font = label_font
+        c = ws.cell(row=i, column=3, value=formula)
+        c.border, c.fill = box, fill('F3F4F6')
+        c.font = Font(bold=True, color=NAVY, size=12 if i == 5 else 11)
+        if label == 'Total outstanding':
+            c.number_format = AMT
+    ws['B10'] = 'How to use it'
+    ws['B10'].font = Font(bold=True, size=12, color=NAVY)
+    steps = [
+        '1.  The list is already here - it works with no internet.',
+        '2.  On the Ready List sheet, pick Cash or Cheque under Method and set Ready to Yes.',
+        '3.  Column K shows CHANGED on every row you touched, until it is sent.',
+        '4.  When you have internet: Submit Changes. Only the changed rows go.',
+        '5.  Sync from System refreshes the list (new invoices, ones already paid).',
+        '',
+        'Ticking here never touches the ledger - it is the cheque-prep checklist only.',
+    ]
+    for i, text in enumerate(steps, start=11):
+        ws.cell(row=i, column=2, value=text).font = note_font if text.startswith('Ticking') else Font(size=10)
+        ws.merge_cells(start_row=i, start_column=2, end_row=i, end_column=3)
+
+    # ---------------- Ready List ----------------
+    ws = wb.create_sheet('Ready List')
+    look(ws, '107C41', freeze='C6')
+    banner(ws, 'Payment Ready List', 'Every outstanding supplier invoice - GRN, Direct Purchase, Service Entry '
+           'and Opening Balance alike. Yellow cells are yours to change.', 2, 11)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJK', (8, 13, 38, 18, 15, 12, 10, 12, 10, 12)):
+        ws.column_dimensions[col].width = w
+    heads = ['Id', 'Invoice Date', 'Supplier', 'Invoice No', 'Outstanding', 'Method', 'Ready',
+             'Method (as loaded)', 'Ready (as loaded)', 'Status']
+    for i, label in enumerate(heads, start=2):
+        c = ws.cell(row=5, column=i, value=label)
+        c.fill, c.font, c.border = head_fill, head_font, box
+        c.alignment = Alignment(horizontal='center', wrap_text=True)
+    ws.row_dimensions[5].height = 30
+    ws.auto_filter.ref = f'B5:K5'
+
+    dv_method = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=True, showErrorMessage=False)
+    dv_ready = DataValidation(type='list', formula1='"Yes,No"', allow_blank=True, showErrorMessage=False)
+    ws.add_data_validation(dv_method)
+    ws.add_data_validation(dv_ready)
+
+    for n, r in enumerate(rows):
+        rw = 6 + n
+        vals = [r['id'], r['inv_date'], r['supplier'] or '', r['invoice_no'] or '',
+                round(float(r['amount'] or 0), 2), r['method'] or '', 'Yes' if r['ready'] else 'No',
+                r['method'] or '', 'Yes' if r['ready'] else 'No']
+        for i, v in enumerate(vals, start=2):
+            c = ws.cell(row=rw, column=i, value=v)
+            c.border = box
+            if i == 3:
+                c.number_format = 'yyyy-mm-dd'
+            elif i == 6:
+                c.number_format = AMT
+            elif i in (7, 8):
+                c.fill = input_fill
+            elif i in (9, 10):
+                c.font = Font(color='9CA3AF', size=9)
+        dv_method.add(ws.cell(row=rw, column=7))
+        dv_ready.add(ws.cell(row=rw, column=8))
+        ws.cell(row=rw, column=11, value=f'=IF(B{rw}="","",IF(OR(G{rw}<>I{rw},H{rw}<>J{rw}),"CHANGED",""))').border = box
+
+    # A few spare rows keep the dropdowns and the Status formula after a Sync
+    for rw in range(6 + len(rows), 6 + len(rows) + 200):
+        dv_method.add(ws.cell(row=rw, column=7))
+        dv_ready.add(ws.cell(row=rw, column=8))
+        ws.cell(row=rw, column=7).fill = input_fill
+        ws.cell(row=rw, column=8).fill = input_fill
+        ws.cell(row=rw, column=11, value=f'=IF(B{rw}="","",IF(OR(G{rw}<>I{rw},H{rw}<>J{rw}),"CHANGED",""))')
+
+    last = 6 + len(rows) + 200
+    ws.conditional_formatting.add(f'B6:K{last}', FormulaRule(formula=[f'$K6="CHANGED"'], fill=fill('FFF4CE')))
+    ws.conditional_formatting.add(f'B6:K{last}', FormulaRule(formula=[f'$H6="Yes"'], font=Font(color='107C10', bold=True)))
+    t = ws.cell(row=4, column=6, value=f'=SUM(F6:F{last})')
+    t.number_format, t.font = AMT, Font(bold=True, size=12, color=NAVY)
+    ws.cell(row=4, column=5, value='Total outstanding').font = label_font
+    ws.cell(row=4, column=8, value=f'=COUNTIF(H6:H{last},"Yes")&" ready"').font = Font(bold=True, color='107C10')
+
+    # ---------------- Setup (hidden) ----------------
+    ws = wb.create_sheet('Setup')
+    for i, (k, v) in enumerate((('Server URL', request.url_root.rstrip('/')), ('API Key', ''),
+                                ('Last sync', datetime.now().strftime('%Y-%m-%d %H:%M') + ' (workbook download)'),
+                                ('Last result', 'Ready - works offline')), start=3):
+        ws.cell(row=i, column=1, value=k)
+        ws.cell(row=i, column=2, value=v)
+    ws.sheet_state = 'veryHidden'
+
+    wb.active = 0
+    buf = BytesIO()
+    wb.save(buf)
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f'attachment; filename=SuwinERP_PaymentReadyList_{date.today():%Y%m%d}.xlsx'
+    return resp
+
+
+@app.route('/excel_ready_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Reports', 'Access_Accounting', 'Access_Settings')
+def excel_ready_workbook_macro():
+    """The Payment Ready List workbook's macro (Alt+F11 > File > Import File)."""
+    code = _XL_READY_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinReady.bas'
+    return resp
 
 
 if __name__ == '__main__':
