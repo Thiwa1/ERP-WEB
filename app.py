@@ -30402,6 +30402,99 @@ def xl_inv_grn():
     return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no, 'message': f'Saved as GRN JV {jv_no}.'})
 
 
+@app.route('/api/xl/inv/adjust', methods=['POST'])
+def xl_inv_adjust():
+    """Bring the system quantity into line with a physical count. Each line
+    writes one stock movement (in for a gain, out for a shortage) dated on the
+    count date, so the Bin Card shows what happened and why. Stock only - it
+    does not touch the ledger."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    b = _xl_body()
+    ref = str(b.get('ref') or '').strip()[:64]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'ref': ref, 'message': msg}, 400)
+
+    if not ref:
+        return fail('Missing adjustment reference.')
+    _xl_sync_log_ready()
+    done = db.execute_query("SELECT jv_no FROM excel_sync_log WHERE client_ref = %s", (ref,)) or []
+    if done:
+        return _xl_json({'ok': True, 'ref': ref, 'message': 'This count has already been sent.'})
+
+    count_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    lines = b.get('lines') or []
+    if not lines:
+        return fail('No counted lines to send.')
+    names = [str(l.get('item') or '').strip() for l in lines if str(l.get('item') or '').strip()]
+    if not names:
+        return fail('No item names in the count.')
+    marks = ','.join(['%s'] * len(names))
+    master = {r['inventoy_name']: r for r in (db.execute_query(f"""
+        SELECT ii.inventoy_name, ii.inventoy_code, ii.inventoy_items_messurment_unit AS unit,
+               COALESCE(p.inventory_price_purcharsing, 0) AS cost,
+               COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
+                         FROM inventory_recod r WHERE r.inventoy_name = ii.inventoy_name), 0) AS qty
+        FROM inventoy_items ii
+        LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
+        WHERE ii.inventoy_name IN ({marks})
+    """, tuple(names)) or [])}
+
+    moves, changed = [], 0
+    for l in lines:
+        name = str(l.get('item') or '').strip()
+        if not name:
+            continue
+        if name not in master:
+            return fail(f'Item "{name}" is not in the system - press Sync from System first.')
+        m = master[name]
+        counted = parse_float(l.get('counted'))
+        system_qty = round(float(m['qty'] or 0), 4)
+        diff = round(counted - system_qty, 4)
+        if abs(diff) < 0.0001:
+            continue
+        memo = (str(l.get('reason') or '').strip()[:200]
+                or f'Stock count {count_date}: system {system_qty:g}, counted {counted:g}')
+        moves.append((m['inventoy_name'], m['inventoy_code'], m['unit'], float(m['cost'] or 0), diff, memo))
+        changed += 1
+    if not moves:
+        return _xl_json({'ok': True, 'ref': ref, 'message': 'Nothing to adjust - every counted item already matches.'})
+
+    conn = cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        for name, code, unit, cost, diff, memo in moves:
+            qty_in = diff if diff > 0 else 0
+            qty_out = -diff if diff < 0 else 0
+            cursor.execute("""
+                INSERT INTO inventory_recod (
+                    inventoy_name, inventoy_code, inventory_recod_action_date,
+                    inventory_recod_moument_in, inventory_recod_movment_out,
+                    inventory_recod_mesrmet, inventory_recod_unit_price, inventory_recod_total_value,
+                    inventory_recod_account, inventory_recodcol_memo, inventory_recod_user_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Stock Adjustment', %s, %s)
+            """, (name, code, count_date, qty_in, qty_out, unit, cost, round(diff * cost, 2), memo, user_pk))
+        cursor.execute("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'ADJ', NULL, %s)",
+                       (ref, user_pk))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        return fail(f'The system could not save the adjustment: {e}')
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+    try:
+        log_recent_activity('orange', f'<strong>Stock adjustment</strong> from Excel - {changed} item(s) on {count_date}')
+    except Exception:
+        pass
+    return _xl_json({'ok': True, 'ref': ref, 'message': f'{changed} item(s) adjusted on {count_date}.'})
+
+
 @app.route('/api/xl/inv/srn', methods=['POST'])
 def xl_inv_srn():
     """Post one Service Entry (SRN) from the workbook - runs the website's own
@@ -30641,17 +30734,10 @@ def excel_inventory_workbook():
     ws['H7'].font = note_font
     ws['I7'] = '=Setup!B7&"-"&TEXT(Setup!B8,"0000")'
     ws['I7'].font = note_font
-    # Type here and the Item dropdowns below list only what matches
-    ws['B9'] = 'Type to filter items >'
+    # Searching a long list: click the cell and press Ctrl+Shift+F (or the
+    # Find in list button) - type part of the name and pick it.
+    ws['B9'] = 'Long list? Click the cell, press Ctrl+Shift+F, type part of the name.'
     ws['B9'].font = note_font
-    inp(ws['C9'])
-    ws['C9'].font = Font(bold=True, color='107C10')
-    ws['D9'] = 'part of the name; blank = all'
-    ws['D9'].font = note_font
-    ws['F9'] = 'Filter suppliers >'
-    ws['F9'].font = note_font
-    inp(ws['G9'])
-    ws['G9'].font = Font(bold=True, color='107C10')
     head_row(ws, 10, ['Item (pick from list)', 'Code', 'Unit', 'Qty', 'Unit Cost', 'Line Total', 'Stock now',
                       'Last cost'], first_col=2)
     for rw in range(11, 61):
@@ -30669,8 +30755,8 @@ def excel_inventory_workbook():
         for col in (3, 4, 7, 8, 9):
             ws.cell(row=rw, column=col).border = box
             ws.cell(row=rw, column=col).font = Font(color='374151')
-    dv_item = DataValidation(type="list", formula1="FilteredItemList", allow_blank=True, showErrorMessage=False)
-    dv_sup = DataValidation(type="list", formula1="FilteredSupplierList", allow_blank=True, showErrorMessage=False)
+    dv_item = DataValidation(type="list", formula1="ItemList", allow_blank=True, showErrorMessage=False)
+    dv_sup = DataValidation(type="list", formula1="SupplierList", allow_blank=True, showErrorMessage=False)
     dv_loc = DataValidation(type='list', formula1='LocationList', allow_blank=True, showErrorMessage=False)
     dv_job = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
     dv_pay = DataValidation(type='list', formula1='"Cash,Cheque"', allow_blank=True)
@@ -30743,6 +30829,48 @@ def excel_inventory_workbook():
     for n, i in enumerate(items, start=1):
         balance_row(ws, 5 + n, n, i)
 
+    # ---------------- Stock Adjustment (physical count) ----------------
+    ws = wb.create_sheet('Stock Adjustment')
+    look(ws, 'CA5010', freeze='A8')
+    banner(ws, 'Stock Adjustment (physical count)', 'Type what you counted, then Submit Count. The system quantity '
+           'is moved to match, and the Bin Card shows why. Works offline - submit when connected.', 2, 8)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGH', (40, 14, 10, 14, 14, 14, 34)):
+        ws.column_dimensions[col].width = w
+    ws['B3'] = 'Count Date'
+    ws['B3'].font = label_font
+    inp(ws['C3'])
+    ws['C3'] = date.today()
+    ws['C3'].number_format = 'yyyy-mm-dd'
+    ws['E3'] = 'Items counted'
+    ws['E3'].font = label_font
+    ws['F3'] = '=COUNT(E8:E20000)'
+    ws['F3'].font = Font(bold=True, color=NAVY)
+    ws['B5'] = ('Leave Counted blank for items you did not count - only the lines you fill are sent. '
+                'Sync from System first, so System Qty is up to date.')
+    ws['B5'].font = note_font
+    head_row(ws, 7, ['Item', 'Code', 'Unit', 'System Qty', 'Counted Qty', 'Difference', 'Reason / Note'], first_col=2)
+    for n, i in enumerate(items, start=1):
+        rw = 7 + n
+        ws.cell(row=rw, column=2, value=i['name']).border = box
+        ws.cell(row=rw, column=3, value=i['code']).border = box
+        ws.cell(row=rw, column=4, value=i['unit']).border = box
+        sq = ws.cell(row=rw, column=5, value=round(float(i['qty'] or 0), 4))
+        sq.number_format, sq.border = QTY, box
+        sq.font = Font(color='374151')
+        inp(ws.cell(row=rw, column=6), QTY)
+        d = ws.cell(row=rw, column=7, value=f'=IF(F{rw}="","",ROUND(F{rw}-E{rw},4))')
+        d.number_format, d.border = QTY, box
+        inp(ws.cell(row=rw, column=8))
+    last_adj = 7 + len(items)
+    if last_adj > 7:
+        ws.conditional_formatting.add(f'B8:H{last_adj}',
+                                      FormulaRule(formula=[f'AND($F8<>"",$G8<>0)'], fill=fill('FFF4CE')))
+        ws.conditional_formatting.add(f'G8:G{last_adj}',
+                                      FormulaRule(formula=[f'$G8<0'], font=Font(color='A4262C', bold=True)))
+        ws.conditional_formatting.add(f'G8:G{last_adj}',
+                                      FormulaRule(formula=[f'$G8>0'], font=Font(color='107C10', bold=True)))
+
     # ---------------- SRN Entry (Service Entry) ----------------
     ws = wb.create_sheet('SRN Entry')
     look(ws, '8764B8', freeze='A11')
@@ -30778,16 +30906,11 @@ def excel_inventory_workbook():
         c.number_format, c.border = AMT, box
         c.font = Font(bold=True, color=NAVY, size=12 if rw == 6 else 11)
         c.fill = fill('E8F3E8' if rw == 6 else 'F3F4F6')
-    # Type here and the Account dropdowns below list only what matches
-    ws['B9'] = 'Type to filter accounts >'
+    ws['B9'] = 'Long list? Click the cell, press Ctrl+Shift+F, type part of the account name.'
     ws['B9'].font = note_font
-    inp(ws['C9'])
-    ws['C9'].font = Font(bold=True, color='8764B8')
-    ws['D9'] = 'leave blank for all'
-    ws['D9'].font = note_font
     head_row(ws, 10, ['Account (pick from list)', 'Sub Account', 'Job No', 'Narration / Memo', 'Amount'],
              first_col=2, widths=[40, 28, 12, 34, 16])
-    dv_acc = DataValidation(type="list", formula1="FilteredAccountList", allow_blank=True, showErrorMessage=False)
+    dv_acc = DataValidation(type="list", formula1="AccountList", allow_blank=True, showErrorMessage=False)
     dv_sub = DataValidation(type='list', formula1='SubAccountList', allow_blank=True, showErrorMessage=False)
     dv_sjob = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
     dv_ssup = DataValidation(type='list', formula1='SupplierList', allow_blank=True, showErrorMessage=True,
@@ -30871,23 +30994,6 @@ def excel_inventory_workbook():
                    jobs[k] if k < len(jobs) else None,
                    accounts[k] if k < len(accounts) else None,
                    sub_accounts[k] if k < len(sub_accounts) else None])
-    # Filter columns: the names matching what was typed in the sheet's filter
-    # cell, in order, so the dropdowns get shorter as you type. AGGREGATE(15,6,..)
-    # picks the n-th matching row and ignores the errors from the rest.
-    ws['H1'] = 'Items matching GRN filter'
-    ws['I1'] = 'Suppliers matching GRN filter'
-    ws['J1'] = 'Accounts matching SRN filter'
-    for rw in range(2, 152):
-        n = rw - 1
-        ws.cell(row=rw, column=8, value=(
-            "=IFERROR(INDEX(Items!$B$2:$B$8000,AGGREGATE(15,6,(ROW(Items!$B$2:$B$8000)-1)"
-            "/(ISNUMBER(SEARCH('GRN Entry'!$C$9,Items!$B$2:$B$8000))),%d)),\"\")" % n))
-        ws.cell(row=rw, column=9, value=(
-            "=IFERROR(INDEX(Lists!$A$2:$A$3000,AGGREGATE(15,6,(ROW(Lists!$A$2:$A$3000)-1)"
-            "/(ISNUMBER(SEARCH('GRN Entry'!$G$9,Lists!$A$2:$A$3000))),%d)),\"\")" % n))
-        ws.cell(row=rw, column=10, value=(
-            "=IFERROR(INDEX(Lists!$E$2:$E$3000,AGGREGATE(15,6,(ROW(Lists!$E$2:$E$3000)-1)"
-            "/(ISNUMBER(SEARCH('SRN Entry'!$C$9,Lists!$E$2:$E$3000))),%d)),\"\")" % n))
     ws.sheet_state = 'hidden'
 
     ws = wb.create_sheet('Setup')
@@ -30906,18 +31012,7 @@ def excel_inventory_workbook():
                       ('LocationList', 'OFFSET(Lists!$C$2,0,0,MAX(1,COUNTA(Lists!$C:$C)-1),1)'),
                       ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)'),
                       ('AccountList', 'OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1)'),
-                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)'),
-                      # Blank filter cell = the whole list, so nothing ever goes
-                      # missing; type in it and the dropdown narrows to matches.
-                      ('FilteredItemList',
-                       "IF('GRN Entry'!$C$9=\"\",OFFSET(Items!$B$2,0,0,MAX(1,COUNTA(Items!$B:$B)-1),1),"
-                       "OFFSET(Lists!$H$2,0,0,MAX(1,MIN(150,COUNTIF(Items!$B:$B,\"*\"&'GRN Entry'!$C$9&\"*\"))),1))"),
-                      ('FilteredSupplierList',
-                       "IF('GRN Entry'!$G$9=\"\",OFFSET(Lists!$A$2,0,0,MAX(1,COUNTA(Lists!$A:$A)-1),1),"
-                       "OFFSET(Lists!$I$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$A:$A,\"*\"&'GRN Entry'!$G$9&\"*\"))),1))"),
-                      ('FilteredAccountList',
-                       "IF('SRN Entry'!$C$9=\"\",OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1),"
-                       "OFFSET(Lists!$J$2,0,0,MAX(1,MIN(150,COUNTIF(Lists!$E:$E,\"*\"&'SRN Entry'!$C$9&\"*\"))),1))")):
+                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)')):
         dn = DefinedName(name, attr_text=ref)
         try:
             wb.defined_names[name] = dn
@@ -31279,6 +31374,75 @@ Public Sub SaveGRN()
           "Stock Balance and Bin Card already include it." & vbCrLf & vbCrLf & "Submit pending GRNs to the system now?"
     SaveIfMacro
     If MsgBox(msg, vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then SubmitPending
+End Sub
+
+' ---- Stock Adjustment (physical count) -------------------------------------
+' Type the counted quantities offline; Submit Count moves the system quantity
+' to match. Only the lines with a Counted figure are sent.
+Public Sub SubmitCount()
+    Dim ws As Worksheet, rw As Long, last As Long, lines As String, body As String, r As String
+    Dim st As Long, n As Long, up As Double, down As Double, d As Double, countDate As String, ref As String
+    Set ws = Sh("Stock Adjustment")
+    countDate = Ymd(ws.Range("C3").Value)
+    If countDate = "" Then
+        MsgBox "Put the count date in C3.", vbExclamation, "Suwin ERP"
+        ws.Range("C3").Select
+        Exit Sub
+    End If
+    last = ws.Cells(ws.Rows.Count, 2).End(-4162).Row
+    For rw = 8 To last
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" And Trim$(CStr(ws.Cells(rw, 6).Value)) <> "" Then
+            d = Val(CStr(ws.Cells(rw, 6).Value)) - Val(CStr(ws.Cells(rw, 5).Value))
+            If Abs(d) > 0.00009 Then
+                lines = AddItem(lines, Jq("item", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                        Jq("counted", JsonNum(ws.Cells(rw, 6).Value)) & "," & _
+                        Jq("reason", JsonStr(ws.Cells(rw, 8).Value)))
+                n = n + 1
+                If d > 0 Then up = up + d Else down = down - d
+            End If
+        End If
+    Next rw
+    If n = 0 Then
+        MsgBox "Nothing to adjust - every counted item already matches the system.", vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    If MsgBox("Adjust " & n & " item(s) on " & countDate & "?" & vbCrLf & vbCrLf & _
+              "Stock up: " & Format$(up, "#,##0.####") & vbCrLf & _
+              "Stock down: " & Format$(down, "#,##0.####") & vbCrLf & vbCrLf & _
+              "This changes stock quantities only - it does not touch the ledger.", _
+              vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+
+    ref = Trim$(CStr(SetupSheet().Range("B7").Value)) & "-ADJ-" & Replace(countDate, "-", "")
+    body = "{" & Jq("ref", JsonStr(ref)) & "," & Jq("date", JsonStr(countDate)) & "," & _
+           Jq("lines", "[" & lines & "]") & "}"
+    Application.StatusBar = "Suwin ERP: sending the count..."
+    r = Http("POST", "/api/xl/inv/adjust", body, st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "You are offline - nothing was sent. Your counted figures are kept here; press Submit Count " & _
+               "again when you are connected.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If JsonValue(r, "ok") = "true" Then
+        SayResult JsonValue(r, "message")
+        MsgBox JsonValue(r, "message") & vbCrLf & vbCrLf & "Press Sync from System to see the new balances.", _
+               vbInformation, "Suwin ERP"
+    Else
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+Public Sub ClearCount()
+    Dim ws As Worksheet, last As Long
+    Set ws = Sh("Stock Adjustment")
+    If MsgBox("Clear the counted quantities and notes?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    last = ws.Cells(ws.Rows.Count, 2).End(-4162).Row
+    If last >= 8 Then ws.Range("F8:F" & last & ",H8:H" & last).ClearContents
+End Sub
+
+Public Sub GoCount()
+    Sh("Stock Adjustment").Activate
+    Sh("Stock Adjustment").Range("C3").Select
 End Sub
 
 ' ---- SRN (Service Entry) ---------------------------------------------------
@@ -31830,12 +31994,15 @@ Public Sub PickFromList()
 End Sub
 
 Public Sub AddButtons()
-    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "Submit Pending", "SubmitPending", _
-                                   "Sync from System", "SyncFromSystem", "Stock Balance", "GoStockBalance", _
-                                   "Bin Card", "GoBinCard", "Set API Key", "SetApiKey"), True
+    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "Stock Count", "GoCount", _
+                                   "Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem", _
+                                   "Stock Balance", "GoStockBalance", "Bin Card", "GoBinCard", _
+                                   "Set API Key", "SetApiKey"), True
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
     PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending", _
-                                        "Find in list", "PickFromList", "SRN Entry", "GoSRN")
+                                        "Find in list", "PickFromList", "SRN Entry", "GoSRN", "Stock Count", "GoCount")
+    PutButtons "Stock Adjustment", "J1", Array("Submit Count", "SubmitCount", "Clear Counted", "ClearCount", _
+                                               "Sync from System", "SyncFromSystem", "GRN Entry", "GoGRN")
     PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
                                         "Find in list", "PickFromList", "GRN Entry", "GoGRN")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
