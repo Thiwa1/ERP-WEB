@@ -28701,6 +28701,29 @@ Public Sub SendBarSales()
     MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
 End Sub
 
+' Post the saved day to the GL. Needs a key whose user has Access_Accounting.
+' The day must be saved (Submit Day) first - this posts what the system holds.
+Public Sub PostDailySales()
+    Dim r As String, ws As Worksheet
+    If EntryDate() = "" Then MsgBox "Put the date in H3 of the Daily Sales sheet.", vbExclamation, "Suwin ERP": Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    If CStr(ws.Range("H2").Value) <> EntryDate() Then
+        MsgBox "Press Load Day for " & EntryDate() & " first, so you post the day you are looking at.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If MsgBox("Post " & EntryDate() & " to the GL?" & vbCrLf & vbCrLf & _
+              "Submit Day first if you have changed anything - posting uses the saved figures, " & _
+              "and the day is locked afterwards.", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    Application.StatusBar = "Suwin ERP: posting " & EntryDate() & "..."
+    r = HttpCall("POST", "/api/xl/daily_sales/post", "{""date"":" & JsonStr(EntryDate()) & "}")
+    Application.StatusBar = False
+    If Failed(r) Then Exit Sub
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+    GetDailySales
+End Sub
+
 Public Sub PostBarSales()
     Dim r As String
     If MsgBox("Post bar sales for " & EntryDate() & " to the GL?", vbYesNo + vbQuestion) <> vbYes Then Exit Sub
@@ -28827,25 +28850,10 @@ Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal 
     Next i
 End Sub
 
-' Every sheet gets a "Setup" button top-right, so you can always get back
-' without hunting through the tabs (including the loaded MA / VAT / RPT sheets).
+' Go back to the Setup sheet (the "Go to" buttons on Setup do the rest).
 Public Sub GoSetup()
     ThisWorkbook.Worksheets("Setup").Activate
     ThisWorkbook.Worksheets("Setup").Range("B5").Select
-End Sub
-
-Private Sub PutSetupButton(ByVal ws As Worksheet)
-    Dim i As Long, btn As Object
-    On Error Resume Next
-    For i = ws.Buttons.Count To 1 Step -1
-        If ws.Buttons(i).Name = "xlb_setup" Then ws.Buttons(i).Delete
-    Next i
-    Set btn = ws.Buttons.Add(ws.Range("A1").Left + 6, ws.Range("A1").Top + 4, 86, 24)
-    btn.Name = "xlb_setup"
-    btn.Caption = "< Setup"
-    btn.OnAction = "GoSetup"
-    btn.Font.Bold = True
-    On Error GoTo 0
 End Sub
 
 ' ---- Search a dropdown ------------------------------------------------------
@@ -28975,11 +28983,17 @@ Private Sub PutNavButtons(ByVal anchor As String, ByVal specs As Variant)
     Next i
 End Sub
 
+' The old "< Setup" button sat on top of the sheet title, so it is gone.
+' This clears it from workbooks that already have one.
 Public Sub AddSetupButtons()
-    Dim ws As Worksheet
+    Dim ws As Worksheet, i As Long
+    On Error Resume Next
     For Each ws In ThisWorkbook.Worksheets
-        If ws.Name <> "Setup" Then PutSetupButton ws
+        For i = ws.Buttons.Count To 1 Step -1
+            If ws.Buttons(i).Name = "xlb_setup" Then ws.Buttons(i).Delete
+        Next i
     Next ws
+    On Error GoTo 0
 End Sub
 
 Public Sub AddButtons()
@@ -31953,22 +31967,47 @@ def _daily_sales_reports_export_build():
         r = xl.item_row(ws, r, label, [pair[0], pair[1]])
     r = xl.total_row(ws, r, 'TOTAL COLLECTIONS', [d['collections'][0], d['collections'][1]])
 
-    def name_table(title, rows, extra_col=None):
+    def name_table(title, rows, ref_head=None, with_balance=False):
+        """Same shape as the page: name, the invoice / ref numbers, To Day,
+        Month To Date and (for debtors) what is still outstanding."""
         nonlocal r
-        r = xl.section_row(ws, r, 3, title)
+        ncols = 5 if with_balance else (4 if ref_head else 3)
+        r = xl.section_row(ws, r, ncols, title)
         if not rows:
             ws.cell(row=r, column=1, value='None.')
             r += 1
             return
+        heads = ['Name', ref_head or '', 'To Day', 'Month To Date'] if ref_head else \
+                ['Description', 'To Day', 'Month To Date']
+        if with_balance:
+            heads.append('Outstanding')
+        r = xl.header_row(ws, r, heads)
         for row in rows:
-            label = row.get('name') or row.get('label') or ''
-            if row.get('refs'):
-                label += '  (' + ', '.join(row['refs'][:4]) + ')'
-            r = xl.item_row(ws, r, label, [row.get('today', 0), row.get('mtd', 0)])
-        r = xl.total_row(ws, r, 'Total', [sum(x.get('today', 0) for x in rows), sum(x.get('mtd', 0) for x in rows)])
+            vals = [row.get('name') or row.get('label') or '']
+            nums = [2] if not ref_head else [3]
+            if ref_head:
+                vals.append(', '.join(row.get('refs') or []))
+            vals += [row.get('today', 0), row.get('mtd', 0)]
+            if with_balance:
+                vals.append(row.get('balance', 0))
+            num_cols = tuple(range(nums[0] + 1, len(vals) + 1))
+            r = xl.data_row(ws, r, vals, num_cols=num_cols)
+        totals = [sum(x.get('today', 0) for x in rows), sum(x.get('mtd', 0) for x in rows)]
+        if with_balance:
+            totals.append(sum(x.get('balance', 0) for x in rows))
+        first_num = 3 if ref_head else 2
+        ws.cell(row=r, column=1, value='Total').font = xl.Font(bold=True)
+        for i, v in enumerate(totals, start=first_num):
+            c = ws.cell(row=r, column=i, value=float(v or 0))
+            c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+            c.fill = xl._fill('F3F3F3')
+        ws.cell(row=r, column=1).fill = xl._fill('F3F3F3')
+        if ref_head:
+            ws.cell(row=r, column=2).fill = xl._fill('F3F3F3')
+        r += 2
 
-    name_table('Debtors (Credit Given)', d['debtors'])
-    name_table('Creditors (Credit Received / Set-off)', d['creditors'])
+    name_table('Name Debtors (Credit Given)', d['debtors'], ref_head='Invoice No', with_balance=True)
+    name_table('Name Creditors (Credit Received / Set-off)', d['creditors'], ref_head='Ref No')
     name_table('Petty Cash Expenses', d['petty'])
     if d['commission']:
         name_table('Commission / Set-off (kept by agents)', d['commission'])
@@ -31985,7 +32024,8 @@ def _daily_sales_reports_export_build():
             label = f"{row['name']}  {row['receipt_no']}  {row['date']}".strip()
             r = xl.item_row(ws, r, label, [row['mtd'], row['settled_mtd']])
         r = xl.total_row(ws, r, 'Total', [sum(x['mtd'] for x in rows), sum(x['settled_mtd'] for x in rows)])
-    xl.finish(ws, 3, first_col_width=52, num_col_width=20)
+    xl.finish(ws, 5, first_col_width=38, num_col_width=18)
+    ws.column_dimensions["B"].width = 42   # the invoice / ref numbers
 
     return xl.workbook_response(wb, f'Daily_Revenue_CashBook_{as_of}.xlsx')
 
