@@ -27885,9 +27885,13 @@ def xl_payment_submit():
         return fail('Type an amount in "Pay Now" for at least one invoice.')
     if pay_by == 'cheque' and not str(b.get('cheque_no') or '').strip():
         return fail('Type the cheque number.')
-    accounts = [r['n'] for r in (db.execute_query(
+    # Bank account numbers come back as numbers from MySQL but as text from
+    # Excel, so compare them as trimmed text - otherwise a real account looks
+    # missing ("...is not in the system: 2203331487").
+    accounts = [str(r['n']).strip() for r in (db.execute_query(
         "SELECT cash_book_account_name AS n FROM cash_book" if pay_by == 'cash'
-        else "SELECT bank_bookcol_account_number AS n FROM bank_book") or [])]
+        else "SELECT bank_bookcol_account_number AS n FROM bank_book") or []) if r['n'] is not None]
+    account = account.strip()
     if account not in accounts:
         return fail(f"That {pay_by} account is not in the system: {account}. Pick one from the dropdown, "
                     f"or press Load Payables to refresh the list.")
@@ -29181,7 +29185,8 @@ Public Sub LoadPayables()
                 lst.Cells(4 + nc, 6).Value = cols(1)
                 nc = nc + 1
             Case "BANKACC"
-                lst.Cells(4 + nb, 7).Value = cols(1)
+                ' as text, so a leading zero in an account number is not lost
+                lst.Cells(4 + nb, 7).Value = "'" & cols(1)
                 nb = nb + 1
             End Select
         End If
