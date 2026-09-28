@@ -188,6 +188,23 @@
           </tbody>
         </table>
 
+        {% set dr = d.debtor_recon %}
+        <table class="rp mb-3">
+          <thead><tr><th class="rp-col-label">Debtors &mdash; how the Outstanding is made up</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>Outstanding before {{ d.month_start.strftime('%Y-%m-%d') }} <span class="fw-normal">(credit given in earlier months, still unpaid)</span></td>
+              <td class="num">{{ money(dr.opening) }}</td></tr>
+            <tr><td>Add: Credit given this month</td><td class="num">{{ money(dr.given) }}</td></tr>
+            <tr><td>Less: Credit received / set off this month <span class="fw-normal">(against any month's credit)</span></td>
+              <td class="num">({{ money(dr.received) }})</td></tr>
+            <tr class="rp-total"><td>Outstanding as at {{ as_of }}</td><td class="num">{{ money(dr.closing) }}</td></tr>
+            {% if dr.unlinked %}
+            <tr class="rp-muted"><td>Receipts this month not linked to a Credit Given <span class="fw-normal">(in the Creditors total below, but they reduce no invoice)</span></td>
+              <td class="num">{{ money(dr.unlinked) }}</td></tr>
+            {% endif %}
+          </tbody>
+        </table>
+
         <table class="rp mb-3">
           <thead><tr><th class="rp-col-label">Name Creditors <span class="fw-normal">(Credit Received / Set-off)</span></th><th>Ref No</th>
             <th class="num">To Day</th><th class="num">Month To Date</th></tr></thead>

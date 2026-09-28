@@ -22012,6 +22012,29 @@ def _daily_sales_report_data(as_of):
             name = next((c['party_name'] for c in out['credits'] if _dse_name_key(c['party_name'] or '(no name)') == k), k)
             debtors.append({'name': name or '(no name)', 'today': 0.0, 'mtd': 0.0, 'refs': [], 'balance': round(bal, 2)})
 
+    # Why Outstanding is not "credit given MTD less credit received MTD": the
+    # amount columns are this month only, while Outstanding is every unpaid
+    # credit up to today. This bridges the two.
+    opening_debt = 0.0
+    given_mtd = received_mtd = 0.0
+    for c in out['credits']:
+        amount = float(c['amount'] or 0)
+        settled_before = sum(float(s['amount'] or 0) for s in c['settlements'] if s['entry_date'] < month_start)
+        settled_mtd = sum(float(s['amount'] or 0) for s in c['settlements'] if s['entry_date'] >= month_start)
+        received_mtd += settled_mtd
+        if c['entry_date'] < month_start:
+            opening_debt += amount - settled_before
+        else:
+            given_mtd += amount
+    unlinked_mtd = sum(float(r['amount'] or 0) for r in out['unlinked_receipts'] if r['entry_date'] >= month_start)
+    debtor_recon = {
+        'opening': round(opening_debt, 2),
+        'given': round(given_mtd, 2),
+        'received': round(received_mtd, 2),
+        'unlinked': round(unlinked_mtd, 2),
+        'closing': round(opening_debt + given_mtd - received_mtd, 2),
+    }
+
     credit_by_id = {c['id']: c for c in out['credits']}
     all_receipts = [s for c in out['credits'] for s in c['settlements']] + out['unlinked_receipts']
     creditors = group_by_name(
@@ -22048,7 +22071,7 @@ def _daily_sales_report_data(as_of):
                          round(total_income_mtd + bar_income_mtd, 2)),
         'collections': collections, 'cash': cash, 'sampath': sampath, 'hnb': hnb, 'bank': bank,
         'card_other': card_other, 'bar_extra': bar_extra,
-        'debtors': debtors, 'creditors': creditors,
+        'debtors': debtors, 'creditors': creditors, 'debtor_recon': debtor_recon,
         'petty': list(petty.values()),
         'commission': list(commission.values()),
         'adv_debtors': advance_rows(out['adv_given']),
@@ -32007,6 +32030,17 @@ def _daily_sales_reports_export_build():
         r += 2
 
     name_table('Name Debtors (Credit Given)', d['debtors'], ref_head='Invoice No', with_balance=True)
+    # Bridge between the month's figures and the all-history Outstanding
+    dr = d['debtor_recon']
+    r = xl.section_row(ws, r, 5, 'Debtors - how the Outstanding is made up')
+    r = xl.item_row(ws, r, f"Outstanding before {d['month_start']} (earlier months, still unpaid)", [dr['opening']])
+    r = xl.item_row(ws, r, 'Add: Credit given this month', [dr['given']])
+    r = xl.item_row(ws, r, "Less: Credit received / set off this month (against any month's credit)", [-dr['received']])
+    r = xl.total_row(ws, r, f'Outstanding as at {as_of}', [dr['closing']])
+    if dr['unlinked']:
+        r = xl.item_row(ws, r, 'Receipts this month not linked to a Credit Given (reduce no invoice)', [dr['unlinked']])
+    r += 1
+
     name_table('Name Creditors (Credit Received / Set-off)', d['creditors'], ref_head='Ref No')
     name_table('Petty Cash Expenses', d['petty'])
     if d['commission']:
