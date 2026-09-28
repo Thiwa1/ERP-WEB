@@ -6606,6 +6606,36 @@ def _supplier_payment_rows(from_date, to_date, supplier='', method=''):
                          'method': 'Bank', 'account': r['account'] or '', 'cheque': r['cheque'] or '',
                          'voucher': r['voucher'], 'date': r['pdate'], 'jv': r['jv']})
 
+    for r in rows:
+        r.setdefault('status', 'Paid')
+
+    # Postdated cheques written to suppliers. Until one clears there is no JV
+    # and nothing in the bank book, so without this they show up nowhere -
+    # even though the cheque is with the supplier and the invoice is held.
+    if method in ('', 'Bank', 'PDC'):
+        try:
+            q = """
+                SELECT cheque_no, post_date, issue_date, amount, account_name, party_name, status, cleared_date
+                FROM postdated_cheques
+                WHERE pdc_type = 'payment' AND status IN ('pending', 'cleared')
+                  AND COALESCE(issue_date, post_date) BETWEEN %s AND %s
+            """
+            params = [from_date, to_date]
+            if supplier:
+                q += " AND TRIM(party_name) = TRIM(%s)"; params.append(supplier)
+            for p in (db.execute_query(q, tuple(params)) or []):
+                if p['status'] == 'cleared':
+                    # The cleared one is already in the bank book above
+                    continue
+                rows.append({'supplier': p['party_name'] or '', 'amount': float(p['amount'] or 0),
+                             'method': 'Bank', 'account': p['account_name'] or '',
+                             'cheque': p['cheque_no'] or '', 'voucher': '',
+                             'date': p['issue_date'] or p['post_date'], 'jv': None,
+                             'status': f"PDC pending - due {p['post_date']}"})
+        except Exception as e:
+            logging.warning(f'payment history: postdated cheques skipped ({e})')
+
+    rows.sort(key=lambda r: (str(r['date'] or ''), r['supplier'] or ''), reverse=True)
     return rows
 
 
@@ -6632,10 +6662,10 @@ def supplier_payments_report():
         si = io.StringIO()
         cw = csv.writer(si)
         cw.writerow(['Supplier Payments', f'{from_date} to {to_date}'])
-        cw.writerow(['Date', 'Supplier', 'Method', 'Bank/Cash Account', 'Cheque No', 'Voucher', 'JV', 'Amount'])
+        cw.writerow(['Date', 'Supplier', 'Method', 'Bank/Cash Account', 'Cheque No', 'Voucher', 'JV', 'Status', 'Amount'])
         for r in rows:
             cw.writerow([r['date'], r['supplier'], r['method'], r['account'], r['cheque'],
-                         r['voucher'], r['jv'], f"{r['amount']:.2f}"])
+                         r['voucher'], r['jv'], r.get('status') or 'Paid', f"{r['amount']:.2f}"])
         cw.writerow([])
         cw.writerow(['', '', '', '', '', '', 'Cash Total', f"{total_cash:.2f}"])
         cw.writerow(['', '', '', '', '', '', 'Bank Total', f"{total_bank:.2f}"])
@@ -28043,9 +28073,11 @@ def xl_supplier_payments():
         d_to = date.today()
     rows = _supplier_payment_rows(d_from.strftime('%Y-%m-%d'), d_to.strftime('%Y-%m-%d'))
     out = [[_xl_day(r['date']), r['supplier'] or '', 'Cheque' if r['method'] == 'Bank' else 'Cash',
-            r['account'] or '', r['cheque'] or '', r['voucher'] or '', r['jv'] or '', r['amount']] for r in rows]
-    return _xl_table(['Date', 'Supplier', 'Method', 'Bank / Cash Account', 'Cheque No', 'Voucher', 'JV', 'Amount'],
-                     ['d', 't', 't', 't', 't', 't', 't', 'n'], out)
+            r['account'] or '', r['cheque'] or '', r['voucher'] or '', r['jv'] or '',
+            r.get('status') or 'Paid', r['amount']] for r in rows]
+    return _xl_table(['Date', 'Supplier', 'Method', 'Bank / Cash Account', 'Cheque No', 'Voucher', 'JV',
+                      'Status', 'Amount'],
+                     ['d', 't', 't', 't', 't', 't', 't', 't', 'n'], out)
 
 
 @app.route('/api/xl/management_account/save', methods=['POST'])
