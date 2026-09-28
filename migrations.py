@@ -68,6 +68,7 @@ def run_migrations(conn):
         _migrate_daily_sales_commissions(cursor)
         _migrate_daily_sales_bank2(cursor)
         _migrate_excel_api_keys(cursor)
+        _migrate_daily_sales_cash_difference(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1795,6 +1796,31 @@ def _migrate_excel_api_keys(cursor):
                 INDEX idx_xlkey_user (user_pk)
             )
         """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_daily_sales_cash_difference(cursor):
+    """Cash short / excess on a Daily Sales day: the small difference between
+    what was counted and what the day says should be there. Posted to its own
+    account so the day can be posted instead of being held up by cents."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_entries'")
+        if cursor.fetchone():
+            cursor.execute("ALTER TABLE daily_sales_entries ADD COLUMN cash_difference DOUBLE NOT NULL DEFAULT 0")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+    try:
+        cursor.execute("SELECT id FROM system_settings WHERE setting_key = %s", ('daily_sales_cash_diff_account',))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
+                           ('daily_sales_cash_diff_account', 'Daily Sales Entry: GL account for Cash Short / Excess'))
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")

@@ -478,6 +478,19 @@
                        value="{{ '{:,.2f}'.format(header.bank_transfer_2_amount) if header and header.bank_transfer_2_amount else '' }}"
                        onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
               </div>
+              <div class="col-3">
+                <label class="form-label">Cash Difference <span class="text-muted fw-normal">(short +/excess &minus;)</span></label>
+                <div class="input-group input-group-sm">
+                  <input type="text" inputmode="decimal" autocomplete="off" data-money="1" name="cash_difference" id="dseCashDiff" class="form-control form-control-sm"
+                         title="Small short or excess in the counted cash - posts to the Cash Short / Excess account"
+                         value="{{ '{:,.2f}'.format(header.cash_difference) if header and header.cash_difference else '' }}"
+                         onchange="dseRecalc()" {% if readonly %}disabled{% endif %}>
+                  {% if not readonly %}
+                  <button type="button" class="btn btn-outline-secondary" onclick="dseUseDiff()"
+                          title="Put the remaining difference here">Use</button>
+                  {% endif %}
+                </div>
+              </div>
               <div class="col-6 offset-3">
                 <label class="form-label">Total Credit Card <span class="fw-normal text-muted">(Sampath + HNB)</span></label>
                 <input type="text" class="form-control form-control-sm text-end fw-bold" id="dseCardTotal" value="0.00" readonly
@@ -935,7 +948,8 @@ function dseRecalc() {
   const cardSampath = dseParse(document.getElementById('dseCardSampath').value);
   const cardHnb = dseParse(document.getElementById('dseCardHnb').value);
   const bank = dseParse(document.getElementById('dseBank').value) + dseParse(document.getElementById('dseBank2').value);
-  const pmTotal = Math.round((cash + cardSampath + cardHnb + bank) * 100) / 100;
+  const cashDiff = dseParse(document.getElementById("dseCashDiff").value);
+  const pmTotal = Math.round((cash + cardSampath + cardHnb + bank + cashDiff) * 100) / 100;
   document.getElementById('dsePmTotal').textContent = dseFmt(pmTotal);
   document.getElementById('dseCardTotal').value = (Math.round((cardSampath + cardHnb) * 100) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -946,6 +960,20 @@ function dseRecalc() {
     checkEl.innerHTML = '<i class="fas fa-exclamation-triangle dse-check-bad"></i> <span class="dse-check-bad">Diff: ' + dseFmt(expectedReceived - pmTotal) + '</span>';
   }
   return uniqueProblems;
+}
+
+// Put whatever is still out into the Cash Difference box, so the day can be posted
+function dseUseDiff() {
+  const box = document.getElementById('dseCashDiff');
+  const current = dseParse(box.value);
+  const expected = dseParse(document.getElementById('dseExpectedReceived').value);
+  const pmTotal = dseParse(document.getElementById('dsePmTotal').textContent);
+  const left = Math.round((expected - pmTotal + current) * 100) / 100;
+  if (Math.abs(left) > 1000) {
+    if (!confirm('The difference is ' + dseFmt(left) + '. That is large for a cash short / excess - put it here anyway?')) return;
+  }
+  box.value = left ? dseFmt(left) : '';
+  dseRecalc();
 }
 
 function dseSubmit() {

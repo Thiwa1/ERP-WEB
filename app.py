@@ -20326,7 +20326,7 @@ def _daily_sales_load_entry(entry_date):
     header = db.execute_query("""
         SELECT id, entry_date, narration, total_income, total_expenditure, balance,
                cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-               bank_transfer_2_amount,
+               bank_transfer_2_amount, cash_difference,
                telephone_income, advance_received, advance_received_bill_no,
                advance_given, advance_given_bill_no, petty_cash,
                misc_expense_1_label, misc_expense_1_amount,
@@ -20602,7 +20602,7 @@ def _daily_sales_petty_rows(entry_id):
 
 def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditure, cash_float,
                                 cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-                                bank_transfer_2_amount,
+                                bank_transfer_2_amount, cash_difference,
                                 telephone_income, advance_received, advance_received_bill_no,
                                 advance_given, advance_given_bill_no, petty_cash, misc_expenses,
                                 credit_lines_in, action, current_user_pk, registers_in=None, petty_lines_in=None,
@@ -20781,7 +20781,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                                           if a['adv_type'] == 'GIVEN' and a['receipt_no'])[:100] or None
 
     actual_received = (cash_amount + credit_card_sampath_amount + credit_card_hnb_amount
-                       + bank_transfer_amount + bank_transfer_2_amount)
+                       + bank_transfer_amount + bank_transfer_2_amount + cash_difference)
     expected_received = _daily_sales_expected_from_registers(
         total_income, total_expenditure, telephone_income, petty_cash, misc_expenses, reg_totals,
         commission_total)
@@ -20845,7 +20845,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 UPDATE daily_sales_entries SET
                     narration=%s, total_income=%s, total_expenditure=%s, balance=%s,
                     cash_float=%s, cash_amount=%s, credit_card_sampath_amount=%s, credit_card_hnb_amount=%s, bank_transfer_amount=%s,
-                    bank_transfer_2_amount=%s,
+                    bank_transfer_2_amount=%s, cash_difference=%s,
                     telephone_income=%s, advance_received=%s, advance_received_bill_no=%s,
                     advance_given=%s, advance_given_bill_no=%s, petty_cash=%s,
                     misc_expense_1_label=%s, misc_expense_1_amount=%s,
@@ -20855,7 +20855,7 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 WHERE id=%s
             """, (narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-                  bank_transfer_2_amount,
+                  bank_transfer_2_amount, cash_difference,
                   telephone_income, advance_received, advance_received_bill_no,
                   advance_given, advance_given_bill_no, petty_cash,
                   misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
@@ -20866,16 +20866,16 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                 INSERT INTO daily_sales_entries (
                     entry_date, narration, total_income, total_expenditure, balance,
                     cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-                    bank_transfer_2_amount, telephone_income, advance_received, advance_received_bill_no,
+                    bank_transfer_2_amount, cash_difference, telephone_income, advance_received, advance_received_bill_no,
                     advance_given, advance_given_bill_no, petty_cash,
                     misc_expense_1_label, misc_expense_1_amount,
                     misc_expense_2_label, misc_expense_2_amount,
                     misc_expense_3_label, misc_expense_3_amount,
                     status, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'Parked', %s)
             """, (entry_date, narration, total_income, total_expenditure, balance,
                   cash_float, cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-                  bank_transfer_2_amount,
+                  bank_transfer_2_amount, cash_difference,
                   telephone_income, advance_received, advance_received_bill_no,
                   advance_given, advance_given_bill_no, petty_cash,
                   misc1[0] or None, misc1[1], misc2[0] or None, misc2[1], misc3[0] or None, misc3[1],
@@ -21052,6 +21052,26 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     """, (pm_account, pm_amount, entry_date, date.today(), f"{label} - Daily Sales {entry_date}",
                           current_user_pk, jv_no))
 
+            # Cash short / excess: the small difference between what was counted
+            # and what the day says should be there. Short (+) is a debit, excess
+            # (-) a credit, so the day balances instead of being held up by cents.
+            if cash_difference:
+                cursor.execute("SELECT setting_value FROM system_settings WHERE setting_key = 'daily_sales_cash_diff_account'")
+                cd_row = cursor.fetchone()
+                cd_account = (cd_row['setting_value'] or '').strip() if cd_row else ''
+                if not cd_account:
+                    raise ValueError('No GL account configured for Cash Short / Excess. Set it in GL Mapping first.')
+                amt = round(abs(cash_difference), 2)
+                dr, cr = (amt, 0) if cash_difference > 0 else (0, amt)
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (cd_account, dr, cr, entry_date, date.today(),
+                      f"Cash {'short' if cash_difference > 0 else 'excess'} - Daily Sales {entry_date}",
+                      current_user_pk, jv_no))
+
             # CR (or DR for Discount): each Sheet9 sales line against its assigned GL account
             for cat_id, nos, bill_no, amount, gl_account, sub_account_code in clean_sales_lines:
                 if not amount:
@@ -21220,7 +21240,8 @@ def daily_sales_entry_save():
     credit_card_sampath_amount = parse_float(request.form.get('credit_card_sampath_amount'))
     credit_card_hnb_amount = parse_float(request.form.get('credit_card_hnb_amount'))
     bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
-    bank_transfer_2_amount = parse_float(request.form.get('bank_transfer_2_amount'))
+    bank_transfer_2_amount = parse_float(request.form.get("bank_transfer_2_amount"))
+    cash_difference = parse_float(request.form.get("cash_difference"))
     telephone_income = parse_float(request.form.get('telephone_income'))
     advance_received = parse_float(request.form.get('advance_received'))
     advance_received_bill_no = (request.form.get('advance_received_bill_no') or '').strip() or None
@@ -21266,7 +21287,7 @@ def daily_sales_entry_save():
     ok, message, _jv = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-        bank_transfer_2_amount,
+        bank_transfer_2_amount, cash_difference,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
         credit_lines_in, 'park', get_current_user_pk(), registers_in=registers_in, petty_lines_in=petty_lines_in,
@@ -21306,7 +21327,7 @@ def daily_sales_entry_post():
     if header:
         actual_received = ((header.get('cash_amount') or 0) + (header.get('credit_card_sampath_amount') or 0) +
                             (header.get('credit_card_hnb_amount') or 0) + (header.get('bank_transfer_amount') or 0)
-                            + (header.get('bank_transfer_2_amount') or 0))
+                            + (header.get("bank_transfer_2_amount") or 0) + (header.get("cash_difference") or 0))
         misc_expenses = [
             (header.get('misc_expense_1_label'), header.get('misc_expense_1_amount')),
             (header.get('misc_expense_2_label'), header.get('misc_expense_2_amount')),
@@ -21360,7 +21381,8 @@ def daily_sales_entry_post_save():
     credit_card_sampath_amount = parse_float(request.form.get('credit_card_sampath_amount'))
     credit_card_hnb_amount = parse_float(request.form.get('credit_card_hnb_amount'))
     bank_transfer_amount = parse_float(request.form.get('bank_transfer_amount'))
-    bank_transfer_2_amount = parse_float(request.form.get('bank_transfer_2_amount'))
+    bank_transfer_2_amount = parse_float(request.form.get("bank_transfer_2_amount"))
+    cash_difference = parse_float(request.form.get("cash_difference"))
     # These aren't editable on this screen - carried forward unchanged from
     # what front office entered (see the hidden fields in daily_sales_entry_post.html).
     telephone_income = parse_float(request.form.get('telephone_income'))
@@ -21392,7 +21414,7 @@ def daily_sales_entry_post_save():
     ok, message, jv_no = _daily_sales_process_entry(
         entry_date, narration, lines_in, total_expenditure, cash_float,
         cash_amount, credit_card_sampath_amount, credit_card_hnb_amount, bank_transfer_amount,
-        bank_transfer_2_amount,
+        bank_transfer_2_amount, cash_difference,
         telephone_income, advance_received, advance_received_bill_no,
         advance_given, advance_given_bill_no, petty_cash, misc_expenses,
         None, action, get_current_user_pk(), registers_in=None)  # registers are front office's - kept as saved
@@ -21633,7 +21655,7 @@ def daily_sales_gl_mapping():
     settings = db.execute_query("""
         SELECT setting_key, setting_value FROM system_settings
         WHERE setting_key IN ('daily_sales_cash_account', 'daily_sales_card_sampath_account', 'daily_sales_card_hnb_account',
-                               'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account')
+                               'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_cash_diff_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account')
     """) or []
     pm_accounts = {s['setting_key']: s['setting_value'] for s in settings}
 
@@ -21666,7 +21688,7 @@ def daily_sales_gl_mapping_save():
                              (acc.strip() or None, sub_code, cat_id), commit=True)
 
         for key in ('daily_sales_cash_account', 'daily_sales_card_sampath_account', 'daily_sales_card_hnb_account',
-                    'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
+                    'daily_sales_bank_account', 'daily_sales_bank2_account', 'daily_sales_cash_diff_account', 'daily_sales_food_cost_account', 'daily_sales_liquor_cost_account'):
             val = (request.form.get(key) or '').strip()
             db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = %s",
                              (val, key), commit=True)
@@ -21757,7 +21779,7 @@ def _daily_sales_report_data(as_of):
 
     entries = db.execute_query("""
         SELECT id, entry_date, status, total_income, cash_amount, credit_card_sampath_amount,
-               credit_card_hnb_amount, bank_transfer_amount, bank_transfer_2_amount, petty_cash, telephone_income,
+               credit_card_hnb_amount, bank_transfer_amount, bank_transfer_2_amount, cash_difference, petty_cash, telephone_income,
                misc_expense_1_label, misc_expense_1_amount, misc_expense_2_label, misc_expense_2_amount,
                misc_expense_3_label, misc_expense_3_amount
         FROM daily_sales_entries WHERE entry_date BETWEEN %s AND %s
@@ -27411,7 +27433,7 @@ def xl_daily_sales_get():
                          c['amount'] or ''])
         for f in ('narration', 'total_expenditure', 'cash_float', 'cash_amount',
                   'credit_card_sampath_amount', 'credit_card_hnb_amount', 'bank_transfer_amount',
-                  'bank_transfer_2_amount', 'telephone_income', 'petty_cash',
+                  "bank_transfer_2_amount", "cash_difference", "telephone_income", "petty_cash",
                   'misc_expense_1_label', 'misc_expense_1_amount', 'misc_expense_2_label',
                   'misc_expense_2_amount', 'misc_expense_3_label', 'misc_expense_3_amount'):
             rows.append(['HEADER', f, (header.get(f) if header else '') or ''])
@@ -27489,7 +27511,7 @@ def xl_daily_sales_save():
         parse_float(h.get('total_expenditure')), parse_float(h.get('cash_float')),
         parse_float(h.get('cash_amount')), parse_float(h.get('credit_card_sampath_amount')),
         parse_float(h.get('credit_card_hnb_amount')), parse_float(h.get('bank_transfer_amount')),
-        parse_float(h.get('bank_transfer_2_amount')),
+        parse_float(h.get("bank_transfer_2_amount")), parse_float(h.get("cash_difference")),
         parse_float(h.get('telephone_income')), parse_float(h.get('advance_received')),
         str(h.get('advance_received_bill_no') or '').strip() or None,
         parse_float(h.get('advance_given')), str(h.get('advance_given_bill_no') or '').strip() or None,
@@ -27521,7 +27543,7 @@ def xl_daily_sales_post():
         header.get('total_expenditure') or 0, header.get('cash_float') or 0,
         header.get('cash_amount') or 0, header.get('credit_card_sampath_amount') or 0,
         header.get('credit_card_hnb_amount') or 0, header.get('bank_transfer_amount') or 0,
-        header.get('bank_transfer_2_amount') or 0,
+        header.get("bank_transfer_2_amount") or 0, header.get("cash_difference") or 0,
         header.get('telephone_income') or 0, header.get('advance_received') or 0,
         header.get('advance_received_bill_no'), header.get('advance_given') or 0,
         header.get('advance_given_bill_no'), header.get('petty_cash') or 0, misc,
@@ -28501,7 +28523,7 @@ Public Sub SendDailySales()
     Next rw
     fields = Array("narration", "total_expenditure", "cash_float", "cash_amount", _
                    "credit_card_sampath_amount", "credit_card_hnb_amount", "bank_transfer_amount", _
-                   "bank_transfer_2_amount", "telephone_income", "petty_cash", _
+                   "bank_transfer_2_amount", "cash_difference", "telephone_income", "petty_cash", _
                    "misc_expense_1_label", "misc_expense_1_amount", "misc_expense_2_label", _
                    "misc_expense_2_amount", "misc_expense_3_label", "misc_expense_3_amount")
     For i = LBound(fields) To UBound(fields)
@@ -29757,7 +29779,8 @@ def excel_workbook():
         ('narration', 'Narration'), ('total_expenditure', 'Total Expenditure'), ('cash_float', 'Cash Float'),
         ('cash_amount', 'Cash'), ('credit_card_sampath_amount', 'Card - Sampath'),
         ('credit_card_hnb_amount', 'Card - HNB'), ('bank_transfer_amount', 'Bank Transfer'),
-        ('bank_transfer_2_amount', 'Bank Transfer 2'), ('telephone_income', 'Telephone'),
+        ("bank_transfer_2_amount", "Bank Transfer 2"), ("cash_difference", "Cash Short (+) / Excess (-)"),
+        ("telephone_income", "Telephone"),
         ('petty_cash', 'Petty Cash (from takings)'),
         ('misc_expense_1_label', 'Misc 1 - Label'), ('misc_expense_1_amount', 'Misc 1 - Amount'),
         ('misc_expense_2_label', 'Misc 2 - Label'), ('misc_expense_2_amount', 'Misc 2 - Amount'),
@@ -29772,9 +29795,9 @@ def excel_workbook():
         inp(ws.cell(row=rw, column=3), None if key.endswith('label') or key == 'narration' else AMT)
     ws.merge_cells(start_row=rows_of['narration'], start_column=3, end_row=rows_of['narration'], end_column=6)
     tr = hr + len(header_fields) + 1
-    ws.cell(row=tr, column=2, value='Total Received (cash + cards + bank)').font = Font(bold=True, color=NAVY)
+    ws.cell(row=tr, column=2, value='Total Received (cash + cards + bank + cash difference)').font = Font(bold=True, color=NAVY)
     rec = '+'.join(f'C{rows_of[k]}' for k in ('cash_amount', 'credit_card_sampath_amount', 'credit_card_hnb_amount',
-                                              'bank_transfer_amount', 'bank_transfer_2_amount'))
+                                              'bank_transfer_amount', 'bank_transfer_2_amount', 'cash_difference'))
     tc = ws.cell(row=tr, column=3, value=f'={rec}')
     tc.font, tc.number_format, tc.fill, tc.border = Font(bold=True), AMT, fill('E8F3E8'), box
 
