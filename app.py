@@ -27889,7 +27889,8 @@ def xl_payment_submit():
         "SELECT cash_book_account_name AS n FROM cash_book" if pay_by == 'cash'
         else "SELECT bank_bookcol_account_number AS n FROM bank_book") or [])]
     if account not in accounts:
-        return fail(f'"{account}" is not a {pay_by} account in the system - pick it from the list.')
+        return fail(f"That {pay_by} account is not in the system: {account}. Pick one from the dropdown, "
+                    f"or press Load Payables to refresh the list.")
     ids = [int(i) for i, _a in lines]
     marks = ','.join(['%s'] * len(ids))
     invs = {str(r['id']): r for r in (db.execute_query(f"""
@@ -28235,14 +28236,30 @@ Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As
     Loop
     If Mid$(jsonText, p, 1) = """" Then
         p = p + 1
-        q = InStr(p, jsonText, """")
+        q = p
+        ' Walk past \" and \ so a message that itself contains quotes
+        ' is not cut short (that is what showed as just "400 \")
+        Do While q <= Len(jsonText)
+            If Mid$(jsonText, q, 1) = "\" Then
+                q = q + 2
+            ElseIf Mid$(jsonText, q, 1) = """" Then
+                Exit Do
+            Else
+                q = q + 1
+            End If
+        Loop
     Else
         q = p
         Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
             q = q + 1
         Loop
     End If
-    JsonValue = Replace(Mid$(jsonText, p, q - p), "\/", "/")
+    JsonValue = Mid$(jsonText, p, q - p)
+    JsonValue = Replace(JsonValue, "\/", "/")
+    JsonValue = Replace(JsonValue, "\""", """")
+    JsonValue = Replace(JsonValue, "\n", vbCrLf)
+    JsonValue = Replace(JsonValue, "\t", " ")
+    JsonValue = Replace(JsonValue, "\\", "\")
 End Function
 
 Private Function JsonStr(ByVal v As Variant) As String
@@ -32165,14 +32182,30 @@ Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As
     Loop
     If Mid$(jsonText, p, 1) = """" Then
         p = p + 1
-        q = InStr(p, jsonText, """")
+        q = p
+        ' Walk past \" and \ so a message that itself contains quotes
+        ' is not cut short (that is what showed as just "400 \")
+        Do While q <= Len(jsonText)
+            If Mid$(jsonText, q, 1) = "\" Then
+                q = q + 2
+            ElseIf Mid$(jsonText, q, 1) = """" Then
+                Exit Do
+            Else
+                q = q + 1
+            End If
+        Loop
     Else
         q = p
         Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
             q = q + 1
         Loop
     End If
-    JsonValue = Replace(Mid$(jsonText, p, q - p), "\/", "/")
+    JsonValue = Mid$(jsonText, p, q - p)
+    JsonValue = Replace(JsonValue, "\/", "/")
+    JsonValue = Replace(JsonValue, "\""", """")
+    JsonValue = Replace(JsonValue, "\n", vbCrLf)
+    JsonValue = Replace(JsonValue, "\t", " ")
+    JsonValue = Replace(JsonValue, "\\", "\")
 End Function
 
 ' status_ comes back 0 when the server could not be reached (offline)
