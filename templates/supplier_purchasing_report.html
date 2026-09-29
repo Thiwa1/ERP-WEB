@@ -136,7 +136,11 @@
               {% endif %}
             </td>
             {% if show_category %}
-            <td><span style="font-size:.72rem;font-weight:600;color:#5b21b6;background:#f3e8ff;border-radius:6px;padding:.2em .55em;">{{ r.category }}</span></td>
+            <td>
+              <span style="font-size:.72rem;font-weight:600;color:#5b21b6;background:#f3e8ff;border-radius:6px;padding:.2em .55em;"
+                    title="{% if r.category_source == 'supplier' %}From the supplier's Main Category{% elif r.category_source == 'item' %}From the largest item line on this invoice{% else %}Neither the supplier nor the items carry a Main Category{% endif %}">{{ r.category }}</span>
+              {% if r.category_source == 'supplier' %}<i class="fas fa-truck ms-1" style="font-size:.62rem;color:#7c3aed;opacity:.75;" title="Set on the supplier"></i>{% endif %}
+            </td>
             {% endif %}
             <td class="num">{{ r.vat_rate|round(2) }}%</td>
             <td class="num">{{ "{:,.2f}".format(r.gross) }}</td>
@@ -164,4 +168,51 @@
     </div>
   </div>
 </div>
+
+{% if show_category and category_totals %}
+<!-- Purchasing per Main Category. Valued GROSS (VAT inclusive) because that is
+     the figure the management account takes into cost of sales. -->
+<div class="fluent-card mt-3">
+  <div class="card-section-header p-4 pb-2">
+    <div class="section-label"><i class="fas fa-layer-group"></i> Purchasing by Main Category</div>
+    <small class="text-muted" style="font-size:.75rem;">Value taken is <strong>Gross — VAT inclusive</strong>. A supplier's own Main Category decides its invoices; invoices fall back to their item lines only when the supplier has none set.</small>
+  </div>
+  <div class="table-responsive p-3 pt-0">
+    <table class="table table-sm align-middle mb-0">
+      <thead>
+        <tr style="background:#f8f9fa;">
+          <th class="ps-3">Main Category</th>
+          <th class="text-end">Invoices</th>
+          <th class="text-end">Gross (with VAT)</th>
+          <th class="text-end">VAT</th>
+          <th class="text-end pe-3">Net</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in category_totals %}
+        <tr>
+          <td class="ps-3">
+            <span style="font-size:.72rem;font-weight:600;color:#5b21b6;background:#f3e8ff;border-radius:6px;padding:.2em .55em;">{{ c.category }}</span>
+            {% if c.category == '—' %}<small class="text-muted ms-2">no Main Category on the supplier or the items</small>{% endif %}
+          </td>
+          <td class="num">{{ c.invoices }}</td>
+          <td class="num fw-semibold">{{ "{:,.2f}".format(c.gross) }}</td>
+          <td class="num" style="color:#C42B1C;">{{ "{:,.2f}".format(c.vat) }}</td>
+          <td class="num pe-3" style="color:#107C10;">{{ "{:,.2f}".format(c.net) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr style="font-weight:700;background:#f8f9fa;border-top:2px solid #e2e8f0;">
+          <td class="ps-3">Total</td>
+          <td class="num">{{ category_totals|sum(attribute='invoices') }}</td>
+          <td class="num">{{ "{:,.2f}".format(totals.gross) }}</td>
+          <td class="num" style="color:#C42B1C;">{{ "{:,.2f}".format(totals.vat) }}</td>
+          <td class="num pe-3" style="color:#107C10;">{{ "{:,.2f}".format(totals.net) }}</td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+{% endif %}
 {% endblock %}

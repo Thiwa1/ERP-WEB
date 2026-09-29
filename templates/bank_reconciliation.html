@@ -25,6 +25,9 @@
             <a href="/bank_reconciliation/export_xlsx?bank_account={{ selected_account|urlencode }}&rec_date={{ rec_date }}&statement_balance={{ statement_balance }}"
                class="btn btn-outline-success"><i class="fas fa-file-excel me-2"></i>Export Excel</a>
             {% endif %}
+            <a href="{{ url_for('excel_bankrec_workbook', date=rec_date) }}" class="btn btn-warning"
+               title="A workbook of its own that works with no internet - tick offline, save when connected">
+               <i class="fas fa-laptop me-2"></i>Offline Workbook</a>
             <a href="/bulk_upload_gl" class="btn btn-success"><i class="fas fa-robot me-2"></i>Bank Statement AI</a>
             <a href="/bank_reconciliation/history" class="btn btn-outline-primary"><i class="fas fa-history me-2"></i>History &amp; Reports</a>
         </div>

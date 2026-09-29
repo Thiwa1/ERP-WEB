@@ -1376,6 +1376,7 @@ def add_supplier():
             tin = request.form.get('tin_no')
             nic = request.form.get('nic_no')
             default_payment_method = (request.form.get('default_payment_method') or '').strip() or None
+            main_category = (request.form.get('main_category') or '').strip() or None
 
             if not supplier_name or not supplier_code:
                 flash('Supplier Name and Code are required.', 'danger')
@@ -1394,7 +1395,8 @@ def add_supplier():
                         suppliers_credit_fasility=%s, suppliers_teli_1=%s, suppliers_teli_2=%s,
                         suppliers_last_edit_user=%s, suppliers_last_edit_date=%s,
                         suppliers_e_mail=%s, suppliers_vat_regidter_no=%s, suppliers_salution=%s,
-                        suppliers_TIN=%s, suppliers_NIC=%s, suppliers_default_payment_method=%s
+                        suppliers_TIN=%s, suppliers_NIC=%s, suppliers_default_payment_method=%s,
+                        suppliers_main_category=%s
                     WHERE sup_id=%s AND Is_Suplier=1
                 """
                 params_supplier = (
@@ -1404,6 +1406,7 @@ def add_supplier():
                     current_user_pk, current_date,
                     email, vat_no, salutation,
                     tin, nic, default_payment_method,
+                    main_category,
                     supplier_id
                 )
             else:
@@ -1416,8 +1419,9 @@ def add_supplier():
                         supplier_create_date, suppliers_create_user,
                         suppliers_last_edit_user, suppliers_last_edit_date,
                         suppliers_e_mail, suppliers_vat_regidter_no, suppliers_salution,
-                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC, suppliers_default_payment_method
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        Is_Suplier, Is_Customer, suppliers_TIN, suppliers_NIC, suppliers_default_payment_method,
+                        suppliers_main_category
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """
                 params_supplier = (
                     0, supplier_name, supplier_code,
@@ -1426,7 +1430,8 @@ def add_supplier():
                     current_date, current_user_pk,
                     current_user_pk, current_date,
                     email, vat_no, salutation,
-                    1, 0, tin, nic, default_payment_method
+                    1, 0, tin, nic, default_payment_method,
+                    main_category
                 )
 
             try:
@@ -1478,15 +1483,40 @@ def add_supplier():
             SELECT sup_id AS id, supplier_name, supplier_code,
                    suppliers_teli_1, suppliers_teli_2, suppliers_credit_fasility,
                    suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail,
-                   suppliers_default_payment_method
+                   suppliers_default_payment_method, suppliers_main_category
             FROM suppliers
             WHERE Is_Suplier = 1
             ORDER BY supplier_name
         """) or []
     except Exception as e:
         logging.error(f"Error loading suppliers: {e}")
+        try:
+            # Same list without the Main Category column, for a database where the
+            # startup migration hasn't added it yet — better than an empty page.
+            suppliers_list = db.execute_query("""
+                SELECT sup_id AS id, supplier_name, supplier_code,
+                       suppliers_teli_1, suppliers_teli_2, suppliers_credit_fasility,
+                       suppliers_vat_regidter_no, suppliers_TIN, suppliers_NIC, suppliers_e_mail,
+                       suppliers_default_payment_method
+                FROM suppliers
+                WHERE Is_Suplier = 1
+                ORDER BY supplier_name
+            """) or []
+        except Exception as e2:
+            logging.error(f"Error loading suppliers (fallback): {e2}")
 
-    return render_template('add_supplier.html', salutations=salutations, suppliers_list=suppliers_list)
+    # Same list the inventory item screen offers, so a supplier and an item
+    # can never be tagged with categories that don't match.
+    main_categories = []
+    try:
+        main_categories = db.execute_query(
+            "SELECT main_catogory FROM inventory_carogory WHERE main_catogory IS NOT NULL AND main_catogory != ''"
+            " AND (dis_continue_main IS NULL OR dis_continue_main = 0) ORDER BY main_catogory") or []
+    except Exception as e:
+        logging.error(f"Error loading main categories: {e}")
+
+    return render_template('add_supplier.html', salutations=salutations, suppliers_list=suppliers_list,
+                           main_categories=main_categories)
 
 @app.route('/add_salutation', methods=['POST'])
 @login_required
@@ -6816,7 +6846,7 @@ def _supplier_purchasing_rows(from_date, to_date, supplier, item=None):
         SELECT s.suppliers_invoice_date AS inv_date, sup.supplier_name AS supplier,
                s.suppliers_invoice_number AS invoice_no, s.suppliers_invoice_total_oustanding AS gross,
                s.suppliers_VAT_rate AS vat_rate, s.suppliers_invoice_JV AS jv,
-               jv.jv_user_code AS jv_user_code
+               jv.jv_user_code AS jv_user_code, sup.suppliers_main_category AS supplier_category
         FROM suppliers_invoice_data s
         LEFT JOIN jv_numbers jv ON s.suppliers_invoice_JV = jv.jv_id
         LEFT JOIN suppliers sup ON s.suppliers_invoice_buinding_supplier = sup.sup_id
@@ -6831,7 +6861,15 @@ def _supplier_purchasing_rows(from_date, to_date, supplier, item=None):
         params.append(item)
     q += " ORDER BY s.suppliers_invoice_date DESC, s.suppliers_invoice_JV DESC"
 
-    rows = db.execute_query(q, tuple(params)) or []
+    try:
+        rows = db.execute_query(q, tuple(params)) or []
+    except Exception:
+        # suppliers.suppliers_main_category isn't on this database yet (the startup
+        # migration couldn't run — e.g. the DB user has no ALTER right). Drop the
+        # column from the SELECT and carry on with the item-line category alone,
+        # so the report and the Management Account still open.
+        logging.warning("suppliers_main_category missing — supplier categories ignored until the column is added")
+        rows = db.execute_query(q.replace(", sup.suppliers_main_category AS supplier_category", ""), tuple(params)) or []
     categories = _invoices_main_category([r['jv'] for r in rows])
     for r in rows:
         gross = float(r['gross'] or 0)
@@ -6847,7 +6885,21 @@ def _supplier_purchasing_rows(from_date, to_date, supplier, item=None):
         r['net'] = round(net, 2)
         r['vat_rate'] = vat_rate
         r['is_grn'] = r.get('jv_user_code') == 'JV FROM GRN'
-        r['category'] = categories.get(r['jv']) or '—'
+        # The supplier's own Main Category decides the invoice — a vegetable
+        # supplier's invoice is kitchen whether or not item lines were entered.
+        # Only when the supplier has none set do we fall back to the biggest
+        # item line on the invoice (the old behaviour).
+        supplier_cat = (r.get('supplier_category') or '').strip()
+        item_cat = categories.get(r['jv'])
+        if supplier_cat:
+            r['category'] = supplier_cat
+            r['category_source'] = 'supplier'
+        elif item_cat:
+            r['category'] = item_cat
+            r['category_source'] = 'item'
+        else:
+            r['category'] = '—'
+            r['category_source'] = ''
 
     totals = {
         'gross': sum(r['gross'] for r in rows),
@@ -6855,6 +6907,27 @@ def _supplier_purchasing_rows(from_date, to_date, supplier, item=None):
         'net': sum(r['net'] for r in rows),
     }
     return rows, totals
+
+
+def _purchasing_category_totals(rows):
+    """Purchasing per Main Category. The value taken is GROSS — the
+    VAT-inclusive invoice value — because that is what the management
+    account charges to cost of sales; VAT/Net are carried alongside for
+    reference. Biggest category first, '—' (not categorised) last."""
+    buckets = {}
+    for r in rows:
+        cat = r.get('category') or '—'
+        b = buckets.setdefault(cat, {'category': cat, 'invoices': 0, 'gross': 0.0, 'vat': 0.0, 'net': 0.0})
+        b['invoices'] += 1
+        b['gross'] += r['gross']
+        b['vat'] += r['vat']
+        b['net'] += r['net']
+    out = sorted(buckets.values(), key=lambda b: (b['category'] == '—', -b['gross']))
+    for b in out:
+        b['gross'] = round(b['gross'], 2)
+        b['vat'] = round(b['vat'], 2)
+        b['net'] = round(b['net'], 2)
+    return out
 
 
 @app.route('/supplier_purchasing_report')
@@ -6877,6 +6950,7 @@ def supplier_purchasing_report():
 
     rows, totals = _supplier_purchasing_rows(from_date, to_date, supplier, item)
     item_suppliers = _item_supplier_summary(from_date, to_date, item)
+    category_totals = _purchasing_category_totals(rows) if show_category else []
 
     if download == 'csv':
         si = io.StringIO()
@@ -6889,6 +6963,13 @@ def supplier_purchasing_report():
                              f"{r['gross']:.2f}", f"{r['vat']:.2f}", f"{r['net']:.2f}"])
             cw.writerow([])
             cw.writerow(['', '', '', '', 'Total', f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
+            cw.writerow([])
+            cw.writerow(['Purchasing by Main Category (Gross = VAT inclusive)'])
+            cw.writerow(['Main Category', 'Invoices', 'Gross (with VAT)', 'VAT', 'Net'])
+            for c in category_totals:
+                cw.writerow([c['category'], c['invoices'], f"{c['gross']:.2f}", f"{c['vat']:.2f}", f"{c['net']:.2f}"])
+            cw.writerow(['Total', sum(c['invoices'] for c in category_totals),
+                         f"{totals['gross']:.2f}", f"{totals['vat']:.2f}", f"{totals['net']:.2f}"])
         else:
             cw.writerow(['Invoice Date', 'Supplier', 'Invoice No', 'VAT Rate %', 'Gross', 'VAT', 'Net'])
             for r in rows:
@@ -6912,7 +6993,8 @@ def supplier_purchasing_report():
         "SELECT inventoy_name AS name FROM inventoy_items WHERE active = 1 ORDER BY inventoy_name") or []
     return render_template('supplier_purchasing_report.html', rows=rows, totals=totals,
                            from_date=from_date, to_date=to_date, supplier=supplier, suppliers=suppliers,
-                           show_category=show_category, item=item, items=items, item_suppliers=item_suppliers)
+                           show_category=show_category, item=item, items=items, item_suppliers=item_suppliers,
+                           category_totals=category_totals)
 
 
 @app.route('/supplier_purchasing_report/export_xlsx')
@@ -6977,6 +7059,20 @@ def supplier_purchasing_report_export_xlsx():
             m.fill = PatternFill('solid', fgColor='E3F2FD')
             m.alignment = Alignment(horizontal='right')
         row += 1
+    if show_category:
+        # Purchasing per Main Category, valued GROSS (VAT inclusive) — the
+        # figure the management account takes into cost of sales.
+        category_totals = _purchasing_category_totals(rows)
+        if category_totals:
+            row += 1  # blank row
+            row = xl.section_row(ws, row, ncols, 'PURCHASING BY MAIN CATEGORY (GROSS — VAT INCLUSIVE)',
+                                 color=xl.INDIGO, bg='EEF2FF')
+            row = xl.header_row(ws, row, ['Main Category', 'Invoices', 'Gross (with VAT)', 'VAT', 'Net'])
+            for c in category_totals:
+                row = xl.data_row(ws, row, [c['category'], c['invoices'], c['gross'], c['vat'], c['net']],
+                                  num_cols=(2, 3, 4, 5))
+            row = xl.data_row(ws, row, ['TOTAL', sum(c['invoices'] for c in category_totals),
+                                        totals['gross'], totals['vat'], totals['net']], num_cols=(2, 3, 4, 5))
     if item and item_suppliers:
         row += 1  # blank row
         row = xl.section_row(ws, row, ncols, f'SUPPLIERS FOR: {item}', color=xl.INDIGO, bg='EEF2FF')
@@ -15938,6 +16034,14 @@ def run_schema_migrations(target_db_conn=None):
             logging.info("Migrating: Adding suppliers_NIC to suppliers")
             cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_NIC VARCHAR(20) NULL")
 
+        # Main Category on the supplier itself. Purchasing is classified by the
+        # supplier's category first (a vegetable supplier is always kitchen),
+        # and only falls back to the item lines when it isn't set — see
+        # _supplier_purchasing_rows.
+        if 'suppliers_main_category' not in sup_columns:
+            logging.info("Migrating: Adding suppliers_main_category to suppliers")
+            cursor.execute("ALTER TABLE suppliers ADD COLUMN suppliers_main_category VARCHAR(100) NULL")
+
         # 5b. Company Table (VAT Registered)
         cursor.execute("SHOW COLUMNS FROM company")
         comp_columns = [row[0] for row in cursor.fetchall()]
@@ -22478,10 +22582,49 @@ def _mgmt_compute(period_raw):
             sales_pct.append({'label': l['label'], 'section': sec, 'amount': l['amount'],
                               'pct': (l['amount'] / t['sales'] * 100) if t['sales'] else 0})
 
+    # Supporting schedule behind Note 3: every supplier invoice of the month with
+    # its Main Category, and which Note 3 purchase line each category feeds, so the
+    # purchases figure can be checked back to the invoices it came from. Values are
+    # GROSS (VAT inclusive) — the same basis the purchase lines above are built on.
+    cat_lines = {}
+    for ln in lines:
+        for s in ln['sources']:
+            if s['source_type'] != 'PURCH':
+                continue
+            c = str(s['purchase_category'] or '').strip().lower()
+            if c:
+                cat_lines.setdefault(c, []).append(
+                    {'label': ln['label'], 'section': ln['section'],
+                     'sign': -1 if int(s['sign'] or 1) < 0 else 1})
+    buckets = {}
+    for r in prow:
+        k = str(r['category'] or '').strip().lower()
+        b = buckets.setdefault(k, {'category': r['category'] or '—', 'invoices': 0, 'gross': 0.0})
+        b['invoices'] += 1
+        b['gross'] += float(r['gross'] or 0)
+    purch_cats = []
+    for k, b in buckets.items():
+        b['gross'] = round(b['gross'], 2)
+        b['lines'] = cat_lines.get(k, [])
+        b['in_cogs'] = bool(b['lines'])
+        purch_cats.append(b)
+    purch_cats.sort(key=lambda b: (not b['in_cogs'], -b['gross']))
+    purchasing = {
+        'categories': purch_cats,
+        'invoices': prow,
+        'total': round(sum(b['gross'] for b in purch_cats), 2),
+        'in_cogs': round(sum(b['gross'] for b in purch_cats if b['in_cogs']), 2),
+        'left_out': round(sum(b['gross'] for b in purch_cats if not b['in_cogs']), 2),
+        'note3': round(t['purch_bar'] + t['purch_food'] + t['purch_hk'], 2),
+    }
+    # Anything left over is a purchase line built from a GL account rather than
+    # from supplier invoices — worth showing rather than hiding.
+    purchasing['gl_added'] = round(purchasing['note3'] - purchasing['in_cogs'], 2)
+
     return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
             'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
             'unmapped': unmapped, 'ignored': ignored, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
-            'sales_pct': sales_pct}
+            'sales_pct': sales_pct, 'purchasing': purchasing}
 
 
 @app.route('/management_account', methods=['GET'])
@@ -22766,7 +22909,7 @@ def management_account_print():
     cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
     prev = _mgmt_compute(cur['prev_period'])
     part = request.args.get('part') or 'pl'
-    parts = ['pl', 'variance', 'sales', 'notes', 'note3', 'pct', 'pie', 'day'] if part == 'all' else [part]
+    parts = ['pl', 'variance', 'sales', 'notes', 'note3', 'purch', 'pct', 'pie', 'day'] if part == 'all' else [part]
     return render_template('management_account_print.html', cur=cur, prev=prev, parts=parts,
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
                            pie_items=_mgmt_pie_items(cur),
@@ -22870,6 +23013,36 @@ def _mgmt_export_book(cur, prev):
     row = xl.item_row(ws, row, 'Cost %', [t['cost_pct_bar'] or 0, t['cost_pct_food'] or 0, 0])
     xl.finish(ws, 4)
 
+    # Supporting schedule for Note 3: the supplier invoices the purchases figure
+    # is made of, by Main Category, valued GROSS (VAT inclusive).
+    p = cur.get('purchasing') or {}
+    ws = wb.create_sheet('Purchasing (Note 3)')
+    row = xl.title_block(ws, 5, company, 'SUPPLIER PURCHASING - SUPPORTING SCHEDULE FOR NOTE 3', cur['month_label'])
+    row = xl.header_row(ws, row, ['Main Category', 'Invoices', 'Gross (with VAT)', 'Charged to', ''])
+    for c in p.get('categories', []):
+        charged = ', '.join(('-' if l['sign'] < 0 else '') + l['label'] for l in c['lines']) if c['in_cogs'] \
+            else 'NOT in Cost of Sales'
+        row = xl.data_row(ws, row, [c['category'], c['invoices'], c['gross'], charged, ''], num_cols=(2, 3))
+    row = xl.total_row(ws, row, 'Total purchases from suppliers', [len(p.get('invoices', [])), p.get('total', 0)])
+    row += 1
+    row = xl.section_row(ws, row, 5, 'CROSS-CHECK AGAINST NOTE 3', color=xl.INDIGO, bg='EEF2FF')
+    # Amounts sit in column C so they line up under Gross above.
+    for label, value in (('Categories charged to Note 3 purchases', p.get('in_cogs', 0)),
+                         ('Added to Note 3 from GL accounts (not supplier invoices)', p.get('gl_added', 0)),
+                         ('Note 3 purchases (Bar + Food + Housekeeping)', p.get('note3', 0)),
+                         ('Supplier purchases left OUT of Cost of Sales', p.get('left_out', 0))):
+        row = xl.data_row(ws, row, [label, '', value], num_cols=(3,))
+    row += 1
+    row = xl.section_row(ws, row, 5, 'INVOICES BEHIND THESE FIGURES', color=xl.INDIGO, bg='EEF2FF')
+    row = xl.header_row(ws, row, ['Date', 'Supplier', 'Invoice No', 'Main Category', 'Gross (with VAT)'])
+    for r in p.get('invoices', []):
+        row = xl.data_row(ws, row, [str(r['inv_date']), r['supplier'] or '', r['invoice_no'] or '',
+                                    r['category'], r['gross']], num_cols=(5,))
+    row = xl.data_row(ws, row, ['TOTAL', '', '', '', p.get('total', 0)], num_cols=(5,))
+    xl.finish(ws, 5, first_col_width=14, num_col_width=16)
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['D'].width = 26
+
     ws = wb.create_sheet('Sales Percentage')
     row = xl.title_block(ws, 3, company, 'SALES PERCENTAGE ANALYSIS', cur['month_label'])
     row = xl.header_row(ws, row, ['Sales Location', 'Revenue', '%'])
@@ -22926,6 +23099,74 @@ def _mgmt_export_book(cur, prev):
     ws.page_setup.fitToWidth = 1
     ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    # ---- Note 3 Purchases: the supplier invoices behind the purchases figure
+    p = cur.get('purchasing') or {}
+    ws = wb.create_sheet('Note 3 Purchases')
+    heads = ['Date', 'Supplier', 'Invoice No', 'Main Category', 'In Note 3?', 'JV',
+             'Net (excl. VAT)', 'VAT', 'Gross (incl. VAT)']
+    ncols = len(heads)
+    row = xl.title_block(ws, ncols, company, 'NOTE 3 - PURCHASES, SUPPLIER INVOICES',
+                         f"{cur['month_label']}  -  gross is the basis used in Note 3")
+    # Summary by category first, so the figure can be traced without scrolling
+    row = xl.section_row(ws, row, ncols, 'By Main Category')
+    row = xl.header_row(ws, row, ['Main Category', 'Invoices', 'In Note 3?', '', '', '', 'Net', 'VAT', 'Gross'])
+    cat_totals = {}
+    for inv in (p.get('invoices') or []):
+        k = str(inv.get('category') or '').strip().lower()
+        b = cat_totals.setdefault(k, {'net': 0.0, 'vat': 0.0, 'gross': 0.0})
+        b['net'] += float(inv.get('net') or 0)
+        b['vat'] += float(inv.get('vat') or 0)
+        b['gross'] += float(inv.get('gross') or 0)
+    for c in (p.get('categories') or []):
+        k = str(c.get('category') or '').strip().lower()
+        tot = cat_totals.get(k, {'net': 0.0, 'vat': 0.0, 'gross': c.get('gross') or 0})
+        row = xl.data_row(ws, row, [c.get('category') or '-', c.get('invoices') or 0,
+                                    'Yes' if c.get('in_cogs') else 'No', '', '', '',
+                                    tot['net'], tot['vat'], tot['gross']], num_cols=(7, 8, 9))
+    row = xl.total_row(ws, row, 'Total purchases from supplier invoices',
+                       [sum(b['net'] for b in cat_totals.values()),
+                        sum(b['vat'] for b in cat_totals.values()),
+                        sum(b['gross'] for b in cat_totals.values())])
+    # push those three totals under Net / VAT / Gross
+    for i, v in enumerate((sum(b['net'] for b in cat_totals.values()),
+                           sum(b['vat'] for b in cat_totals.values()),
+                           sum(b['gross'] for b in cat_totals.values())), start=7):
+        c = ws.cell(row=row - 1, column=i, value=float(v))
+        c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+    for i in (2, 3, 4, 5, 6):
+        ws.cell(row=row - 1, column=i, value=None)
+    row += 1
+    row = xl.item_row(ws, row, 'Of which is in Note 3 (categories mapped to purchases)', [p.get('in_cogs') or 0])
+    row = xl.item_row(ws, row, 'Left out of Note 3 (categories not mapped)', [p.get('left_out') or 0])
+    row = xl.item_row(ws, row, 'Added to Note 3 from GL accounts (no supplier invoice)', [p.get('gl_added') or 0])
+    row = xl.total_row(ws, row, 'Note 3 purchases (Bar + Food + Housekeeping)', [p.get('note3') or 0])
+    row += 1
+
+    row = xl.section_row(ws, row, ncols, 'Invoice by invoice')
+    row = xl.header_row(ws, row, heads)
+    first_inv_row = row
+    in_note3 = {str(c.get('category') or '').strip().lower() for c in (p.get('categories') or []) if c.get('in_cogs')}
+    for inv in sorted(p.get('invoices') or [], key=lambda r: (str(r.get('category') or ''), str(r.get('inv_date') or ''))):
+        row = xl.data_row(ws, row, [
+            inv.get('inv_date'), inv.get('supplier') or '', inv.get('invoice_no') or '',
+            inv.get('category') or '-',
+            'Yes' if str(inv.get('category') or '').strip().lower() in in_note3 else 'No',
+            inv.get('jv') or '', inv.get('net') or 0, inv.get('vat') or 0, inv.get('gross') or 0],
+            num_cols=(7, 8, 9))
+    if row > first_inv_row:
+        ws.cell(row=row, column=1, value='TOTAL').font = xl.Font(bold=True)
+        for col, key in ((7, 'net'), (8, 'vat'), (9, 'gross')):
+            c = ws.cell(row=row, column=col,
+                        value=float(sum(float(i.get(key) or 0) for i in (p.get('invoices') or []))))
+            c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+        ws.auto_filter.ref = f'A{first_inv_row - 1}:I{row - 1}'
+    else:
+        ws.cell(row=row, column=1, value='No supplier invoices in this month.')
+    xl.finish(ws, ncols, first_col_width=13, num_col_width=16)
+    ws.column_dimensions['B'].width = 34
+    ws.column_dimensions['D'].width = 22
+    ws.page_setup.orientation = 'landscape'
 
     # ---- Day Summary
     daily = _mgmt_daily(cur)
@@ -30402,6 +30643,99 @@ def xl_inv_grn():
     return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no, 'message': f'Saved as GRN JV {jv_no}.'})
 
 
+def _xl_bankrec_rows(bank_account, rec_date):
+    """Uncleared deposits and payments for one bank account up to a date, the
+    same basis the Bank Reconciliation page uses."""
+    deposits = db.execute_query("""
+        SELECT ed.id, ed.entry_jv AS jv, ed.entry_effective_date AS d, ed.entry_naration AS memo,
+               ed.enty_values_DR AS amount, MIN(bbr.bank_book_chque_no) AS cheque, ed.entry_save AS ticked
+        FROM entry_details ed
+        LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+        WHERE ed.account_name = %s AND ed.enty_values_DR > 0
+          AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL) AND ed.entry_deleted = 0
+          AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+        GROUP BY ed.id, ed.entry_jv, ed.entry_effective_date, ed.entry_naration, ed.enty_values_DR, ed.entry_save
+        ORDER BY ed.entry_effective_date, ed.id
+    """, (bank_account, rec_date)) or []
+    payments = db.execute_query("""
+        SELECT ed.id, ed.entry_jv AS jv, ed.entry_effective_date AS d, ed.entry_naration AS memo,
+               ed.enty_values_CR AS amount, MIN(bbr.bank_book_chque_no) AS cheque, ed.entry_save AS ticked
+        FROM entry_details ed
+        LEFT JOIN bank_book_recod bbr ON ed.entry_jv = bbr.jv_numbers_jv_id
+        WHERE ed.account_name = %s AND ed.enty_values_CR > 0
+          AND (ed.entry_Rec = 0 OR ed.entry_Rec IS NULL) AND ed.entry_deleted = 0
+          AND DATE(COALESCE(ed.entry_effective_date, ed.entry_create_date)) <= %s
+        GROUP BY ed.id, ed.entry_jv, ed.entry_effective_date, ed.entry_naration, ed.enty_values_CR, ed.entry_save
+        ORDER BY ed.entry_effective_date, ed.id
+    """, (bank_account, rec_date)) or []
+    book = db.execute_query("""
+        SELECT COALESCE(SUM(enty_values_DR), 0) - COALESCE(SUM(enty_values_CR), 0) AS bal
+        FROM entry_details
+        WHERE account_name = %s AND DATE(COALESCE(entry_effective_date, entry_create_date)) <= %s
+          AND entry_deleted = 0
+    """, (bank_account, rec_date)) or [{'bal': 0}]
+    return deposits, payments, round(float(book[0]['bal'] or 0), 2)
+
+
+@app.route('/api/xl/bankrec', methods=['GET'])
+def xl_bankrec():
+    """Uncleared bank items for the offline Bank Reconciliation workbook.
+    With no ?account= it sends every bank account, so the workbook can be
+    used away from the internet."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    rec_date = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    wanted = (request.args.get('account') or '').strip()
+    accounts = [str(a['n']).strip() for a in (db.execute_query(
+        "SELECT bank_bookcol_account_number AS n FROM bank_book ORDER BY bank_bookcol_account_number") or [])
+        if a['n'] is not None]
+    if wanted:
+        accounts = [a for a in accounts if a == wanted]
+    rows = [['INFO', rec_date, _company_display_name()]]
+    for acc in accounts:
+        rows.append(['ACC', acc])
+    for acc in accounts:
+        deposits, payments, book = _xl_bankrec_rows(acc, rec_date)
+        rows.append(['BOOK', acc, book])
+        for kind, items in (('DEP', deposits), ('PAY', payments)):
+            for it in items:
+                rows.append([kind, acc, it['id'], _xl_day(it['d']), it['jv'] or '', it['cheque'] or '',
+                             (it['memo'] or '')[:180], round(float(it['amount'] or 0), 2),
+                             'Yes' if it['ticked'] else 'No'])
+    return _xl_tsv(rows)
+
+
+@app.route('/api/xl/bankrec/save', methods=['POST'])
+def xl_bankrec_save():
+    """Save the ticks made offline (the page's Save Progress), or finish the
+    reconciliation (its Process), through the page's own handler."""
+    user_pk, err = _xl_auth('Access_Accounting')
+    if err:
+        return err
+    b = _xl_body()
+    account = str(b.get('account') or '').strip()
+    if not account:
+        return _xl_json({'ok': False, 'message': 'Pick the bank account first.'}, 400)
+    rec_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    action = 'process' if str(b.get('action')).lower() == 'process' else 'save'
+    from werkzeug.datastructures import MultiDict
+    form = MultiDict({'action': action, 'bank_account': account, 'rec_date': rec_date,
+                      'statement_balance': str(round(parse_float(b.get('statement_balance')), 2))})
+    for it in b.get('items') or []:
+        i = str(it.get('id') or '').strip()
+        if not i.isdigit():
+            continue
+        side = 'deposits' if str(it.get('kind')).upper() == 'DEP' else 'payments'
+        if str(it.get('cleared') or '').strip().lower() in ('yes', 'y', '1', 'true'):
+            form.add(f'cleared_{side}[]', f'{i}|{rec_date}')
+        else:
+            form.add(f'uncleared_{side}[]', i)
+    ok, msgs = _xl_run_view(process_reconciliation, '/bank_reconciliation/process', form)
+    return _xl_json({'ok': ok, 'message': ' '.join(msgs) or ('Done.' if ok else 'Nothing was saved.')},
+                    200 if ok else 400)
+
+
 @app.route('/api/xl/inv/adjust', methods=['POST'])
 def xl_inv_adjust():
     """Bring the system quantity into line with a physical count. Each line
@@ -32818,6 +33152,607 @@ def excel_ready_workbook_macro():
     resp = make_response(code.encode('cp1252', errors='replace'))
     resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinReady.bas'
+    return resp
+
+
+
+
+# ================================================================
+# ── BANK RECONCILIATION WORKBOOK ────────────────────────────────
+# A workbook of its own for ticking off the bank statement. It comes
+# filled with every bank account's uncleared deposits and payments,
+# so it works with no internet: tick offline, then Save Ticks (or
+# Process) when connected. Same basis as the web page.
+# ================================================================
+
+_XL_BANKREC_VBA_CODE = r'''Attribute VB_Name = "SuwinBankRec"
+Option Explicit
+
+' ===================================================================
+'  Suwin ERP - Bank Reconciliation (works offline)
+'  Tick what appears on the bank statement, type the statement
+'  balance, and the difference is worked out as you go.
+' ===================================================================
+
+Private Const FIRST_ROW As Long = 12     ' first item line on the Bank Rec sheet
+
+Private Function Sh(ByVal nm As String) As Worksheet
+    Set Sh = ThisWorkbook.Worksheets(nm)
+End Function
+
+Private Function SetupSheet() As Worksheet
+    Set SetupSheet = ThisWorkbook.Worksheets("Setup")
+End Function
+
+Private Function ServerUrl() As String
+    ServerUrl = Trim$(CStr(SetupSheet().Range("B3").Value))
+    Do While Right$(ServerUrl, 1) = "/"
+        ServerUrl = Left$(ServerUrl, Len(ServerUrl) - 1)
+    Loop
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+End Function
+
+Private Sub SayResult(ByVal msg As String)
+    SetupSheet().Range("B6").Value = Format$(Now, "yyyy-mm-dd hh:nn") & "   " & msg
+    Sh("Bank Rec").Range("H3").Value = msg
+    Application.StatusBar = False
+End Sub
+
+Private Function LastRow() As Long
+    Dim ws As Worksheet
+    Set ws = Sh("Bank Rec")
+    LastRow = ws.Cells(ws.Rows.Count, 2).End(-4162).Row
+    If LastRow < FIRST_ROW Then LastRow = FIRST_ROW - 1
+End Function
+
+Private Function Ymd(ByVal v As Variant) As String
+    If IsDate(v) Then Ymd = Format$(CDate(v), "yyyy-mm-dd") Else Ymd = Trim$(CStr(v))
+End Function
+
+Private Function SafeDate(ByVal s As String) As Variant
+    On Error GoTo Bad
+    SafeDate = Empty
+    s = Trim$(s)
+    If Len(s) < 10 Then Exit Function
+    If Not (IsNumeric(Left$(s, 4)) And IsNumeric(Mid$(s, 6, 2)) And IsNumeric(Mid$(s, 9, 2))) Then Exit Function
+    SafeDate = DateSerial(CInt(Left$(s, 4)), CInt(Mid$(s, 6, 2)), CInt(Mid$(s, 9, 2)))
+    Exit Function
+Bad:
+    SafeDate = Empty
+End Function
+
+Private Function JsonStr(ByVal v As Variant) As String
+    Dim s As String
+    s = CStr(v)
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCrLf, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    JsonStr = """" & s & """"
+End Function
+
+Private Function JsonNum(ByVal v As Variant) As String
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        JsonNum = "0"
+    ElseIf IsNumeric(v) Then
+        JsonNum = Replace(CStr(CDbl(v)), ",", ".")
+    Else
+        JsonNum = "0"
+    End If
+End Function
+
+Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
+    Jq = """" & key & """:" & jsonValue
+End Function
+
+Private Function AddItem(ByVal list_ As String, ByVal fields As String) As String
+    If list_ <> "" Then list_ = list_ & ","
+    AddItem = list_ & "{" & fields & "}"
+End Function
+
+Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim p As Long, q As Long, needle As String
+    needle = """" & keyName & """:"
+    p = InStr(1, jsonText, needle, vbTextCompare)
+    If p = 0 Then Exit Function
+    p = p + Len(needle)
+    Do While p <= Len(jsonText) And Mid$(jsonText, p, 1) = " "
+        p = p + 1
+    Loop
+    If Mid$(jsonText, p, 1) = """" Then
+        p = p + 1
+        q = p
+        Do While q <= Len(jsonText)
+            If Mid$(jsonText, q, 1) = "\" Then
+                q = q + 2
+            ElseIf Mid$(jsonText, q, 1) = """" Then
+                Exit Do
+            Else
+                q = q + 1
+            End If
+        Loop
+    Else
+        q = p
+        Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
+            q = q + 1
+        Loop
+    End If
+    JsonValue = Mid$(jsonText, p, q - p)
+    JsonValue = Replace(JsonValue, "\/", "/")
+    JsonValue = Replace(JsonValue, "\""", """")
+    JsonValue = Replace(JsonValue, "\\", "\")
+End Function
+
+Private Function Http(ByVal method As String, ByVal path As String, ByVal body As String, ByRef status_ As Long) As String
+    Dim xh As Object
+    status_ = 0
+    If ApiKey() = "" Then Exit Function
+    On Error GoTo Offline
+    Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.setTimeouts 8000, 8000, 20000, 60000
+    xh.Open method, ServerUrl() & path, False
+    xh.setRequestHeader "X-API-Key", ApiKey()
+    xh.setRequestHeader "Content-Type", "application/json"
+    If method = "POST" Then xh.send body Else xh.send
+    status_ = xh.Status
+    Http = xh.responseText
+    Exit Function
+Offline:
+    status_ = 0
+End Function
+
+Private Function ServerError(ByVal status_ As Long, ByVal reply As String) As String
+    Dim m As String
+    m = JsonValue(reply, "message")
+    If m = "" Then m = JsonValue(reply, "error")
+    If m = "" Then m = "HTTP " & status_
+    ServerError = m
+End Function
+
+' ---- Buttons ---------------------------------------------------------------
+Public Sub SetApiKey()
+    Dim k As String
+    k = Trim$(InputBox("Paste the API key from Settings > Excel Data Entry on the website." & vbCrLf & vbCrLf & _
+                       "The key is only needed to Sync and to Save - ticking works offline.", _
+                       "Suwin ERP - API key", ApiKey()))
+    If k = "" Then Exit Sub
+    SetupSheet().Range("B4").Value = k
+    SayResult "API key saved"
+End Sub
+
+Public Sub SyncFromSystem()
+    Dim r As String, st As Long, rows_ As Variant, cols As Variant, i As Long, rw As Long
+    Dim ws As Worksheet, lst As Worksheet, n As Long, na As Long, recDate As String
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    Set ws = Sh("Bank Rec")
+    recDate = Ymd(ws.Range("C4").Value)
+    If recDate = "" Then recDate = Format$(Date, "yyyy-mm-dd")
+    Application.StatusBar = "Suwin ERP: getting the uncleared bank items..."
+    r = Http("GET", "/api/xl/bankrec?format=tsv&date=" & recDate, "", st)
+    If st = 0 Then
+        Application.StatusBar = False
+        SayResult "Offline - the list was left as it is"
+        MsgBox "You are offline, so nothing was changed. Keep ticking - press Sync when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        Application.StatusBar = False
+        SayResult "Sync failed: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If CountTicks() > 0 Then
+        If MsgBox("You have ticks that were not saved yet." & vbCrLf & vbCrLf & _
+                  "Sync replaces the list and they are lost. Press No, then Save Ticks first.", _
+                  vbYesNo + vbExclamation, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    Application.ScreenUpdating = False
+    Set lst = Sh("Lists")
+    lst.Range("A2:B5000").ClearContents
+    ws.Range("B" & FIRST_ROW & ":J20000").ClearContents
+    rw = FIRST_ROW
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            Select Case cols(0)
+            Case "ACC"
+                na = na + 1
+                lst.Cells(1 + na, 1).Value = "'" & cols(1)
+            Case "BOOK"
+                lst.Cells(1 + na, 2).Value = Val(cols(2))       ' book balance for that account
+            Case "DEP", "PAY"
+                ' kind | account | id | date | jv | cheque | memo | amount | ticked
+                ws.Cells(rw, 2).Value = cols(2)                  ' Id
+                ws.Cells(rw, 3).Value = "'" & cols(1)            ' Account
+                ws.Cells(rw, 4).Value = IIf(cols(0) = "DEP", "Deposit", "Payment")
+                ws.Cells(rw, 5).Value = SafeDate(cols(3))
+                ws.Cells(rw, 6).Value = "'" & cols(4)            ' JV
+                ws.Cells(rw, 7).Value = "'" & cols(5)            ' Cheque
+                ws.Cells(rw, 8).Value = cols(6)                  ' Narration
+                ws.Cells(rw, 9).Value = Val(cols(7))             ' Amount
+                ws.Cells(rw, 10).Value = cols(8)                 ' Cleared as loaded
+                rw = rw + 1
+                n = n + 1
+            End Select
+        End If
+    Next i
+    SetupSheet().Range("B5").Value = Format$(Now, "yyyy-mm-dd hh:nn")
+    Application.ScreenUpdating = True
+    SayResult "Synced - " & n & " uncleared item(s) on " & recDate
+End Sub
+
+Private Function CountTicks() As Long
+    Dim ws As Worksheet, rw As Long, n As Long
+    Set ws = Sh("Bank Rec")
+    For rw = FIRST_ROW To LastRow()
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" Then
+            If LCase$(Trim$(CStr(ws.Cells(rw, 11).Value))) = "yes" Then n = n + 1
+        End If
+    Next rw
+    CountTicks = n
+End Function
+
+Private Function ItemsJson(ByRef n As Long) As String
+    Dim ws As Worksheet, rw As Long, acc As String, s As String
+    Set ws = Sh("Bank Rec")
+    acc = Trim$(CStr(ws.Range("C3").Value))
+    For rw = FIRST_ROW To LastRow()
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" And Trim$(CStr(ws.Cells(rw, 3).Value)) = acc Then
+            s = AddItem(s, Jq("id", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                Jq("kind", JsonStr(IIf(Trim$(CStr(ws.Cells(rw, 4).Value)) = "Deposit", "DEP", "PAY"))) & "," & _
+                Jq("cleared", JsonStr(ws.Cells(rw, 11).Value)))
+            n = n + 1
+        End If
+    Next rw
+    ItemsJson = s
+End Function
+
+Private Sub SendTicks(ByVal action As String)
+    Dim ws As Worksheet, items As String, body As String, r As String, st As Long, n As Long, acc As String
+    Set ws = Sh("Bank Rec")
+    acc = Trim$(CStr(ws.Range("C3").Value))
+    If acc = "" Then
+        MsgBox "Pick the bank account in C3 first.", vbExclamation, "Suwin ERP"
+        ws.Range("C3").Select
+        Exit Sub
+    End If
+    items = ItemsJson(n)
+    If items = "" Then
+        MsgBox "No items for " & acc & " - press Sync from System.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If action = "process" Then
+        If MsgBox("Finish the reconciliation for " & acc & " as at " & Ymd(ws.Range("C4").Value) & "?" & vbCrLf & vbCrLf & _
+                  "Ticked items become reconciled and drop off the list.", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    body = "{" & Jq("account", JsonStr(acc)) & "," & Jq("date", JsonStr(Ymd(ws.Range("C4").Value))) & "," & _
+           Jq("statement_balance", JsonNum(ws.Range("C5").Value)) & "," & _
+           Jq("action", JsonStr(action)) & "," & Jq("items", "[" & items & "]") & "}"
+    Application.StatusBar = "Suwin ERP: sending " & n & " item(s)..."
+    r = Http("POST", "/api/xl/bankrec/save", body, st)
+    Application.StatusBar = False
+    If st = 0 Then
+        SayResult "Offline - nothing was sent"
+        MsgBox "You are offline. Your ticks are kept here - try again when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        SayResult "Failed: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+    If action = "process" Then SyncFromSystem
+End Sub
+
+Public Sub SaveTicks()
+    SendTicks "save"
+End Sub
+
+Public Sub ProcessRec()
+    SendTicks "process"
+End Sub
+
+Public Sub TickSelected()
+    Dim ws As Worksheet, c As Range, n As Long
+    Set ws = Sh("Bank Rec")
+    If TypeName(Selection) <> "Range" Then Exit Sub
+    For Each c In Intersect(Selection.EntireRow, ws.Range("K:K"))
+        If c.Row >= FIRST_ROW And Trim$(CStr(ws.Cells(c.Row, 2).Value)) <> "" Then
+            c.Value = "Yes"
+            n = n + 1
+        End If
+    Next c
+    SayResult n & " item(s) ticked"
+End Sub
+
+Public Sub UntickSelected()
+    Dim ws As Worksheet, c As Range, n As Long
+    Set ws = Sh("Bank Rec")
+    If TypeName(Selection) <> "Range" Then Exit Sub
+    For Each c In Intersect(Selection.EntireRow, ws.Range("K:K"))
+        If c.Row >= FIRST_ROW And Trim$(CStr(ws.Cells(c.Row, 2).Value)) <> "" Then
+            c.Value = "No"
+            n = n + 1
+        End If
+    Next c
+    SayResult n & " item(s) unticked"
+End Sub
+
+Public Sub GoRec()
+    Sh("Bank Rec").Activate
+    Sh("Bank Rec").Range("C3").Select
+End Sub
+
+Public Sub GoHome()
+    Sh("Home").Activate
+End Sub
+
+Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant, _
+                       Optional ByVal vertical As Boolean = False)
+    Dim ws As Worksheet, i As Long, x As Double, y As Double, btn As Object
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 4) = "xlb_" Then ws.Buttons(i).Delete
+    Next i
+    x = ws.Range(anchor).Left
+    y = ws.Range(anchor).Top + 3
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, y, 132, 28)
+        btn.Name = "xlb_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        If vertical Then y = y + 32 Else x = x + 138
+    Next i
+End Sub
+
+Public Sub AddButtons()
+    PutButtons "Home", "E4", Array("Open Bank Rec", "GoRec", "Sync from System", "SyncFromSystem", _
+                                   "Save Ticks", "SaveTicks", "Set API Key", "SetApiKey"), True
+    PutButtons "Bank Rec", "M1", Array("Save Ticks", "SaveTicks", "Finish (Process)", "ProcessRec", _
+                                       "Sync from System", "SyncFromSystem", "Tick Selected", "TickSelected", _
+                                       "Untick Selected", "UntickSelected", "Home", "GoHome")
+End Sub
+
+Public Sub Auto_Open()
+    On Error Resume Next
+    AddButtons
+    Sh("Home").Activate
+    On Error GoTo 0
+End Sub
+'''
+
+
+@app.route('/excel_bankrec_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Accounting', 'Access_Settings')
+def excel_bankrec_workbook():
+    """Bank Reconciliation as a workbook of its own, filled with every bank
+    account's uncleared items so it works with no internet."""
+    from io import BytesIO
+    try:
+        from openpyxl import Workbook
+        from openpyxl.formatting.rule import FormulaRule
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.workbook.defined_name import DefinedName
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('bank_reconciliation'))
+
+    company = _company_display_name()
+    rec_date = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    NAVY, BLUE, PALE = '1F3864', '0F6CBD', 'EEF3FA'
+    AMT = '#,##0.00'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_fill, head_font = fill(BLUE), Font(bold=True, color='FFFFFF')
+    input_fill = fill('FFF8DC')
+    note_font = Font(italic=True, color='6B7280', size=9)
+    label_font = Font(bold=True, color='1F2937')
+
+    accounts = [str(a['n']).strip() for a in (db.execute_query(
+        "SELECT bank_bookcol_account_number AS n FROM bank_book ORDER BY bank_bookcol_account_number") or [])
+        if a['n'] is not None]
+
+    wb = Workbook()
+
+    def look(ws, tab, freeze=None, landscape=True):
+        ws.sheet_properties.tabColor = tab
+        ws.sheet_view.showGridLines = False
+        if freeze:
+            ws.freeze_panes = freeze
+        ws.page_setup.orientation = 'landscape' if landscape else 'portrait'
+        ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+
+    def banner(ws, title, subtitle, c1, c2):
+        ws.merge_cells(start_row=1, start_column=c1, end_row=1, end_column=c2)
+        ws.merge_cells(start_row=2, start_column=c1, end_row=2, end_column=c2)
+        t = ws.cell(row=1, column=c1, value=title)
+        t.font, t.alignment = Font(bold=True, size=16, color='FFFFFF'), Alignment(vertical='center')
+        s = ws.cell(row=2, column=c1, value=subtitle)
+        s.font = Font(italic=True, color='445566', size=9)
+        for c in range(c1, c2 + 1):
+            ws.cell(row=1, column=c).fill = fill(NAVY)
+            ws.cell(row=2, column=c).fill = fill(PALE)
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 20
+
+    # ---------------- Home ----------------
+    ws = wb.active
+    ws.title = 'Home'
+    look(ws, NAVY, landscape=False)
+    banner(ws, (company + '  -  ' if company else '') + 'Bank Reconciliation',
+           'Tick what is on the bank statement, with no internet. Save Ticks keeps them; Finish reconciles them.', 2, 8)
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 36
+    ws.column_dimensions['C'].width = 40
+    ws.column_dimensions['D'].width = 3
+    for col in 'EFGH':
+        ws.column_dimensions[col].width = 19
+    home = [('Account being reconciled', "='Bank Rec'!C3"),
+            ('As at date', "='Bank Rec'!C4"),
+            ('Balance as per bank statement', "='Bank Rec'!C5"),
+            ('Balance as per books', "='Bank Rec'!C6"),
+            ('Difference (should be 0.00)', "='Bank Rec'!C9"),
+            ('Last result', '')]
+    for i, (label, formula) in enumerate(home, start=4):
+        ws.cell(row=i, column=2, value=label).font = label_font
+        c = ws.cell(row=i, column=3, value=formula)
+        c.border, c.fill = box, fill('F3F4F6')
+        c.font = Font(bold=True, color=NAVY, size=12 if i == 8 else 11)
+        if 'Balance' in label or 'Difference' in label:
+            c.number_format = AMT
+    ws['B11'] = 'How to use it'
+    ws['B11'].font = Font(bold=True, size=12, color=NAVY)
+    for i, text in enumerate([
+        '1.  The uncleared items are already here - it works with no internet.',
+        '2.  On the Bank Rec sheet pick the Account (C3), the date (C4) and type the statement balance (C5).',
+        '3.  Tick Cleared = Yes for every line that appears on the bank statement (Tick Selected does a block).',
+        '4.  Watch the Difference (C9). When it is 0.00 the account agrees with the statement.',
+        '5.  Save Ticks keeps your work in the system without finishing.',
+        '6.  Finish (Process) marks the ticked items reconciled and records the reconciliation.',
+        '',
+        'Only lines for the account in C3 are sent - the other accounts stay as they are.',
+    ], start=12):
+        ws.cell(row=i, column=2, value=text).font = Font(size=10)
+        ws.merge_cells(start_row=i, start_column=2, end_row=i, end_column=3)
+
+    # ---------------- Bank Rec ----------------
+    ws = wb.create_sheet('Bank Rec')
+    look(ws, '107C41', freeze='C12')
+    banner(ws, 'Bank Reconciliation', 'Uncleared deposits and payments. Yellow cells are yours: the account, the '
+           'date, the statement balance and the Cleared ticks.', 2, 11)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJK', (8, 22, 11, 12, 9, 13, 44, 15, 12, 10)):
+        ws.column_dimensions[col].width = w
+
+    dv_acc = DataValidation(type='list', formula1='BankAccounts', allow_blank=True, showErrorMessage=False)
+    dv_yn = DataValidation(type='list', formula1='"Yes,No"', allow_blank=True, showErrorMessage=False)
+    ws.add_data_validation(dv_acc)
+    ws.add_data_validation(dv_yn)
+
+    for rw, label in ((3, 'Bank Account'), (4, 'As at date'), (5, 'Balance as per bank statement')):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        inp = ws.cell(row=rw, column=3)
+        inp.fill, inp.border = input_fill, box
+    dv_acc.add(ws['C3'])
+    ws['C3'] = accounts[0] if accounts else ''
+    ws['C4'] = date.today()
+    ws['C4'].number_format = 'yyyy-mm-dd'
+    ws['C5'].number_format = AMT
+
+    calc = [(6, 'Balance as per books', "=IFERROR(INDEX(Lists!$B:$B,MATCH($C$3,Lists!$A:$A,0)),0)"),
+            (7, 'Add: uncleared deposits (not ticked)',
+                '=SUMIFS($I$12:$I$20000,$C$12:$C$20000,$C$3,$D$12:$D$20000,"Deposit",$K$12:$K$20000,"No")'),
+            (8, 'Less: uncleared payments (not ticked)',
+                '=SUMIFS($I$12:$I$20000,$C$12:$C$20000,$C$3,$D$12:$D$20000,"Payment",$K$12:$K$20000,"No")'),
+            (9, 'Difference (statement + deposits - payments - books)', '=ROUND($C$5+$C$7-$C$8-$C$6,2)')]
+    for rw, label, formula in calc:
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        c = ws.cell(row=rw, column=3, value=formula)
+        c.number_format, c.border = AMT, box
+        c.font = Font(bold=True, color=NAVY, size=12 if rw == 9 else 11)
+        c.fill = fill('E8F3E8' if rw == 9 else 'F3F4F6')
+    ws.conditional_formatting.add('C9', FormulaRule(formula=['ABS($C$9)>0.005'], fill=fill('FDE7E9'),
+                                                    font=Font(bold=True, color='A4262C')))
+    ws['E3'] = 'Ticked so far'
+    ws['E3'].font = note_font
+    ws['F3'] = '=COUNTIFS($C$12:$C$20000,$C$3,$K$12:$K$20000,"Yes")'
+    ws['F3'].font = Font(bold=True, color='107C10')
+
+    heads = ['Id', 'Account', 'Type', 'Date', 'JV', 'Cheque No', 'Narration', 'Amount', 'As loaded', 'Cleared']
+    for i, label in enumerate(heads, start=2):
+        c = ws.cell(row=11, column=i, value=label)
+        c.fill, c.font, c.border = head_fill, head_font, box
+        c.alignment = Alignment(horizontal='center', wrap_text=True)
+    ws.row_dimensions[11].height = 28
+    ws.auto_filter.ref = 'B11:K11'
+
+    rw = 12
+    book_balances = {}
+    for acc in accounts:
+        deposits, payments, book = _xl_bankrec_rows(acc, rec_date)
+        book_balances[acc] = book
+        for kind, items in (('Deposit', deposits), ('Payment', payments)):
+            for it in items:
+                vals = [it['id'], acc, kind, it['d'], str(it['jv'] or ''), str(it['cheque'] or ''),
+                        (it['memo'] or '')[:180], round(float(it['amount'] or 0), 2),
+                        'Yes' if it['ticked'] else 'No']
+                for i, v in enumerate(vals, start=2):
+                    c = ws.cell(row=rw, column=i, value=v)
+                    c.border = box
+                    if i == 5:
+                        c.number_format = 'yyyy-mm-dd'
+                    elif i == 9:
+                        c.number_format = AMT
+                    elif i == 10:
+                        c.font = Font(color='9CA3AF', size=9)
+                tick = ws.cell(row=rw, column=11, value='Yes' if it['ticked'] else 'No')
+                tick.fill, tick.border = input_fill, box
+                dv_yn.add(tick)
+                rw += 1
+    last = max(rw, 13) + 300
+    for extra in range(rw, last):
+        dv_yn.add(ws.cell(row=extra, column=11))
+    ws.conditional_formatting.add(f'B12:K{last}', FormulaRule(formula=['$K12="Yes"'], fill=fill('E8F5E9')))
+
+    # ---------------- Lists / Setup (hidden) ----------------
+    lst = wb.create_sheet('Lists')
+    lst.append(['Bank Account', 'Book balance'])
+    for acc in accounts:
+        lst.append([acc, book_balances.get(acc, 0)])
+    lst.sheet_state = 'hidden'
+
+    st = wb.create_sheet('Setup')
+    for i, (k, v) in enumerate((('Server URL', request.url_root.rstrip('/')), ('API Key', ''),
+                                ('Last sync', datetime.now().strftime('%Y-%m-%d %H:%M') + ' (workbook download)'),
+                                ('Last result', 'Ready - works offline')), start=3):
+        st.cell(row=i, column=1, value=k)
+        st.cell(row=i, column=2, value=v)
+    st.sheet_state = 'veryHidden'
+
+    dn = DefinedName('BankAccounts', attr_text='OFFSET(Lists!$A$2,0,0,MAX(1,COUNTA(Lists!$A:$A)-1),1)')
+    try:
+        wb.defined_names['BankAccounts'] = dn
+    except TypeError:
+        wb.defined_names.append(dn)
+
+    wb.active = 0
+    buf = BytesIO()
+    wb.save(buf)
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    resp.headers['Content-Disposition'] = f'attachment; filename=SuwinERP_BankRec_{date.today():%Y%m%d}.xlsx'
+    return resp
+
+
+@app.route('/excel_bankrec_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Accounting', 'Access_Settings')
+def excel_bankrec_workbook_macro():
+    """The Bank Reconciliation workbook's macro (Alt+F11 > File > Import File)."""
+    code = _XL_BANKREC_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinBankRec.bas'
     return resp
 
 

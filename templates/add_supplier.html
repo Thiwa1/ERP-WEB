@@ -173,6 +173,17 @@
                             <small class="text-muted" style="font-size:.72rem;">Used to auto-fill the Payment Method when entering a GRN for this supplier.</small>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="field-label">Main Category</label>
+                            <select class="form-select" name="main_category">
+                                <option value="">Not Set</option>
+                                {% for cat in main_categories %}
+                                <option value="{{ cat.main_catogory }}">{{ cat.main_catogory }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="text-muted" style="font-size:.72rem;">Classifies everything bought from this supplier in the Supplier Purchasing Report (Bar / Kitchen / Other). When set it decides the invoice's category; when left as Not Set the report falls back to the item lines.</small>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -280,6 +291,7 @@
                             <th>Credit Limit</th>
                             <th>VAT No</th>
                             <th>TIN / NIC</th>
+                            <th>Main Category</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -300,6 +312,13 @@
                             <td>{{ supplier.suppliers_vat_regidter_no or '-' }}</td>
                             <td>{{ supplier.suppliers_TIN or supplier.suppliers_NIC or '-' }}</td>
                             <td>
+                                {% if supplier.suppliers_main_category %}
+                                <span style="font-size:.72rem;font-weight:600;color:#5b21b6;background:#f3e8ff;border-radius:6px;padding:.2em .55em;">{{ supplier.suppliers_main_category }}</span>
+                                {% else %}
+                                <span class="text-muted" style="font-size:.75rem;">Not set</span>
+                                {% endif %}
+                            </td>
+                            <td>
                                 <button type="button" class="btn btn-sm btn-outline-primary" style="border-radius:6px; font-size:.78rem;" onclick='editSupplier({{ supplier|tojson|safe }})'>
                                     <i class="fas fa-edit me-1"></i> Edit
                                 </button>
@@ -307,7 +326,7 @@
                         </tr>
                         {% else %}
                         <tr>
-                            <td colspan="7" class="text-center text-muted py-4">
+                            <td colspan="8" class="text-center text-muted py-4">
                                 <i class="fas fa-truck fa-lg mb-2 d-block opacity-25"></i>
                                 No suppliers found.
                             </td>
@@ -393,6 +412,7 @@
         document.querySelector('input[name="contact_2"]').value = supplier.suppliers_teli_2 || '';
         document.querySelector('input[name="email"]').value = supplier.suppliers_e_mail || '';
         document.querySelector('select[name="default_payment_method"]').value = supplier.suppliers_default_payment_method || '';
+        document.querySelector('select[name="main_category"]').value = supplier.suppliers_main_category || '';
 
         // Update Buttons
         document.getElementById('submitBtn').innerHTML = '<i class="fas fa-save me-2"></i> UPDATE SUPPLIER';

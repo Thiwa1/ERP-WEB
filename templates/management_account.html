@@ -58,7 +58,7 @@
     <div class="dropdown">
       <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-print me-1"></i> Print</button>
       <ul class="dropdown-menu dropdown-menu-end">
-        {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('sales', 'Notes 1 & 2 - Sales'), ('notes', 'Notes 4-8 - Expenses'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('pie', 'Sales Pie Chart'), ('day', 'Day Summary')] %}
+        {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('sales', 'Notes 1 & 2 - Sales'), ('notes', 'Notes 4-8 - Expenses'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('pie', 'Sales Pie Chart'), ('day', 'Day Summary')] %}
         <li><a class="dropdown-item" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part=key) }}">{{ label }}</a></li>
         {% endfor %}
         <li><hr class="dropdown-divider"></li>
@@ -86,7 +86,7 @@
 {% endif %}
 
 <ul class="nav nav-tabs mb-3 no-print">
-  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
   {% endfor %}
 </ul>
@@ -280,6 +280,84 @@
         </table>
       </div>
       {% endfor %}
+    </div>
+  </div></div>
+</div>
+
+{# ============================================ Purchasing (Note 3 support) #}
+<div class="tab-pane fade {{ 'show active' if tab == 'purch' }}" id="ma_purch">
+  <div class="ma-card"><div class="ma-body">
+    <div class="fw-bold mb-2">SUPPLIER PURCHASING &mdash; SUPPORTING SCHEDULE FOR NOTE 3 &mdash; {{ cur.month_label | upper }}</div>
+    <div class="small text-muted mb-3">
+      Every supplier invoice dated {{ cur.start.strftime('%d/%m/%Y') }} to {{ cur.end.strftime('%d/%m/%Y') }}, grouped by Main Category.
+      Values are <strong>Gross &mdash; VAT inclusive</strong>, the same basis the Note 3 purchase lines are built on.
+      A supplier's own Main Category decides its invoices; only when that is not set does the category come from the item lines.
+    </div>
+
+    <div class="table-responsive">
+      <table class="ma">
+        <thead><tr><th>Main Category</th><th class="num">Invoices</th><th class="num">Gross (with VAT)</th><th>Charged to</th></tr></thead>
+        <tbody>
+          {% for c in cur.purchasing.categories %}
+          <tr class="{{ 'muted' if not c.in_cogs else '' }}">
+            <td>{{ c.category }}</td>
+            <td class="num">{{ c.invoices }}</td>
+            <td class="num">{{ money(c.gross) }}</td>
+            <td>
+              {% if c.in_cogs %}{% for l in c.lines %}{{ '- ' if l.sign < 0 }}{{ l.label }}{{ ', ' if not loop.last }}{% endfor %}
+              {% else %}<span class="text-danger">not in Cost of Sales &mdash; no Note 3 line uses this category</span>{% endif %}
+            </td>
+          </tr>
+          {% else %}<tr class="muted"><td colspan="4">No supplier invoices in this month.</td></tr>{% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="sub"><td>Total purchases from suppliers</td><td class="num">{{ cur.purchasing.invoices | length }}</td>
+              <td class="num">{{ money(cur.purchasing.total) }}</td><td></td></tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div class="table-responsive mt-3" style="max-width:640px;">
+      <table class="ma">
+        <thead><tr><th>Cross-check against Note 3</th><th class="num">Rs</th></tr></thead>
+        <tbody>
+          <tr><td>Categories charged to Note 3 purchases</td><td class="num">{{ money(cur.purchasing.in_cogs) }}</td></tr>
+          <tr><td>Added to Note 3 from GL accounts (not supplier invoices)</td><td class="num">{{ money(cur.purchasing.gl_added) }}</td></tr>
+          <tr class="sub"><td>Note 3 purchases &mdash; Bar {{ money(t.purch_bar) }} + Food {{ money(t.purch_food) }} + Housekeeping {{ money(t.purch_hk) }}</td>
+              <td class="num">{{ money(cur.purchasing.note3) }}</td></tr>
+          <tr class="{{ 'gp' if cur.purchasing.left_out else '' }}">
+            <td>Supplier purchases left out of Cost of Sales</td>
+            <td class="num">{{ money(cur.purchasing.left_out) }}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    {% if cur.purchasing.left_out %}
+    <div class="small text-danger mt-2">
+      {{ money(cur.purchasing.left_out) }} of purchases is not in Cost of Sales because those invoices carry no Main Category,
+      or their category is not mapped to a Note 3 purchase line. Set the Main Category on the supplier
+      (<a href="/add_supplier">Add Supplier</a>) or map the category on the
+      <a href="{{ url_for('management_account_mapping') }}">Mapping</a> screen.
+    </div>
+    {% endif %}
+
+    <div class="mt-4">
+      <div class="fw-bold mb-2">Invoices behind these figures ({{ cur.purchasing.invoices | length }})
+        <a class="btn btn-outline-secondary btn-sm ms-2 no-print"
+           href="/supplier_purchasing_report?from={{ cur.start.strftime('%Y-%m-%d') }}&to={{ cur.end.strftime('%Y-%m-%d') }}&show_category=1">
+           <i class="fas fa-external-link-alt me-1"></i> Open full report</a>
+      </div>
+      <div class="table-responsive" style="max-height:520px;overflow:auto;">
+        <table class="ma">
+          <thead><tr><th>Date</th><th>Supplier</th><th>Invoice No</th><th>Main Category</th><th class="num">Gross (with VAT)</th></tr></thead>
+          <tbody>
+            {% for r in cur.purchasing.invoices %}
+            <tr><td>{{ r.inv_date }}</td><td>{{ r.supplier or '-' }}</td><td>{{ r.invoice_no }}</td>
+                <td>{{ r.category }}</td><td class="num">{{ money(r.gross) }}</td></tr>
+            {% else %}<tr class="muted"><td colspan="5">No supplier invoices in this month.</td></tr>{% endfor %}
+          </tbody>
+          <tfoot><tr class="sub"><td colspan="4">Total</td><td class="num">{{ money(cur.purchasing.total) }}</td></tr></tfoot>
+        </table>
+      </div>
     </div>
   </div></div>
 </div>
