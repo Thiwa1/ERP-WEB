@@ -187,6 +187,25 @@ function mmSourceHtml(s) {
   '</div>';
 }
 
+function mmSectionOptions(selected) {
+  let h = '';
+  MM_SECTIONS.forEach(function(sec) {
+    h += '<option value="' + sec[0] + '"' + (sec[0] === selected ? ' selected' : '') + '>' + mmEsc(sec[1]) + '</option>';
+  });
+  return h;
+}
+// Moving a line: it goes to the chosen note when you Save, so it is clear where it landed
+function mmSectionChanged(sel) {
+  const tr = sel.closest('tr');
+  tr.dataset.section = sel.value;
+  mmMark(sel);                       // only changed lines are saved
+
+  tr.style.background = '#fff8d6';
+  sel.title = 'Moves to this note when you Save Mapping';
+  mmDirty();
+  mmFillLinkLists();
+}
+
 function mmLineHtml(l) {
   const incomeSales = l.section === 'NOTE1' || l.section === 'NOTE2';
   let srcs = '';
@@ -198,7 +217,10 @@ function mmLineHtml(l) {
       (incomeSales ? '<select class="form-select form-select-sm mm-cost no-select2" style="width:auto" onchange="mmDirty()"><option value="">Cost %: none</option>' +
         '<option value="BAR"' + (l.cost_base === 'BAR' ? ' selected' : '') + '>Cost %: Bar</option>' +
         '<option value="FOOD"' + (l.cost_base === 'FOOD' ? ' selected' : '') + '>Cost %: Food</option></select>' : '') +
-      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual</label></div></td>' +
+      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual</label></div>' +
+      // Move a line to another note without deleting and rebuilding it
+      '<select class="form-select form-select-sm mm-section no-select2 mt-1" title="Which note this line belongs to"' +
+        ' onchange="mmSectionChanged(this)">' + mmSectionOptions(l.section) + '</select></td>' +
     '<td><div class="mm-srcs">' + srcs + '</div>' +
       '<button type="button" class="btn btn-sm btn-link p-0 mm-add-src" onclick="mmAddSource(this)"><i class="fas fa-plus"></i> add source</button></td>' +
     '<td class="mm-amt" style="width:110px">' + (l.id && !String(l.id).startsWith('new') ? mmFmt(l.amount) : '') + '</td>' +
