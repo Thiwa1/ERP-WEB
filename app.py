@@ -23201,23 +23201,32 @@ def _mgmt_export_book(cur, prev):
         row = xl.data_row(ws, row, [c.get('category') or '-', c.get('invoices') or 0,
                                     'Yes' if c.get('in_cogs') else 'No', '', '', '',
                                     tot['net'], tot['vat'], tot['gross']], num_cols=(7, 8, 9))
-    row = xl.total_row(ws, row, 'Total purchases from supplier invoices',
-                       [sum(b['net'] for b in cat_totals.values()),
-                        sum(b['vat'] for b in cat_totals.values()),
-                        sum(b['gross'] for b in cat_totals.values())])
-    # push those three totals under Net / VAT / Gross
-    for i, v in enumerate((sum(b['net'] for b in cat_totals.values()),
-                           sum(b['vat'] for b in cat_totals.values()),
-                           sum(b['gross'] for b in cat_totals.values())), start=7):
-        c = ws.cell(row=row - 1, column=i, value=float(v))
-        c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
-    for i in (2, 3, 4, 5, 6):
-        ws.cell(row=row - 1, column=i, value=None)
+    def money_row(label, net=None, vat=None, gross=None, bold=False):
+        """Label in column A, amounts under Net / VAT / Gross (7 / 8 / 9)."""
+        nonlocal row
+        c = ws.cell(row=row, column=1, value=label)
+        c.font = xl.Font(bold=bold, size=10, color='1A1A2E' if bold else '333333')
+        if bold:
+            c.fill = xl._fill('F3F3F3')
+        for col, v in ((7, net), (8, vat), (9, gross)):
+            cell = ws.cell(row=row, column=col)
+            if v is not None:
+                cell.value = float(v)
+                cell.number_format = xl.NUM_FMT
+                cell.font = xl.Font(bold=bold, size=10)
+            if bold:
+                cell.fill = xl._fill('F3F3F3')
+        row += 1
+
+    money_row('Total purchases from supplier invoices',
+              sum(b['net'] for b in cat_totals.values()),
+              sum(b['vat'] for b in cat_totals.values()),
+              sum(b['gross'] for b in cat_totals.values()), bold=True)
     row += 1
-    row = xl.item_row(ws, row, 'Of which is in Note 3 (categories mapped to purchases)', [p.get('in_cogs') or 0])
-    row = xl.item_row(ws, row, 'Left out of Note 3 (categories not mapped)', [p.get('left_out') or 0])
-    row = xl.item_row(ws, row, 'Added to Note 3 from GL accounts (no supplier invoice)', [p.get('gl_added') or 0])
-    row = xl.total_row(ws, row, 'Note 3 purchases (Bar + Food + Housekeeping)', [p.get('note3') or 0])
+    money_row('Of which is in Note 3 (categories mapped to purchases)', gross=p.get('in_cogs') or 0)
+    money_row('Left out of Note 3 (categories not mapped)', gross=p.get('left_out') or 0)
+    money_row('Added to Note 3 from GL accounts (no supplier invoice)', gross=p.get('gl_added') or 0)
+    money_row('Note 3 purchases (Bar + Food + Housekeeping)', gross=p.get('note3') or 0, bold=True)
     row += 1
 
     row = xl.section_row(ws, row, ncols, 'Invoice by invoice')
@@ -23240,9 +23249,12 @@ def _mgmt_export_book(cur, prev):
         ws.auto_filter.ref = f'A{first_inv_row - 1}:I{row - 1}'
     else:
         ws.cell(row=row, column=1, value='No supplier invoices in this month.')
-    xl.finish(ws, ncols, first_col_width=13, num_col_width=16)
+    # Column A carries the long summary labels, so it needs room
+    xl.finish(ws, ncols, first_col_width=56, num_col_width=16)
     ws.column_dimensions['B'].width = 34
+    ws.column_dimensions['C'].width = 16
     ws.column_dimensions['D'].width = 22
+    ws.column_dimensions['E'].width = 12
     ws.page_setup.orientation = 'landscape'
 
     # ---- Day Summary
