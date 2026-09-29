@@ -22941,28 +22941,105 @@ def _mgmt_export_book(cur, prev):
     company = _company_display_name()
     head = ['Description', cur['month_label'], prev['month_label']]
 
+    # ---- P&L, laid out like the accountant's own workbook sheet: boxed,
+    # Description | Note | Rs | Rs., line amounts in the first Rs column and
+    # subtotals in the second, negatives in brackets and zero as a dash.
+    from openpyxl.styles import Alignment, Border, Font, Side
     wb, ws = xl.new_workbook('P&L')
-    row = xl.title_block(ws, 3, company, 'TRADING PROFIT & LOSS ACCOUNT', f"For the month of {cur['month_label']}")
-    row = xl.header_row(ws, row, head)
-    row = xl.section_row(ws, row, 3, 'Sales')
-    row = xl.item_row(ws, row, 'Room & Restaurant Revenue (Note 1)', [t['sales_rr'], pt['sales_rr']])
-    row = xl.item_row(ws, row, 'Bar Sales (Note 2)', [t['sales_bar'], pt['sales_bar']])
-    row = xl.total_row(ws, row, 'Total Sales', [t['sales'], pt['sales']])
-    row = xl.section_row(ws, row, 3, 'Less: Cost of Sales (Note 3)', color=xl.RED_DARK, bg='FDECEA')
-    row = xl.item_row(ws, row, 'Bar', [t['cogs_bar'], pt['cogs_bar']])
-    row = xl.item_row(ws, row, 'Food', [t['cogs_food'], pt['cogs_food']])
-    row = xl.total_row(ws, row, 'Total Cost of Sales', [t['cogs'], pt['cogs']])
-    row = xl.total_row(ws, row, 'Gross Profit', [t['gross_profit'], pt['gross_profit']], bg='EAF6EA')
-    row = xl.item_row(ws, row, 'Add: Service Charges', [t['service'], pt['service']])
-    row = xl.total_row(ws, row, '', [t['after_service'], pt['after_service']])
-    row = xl.section_row(ws, row, 3, 'Less: Expenses', color=xl.RED_DARK, bg='FDECEA')
-    for n in ('NOTE4', 'NOTE5', 'NOTE6', 'NOTE7', 'NOTE8'):
-        row = xl.item_row(ws, row, MGMT_SECTION_LABEL[n], [t[n], pt[n]])
-    row = xl.total_row(ws, row, 'Total Expenses', [t['expenses'], pt['expenses']])
-    row = xl.total_row(ws, row, 'Net Profit', [t['net_profit'], pt['net_profit']], bg='E8F3FF', size=11)
-    row = xl.item_row(ws, row, 'Gross Profit Margin %', [t['gp_margin'] or 0, pt['gp_margin'] or 0])
-    row = xl.item_row(ws, row, 'Net Profit Margin %', [t['np_margin'] or 0, pt['np_margin'] or 0])
-    xl.finish(ws, 3)
+    thick = Side(style='medium', color='000000')
+    hair = Side(style='thin', color='000000')
+    dbl = Side(style='double', color='000000')
+    BLACK = '000000'
+    NUM = '#,##0.00;(#,##0.00);"-"'
+
+    for col, w in zip('ABCD', (52, 9, 19, 20)):
+        ws.column_dimensions[col].width = w
+    ws.merge_cells('A1:D1')
+    ws.merge_cells('A2:D2')
+    ws.merge_cells('A3:D3')
+    for r_, text, size in ((1, company or '', 13), (2, 'TRADING PROFIT & LOSS ACCOUNT FOR THE MONTH OF', 12),
+                           (3, cur['start'].strftime('%b-%y'), 12)):
+        c = ws.cell(row=r_, column=1, value=text)
+        c.font = Font(bold=True, size=size, color=BLACK)
+        c.alignment = Alignment(horizontal='center')
+    for i, label in enumerate(['Description', 'Note', 'Rs', 'Rs.'], start=1):
+        c = ws.cell(row=5, column=i, value=label)
+        c.font = Font(bold=True, size=12, color=BLACK)
+        c.alignment = Alignment(horizontal='center')
+        c.border = Border(left=thick, right=thick, top=thick, bottom=thick)
+    ws.row_dimensions[5].height = 24
+
+    row = 6
+
+    def pl(label, note='', inner=None, outer=None, bold=False, underline=False, indent=0,
+           inner_line=False, outer_line=False, outer_double=False):
+        """One printed line: label (optionally indented), note number, and the
+        amount in the inner (Rs) or outer (Rs.) column."""
+        nonlocal row
+        c = ws.cell(row=row, column=1, value=label)
+        c.font = Font(bold=bold, underline='single' if underline else None, size=11, color=BLACK)
+        c.alignment = Alignment(indent=indent, vertical='bottom')
+        n = ws.cell(row=row, column=2, value=note)
+        n.alignment = Alignment(horizontal='center')
+        n.font = Font(size=11, color=BLACK)
+        for col, val, line, double in ((3, inner, inner_line, False), (4, outer, outer_line, outer_double)):
+            cell = ws.cell(row=row, column=col)
+            if val is not None:
+                cell.value = round(float(val), 2)
+                cell.number_format = NUM
+                cell.font = Font(bold=bold, size=11, color=BLACK)
+                cell.alignment = Alignment(horizontal='right')
+            cell.border = Border(left=thick, right=thick,
+                                 bottom=(dbl if double else (hair if line else None)))
+        ws.cell(row=row, column=1).border = Border(left=thick)
+        ws.cell(row=row, column=2).border = Border(right=thick)
+        ws.row_dimensions[row].height = 16
+        row += 1
+
+    pl('')
+    pl('Sales')
+    pl('-Room & Restaurant Revenue', '1', inner=t['sales_rr'], indent=3)
+    pl('- Bar Sales', '2', inner=t['sales_bar'], outer=t['sales'], indent=3, inner_line=True)
+    pl('Less', bold=True, underline=True)
+    pl('Cost Of Sales', '3')
+    pl('BAR', inner=t['cogs_bar'], indent=14)
+    pl('FOOD', inner=t['cogs_food'], indent=14, inner_line=True)
+    pl('', outer=t['cogs'], outer_line=True)
+    pl('Gross Profit', outer=t['gross_profit'], bold=True, outer_line=True)
+    pl('')
+    pl('')
+    pl('Add', bold=True, underline=True)
+    pl('Service Charges', outer=t['service'], outer_line=True)
+    pl('', outer=t['after_service'], bold=True, outer_line=True)
+    pl('')
+    pl('Less', bold=True, underline=True)
+    for key, label, note in (('NOTE4', 'Administration Expenses', '4'),
+                             ('NOTE5', 'Selling & Distribution Expenses', '5'),
+                             ('NOTE6', 'VAT', '6'),
+                             ('NOTE7', 'Finance Expenses', '7'),
+                             ('NOTE8', 'Additional expenses', '8')):
+        last = key == 'NOTE8'
+        pl(label, note, inner=-(t[key] or 0),
+           outer=(-(t['expenses'] or 0) if last else None), inner_line=last, outer_line=last)
+    pl('Net Profit', outer=t['net_profit'], bold=True, outer_double=True)
+    pl('')
+    pl('Gross Profit Margin', outer=None, bold=True)
+    gm = ws.cell(row=row - 1, column=4, value=(t['gp_margin'] or 0) / 100.0)
+    gm.number_format, gm.font = '0%', Font(bold=True, size=11, color=BLACK)
+    gm.alignment = Alignment(horizontal='right')
+    pl('Net Profit Margin', outer=None, bold=True)
+    nm = ws.cell(row=row - 1, column=4, value=(t['np_margin'] or 0) / 100.0)
+    nm.number_format, nm.font = '0%', Font(bold=True, size=11, color=BLACK)
+    nm.alignment = Alignment(horizontal='right')
+    # Close the box
+    for col in range(1, 5):
+        cell = ws.cell(row=row - 1, column=col)
+        b = cell.border
+        cell.border = Border(left=b.left, right=b.right, top=b.top, bottom=thick)
+    ws.sheet_view.showGridLines = False
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
     ws = wb.create_sheet('Variance Analysis')
     vhead = ['Description', cur['month_label'], prev['month_label'], 'Variance (Rs)', 'Variance %']
