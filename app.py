@@ -30950,6 +30950,22 @@ def xl_bankrec_save():
                     200 if ok else 400)
 
 
+@app.route('/api/xl/inv/counted', methods=['GET'])
+def xl_inv_counted():
+    """Counted Stock Balance for the workbook: quantity, cost and value as at
+    a date, with what a count moved that day."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    as_of = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    rows = [['AS_OF', as_of, _company_display_name()]]
+    for r in _stock_count_rows(as_of):
+        rows.append(['ITEM', r['name'] or '', r['code'] or '', r['unit'] or '', r['main_cat'] or '',
+                     r['qty'], r['cost'], r['value'], r['adj_qty'], r['adj_value'],
+                     'Yes' if r['kept'] else 'No'])
+    return _xl_tsv(rows)
+
+
 @app.route('/api/xl/inv/adjust', methods=['POST'])
 def xl_inv_adjust():
     """Bring the system quantity into line with a physical count. Each line
@@ -31433,6 +31449,30 @@ def excel_inventory_workbook():
                                       FormulaRule(formula=[f'$G8<0'], font=Font(color='A4262C', bold=True)))
         ws.conditional_formatting.add(f'G8:G{last_adj}',
                                       FormulaRule(formula=[f'$G8>0'], font=Font(color='107C10', bold=True)))
+
+    # ---------------- Counted Balance (valued stock as at a date) ----------------
+    ws = wb.create_sheet('Counted Balance')
+    look(ws, '038387', freeze='A8')
+    banner(ws, 'Counted Stock Balance', 'Stock as at the date with its value - after a count is submitted this is '
+           'the counted figure. Press Load Balance (needs internet).', 2, 9)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHIJ', (40, 14, 10, 18, 14, 13, 16, 14, 16)):
+        ws.column_dimensions[col].width = w
+    ws['B3'] = 'As at date'
+    ws['B3'].font = label_font
+    inp(ws['C3'])
+    ws['C3'] = date.today()
+    ws['C3'].number_format = 'yyyy-mm-dd'
+    ws['E3'] = 'Total stock value'
+    ws['E3'].font = label_font
+    ws['F3'] = '=SUM(H8:H20000)'
+    ws['F3'].number_format = AMT
+    ws['F3'].font = Font(bold=True, size=12, color=NAVY)
+    ws['B5'] = ('Value is quantity x the latest purchase cost. The adjustment columns show what a count moved '
+                'on that date.')
+    ws['B5'].font = note_font
+    head_row(ws, 7, ['Item', 'Code', 'Unit', 'Category', 'Counted / Balance Qty', 'Unit Cost', 'Value',
+                     'Count Adjustment', 'Adjustment Value'], first_col=2)
 
     # ---------------- SRN Entry (Service Entry) ----------------
     ws = wb.create_sheet('SRN Entry')
@@ -31993,6 +32033,76 @@ Public Sub SubmitCount()
     Else
         MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
     End If
+End Sub
+
+' Counted Stock Balance: the valued stock as at a date, straight from the system
+Public Sub LoadCountedBalance()
+    Dim ws As Worksheet, r As String, st As Long, rows_ As Variant, cols As Variant
+    Dim i As Long, rw As Long, n As Long, d As String
+    Set ws = Sh("Counted Balance")
+    d = Ymd(ws.Range("C3").Value)
+    If d = "" Then
+        MsgBox "Put the date in C3 first.", vbExclamation, "Suwin ERP"
+        ws.Range("C3").Select
+        Exit Sub
+    End If
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    Application.StatusBar = "Suwin ERP: getting the stock balance as at " & d & "..."
+    r = Http("GET", "/api/xl/inv/counted?format=tsv&date=" & d, "", st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "You are offline - this report comes from the system, so it needs a connection.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    Application.ScreenUpdating = False
+    ws.Range("B8:J20000").ClearContents
+    rw = 8
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Trim$(rows_(i)) <> "" Then
+            cols = Split(rows_(i), vbTab)
+            If cols(0) = "ITEM" Then
+                ' ITEM | name | code | unit | category | qty | cost | value | adj qty | adj value | kept
+                ws.Cells(rw, 2).Value = cols(1)
+                ws.Cells(rw, 3).Value = "'" & cols(2)
+                ws.Cells(rw, 4).Value = cols(3)
+                ws.Cells(rw, 5).Value = cols(4)
+                ws.Cells(rw, 6).Value = Val(cols(5))
+                ws.Cells(rw, 7).Value = Val(cols(6))
+                ws.Cells(rw, 8).Value = Val(cols(7))
+                If Val(cols(8)) <> 0 Then
+                    ws.Cells(rw, 9).Value = Val(cols(8))
+                    ws.Cells(rw, 10).Value = Val(cols(9))
+                End If
+                rw = rw + 1
+                n = n + 1
+            End If
+        End If
+    Next i
+    If n > 0 Then
+        ws.Range("F8").Resize(n, 1).NumberFormat = "#,##0.####"
+        ws.Range("G8").Resize(n, 3).NumberFormat = "#,##0.00"
+        ws.Range("I8").Resize(n, 1).NumberFormat = "#,##0.####"
+        ws.Range("J8").Resize(n, 1).NumberFormat = "#,##0.00;[Red]-#,##0.00"
+        With ws.Range("B8").Resize(n, 9).Borders
+            .LineStyle = 1
+            .Color = RGB(200, 206, 216)
+        End With
+    End If
+    Application.ScreenUpdating = True
+    ws.Activate
+    SayResult "Counted Stock Balance loaded - " & n & " item(s) as at " & d
+End Sub
+
+Public Sub GoCountedBalance()
+    Sh("Counted Balance").Activate
+    Sh("Counted Balance").Range("C3").Select
 End Sub
 
 Public Sub ClearCount()
@@ -32595,14 +32705,16 @@ End Sub
 
 Public Sub AddButtons()
     PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "Stock Count", "GoCount", _
-                                   "Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem", _
-                                   "Stock Balance", "GoStockBalance", "Bin Card", "GoBinCard", _
-                                   "Set API Key", "SetApiKey"), True
+                                   "Counted Balance", "GoCountedBalance", "Submit Pending", "SubmitPending", _
+                                   "Sync from System", "SyncFromSystem", "Stock Balance", "GoStockBalance", _
+                                   "Bin Card", "GoBinCard", "Set API Key", "SetApiKey"), True
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
     PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending", _
                                         "Find in list", "PickFromList", "SRN Entry", "GoSRN", "Stock Count", "GoCount")
     PutButtons "Stock Adjustment", "J1", Array("Submit Count", "SubmitCount", "Clear Counted", "ClearCount", _
-                                               "Sync from System", "SyncFromSystem", "GRN Entry", "GoGRN")
+                                               "Sync from System", "SyncFromSystem", "Counted Balance", "GoCountedBalance", _
+                                               "GRN Entry", "GoGRN")
+    PutButtons "Counted Balance", "L1", Array("Load Balance", "LoadCountedBalance", "Stock Count", "GoCount")
     PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
                                         "Find in list", "PickFromList", "GRN Entry", "GoGRN")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
