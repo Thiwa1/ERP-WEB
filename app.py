@@ -34768,6 +34768,7 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
                ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat,
                ii.Sub_Catogory AS sub_cat, COALESCE(ii.stock_maintained, 1) AS kept,
                COALESCE(p.inventory_price_purcharsing, 0) AS master_cost,
+               ii.valuation_cost AS fixed_cost,
                -- what was actually paid most recently: the unit price on the last
                -- stock-in movement up to the date (a GRN, an opening balance, ...)
                (SELECT r3.inventory_recod_unit_price
@@ -34805,11 +34806,19 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
         if category and (r['main_cat'] or '') != category:
             continue
         r['qty'] = round(float(r['qty'] or 0), 4)
-        # Valued at what was actually paid (the last GRN), falling back to the
-        # price on the item when the item has never been bought in.
+        # A fixed cost typed against the item wins (that is how a wrong GRN
+        # price gets corrected); otherwise what was actually paid on the last
+        # GRN; otherwise the price on the item.
         master, paid = float(r['master_cost'] or 0), float(r['last_paid'] or 0)
-        r['cost'] = round(paid if paid else master, 2)
-        r['cost_source'] = 'GRN price' if paid else ('Item price' if master else 'No price')
+        fixed = float(r['fixed_cost'] or 0) if r['fixed_cost'] is not None else 0.0
+        if fixed:
+            r['cost'], r['cost_source'] = round(fixed, 2), 'Fixed price'
+        elif paid:
+            r['cost'], r['cost_source'] = round(paid, 2), 'GRN price'
+        else:
+            r['cost'], r['cost_source'] = round(master, 2), ('Item price' if master else 'No price')
+        r['grn_cost'] = round(paid, 2)
+        r['fixed_cost'] = round(fixed, 2) if fixed else None
         r['adj_qty'] = round(float(r['adj_qty'] or 0), 4)
         r['value'] = round(r['qty'] * r['cost'], 2)
         r['adj_value'] = round(r['adj_qty'] * r['cost'], 2)
@@ -34817,6 +34826,42 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
             continue
         out.append(r)
     return out
+
+
+@app.route('/stock_count_report/price', methods=['POST'])
+@login_required
+@has_permission('Access_Inventory')
+def stock_count_report_price():
+    """Fix the cost an item is valued at. Blank clears it, so the item goes
+    back to being valued at its last GRN price."""
+    changed = cleared = 0
+    try:
+        for key, raw in request.form.items():
+            if not key.startswith('cost_'):
+                continue
+            item_id = key[5:]
+            if not item_id.isdigit():
+                continue
+            raw = (raw or '').strip().replace(',', '')
+            if raw == '':
+                db.execute_query("UPDATE inventoy_items SET valuation_cost = NULL WHERE id = %s",
+                                 (int(item_id),), commit=True)
+                cleared += 1
+            else:
+                db.execute_query("UPDATE inventoy_items SET valuation_cost = %s WHERE id = %s",
+                                 (round(parse_float(raw), 4), int(item_id)), commit=True)
+                changed += 1
+        msg = []
+        if changed:
+            msg.append(f'{changed} fixed price(s) saved')
+        if cleared:
+            msg.append(f'{cleared} back to the GRN price')
+        flash('. '.join(msg) + '.' if msg else 'Nothing changed.', 'success' if msg else 'info')
+    except Exception as e:
+        flash(f'Could not save the prices: {e}', 'danger')
+    return redirect(url_for('stock_count_report', date=request.form.get('date'),
+                            category=request.form.get('category'),
+                            counted=request.form.get('counted'), all=request.form.get('all')))
 
 
 @app.route('/stock_count_report', methods=['GET'])
@@ -34881,6 +34926,7 @@ def stock_count_report():
 
     return render_template('stock_count_report.html', as_of=as_of, groups=groups, totals=totals,
                            only_counted=only_counted, category=category, categories=categories, all_items=all_items,
+                           can_fix=check_permission('Access_Inventory'),
                            today_date=date.today().strftime('%Y-%m-%d'))
 
 

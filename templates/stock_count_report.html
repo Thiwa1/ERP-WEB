@@ -67,10 +67,22 @@
   </div>
 </div>
 
+<form method="POST" action="{{ url_for('stock_count_report_price') }}">
+<input type="hidden" name="date" value="{{ as_of }}">
+<input type="hidden" name="category" value="{{ category }}">
+<input type="hidden" name="counted" value="{{ '1' if only_counted else '' }}">
+<input type="hidden" name="all" value="{{ '1' if all_items else '' }}">
 <div class="sc-card">
-  <div class="p-3">
+  <div class="p-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div>
     <div class="fw-bold" style="font-size:1rem;">Counted Stock Balance</div>
     <div class="text-muted small">As at {{ as_of }}{% if category %} &middot; {{ category }}{% endif %}</div>
+    </div>
+    {% if can_fix %}
+    <button type="submit" class="btn btn-success btn-sm no-print">
+      <i class="fas fa-save me-1"></i> Save fixed prices
+    </button>
+    {% endif %}
   </div>
   <div class="table-responsive">
     <table class="sc">
@@ -91,7 +103,17 @@
           <td class="text-muted small">{{ i.code or '' }}</td>
           <td class="text-muted small">{{ i.unit or '' }}</td>
           <td class="num">{{ qty(i.qty) }}</td>
-          <td class="num" title="{{ i.cost_source }}">{{ money(i.cost) }}{% if i.cost_source == 'Item price' %}<span class="text-muted" style="font-size:.7rem;"> m</span>{% elif i.cost_source == 'No price' %}<span class="text-danger" style="font-size:.7rem;"> ?</span>{% endif %}</td>
+          <td class="num" title="{{ i.cost_source }}{% if i.grn_cost %} &middot; last GRN price {{ money(i.grn_cost) }}{% endif %}">
+            {% if can_fix %}
+            <input type="number" step="0.0001" name="cost_{{ i.id }}" value="{{ '%.4f'|format(i.fixed_cost)|float if i.fixed_cost else '' }}"
+                   placeholder="{{ '%.2f'|format(i.cost) }}" class="form-control form-control-sm text-end"
+                   style="width:110px;display:inline-block;{% if i.fixed_cost %}background:#FFF8DC;{% endif %}"
+                   title="Blank uses the GRN price ({{ money(i.grn_cost) }}). Type a figure to fix the price for this item.">
+            {% else %}{{ money(i.cost) }}{% endif %}
+            {% if i.cost_source == 'Fixed price' %}<span class="text-muted" style="font-size:.7rem;"> fixed</span>
+            {% elif i.cost_source == 'Item price' %}<span class="text-muted" style="font-size:.7rem;"> m</span>
+            {% elif i.cost_source == 'No price' %}<span class="text-danger" style="font-size:.7rem;"> ?</span>{% endif %}
+          </td>
           <td class="num">{{ money(i.value) }}</td>
           <td class="num {{ 'sc-short' if i.adj_qty < 0 else ('sc-over' if i.adj_qty > 0 else '') }}">
             {{ qty(i.adj_qty) if i.adj_qty else '' }}</td>
@@ -119,6 +141,10 @@
     has never been bought in, the price on the item is used instead (marked <strong>m</strong>), and
     <span class="text-danger">?</span> means neither is known, so that line values at zero. Value is quantity &times; Unit Cost. The adjustment columns show what the count moved that day:
     <span class="sc-short">red</span> for a shortage, <span class="sc-over">green</span> for a gain.
+    {% if can_fix %}<br><strong>Wrong price?</strong> Type the right figure in the Unit Cost box and press
+    <strong>Save fixed prices</strong> &mdash; that item is then always valued at it (marked <em>fixed</em>).
+    Clear the box to go back to the GRN price.{% endif %}
   </div>
 </div>
+</form>
 {% endblock %}

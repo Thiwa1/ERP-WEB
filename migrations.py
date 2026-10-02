@@ -70,6 +70,7 @@ def run_migrations(conn):
         _migrate_excel_api_keys(cursor)
         _migrate_daily_sales_cash_difference(cursor)
         _migrate_item_stock_maintained(cursor)
+        _migrate_item_valuation_cost(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1827,6 +1828,21 @@ def _migrate_item_stock_maintained(cursor):
         cursor.execute("SHOW TABLES LIKE 'inventoy_items'")
         if cursor.fetchone():
             cursor.execute("ALTER TABLE inventoy_items ADD COLUMN stock_maintained TINYINT NOT NULL DEFAULT 1")
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_item_valuation_cost(cursor):
+    """A fixed cost per item for valuing stock. Stock is normally valued at
+    the last GRN price; where that price is wrong, the figure typed here is
+    used instead."""
+    try:
+        cursor.execute("SHOW TABLES LIKE 'inventoy_items'")
+        if cursor.fetchone():
+            cursor.execute("ALTER TABLE inventoy_items ADD COLUMN valuation_cost DECIMAL(18,4) NULL")
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
