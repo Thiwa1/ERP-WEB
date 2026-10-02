@@ -34664,7 +34664,16 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
         SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code,
                ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat,
                ii.Sub_Catogory AS sub_cat, COALESCE(ii.stock_maintained, 1) AS kept,
-               COALESCE(p.inventory_price_purcharsing, 0) AS cost,
+               COALESCE(p.inventory_price_purcharsing, 0) AS master_cost,
+               -- what was actually paid most recently: the unit price on the last
+               -- stock-in movement up to the date (a GRN, an opening balance, ...)
+               (SELECT r3.inventory_recod_unit_price
+                  FROM inventory_recod r3
+                 WHERE r3.inventoy_name = ii.inventoy_name
+                   AND r3.inventory_recod_action_date <= %s
+                   AND COALESCE(r3.inventory_recod_moument_in, 0) > 0
+                   AND COALESCE(r3.inventory_recod_unit_price, 0) > 0
+                 ORDER BY r3.inventory_recod_action_date DESC, r3.id DESC LIMIT 1) AS last_paid,
                COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
                          FROM inventory_recod r
                          WHERE r.inventoy_name = ii.inventoy_name
@@ -34680,7 +34689,7 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
                           WHERE p2.inventory_price_link = ii.id)
         WHERE ii.active = 1
         ORDER BY ii.Main_Catogry, ii.inventoy_name
-    """, (as_of, as_of)) or []
+    """, (as_of, as_of, as_of)) or []
 
     seen, out = set(), []
     for r in rows:
@@ -34693,7 +34702,10 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
         if category and (r['main_cat'] or '') != category:
             continue
         r['qty'] = round(float(r['qty'] or 0), 4)
-        r['cost'] = round(float(r['cost'] or 0), 2)
+        # Price on the item master if it is set; otherwise what was last paid
+        master, paid = float(r['master_cost'] or 0), float(r['last_paid'] or 0)
+        r['cost'] = round(master if master else paid, 2)
+        r['cost_source'] = 'Item price' if master else ('Last purchase' if paid else 'No price')
         r['adj_qty'] = round(float(r['adj_qty'] or 0), 4)
         r['value'] = round(r['qty'] * r['cost'], 2)
         r['adj_value'] = round(r['adj_qty'] * r['cost'], 2)
@@ -34739,7 +34751,7 @@ def stock_count_report():
         except ImportError:
             flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
             return redirect(url_for('stock_count_report', date=as_of))
-        heads = ['Item', 'Code', 'Unit', 'Category', 'Counted / Balance Qty', 'Unit Cost', 'Value',
+        heads = ['Item', 'Code', 'Unit', 'Category', 'Counted / Balance Qty', 'Unit Cost', 'Cost from', 'Value',
                  'Count Adjustment Qty', 'Adjustment Value']
         wb, ws = xl.new_workbook('Counted Stock')
         row = xl.title_block(ws, len(heads), _company_display_name(), 'COUNTED STOCK BALANCE',
@@ -34749,14 +34761,14 @@ def stock_count_report():
             row = xl.section_row(ws, row, len(heads), f"{g['name']}  ({g['count']} items)")
             for i in g['items']:
                 row = xl.data_row(ws, row, [i['name'], i['code'] or '', i['unit'] or '', i['main_cat'] or '',
-                                            i['qty'], i['cost'], i['value'], i['adj_qty'], i['adj_value']],
-                                  num_cols=(5, 6, 7, 8, 9))
+                                            i['qty'], i['cost'], i['cost_source'], i['value'], i['adj_qty'],
+                                            i['adj_value']], num_cols=(5, 6, 8, 9, 10))
             row = xl.total_row(ws, row, f"{g['name']} total", [g['value']])
-            c = ws.cell(row=row - 1, column=7, value=float(g['value']))
+            c = ws.cell(row=row - 1, column=8, value=float(g['value']))
             c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
             ws.cell(row=row - 1, column=2).value = None
         row = xl.total_row(ws, row, 'TOTAL STOCK VALUE', [totals['value']])
-        c = ws.cell(row=row - 1, column=7, value=float(totals['value']))
+        c = ws.cell(row=row - 1, column=8, value=float(totals['value']))
         c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True, size=11)
         ws.cell(row=row - 1, column=2).value = None
         xl.finish(ws, len(heads), first_col_width=40, num_col_width=16)

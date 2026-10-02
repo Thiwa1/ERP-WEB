@@ -91,7 +91,7 @@
           <td class="text-muted small">{{ i.code or '' }}</td>
           <td class="text-muted small">{{ i.unit or '' }}</td>
           <td class="num">{{ qty(i.qty) }}</td>
-          <td class="num">{{ money(i.cost) }}</td>
+          <td class="num" title="{{ i.cost_source }}">{{ money(i.cost) }}{% if i.cost_source == 'Last purchase' %}<span class="text-muted" style="font-size:.7rem;"> p</span>{% elif i.cost_source == 'No price' %}<span class="text-danger" style="font-size:.7rem;"> ?</span>{% endif %}</td>
           <td class="num">{{ money(i.value) }}</td>
           <td class="num {{ 'sc-short' if i.adj_qty < 0 else ('sc-over' if i.adj_qty > 0 else '') }}">
             {{ qty(i.adj_qty) if i.adj_qty else '' }}</td>
@@ -115,7 +115,9 @@
   </div>
   <div class="p-3 small text-muted">
     Quantity is every stock movement up to {{ as_of }}, so after a count has been submitted it is the counted figure.
-    Value is quantity &times; the item's latest purchase cost. The adjustment columns show what the count moved that day:
+    Unit Cost is the purchase price on the item; where that is not set it falls back to the last price actually paid
+    (marked <strong>p</strong>), and <span class="text-danger">?</span> means neither is known, so that line values at zero.
+    Value is quantity &times; Unit Cost. The adjustment columns show what the count moved that day:
     <span class="sc-short">red</span> for a shortage, <span class="sc-over">green</span> for a gain.
   </div>
 </div>
