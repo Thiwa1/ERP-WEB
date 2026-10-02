@@ -31342,7 +31342,7 @@ def excel_inventory_workbook():
         inp(ws.cell(row=rw, column=2))
         ws.cell(row=rw, column=3, value=f'=IF(B{rw}="","",IFERROR(INDEX(Items!$C:$C,MATCH(B{rw},Items!$B:$B,0)),"not in list"))')
         ws.cell(row=rw, column=4, value=f'=IF(B{rw}="","",IFERROR(INDEX(Items!$E:$E,MATCH(B{rw},Items!$B:$B,0)),""))')
-        inp(ws.cell(row=rw, column=5), '#,##0.####')
+        inp(ws.cell(row=rw, column=5), '#,##0.00##')
         inp(ws.cell(row=rw, column=6), AMT)
         t = ws.cell(row=rw, column=7, value=f'=IF(OR(E{rw}="",F{rw}=""),"",ROUND(E{rw}*F{rw},2))')
         t.number_format = AMT
@@ -32002,10 +32002,10 @@ End Sub
 ' Works on any list sheet (Stock Balance, Stock Adjustment, Counted Balance,
 ' GRN Register): type part of the name, it jumps to the row. Press again to
 ' step to the next match.
-Private mLastFind As String
-Private mLastRow As Long
-
 Public Sub FindItem()
+    ' Static, so pressing Find Item again steps to the next match
+    Static mLastFind As String
+    Static mLastRow As Long
     Dim ws As Worksheet, col As Long, firstRow As Long, lastRow As Long, rw As Long
     Dim term As String, startRow As Long, hits As Long
     Set ws = ActiveSheet
@@ -32090,7 +32090,7 @@ Public Sub SubmitCount()
                 zeroCount = zeroCount + 1
                 If zeroCount <= 12 Then
                     zeroList = zeroList & "   " & ws.Cells(rw, 2).Value & "   (" & _
-                               Format$(Val(CStr(ws.Cells(rw, 5).Value)), "#,##0.####") & " to 0)" & vbCrLf
+                               Format$(Val(CStr(ws.Cells(rw, 5).Value)), "#,##0.00##") & " to 0)" & vbCrLf
                 End If
             End If
         End If
@@ -32103,8 +32103,8 @@ Public Sub SubmitCount()
                   vbYesNo + vbExclamation, "Suwin ERP") <> vbYes Then Exit Sub
     End If
     If MsgBox("Adjust " & n & " item(s) on " & countDate & "?" & vbCrLf & vbCrLf & _
-              "Stock up: " & Format$(up, "#,##0.####") & vbCrLf & _
-              "Stock down: " & Format$(down, "#,##0.####") & vbCrLf & vbCrLf & _
+              "Stock up: " & Format$(up, "#,##0.00##") & vbCrLf & _
+              "Stock down: " & Format$(down, "#,##0.00##") & vbCrLf & vbCrLf & _
               "This changes stock quantities only - it does not touch the ledger.", _
               vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
 
@@ -32179,9 +32179,9 @@ Public Sub LoadCountedBalance()
         End If
     Next i
     If n > 0 Then
-        ws.Range("F8").Resize(n, 1).NumberFormat = "#,##0.####"
+        ws.Range("F8").Resize(n, 1).NumberFormat = "#,##0.00##"
         ws.Range("G8").Resize(n, 3).NumberFormat = "#,##0.00"
-        ws.Range("I8").Resize(n, 1).NumberFormat = "#,##0.####"
+        ws.Range("I8").Resize(n, 1).NumberFormat = "#,##0.00##"
         ws.Range("J8").Resize(n, 1).NumberFormat = "#,##0.00;[Red]-#,##0.00"
         With ws.Range("B8").Resize(n, 9).Borders
             .LineStyle = 1
@@ -32507,7 +32507,7 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
             If keepNote.Exists(nm) Then adj.Cells(rw, 8).Value = keepNote(nm)
             adj.Cells(rw, 7).Formula = "=IF(F" & rw & "="""","""",ROUND(F" & rw & "-E" & rw & ",4))"
         Next i
-        adj.Range("E8").Resize(n, 3).NumberFormat = "#,##0.####"
+        adj.Range("E8").Resize(n, 3).NumberFormat = "#,##0.00##"
         With adj.Range("B8").Resize(n, 7).Borders
             .LineStyle = 1
             .Color = RGB(200, 206, 216)
