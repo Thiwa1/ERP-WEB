@@ -30999,14 +30999,16 @@ def xl_inv_adjust():
         for name, code, unit, cost, diff, memo in moves:
             qty_in = diff if diff > 0 else 0
             qty_out = -diff if diff < 0 else 0
+            # NB: inventory_recod_total_value is a GENERATED column - never insert it.
             cursor.execute("""
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_action_date,
                     inventory_recod_moument_in, inventory_recod_movment_out,
-                    inventory_recod_mesrmet, inventory_recod_unit_price, inventory_recod_total_value,
-                    inventory_recod_account, inventory_recodcol_memo, inventory_recod_user_id
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'Stock Adjustment', %s, %s)
-            """, (name, code, count_date, qty_in, qty_out, unit, cost, round(diff * cost, 2), memo, user_pk))
+                    inventory_recod_mesrmet, inventory_recod_unit_price,
+                    inventory_recod_account, inventory_recodcol_memo, inventory_recod_user_id,
+                    inventory_recod_user_recod_date
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'Stock Adjustment', %s, %s, %s)
+            """, (name, code, count_date, qty_in, qty_out, unit, cost, memo, user_pk, date.today()))
         cursor.execute("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'ADJ', NULL, %s)",
                        (ref, user_pk))
         conn.commit()
