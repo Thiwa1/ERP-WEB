@@ -9556,6 +9556,10 @@ def inventory_item_save():
     market_p   = data.get('market_price', 0)
     spm_p      = data.get('spm_price', 0)
     loyalty_p  = data.get('loyalty_price', 0)
+    # Purchase cost - what stock reports value the item at. Blank means
+    # "leave it as it is", so an empty box never wipes a cost.
+    cost_p = data.get('cost_price')
+    cost_p = None if cost_p in (None, '') else cost_p
 
     user_code = session.get('user_id', 'unknown')
     user_pk   = session.get('user_pk', 0)
@@ -9570,17 +9574,19 @@ def inventory_item_save():
                 UPDATE inventory_price_recod SET
                     inventory_price_selling = %s,
                     inventory_price_profit_marging_comen = %s,
-                    inventory_price_for_Loyality_customer = %s
+                    inventory_price_for_Loyality_customer = %s,
+                    inventory_price_purcharsing = COALESCE(%s, inventory_price_purcharsing)
                 WHERE inventory_price_link = %s
                 ORDER BY id DESC LIMIT 1
-            """, (market_p, spm_p, loyalty_p, item_id), commit=True)
+            """, (market_p, spm_p, loyalty_p, cost_p, item_id), commit=True)
         else:
             db.execute_query("""
                 INSERT INTO inventory_price_recod
                 (inventory_price_link, inventory_price_selling,
-                 inventory_price_profit_marging_comen, inventory_price_for_Loyality_customer)
-                VALUES (%s, %s, %s, %s)
-            """, (item_id, market_p, spm_p, loyalty_p), commit=True)
+                 inventory_price_profit_marging_comen, inventory_price_for_Loyality_customer,
+                 inventory_price_purcharsing)
+                VALUES (%s, %s, %s, %s, COALESCE(%s, 0))
+            """, (item_id, market_p, spm_p, loyalty_p, cost_p), commit=True)
 
         # Normalize for change detection only (None/"" and stray spaces treated equal)
         def _norm(v):
@@ -30636,7 +30642,14 @@ def _inv_masters(from_day):
                ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat, ii.Sub_Catogory AS sub_cat,
                COALESCE(ii.min_qty, 0) AS min_qty,
                COALESCE(p.inventory_price_selling, 0) AS selling_price,
-               COALESCE(p.inventory_price_purcharsing, 0) AS cost_price,
+               -- Valued at the GRN price (last purchase), or the item's own
+               -- price when it has never been bought in.
+               COALESCE((SELECT r4.inventory_recod_unit_price FROM inventory_recod r4
+                          WHERE r4.inventoy_name = ii.inventoy_name
+                            AND COALESCE(r4.inventory_recod_moument_in, 0) > 0
+                            AND COALESCE(r4.inventory_recod_unit_price, 0) > 0
+                          ORDER BY r4.inventory_recod_action_date DESC, r4.id DESC LIMIT 1),
+                        p.inventory_price_purcharsing, 0) AS cost_price,
                COALESCE(SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0)), 0) AS qty,
                COALESCE(SUM(r.inventory_recod_total_value), 0) AS value,
                COALESCE(SUM(CASE WHEN r.inventory_recod_action_date < %s
@@ -30998,7 +31011,13 @@ def xl_inv_adjust():
     marks = ','.join(['%s'] * len(names))
     master = {r['inventoy_name']: r for r in (db.execute_query(f"""
         SELECT ii.inventoy_name, ii.inventoy_code, ii.inventoy_items_messurment_unit AS unit,
-               COALESCE(p.inventory_price_purcharsing, 0) AS cost,
+               -- the GRN price, so an adjustment is valued like the stock it moves
+               COALESCE((SELECT r4.inventory_recod_unit_price FROM inventory_recod r4
+                          WHERE r4.inventoy_name = ii.inventoy_name
+                            AND COALESCE(r4.inventory_recod_moument_in, 0) > 0
+                            AND COALESCE(r4.inventory_recod_unit_price, 0) > 0
+                          ORDER BY r4.inventory_recod_action_date DESC, r4.id DESC LIMIT 1),
+                        p.inventory_price_purcharsing, 0) AS cost,
                COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
                          FROM inventory_recod r WHERE r.inventoy_name = ii.inventoy_name), 0) AS qty
         FROM inventoy_items ii
@@ -34702,10 +34721,11 @@ def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
         if category and (r['main_cat'] or '') != category:
             continue
         r['qty'] = round(float(r['qty'] or 0), 4)
-        # Price on the item master if it is set; otherwise what was last paid
+        # Valued at what was actually paid (the last GRN), falling back to the
+        # price on the item when the item has never been bought in.
         master, paid = float(r['master_cost'] or 0), float(r['last_paid'] or 0)
-        r['cost'] = round(master if master else paid, 2)
-        r['cost_source'] = 'Item price' if master else ('Last purchase' if paid else 'No price')
+        r['cost'] = round(paid if paid else master, 2)
+        r['cost_source'] = 'GRN price' if paid else ('Item price' if master else 'No price')
         r['adj_qty'] = round(float(r['adj_qty'] or 0), 4)
         r['value'] = round(r['qty'] * r['cost'], 2)
         r['adj_value'] = round(r['adj_qty'] * r['cost'], 2)

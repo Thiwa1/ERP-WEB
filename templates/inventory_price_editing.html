@@ -154,9 +154,13 @@
                             </select>
                         </td>
 
-                        <!-- Cost (read-only) -->
-                        <td class="px-3" style="font-family:monospace;font-size:.87rem;color:#605E5C;white-space:nowrap;">
-                            {{ item.inventory_price_purcharsing }}
+                        <!-- Cost: this is what stock is valued at -->
+                        <td class="px-3">
+                            <input type="number" step="0.01" name="cost_price"
+                                   value="{{ item.inventory_price_purcharsing }}"
+                                   title="Purchase cost - stock reports value the item at this"
+                                   class="form-control form-control-sm"
+                                   style="font-size:.85rem;border-radius:8px;border-color:#e2e8f0;font-family:monospace;background:#FFF8DC;">
                         </td>
 
                         <!-- Market Price -->
