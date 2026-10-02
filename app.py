@@ -30999,7 +30999,9 @@ def xl_inv_adjust():
     _xl_sync_log_ready()
     done = db.execute_query("SELECT jv_no FROM excel_sync_log WHERE client_ref = %s", (ref,)) or []
     if done:
-        return _xl_json({'ok': True, 'ref': ref, 'message': 'This count has already been sent.'})
+        return _xl_json({'ok': True, 'ref': ref,
+                         'message': 'This exact batch was already sent - nothing was changed. '
+                                    'Count more items and send again, or change a figure if it was wrong.'})
 
     count_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
     lines = b.get('lines') or []
@@ -32108,7 +32110,11 @@ Public Sub SubmitCount()
               "This changes stock quantities only - it does not touch the ledger.", _
               vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
 
-    ref = Trim$(CStr(SetupSheet().Range("B7").Value)) & "-ADJ-" & Replace(countDate, "-", "")
+    ' The reference describes THIS batch - workbook, date, how many items and the
+    ' net movement. Counting in batches through the day therefore works, while
+    ' sending the very same batch twice is still refused.
+    ref = Trim$(CStr(SetupSheet().Range("B7").Value)) & "-ADJ-" & Replace(countDate, "-", "") & _
+          "-" & n & "-" & Replace(Replace(Format$(up - down, "0.####"), ".", ""), "-", "m")
     body = "{" & Jq("ref", JsonStr(ref)) & "," & Jq("date", JsonStr(countDate)) & "," & _
            Jq("lines", "[" & lines & "]") & "}"
     Application.StatusBar = "Suwin ERP: sending the count..."
