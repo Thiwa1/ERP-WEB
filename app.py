@@ -185,6 +185,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'postdated_cheques',  'label': 'Postdated Cheques',    'url': '/postdated_cheques',      'icon': 'fas fa-calendar-check',      'category': 'Reversals & Adjustments'},
     # Inventory
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
+    {'key': 'stock_maintained',   'label': 'Stock Maintained Items','url': '/inventory_stock_maintained', 'icon': 'fas fa-boxes-stacked',    'category': 'Inventory'},
     {'key': 'bar_inventory',      'label': 'Bar Inventory',        'url': '/bar_inventory',           'icon': 'fas fa-beer',                'category': 'Inventory'},
     {'key': 'bar_inventory_items','label': 'Bar Inventory Items',  'url': '/bar_inventory/items',     'icon': 'fas fa-list-ul',             'category': 'Inventory'},
     {'key': 'bar_inventory_categories','label': 'Bar Inventory Categories', 'url': '/bar_inventory/categories', 'icon': 'fas fa-tags', 'category': 'Inventory'},
@@ -1635,6 +1636,7 @@ def add_inventory_item():
             main_cat = request.form.get('main_category')
             sub_cat = request.form.get('sub_category')
             min_qty = parse_float(request.form.get('min_qty', 0))
+            stock_maintained = 1 if request.form.get('stock_maintained') else 0
 
             # Prices are now arrays
             cost_prices = request.form.getlist('cost_price[]')
@@ -1670,12 +1672,13 @@ def add_inventory_item():
                         INSERT INTO inventoy_items (
                             id, inventoy_name, inventoy_code, inventoy_suplier_code, inventoy_bach_code,
                             inventoy_img, inventoy_creat_user_id, inventoy_items_creat_date,
-                            inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active
-                        ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                            inventoy_items_messurment_unit, Main_Catogry, Sub_Catogory, min_qty, active,
+                            stock_maintained
+                        ) VALUES (0, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, %s)
                     """
                     cursor.execute(query_item, (
                         name, code, supplier_code, batch_code, img_data,
-                        current_user_pk, today_date, unit, main_cat, sub_cat, min_qty
+                        current_user_pk, today_date, unit, main_cat, sub_cat, min_qty, stock_maintained
                     ))
                     item_id = cursor.lastrowid
 
@@ -30641,7 +30644,7 @@ def _inv_masters(from_day):
         FROM inventoy_items ii
         LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
         LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
-        WHERE ii.active = 1
+        WHERE ii.active = 1 AND COALESCE(ii.stock_maintained, 1) = 1
         GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code, ii.inventoy_bach_code, ii.inventoy_items_messurment_unit,
                  ii.Main_Catogry, ii.Sub_Catogory, ii.min_qty, p.inventory_price_selling, p.inventory_price_purcharsing
         ORDER BY ii.inventoy_name
@@ -34452,6 +34455,62 @@ def excel_ma_workbook_macro():
     resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinMA.bas'
     return resp
+
+
+
+
+@app.route('/inventory_stock_maintained', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Inventory')
+def inventory_stock_maintained():
+    """Which items stock is kept for. Only ticked items go to the Excel
+    Inventory workbook - its stock balance, bin card and physical count."""
+    if request.method == 'POST':
+        ticked = {i for i in request.form.getlist('keep[]') if i.isdigit()}
+        shown = [i for i in request.form.getlist('shown[]') if i.isdigit()]
+        on = off = 0
+        try:
+            for item_id in shown:
+                keep = 1 if item_id in ticked else 0
+                db.execute_query("UPDATE inventoy_items SET stock_maintained = %s WHERE id = %s",
+                                 (keep, int(item_id)), commit=True)
+                on += keep
+                off += 1 - keep
+            flash(f'Saved - {on} item(s) stock maintained, {off} not.', 'success')
+        except Exception as e:
+            flash(f'Could not save: {e}', 'danger')
+        return redirect(url_for('inventory_stock_maintained', search=request.form.get('search', ''),
+                                show=request.form.get('show', '')))
+
+    search = (request.args.get('search') or '').strip()
+    show = (request.args.get('show') or '').strip()      # '', 'yes', 'no'
+    q = """
+        SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code,
+               ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat,
+               COALESCE(ii.stock_maintained, 1) AS keep,
+               COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
+                         FROM inventory_recod r WHERE r.inventoy_name = ii.inventoy_name), 0) AS qty
+        FROM inventoy_items ii
+        WHERE ii.active = 1
+    """
+    params = []
+    if search:
+        q += " AND (ii.inventoy_name LIKE %s OR ii.inventoy_code LIKE %s OR ii.Main_Catogry LIKE %s)"
+        like = f'%{search}%'
+        params += [like, like, like]
+    if show == 'yes':
+        q += " AND COALESCE(ii.stock_maintained, 1) = 1"
+    elif show == 'no':
+        q += " AND COALESCE(ii.stock_maintained, 1) = 0"
+    q += " ORDER BY ii.Main_Catogry, ii.inventoy_name"
+    try:
+        items = db.execute_query(q, tuple(params)) or []
+    except Exception as e:
+        flash(f'Could not read the items: {e}', 'danger')
+        items = []
+    kept = sum(1 for i in items if i['keep'])
+    return render_template('inventory_stock_maintained.html', items=items, search=search, show=show,
+                           kept=kept, total=len(items))
 
 
 if __name__ == '__main__':

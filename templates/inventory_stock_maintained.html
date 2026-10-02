@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Maintained Items{% endblock %}
+
+{% block content %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <h4 class="mb-0 fw-bold"><i class="fas fa-boxes-stacked me-2 text-primary"></i>Stock Maintained Items</h4>
+    <small class="text-muted">Only ticked items go to the Excel Inventory workbook &mdash; stock balance, bin card
+      and the physical count. Everything stays on the website either way.</small>
+  </div>
+  <a href="{{ url_for('excel_inventory_workbook') }}" class="btn btn-outline-secondary btn-sm">
+    <i class="fas fa-download me-1"></i> Inventory Workbook
+  </a>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-md-5">
+        <label class="form-label small fw-semibold mb-1">Search</label>
+        <input type="text" name="search" value="{{ search }}" class="form-control form-control-sm"
+               placeholder="item name, code or category">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold mb-1">Show</label>
+        <select name="show" class="form-select form-select-sm">
+          <option value="" {{ 'selected' if not show }}>All items</option>
+          <option value="yes" {{ 'selected' if show == 'yes' }}>Stock maintained only</option>
+          <option value="no" {{ 'selected' if show == 'no' }}>Not maintained only</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-primary btn-sm"><i class="fas fa-search me-1"></i> Show</button>
+      </div>
+      <div class="col-md-2 text-end">
+        <span class="badge bg-success">{{ kept }} maintained</span>
+        <span class="badge bg-secondary">{{ total - kept }} not</span>
+      </div>
+    </form>
+  </div>
+</div>
+
+<form method="POST">
+  <input type="hidden" name="search" value="{{ search }}">
+  <input type="hidden" name="show" value="{{ show }}">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-bold">{{ total }} item(s)</span>
+      <div class="d-flex gap-2">
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="smAll(true)">Tick all shown</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" onclick="smAll(false)">Untick all shown</button>
+        <button type="submit" class="btn btn-success btn-sm"><i class="fas fa-save me-1"></i> Save</button>
+      </div>
+    </div>
+    <div class="card-body table-responsive" style="max-height:70vh;overflow:auto;">
+      <table class="table table-sm table-hover align-middle">
+        <thead class="table-light" style="position:sticky;top:0;z-index:2;">
+          <tr>
+            <th style="width:90px;">Stock kept</th>
+            <th>Item</th>
+            <th>Code</th>
+            <th>Unit</th>
+            <th>Main Category</th>
+            <th class="text-end">Current Qty</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in items %}
+          <tr>
+            <td class="text-center">
+              <input type="hidden" name="shown[]" value="{{ i.id }}">
+              <input type="checkbox" class="form-check-input sm-keep" name="keep[]" value="{{ i.id }}"
+                     {{ 'checked' if i.keep }}>
+            </td>
+            <td class="fw-semibold">{{ i.name }}</td>
+            <td class="text-muted small">{{ i.code or '' }}</td>
+            <td class="text-muted small">{{ i.unit or '' }}</td>
+            <td class="text-muted small">{{ i.main_cat or '' }}</td>
+            <td class="text-end">{{ '{:,.4f}'.format(i.qty or 0).rstrip('0').rstrip('.') }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="6" class="text-center text-muted py-4">No items match.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card-footer small text-muted">
+      Saving applies to the items shown above. Use the search and Show filter to work through a category at a time.
+      After saving, press <strong>Sync from System</strong> in the Inventory workbook.
+    </div>
+  </div>
+</form>
+
+<script>
+function smAll(on) {
+  document.querySelectorAll('.sm-keep').forEach(function (c) { c.checked = on; });
+}
+</script>
+{% endblock %}

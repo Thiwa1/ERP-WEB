@@ -901,6 +901,7 @@
                 {% if check_permission("Access_Inventory") %}
                 <div class="menu-category">Inventory</div>
                 {% if 'inventory_balance' not in menu_disabled %}<a href="/inventory_balance" class="nav-link"><i class="fas fa-boxes"></i> <span class="nav-text">Inventory Balance</span></a>{% endif %}
+                {% if 'stock_maintained' not in menu_disabled %}<a href="/inventory_stock_maintained" class="nav-link"><i class="fas fa-boxes-stacked"></i> <span class="nav-text">Stock Maintained Items</span></a>{% endif %}
                 {% if 'bar_inventory' not in menu_disabled %}<a href="/bar_inventory" class="nav-link"><i class="fas fa-beer"></i> <span class="nav-text">Bar Inventory</span></a>{% endif %}
                 {% if 'bar_inventory_items' not in menu_disabled %}<a href="/bar_inventory/items" class="nav-link"><i class="fas fa-list-ul"></i> <span class="nav-text">Bar Inventory Items</span></a>{% endif %}
                 {% if 'bar_inventory_categories' not in menu_disabled %}<a href="/bar_inventory/categories" class="nav-link"><i class="fas fa-tags"></i> <span class="nav-text">Bar Inventory Categories</span></a>{% endif %}
