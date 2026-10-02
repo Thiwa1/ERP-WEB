@@ -186,6 +186,7 @@ MENU_ITEMS_REGISTRY = [
     # Inventory
     {'key': 'inventory_balance',  'label': 'Inventory Balance',    'url': '/inventory_balance',      'icon': 'fas fa-boxes',               'category': 'Inventory'},
     {'key': 'stock_maintained',   'label': 'Stock Maintained Items','url': '/inventory_stock_maintained', 'icon': 'fas fa-boxes-stacked',    'category': 'Inventory'},
+    {'key': 'stock_count_report', 'label': 'Counted Stock Balance','url': '/stock_count_report',      'icon': 'fas fa-clipboard-check',     'category': 'Inventory'},
     {'key': 'bar_inventory',      'label': 'Bar Inventory',        'url': '/bar_inventory',           'icon': 'fas fa-beer',                'category': 'Inventory'},
     {'key': 'bar_inventory_items','label': 'Bar Inventory Items',  'url': '/bar_inventory/items',     'icon': 'fas fa-list-ul',             'category': 'Inventory'},
     {'key': 'bar_inventory_categories','label': 'Bar Inventory Categories', 'url': '/bar_inventory/categories', 'icon': 'fas fa-tags', 'category': 'Inventory'},
@@ -34539,6 +34540,117 @@ def inventory_stock_maintained():
         dupes = []
     return render_template('inventory_stock_maintained.html', items=items, search=search, show=show,
                            kept=kept, total=len(items), dupes=dupes)
+
+
+
+
+def _stock_count_rows(as_of, only_counted=False, category=''):
+    """Stock as at a date, valued: quantity, unit cost and value per item,
+    plus whatever a stock count moved on that date. Quantity is every
+    movement up to the date, so after a count it IS the counted figure."""
+    rows = db.execute_query("""
+        SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code,
+               ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat,
+               ii.Sub_Catogory AS sub_cat, COALESCE(ii.stock_maintained, 1) AS kept,
+               COALESCE(p.inventory_price_purcharsing, 0) AS cost,
+               COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
+                         FROM inventory_recod r
+                         WHERE r.inventoy_name = ii.inventoy_name
+                           AND r.inventory_recod_action_date <= %s), 0) AS qty,
+               COALESCE((SELECT SUM(COALESCE(r2.inventory_recod_moument_in, 0) - COALESCE(r2.inventory_recod_movment_out, 0))
+                         FROM inventory_recod r2
+                         WHERE r2.inventoy_name = ii.inventoy_name
+                           AND r2.inventory_recod_action_date = %s
+                           AND r2.inventory_recod_account = 'Stock Adjustment'), 0) AS adj_qty
+        FROM inventoy_items ii
+        LEFT JOIN inventory_price_recod p
+               ON p.id = (SELECT MAX(p2.id) FROM inventory_price_recod p2
+                          WHERE p2.inventory_price_link = ii.id)
+        WHERE ii.active = 1
+        ORDER BY ii.Main_Catogry, ii.inventoy_name
+    """, (as_of, as_of)) or []
+
+    seen, out = set(), []
+    for r in rows:
+        key = ' '.join(str(r['name'] or '').split()).lower()
+        if key in seen:          # stock is kept by name - one line per name
+            continue
+        seen.add(key)
+        if category and (r['main_cat'] or '') != category:
+            continue
+        r['qty'] = round(float(r['qty'] or 0), 4)
+        r['cost'] = round(float(r['cost'] or 0), 2)
+        r['adj_qty'] = round(float(r['adj_qty'] or 0), 4)
+        r['value'] = round(r['qty'] * r['cost'], 2)
+        r['adj_value'] = round(r['adj_qty'] * r['cost'], 2)
+        if only_counted and not r['adj_qty']:
+            continue
+        out.append(r)
+    return out
+
+
+@app.route('/stock_count_report', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Accounting')
+def stock_count_report():
+    """Counted Stock Balance: what stock stands at on a date, valued at cost,
+    with the adjustment a physical count made that day."""
+    as_of = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
+    only_counted = request.args.get('counted') == '1'
+    category = (request.args.get('category') or '').strip()
+    rows = _stock_count_rows(as_of, only_counted, category)
+
+    groups, totals = [], {'qty': 0.0, 'value': 0.0, 'adj_qty': 0.0, 'adj_value': 0.0}
+    by_cat = {}
+    for r in rows:
+        by_cat.setdefault(r['main_cat'] or '(no category)', []).append(r)
+        for k in totals:
+            totals[k] += r[k]
+    for name in sorted(by_cat):
+        items = by_cat[name]
+        groups.append({'name': name, 'items': items,
+                       'value': round(sum(i['value'] for i in items), 2),
+                       'adj_value': round(sum(i['adj_value'] for i in items), 2),
+                       'count': len(items)})
+    totals = {k: round(v, 2) for k, v in totals.items()}
+    categories = [c['c'] for c in (db.execute_query("""
+        SELECT DISTINCT Main_Catogry AS c FROM inventoy_items
+        WHERE active = 1 AND Main_Catogry IS NOT NULL AND Main_Catogry <> '' ORDER BY Main_Catogry
+    """) or [])]
+
+    if request.args.get('download') == 'xlsx':
+        try:
+            import excel_export as xl
+        except ImportError:
+            flash("Excel export needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+            return redirect(url_for('stock_count_report', date=as_of))
+        heads = ['Item', 'Code', 'Unit', 'Category', 'Counted / Balance Qty', 'Unit Cost', 'Value',
+                 'Count Adjustment Qty', 'Adjustment Value']
+        wb, ws = xl.new_workbook('Counted Stock')
+        row = xl.title_block(ws, len(heads), _company_display_name(), 'COUNTED STOCK BALANCE',
+                             f'As at {as_of}' + (f'  -  {category}' if category else ''))
+        row = xl.header_row(ws, row, heads)
+        for g in groups:
+            row = xl.section_row(ws, row, len(heads), f"{g['name']}  ({g['count']} items)")
+            for i in g['items']:
+                row = xl.data_row(ws, row, [i['name'], i['code'] or '', i['unit'] or '', i['main_cat'] or '',
+                                            i['qty'], i['cost'], i['value'], i['adj_qty'], i['adj_value']],
+                                  num_cols=(5, 6, 7, 8, 9))
+            row = xl.total_row(ws, row, f"{g['name']} total", [g['value']])
+            c = ws.cell(row=row - 1, column=7, value=float(g['value']))
+            c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+            ws.cell(row=row - 1, column=2).value = None
+        row = xl.total_row(ws, row, 'TOTAL STOCK VALUE', [totals['value']])
+        c = ws.cell(row=row - 1, column=7, value=float(totals['value']))
+        c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True, size=11)
+        ws.cell(row=row - 1, column=2).value = None
+        xl.finish(ws, len(heads), first_col_width=40, num_col_width=16)
+        ws.page_setup.orientation = 'landscape'
+        return xl.workbook_response(wb, f'Counted_Stock_Balance_{as_of}.xlsx')
+
+    return render_template('stock_count_report.html', as_of=as_of, groups=groups, totals=totals,
+                           only_counted=only_counted, category=category, categories=categories,
+                           today_date=date.today().strftime('%Y-%m-%d'))
 
 
 if __name__ == '__main__':

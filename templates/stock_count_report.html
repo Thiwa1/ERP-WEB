@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Counted Stock Balance{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+{% macro qty(v) %}{{ '{:,.4f}'.format(v or 0).rstrip('0').rstrip('.') if v else '0' }}{% endmacro %}
+<style>
+  .sc-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px; margin-bottom:14px; overflow:hidden; }
+  table.sc { width:100%; border-collapse:collapse; font-size:0.82rem; }
+  table.sc th, table.sc td { border-bottom:1px solid #eee; padding:4px 8px; }
+  table.sc th { background:#f3f7fc; font-size:0.72rem; text-transform:uppercase; color:#555; }
+  table.sc td.num, table.sc th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  tr.sc-cat td { background:#eaf2fb; font-weight:700; }
+  tr.sc-tot td { background:#f3f9ff; font-weight:700; border-top:2px solid rgba(0,103,192,0.25); }
+  .sc-short { color:#c0392b; font-weight:600; }
+  .sc-over { color:#107c10; font-weight:600; }
+  @page { size: A4 landscape; margin: 12mm 10mm 14mm 20mm; }
+  @media print { .no-print { display:none !important; } .main-content { margin:0 !important; padding:0 !important; } }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
+  <div>
+    <h4 class="mb-0 fw-bold"><i class="fas fa-clipboard-check me-2 text-primary"></i>Counted Stock Balance</h4>
+    <small class="text-muted">What stock stands at on the date, valued at cost &mdash; after any physical count
+      posted that day.</small>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-success btn-sm" href="{{ url_for('stock_count_report', date=as_of, counted='1' if only_counted else '', category=category, download='xlsx') }}">
+      <i class="fas fa-file-excel me-1"></i> Excel</a>
+    <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+  </div>
+</div>
+
+<div class="sc-card no-print">
+  <div class="p-3">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">As at date</label>
+        <input type="date" name="date" value="{{ as_of }}" max="{{ today_date }}" class="form-control form-control-sm">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Category</label>
+        <select name="category" class="form-select form-select-sm">
+          <option value="">All categories</option>
+          {% for c in categories %}
+          <option value="{{ c }}" {{ 'selected' if c == category }}>{{ c }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" name="counted" value="1" id="scCounted" {{ 'checked' if only_counted }}>
+          <label class="form-check-label small" for="scCounted">Only items adjusted by a count that day</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm"><i class="fas fa-sync me-1"></i> Show</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="sc-card">
+  <div class="p-3">
+    <div class="fw-bold" style="font-size:1rem;">Counted Stock Balance</div>
+    <div class="text-muted small">As at {{ as_of }}{% if category %} &middot; {{ category }}{% endif %}</div>
+  </div>
+  <div class="table-responsive">
+    <table class="sc">
+      <thead>
+        <tr>
+          <th style="width:28%">Item</th><th>Code</th><th>Unit</th>
+          <th class="num">Counted / Balance Qty</th><th class="num">Unit Cost</th><th class="num">Value</th>
+          <th class="num">Count Adjustment</th><th class="num">Adjustment Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for g in groups %}
+        <tr class="sc-cat"><td colspan="5">{{ g.name }} <span class="fw-normal text-muted">({{ g.count }} items)</span></td>
+          <td class="num">{{ money(g.value) }}</td><td></td><td class="num">{{ money(g.adj_value) }}</td></tr>
+        {% for i in g['items'] %}
+        <tr>
+          <td>{{ i.name }}{% if not i.kept %} <span class="badge bg-light text-muted border">not stock maintained</span>{% endif %}</td>
+          <td class="text-muted small">{{ i.code or '' }}</td>
+          <td class="text-muted small">{{ i.unit or '' }}</td>
+          <td class="num">{{ qty(i.qty) }}</td>
+          <td class="num">{{ money(i.cost) }}</td>
+          <td class="num">{{ money(i.value) }}</td>
+          <td class="num {{ 'sc-short' if i.adj_qty < 0 else ('sc-over' if i.adj_qty > 0 else '') }}">
+            {{ qty(i.adj_qty) if i.adj_qty else '' }}</td>
+          <td class="num {{ 'sc-short' if i.adj_value < 0 else ('sc-over' if i.adj_value > 0 else '') }}">
+            {{ money(i.adj_value) if i.adj_qty else '' }}</td>
+        </tr>
+        {% endfor %}
+        {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">Nothing to show for this date.</td></tr>
+        {% endfor %}
+        {% if groups %}
+        <tr class="sc-tot">
+          <td colspan="5">TOTAL STOCK VALUE</td>
+          <td class="num">{{ money(totals.value) }}</td>
+          <td></td>
+          <td class="num">{{ money(totals.adj_value) }}</td>
+        </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  <div class="p-3 small text-muted">
+    Quantity is every stock movement up to {{ as_of }}, so after a count has been submitted it is the counted figure.
+    Value is quantity &times; the item's latest purchase cost. The adjustment columns show what the count moved that day:
+    <span class="sc-short">red</span> for a shortage, <span class="sc-over">green</span> for a gain.
+  </div>
+</div>
+{% endblock %}
