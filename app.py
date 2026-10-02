@@ -31998,6 +31998,59 @@ Public Sub SaveGRN()
     If MsgBox(msg, vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then SubmitPending
 End Sub
 
+' ---- Find an item on the sheet you are looking at ---------------------------
+' Works on any list sheet (Stock Balance, Stock Adjustment, Counted Balance,
+' GRN Register): type part of the name, it jumps to the row. Press again to
+' step to the next match.
+Private mLastFind As String
+Private mLastRow As Long
+
+Public Sub FindItem()
+    Dim ws As Worksheet, col As Long, firstRow As Long, lastRow As Long, rw As Long
+    Dim term As String, startRow As Long, hits As Long
+    Set ws = ActiveSheet
+    Select Case ws.Name
+    Case "Stock Balance":    col = 2: firstRow = 6
+    Case "Stock Adjustment": col = 2: firstRow = 8
+    Case "Counted Balance":  col = 2: firstRow = 8
+    Case "GRN Register":     col = 14: firstRow = 6
+    Case "Items":            col = 2: firstRow = 2
+    Case Else
+        ' On a form sheet the item cell has a dropdown - search that instead
+        PickFromList
+        Exit Sub
+    End Select
+    term = Trim$(InputBox("Type part of the item name:", "Suwin ERP - find item", mLastFind))
+    If StrPtr(term) = 0 Then Exit Sub
+    If term = "" Then Exit Sub
+    lastRow = ws.Cells(ws.Rows.Count, col).End(-4162).Row
+    If term <> mLastFind Then mLastRow = firstRow - 1
+    mLastFind = term
+    startRow = mLastRow + 1
+    If startRow < firstRow Then startRow = firstRow
+    For rw = startRow To lastRow
+        If InStr(1, CStr(ws.Cells(rw, col).Value), term, vbTextCompare) > 0 Then
+            mLastRow = rw
+            ws.Activate
+            ws.Cells(rw, col).Select
+            ActiveWindow.ScrollRow = WorksheetFunction.Max(1, rw - 5)
+            Exit Sub
+        End If
+    Next rw
+    ' Nothing further down - start again from the top
+    For rw = firstRow To lastRow
+        If InStr(1, CStr(ws.Cells(rw, col).Value), term, vbTextCompare) > 0 Then hits = hits + 1
+    Next rw
+    If hits = 0 Then
+        MsgBox "No item on this sheet matches """ & term & """.", vbInformation, "Suwin ERP"
+        mLastRow = firstRow - 1
+    Else
+        mLastRow = firstRow - 1
+        MsgBox "That was the last match - press Find Item again to start from the top.", _
+               vbInformation, "Suwin ERP"
+    End If
+End Sub
+
 ' ---- Stock Adjustment (physical count) -------------------------------------
 ' Type the counted quantities offline; Submit Count moves the system quantity
 ' to match. Only the lines with a Counted figure are sent.
@@ -32027,6 +32080,27 @@ Public Sub SubmitCount()
     If n = 0 Then
         MsgBox "Nothing to adjust - every counted item already matches the system.", vbInformation, "Suwin ERP"
         Exit Sub
+    End If
+    ' A typed 0 takes the whole balance out. That is right for an empty shelf and
+    ' wrong for "I did not count it", so name those lines before anything is sent.
+    Dim zeroList As String, zeroCount As Long
+    For rw = 8 To last
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" And Trim$(CStr(ws.Cells(rw, 6).Value)) <> "" Then
+            If Val(CStr(ws.Cells(rw, 6).Value)) = 0 And Val(CStr(ws.Cells(rw, 5).Value)) <> 0 Then
+                zeroCount = zeroCount + 1
+                If zeroCount <= 12 Then
+                    zeroList = zeroList & "   " & ws.Cells(rw, 2).Value & "   (" & _
+                               Format$(Val(CStr(ws.Cells(rw, 5).Value)), "#,##0.####") & " to 0)" & vbCrLf
+                End If
+            End If
+        End If
+    Next rw
+    If zeroCount > 0 Then
+        If MsgBox(zeroCount & " item(s) are counted as ZERO, so their whole balance will be taken out:" & vbCrLf & vbCrLf & _
+                  zeroList & IIf(zeroCount > 12, "   ..." & vbCrLf, "") & vbCrLf & _
+                  "Is the shelf really empty for these?" & vbCrLf & _
+                  "If you simply did not count them, press No and clear the Counted cell (blank = not counted).", _
+                  vbYesNo + vbExclamation, "Suwin ERP") <> vbYes Then Exit Sub
     End If
     If MsgBox("Adjust " & n & " item(s) on " & countDate & "?" & vbCrLf & vbCrLf & _
               "Stock up: " & Format$(up, "#,##0.####") & vbCrLf & _
@@ -32728,17 +32802,21 @@ Public Sub AddButtons()
                                    "Sync from System", "SyncFromSystem", "Stock Balance", "GoStockBalance", _
                                    "Bin Card", "GoBinCard", "Set API Key", "SetApiKey"), True
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
+    Application.OnKey "^+I", "FindItem"       ' Ctrl+Shift+I finds an item on a list sheet
     PutButtons "GRN Entry", "L1", Array("Save GRN", "SaveGRN", "Clear Form", "ClearGRN", "Submit Pending", "SubmitPending", _
                                         "Find in list", "PickFromList", "SRN Entry", "GoSRN", "Stock Count", "GoCount")
-    PutButtons "Stock Adjustment", "J1", Array("Submit Count", "SubmitCount", "Clear Counted", "ClearCount", _
-                                               "Sync from System", "SyncFromSystem", "Counted Balance", "GoCountedBalance", _
-                                               "GRN Entry", "GoGRN")
-    PutButtons "Counted Balance", "L1", Array("Load Balance", "LoadCountedBalance", "Stock Count", "GoCount")
+    PutButtons "Stock Adjustment", "J1", Array("Submit Count", "SubmitCount", "Find Item", "FindItem", _
+                                               "Clear Counted", "ClearCount", "Sync from System", "SyncFromSystem", _
+                                               "Counted Balance", "GoCountedBalance", "GRN Entry", "GoGRN")
+    PutButtons "Counted Balance", "L1", Array("Load Balance", "LoadCountedBalance", "Find Item", "FindItem", _
+                                              "Stock Count", "GoCount")
     PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
                                         "Find in list", "PickFromList", "GRN Entry", "GoGRN")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
-    PutButtons "Stock Balance", "Q1", Array("Sync from System", "SyncFromSystem", "Bin Card", "GoBinCard")
-    PutButtons "Bin Card", "L1", Array("Show Bin Card", "ShowBinCard")
+    PutButtons "Stock Balance", "Q1", Array("Find Item", "FindItem", "Sync from System", "SyncFromSystem", _
+                                            "Bin Card", "GoBinCard", "Counted Balance", "GoCountedBalance")
+    PutButtons "Bin Card", "L1", Array("Show Bin Card", "ShowBinCard", "Find Item", "PickFromList", _
+                                       "Stock Balance", "GoStockBalance")
 End Sub
 '''
 
