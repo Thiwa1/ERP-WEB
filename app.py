@@ -34656,7 +34656,7 @@ def inventory_stock_maintained():
 
 
 
-def _stock_count_rows(as_of, only_counted=False, category=''):
+def _stock_count_rows(as_of, only_counted=False, category='', kept_only=True):
     """Stock as at a date, valued: quantity, unit cost and value per item,
     plus whatever a stock count moved on that date. Quantity is every
     movement up to the date, so after a count it IS the counted figure."""
@@ -34688,6 +34688,8 @@ def _stock_count_rows(as_of, only_counted=False, category=''):
         if key in seen:          # stock is kept by name - one line per name
             continue
         seen.add(key)
+        if kept_only and not int(r['kept'] or 0):
+            continue            # not stock maintained - kept off the stock sheets
         if category and (r['main_cat'] or '') != category:
             continue
         r['qty'] = round(float(r['qty'] or 0), 4)
@@ -34710,7 +34712,8 @@ def stock_count_report():
     as_of = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
     only_counted = request.args.get('counted') == '1'
     category = (request.args.get('category') or '').strip()
-    rows = _stock_count_rows(as_of, only_counted, category)
+    all_items = request.args.get('all') == '1'      # include items stock is not kept for
+    rows = _stock_count_rows(as_of, only_counted, category, kept_only=not all_items)
 
     groups, totals = [], {'qty': 0.0, 'value': 0.0, 'adj_qty': 0.0, 'adj_value': 0.0}
     by_cat = {}
@@ -34761,7 +34764,7 @@ def stock_count_report():
         return xl.workbook_response(wb, f'Counted_Stock_Balance_{as_of}.xlsx')
 
     return render_template('stock_count_report.html', as_of=as_of, groups=groups, totals=totals,
-                           only_counted=only_counted, category=category, categories=categories,
+                           only_counted=only_counted, category=category, categories=categories, all_items=all_items,
                            today_date=date.today().strftime('%Y-%m-%d'))
 
 
