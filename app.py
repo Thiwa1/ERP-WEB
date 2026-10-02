@@ -23177,6 +23177,69 @@ def _mgmt_export_book(cur, prev):
     ws.page_setup.fitToHeight = 1
     ws.sheet_properties.pageSetUpPr.fitToPage = True
 
+    # ---- GL Entries: every journal entry behind the report lines, with its JV,
+    # so any figure can be traced back to the posting it came from.
+    ws = wb.create_sheet('GL Entries')
+    gl_heads = ['Note', 'Report Line', 'Date', 'JV', 'JV Code', 'Account', 'Sub Account', 'Narration', 'Amount']
+    ncols = len(gl_heads)
+    row = xl.title_block(ws, ncols, company, 'GL ENTRIES BEHIND THE REPORT', cur['month_label'])
+    row = xl.header_row(ws, row, gl_heads)
+    first_gl_row = row
+    try:
+        entries = db.execute_query("""
+            SELECT ed.account_name, COALESCE(ed.entry_sub_account_code, 0) AS sub, s.sub_sub_accaount_name AS sub_name,
+                   ed.entry_effective_date AS d, ed.entry_jv AS jv, j.jv_user_code AS jv_code,
+                   ed.entry_naration AS memo, COALESCE(ed.enty_values_DR, 0) AS dr, COALESCE(ed.enty_values_CR, 0) AS cr
+            FROM entry_details ed
+            LEFT JOIN jv_numbers j ON j.jv_id = ed.entry_jv
+            LEFT JOIN sub_accont_for_new_account s ON s.sub_account_code = ed.entry_sub_account_code
+                 AND s.sub_new_account = ed.account_name
+            WHERE ed.entry_effective_date BETWEEN %s AND %s AND ed.entry_deleted = 0
+            ORDER BY ed.entry_effective_date, ed.entry_jv, ed.id
+        """, (cur['start'], cur['end'])) or []
+    except Exception as e:
+        logging.warning(f'GL Entries tab: {e}')
+        entries = []
+    by_key, by_acct = {}, {}
+    for e in entries:
+        key = ' '.join(str(e['account_name'] or '').split()).lower()
+        by_key.setdefault((key, int(e['sub'] or 0)), []).append(e)
+        by_acct.setdefault(key, []).append(e)
+    n_gl = 0
+    for sec, sec_label, kind in MGMT_SECTIONS:
+        if sec.startswith('PURCH'):
+            continue           # those are supplier invoices - see the Note 3 Purchases tab
+        for ln in cur['sections'].get(sec, []):
+            for s in (ln.get('sources') or []):
+                if s['source_type'] == 'PURCH':
+                    continue
+                key = ' '.join(str(s['gl_account'] or '').split()).lower()
+                if not key:
+                    continue
+                sign = -1 if int(s['sign'] or 1) < 0 else 1
+                rows_for = (by_key.get((key, int(s['sub_account_code'])), []) if s['sub_account_code']
+                            else by_acct.get(key, []))
+                for e in rows_for:
+                    amount = (float(e['cr']) - float(e['dr'])) if kind == 'income' else (float(e['dr']) - float(e['cr']))
+                    row = xl.data_row(ws, row, [
+                        sec_label.split(' - ')[0], ln['label'], e['d'], e['jv'] or '', e['jv_code'] or '',
+                        e['account_name'] or '', e['sub_name'] or '', (e['memo'] or '')[:150],
+                        round(sign * amount, 2)], num_cols=(9,))
+                    ws.cell(row=row - 1, column=3).number_format = 'yyyy-mm-dd'
+                    n_gl += 1
+    if n_gl:
+        ws.cell(row=row, column=1, value='TOTAL').font = xl.Font(bold=True)
+        c = ws.cell(row=row, column=9, value=f'=SUM(I{first_gl_row}:I{row - 1})')
+        c.number_format, c.font = xl.NUM_FMT, xl.Font(bold=True)
+        ws.auto_filter.ref = f'A{first_gl_row - 1}:I{row - 1}'
+    else:
+        ws.cell(row=row, column=1, value='No GL entries behind the report lines this month.')
+    xl.finish(ws, ncols, first_col_width=22, num_col_width=15)
+    ws.column_dimensions['B'].width = 32
+    ws.column_dimensions['F'].width = 30
+    ws.column_dimensions['H'].width = 44
+    ws.page_setup.orientation = 'landscape'
+
     # ---- Note 3 Purchases: the supplier invoices behind the purchases figure
     p = cur.get('purchasing') or {}
     ws = wb.create_sheet('Note 3 Purchases')
@@ -23185,6 +23248,21 @@ def _mgmt_export_book(cur, prev):
     ncols = len(heads)
     row = xl.title_block(ws, ncols, company, 'NOTE 3 - PURCHASES, SUPPLIER INVOICES',
                          f"{cur['month_label']}  -  gross is the basis used in Note 3")
+    # A category charged to two lines is counted twice - say so at the top,
+    # where it cannot be missed, rather than leaving it to be spotted.
+    dbl = [c for c in (p.get('categories') or []) if len(c.get('lines') or []) > 1]
+    if dbl:
+        warn = ws.cell(row=row, column=1,
+                       value='DOUBLE-COUNTED: ' + '; '.join(
+                           f"{c.get('category') or '-'} is charged to " +
+                           ', '.join(l['label'] for l in c['lines']) for c in dbl[:4]) +
+                             '. Remove the extra source on the Mapping page, or Note 3 is overstated.')
+        warn.font = xl.Font(bold=True, color=xl.RED_DARK, size=10)
+        warn.fill = xl._fill('FDECEA')
+        for i in range(2, ncols + 1):
+            ws.cell(row=row, column=i).fill = xl._fill('FDECEA')
+        row += 2
+
     # Summary by category first, so the figure can be traced without scrolling
     row = xl.section_row(ws, row, ncols, 'By Main Category')
     row = xl.header_row(ws, row, ['Main Category', 'Invoices', 'In Note 3?', '', '', '', 'Net', 'VAT', 'Gross'])
@@ -34048,7 +34126,8 @@ Public Sub SetApiKey()
 End Sub
 
 Public Sub LoadMonth()
-    Dim file As String, src As Workbook, sh As Worksheet, lastSh As Worksheet, i As Long, n As Long, m As String
+    ' NB: the loop variable must not be called sh - that would hide the Sh() helper
+    Dim file As String, src As Workbook, src_ws As Worksheet, lastSh As Worksheet, i As Long, n As Long, m As String
     m = MonthText()
     If m = "" Then
         MsgBox "Type the month in C3, like 2026-09.", vbExclamation, "Suwin ERP"
@@ -34075,12 +34154,12 @@ Public Sub LoadMonth()
     Next i
     Set src = Workbooks.Open(Filename:=file, ReadOnly:=True)
     Set lastSh = Sh("Home")
-    For Each sh In src.Worksheets
-        sh.Copy After:=lastSh
+    For Each src_ws In src.Worksheets
+        src_ws.Copy After:=lastSh
         Set lastSh = ThisWorkbook.ActiveSheet
         lastSh.Tab.Color = RGB(3, 131, 135)
         n = n + 1
-    Next sh
+    Next src_ws
     src.Close SaveChanges:=False
     Application.DisplayAlerts = True
     On Error Resume Next
@@ -34293,6 +34372,7 @@ def excel_ma_workbook():
         'Notes 1 to 8 - the lines behind each note.',
         'Note 3 - cost of sales, with opening and closing stock.',
         'Note 3 Purchases - every supplier invoice behind the purchases, with Net / VAT / Gross.',
+        'GL Entries - every journal entry behind the report lines, with its JV number.',
         'Sales Percentage, Pie Chart, Day Summary.',
         '',
         'Save Stock sends the opening / closing stock and remarks above back to the system.',
