@@ -30642,7 +30642,11 @@ def _inv_masters(from_day):
                             THEN COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0)
                             ELSE 0 END), 0) AS opening
         FROM inventoy_items ii
-        LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
+        -- Only the LATEST price row: joining them all lists an item once per
+        -- price tier, which showed the same item twice on the count sheet.
+        LEFT JOIN inventory_price_recod p
+               ON p.id = (SELECT MAX(p2.id) FROM inventory_price_recod p2
+                          WHERE p2.inventory_price_link = ii.id)
         LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
         WHERE ii.active = 1 AND COALESCE(ii.stock_maintained, 1) = 1
         GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code, ii.inventoy_bach_code, ii.inventoy_items_messurment_unit,
@@ -30970,7 +30974,9 @@ def xl_inv_adjust():
                COALESCE((SELECT SUM(COALESCE(r.inventory_recod_moument_in, 0) - COALESCE(r.inventory_recod_movment_out, 0))
                          FROM inventory_recod r WHERE r.inventoy_name = ii.inventoy_name), 0) AS qty
         FROM inventoy_items ii
-        LEFT JOIN inventory_price_recod p ON ii.id = p.inventory_price_link
+        LEFT JOIN inventory_price_recod p
+               ON p.id = (SELECT MAX(p2.id) FROM inventory_price_recod p2
+                          WHERE p2.inventory_price_link = ii.id)
         WHERE ii.inventoy_name IN ({marks})
     """, tuple(names)) or [])}
 
