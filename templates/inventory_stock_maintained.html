@@ -41,6 +41,19 @@
   </div>
 </div>
 
+{% if dupes %}
+<div class="alert alert-warning">
+  <strong><i class="fas fa-triangle-exclamation me-1"></i>Same name used by more than one item record</strong>
+  <div class="small mt-1">
+    Stock is kept by item name, so these share one balance and would be counted twice on a stock sheet.
+    Keep one and untick the others here (or make them inactive).
+  </div>
+  <div class="small mt-2">
+    {% for d in dupes %}<span class="badge bg-dark me-1 mb-1">{{ d.name }} &times;{{ d.n }}</span>{% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <form method="POST">
   <input type="hidden" name="search" value="{{ search }}">
   <input type="hidden" name="show" value="{{ show }}">

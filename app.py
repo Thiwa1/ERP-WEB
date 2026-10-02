@@ -30653,6 +30653,17 @@ def _inv_masters(from_day):
                  ii.Main_Catogry, ii.Sub_Catogory, ii.min_qty, p.inventory_price_selling, p.inventory_price_purcharsing
         ORDER BY ii.inventoy_name
     """, (from_day,)) or []
+    # Stock, the Bin Card and the count sheet all work by item NAME, so the
+    # workbook must list a name once. Two item records with the same name (or
+    # any other way a row doubles up) would otherwise be counted twice.
+    seen, unique_items = {}, []
+    for it in items:
+        key = ' '.join(str(it['name'] or '').split()).lower()
+        if key in seen:
+            continue
+        seen[key] = True
+        unique_items.append(it)
+    items = unique_items
     suppliers = db.execute_query("""
         SELECT supplier_name AS name, COALESCE(suppliers_default_payment_method, '') AS method
         FROM suppliers WHERE Is_Suplier = 1 AND supplier_name <> 'Direct Payment' ORDER BY supplier_name
@@ -34515,8 +34526,19 @@ def inventory_stock_maintained():
         flash(f'Could not read the items: {e}', 'danger')
         items = []
     kept = sum(1 for i in items if i['keep'])
+    # Two item records with the same name share one stock balance and would be
+    # counted twice on a stock sheet - worth naming here so one can be retired.
+    try:
+        dupes = db.execute_query("""
+            SELECT inventoy_name AS name, COUNT(*) AS n
+            FROM inventoy_items WHERE active = 1
+            GROUP BY inventoy_name HAVING COUNT(*) > 1
+            ORDER BY inventoy_name
+        """) or []
+    except Exception:
+        dupes = []
     return render_template('inventory_stock_maintained.html', items=items, search=search, show=show,
-                           kept=kept, total=len(items))
+                           kept=kept, total=len(items), dupes=dupes)
 
 
 if __name__ == '__main__':
