@@ -32253,6 +32253,43 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
     End If
     sb.Range("A5:O5").AutoFilter
 
+    ' Stock Adjustment: rebuild the item list too, so items added in the system
+    ' show up here. Anything already counted is kept, matched by item name.
+    On Error Resume Next
+    Dim adj As Worksheet, keepQty As Object, keepNote As Object, nm As String, lastAdj As Long
+    Set adj = Sh("Stock Adjustment")
+    On Error GoTo 0
+    If Not adj Is Nothing And n > 0 Then
+        Set keepQty = CreateObject("Scripting.Dictionary")
+        Set keepNote = CreateObject("Scripting.Dictionary")
+        lastAdj = adj.Cells(adj.Rows.Count, 2).End(-4162).Row
+        For rw = 8 To lastAdj
+            nm = Trim$(CStr(adj.Cells(rw, 2).Value))
+            If nm <> "" Then
+                If Trim$(CStr(adj.Cells(rw, 6).Value)) <> "" Then keepQty(nm) = adj.Cells(rw, 6).Value
+                If Trim$(CStr(adj.Cells(rw, 8).Value)) <> "" Then keepNote(nm) = adj.Cells(rw, 8).Value
+            End If
+        Next rw
+        adj.Range("B8:H20000").ClearContents
+        For i = 1 To n
+            rw = 7 + i
+            ' items(i, j) holds the TSV columns: 2 name, 3 code, 5 unit, 11 qty
+            adj.Cells(rw, 2).Value = items(i, 2)
+            adj.Cells(rw, 3).Value = "'" & items(i, 3)
+            adj.Cells(rw, 4).Value = items(i, 5)
+            adj.Cells(rw, 5).Value = items(i, 11)
+            nm = CStr(items(i, 2))
+            If keepQty.Exists(nm) Then adj.Cells(rw, 6).Value = keepQty(nm)
+            If keepNote.Exists(nm) Then adj.Cells(rw, 8).Value = keepNote(nm)
+            adj.Cells(rw, 7).Formula = "=IF(F" & rw & "="""","""",ROUND(F" & rw & "-E" & rw & ",4))"
+        Next i
+        adj.Range("E8").Resize(n, 3).NumberFormat = "#,##0.####"
+        With adj.Range("B8").Resize(n, 7).Borders
+            .LineStyle = 1
+            .Color = RGB(200, 206, 216)
+        End With
+    End If
+
     ' Movements for the Bin Card
     Application.StatusBar = "Suwin ERP: downloading stock movements for the Bin Card..."
     r = Http("GET", "/api/xl/inv/movements?format=tsv&months=" & months, "", st)
