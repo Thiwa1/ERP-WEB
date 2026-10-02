@@ -23262,7 +23262,10 @@ def _mgmt_export_book(cur, prev):
     ws = wb.create_sheet('Day Summary')
     rr_lines = [l for sec, ls in daily['groups'] if sec != 'NOTE2' for l in ls]
     bar_lines = [l for sec, ls in daily['groups'] if sec == 'NOTE2' for l in ls]
-    heads = (['Date'] + [l['label'] for l in rr_lines] + ['TOTAL'] + [l['label'] for l in bar_lines]
+    def col_head(l):
+        # Manual lines have no daily split, so say so in the heading
+        return l['label'] + (' (manual)' if l.get('is_manual') else '')
+    heads = (['Date'] + [col_head(l) for l in rr_lines] + ['TOTAL'] + [col_head(l) for l in bar_lines]
              + ['BAR SALES', 'TOTAL'])
     ncols = len(heads)
     row = xl.title_block(ws, ncols, company, 'DAY SUMMARY', cur['month_label'])
@@ -23278,6 +23281,31 @@ def _mgmt_export_book(cur, prev):
                 ws.cell(row=row - 1, column=c).fill = xl._fill('F7F7F7')
     row = xl.total_row(ws, row, 'TOTAL', [daily['totals'][l['id']] for l in rr_lines] + [daily['rr_total']] +
                        [daily['totals'][l['id']] for l in bar_lines] + [daily['bar_total'], daily['grand']])
+
+    # A line's month total comes from the note; the daily columns are built from
+    # GL entries dated to a day. Manual lines, and entries with no effective
+    # date, therefore leave the days empty - show that instead of hiding it.
+    def day_sum(line_id):
+        return round(sum((d['vals'].get(line_id) or 0) for d in daily['days']), 2)
+
+    sums = ([day_sum(l['id']) for l in rr_lines] + [sum(day_sum(l['id']) for l in rr_lines)] +
+            [day_sum(l['id']) for l in bar_lines] + [sum(day_sum(l['id']) for l in bar_lines),
+             sum(day_sum(l['id']) for l in rr_lines + bar_lines)])
+    notes = ([daily['totals'][l['id']] for l in rr_lines] + [daily['rr_total']] +
+             [daily['totals'][l['id']] for l in bar_lines] + [daily['bar_total'], daily['grand']])
+    diffs = [round((n or 0) - (s or 0), 2) for n, s in zip(notes, sums)]
+    if any(abs(d) > 0.005 for d in diffs):
+        row += 1
+        row = xl.data_row(ws, row, ['Sum of the days above'] + sums, num_cols=num_cols)
+        row = xl.data_row(ws, row, ['In the note but not dated to a day'] + diffs, num_cols=num_cols,
+                          color=xl.RED_DARK)
+        for i, d in enumerate(diffs, start=2):
+            if abs(d) > 0.005:
+                ws.cell(row=row - 1, column=i).fill = xl._fill('FDECEA')
+        ws.cell(row=row, column=1, value='A figure here means the line is typed in manually, or its GL entries '
+                                          'have no effective date - the month total is right, the daily split is '
+                                          'not.').font = xl.Font(italic=True, size=9, color=xl.RED_DARK)
+        row += 1
     xl.finish(ws, ncols, first_col_width=13, num_col_width=13)
     for c in range(1, ncols + 1):
         ws.cell(row=head_row_no, column=c).alignment = xl.Alignment(wrap_text=True, horizontal='center',
@@ -33842,6 +33870,457 @@ def excel_bankrec_workbook_macro():
     resp = make_response(code.encode('cp1252', errors='replace'))
     resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinBankRec.bas'
+    return resp
+
+
+
+
+# ================================================================
+# ── MANAGEMENT ACCOUNT WORKBOOK ─────────────────────────────────
+# The Management Account on its own: every tab (P&L, Variance, the
+# notes, Note 3, Note 3 Purchases, Sales %, Pie Chart, Day Summary)
+# filled in at download, so it opens with no internet. Load Month
+# fetches another month; Save Stock sends the opening / closing
+# stock and remarks back.
+# ================================================================
+
+_XL_MA_VBA_CODE = r'''Attribute VB_Name = "SuwinMA"
+Option Explicit
+
+' ===================================================================
+'  Suwin ERP - Management Account
+'  Home: type the month and press Load Month. The report tabs are
+'  replaced each time. Opening / closing stock goes back with Save Stock.
+' ===================================================================
+
+Private Function Sh(ByVal nm As String) As Worksheet
+    Set Sh = ThisWorkbook.Worksheets(nm)
+End Function
+
+Private Function SetupSheet() As Worksheet
+    Set SetupSheet = ThisWorkbook.Worksheets("Setup")
+End Function
+
+Private Function ServerUrl() As String
+    ServerUrl = Trim$(CStr(SetupSheet().Range("B3").Value))
+    Do While Right$(ServerUrl, 1) = "/"
+        ServerUrl = Left$(ServerUrl, Len(ServerUrl) - 1)
+    Loop
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+End Function
+
+Private Sub SayResult(ByVal msg As String)
+    SetupSheet().Range("B6").Value = Format$(Now, "yyyy-mm-dd hh:nn") & "   " & msg
+    Sh("Home").Range("C14").Value = msg
+    Application.StatusBar = False
+End Sub
+
+Private Function MonthText() As String
+    Dim v As Variant
+    v = Sh("Home").Range("C3").Value
+    If IsDate(v) Then
+        MonthText = Format$(CDate(v), "yyyy-mm")
+    Else
+        MonthText = Trim$(CStr(v))
+    End If
+End Function
+
+Private Function JsonStr(ByVal v As Variant) As String
+    Dim s As String
+    s = CStr(v)
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCrLf, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    JsonStr = """" & s & """"
+End Function
+
+Private Function JsonNumOrNull(ByVal v As Variant) As String
+    If IsEmpty(v) Or Trim$(CStr(v)) = "" Then
+        JsonNumOrNull = "null"
+    ElseIf IsNumeric(v) Then
+        JsonNumOrNull = Replace(CStr(CDbl(v)), ",", ".")
+    Else
+        JsonNumOrNull = "null"
+    End If
+End Function
+
+Private Function Jq(ByVal key As String, ByVal jsonValue As String) As String
+    Jq = """" & key & """:" & jsonValue
+End Function
+
+Private Function JsonValue(ByVal jsonText As String, ByVal keyName As String) As String
+    Dim p As Long, q As Long, needle As String
+    needle = """" & keyName & """:"
+    p = InStr(1, jsonText, needle, vbTextCompare)
+    If p = 0 Then Exit Function
+    p = p + Len(needle)
+    Do While p <= Len(jsonText) And Mid$(jsonText, p, 1) = " "
+        p = p + 1
+    Loop
+    If Mid$(jsonText, p, 1) = """" Then
+        p = p + 1
+        q = p
+        Do While q <= Len(jsonText)
+            If Mid$(jsonText, q, 1) = "\" Then
+                q = q + 2
+            ElseIf Mid$(jsonText, q, 1) = """" Then
+                Exit Do
+            Else
+                q = q + 1
+            End If
+        Loop
+    Else
+        q = p
+        Do While q <= Len(jsonText) And InStr(",}", Mid$(jsonText, q, 1)) = 0
+            q = q + 1
+        Loop
+    End If
+    JsonValue = Mid$(jsonText, p, q - p)
+    JsonValue = Replace(JsonValue, "\/", "/")
+    JsonValue = Replace(JsonValue, "\""", """")
+    JsonValue = Replace(JsonValue, "\\", "\")
+End Function
+
+Private Function Http(ByVal method As String, ByVal path As String, ByVal body As String, ByRef status_ As Long) As String
+    Dim xh As Object
+    status_ = 0
+    If ApiKey() = "" Then Exit Function
+    On Error GoTo Offline
+    Set xh = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    xh.setTimeouts 10000, 10000, 30000, 120000
+    xh.Open method, ServerUrl() & path, False
+    xh.setRequestHeader "X-API-Key", ApiKey()
+    xh.setRequestHeader "Content-Type", "application/json"
+    If method = "POST" Then xh.send body Else xh.send
+    status_ = xh.Status
+    Http = xh.responseText
+    Exit Function
+Offline:
+    status_ = 0
+End Function
+
+Private Function ServerError(ByVal status_ As Long, ByVal reply As String) As String
+    Dim m As String
+    m = JsonValue(reply, "message")
+    If m = "" Then m = JsonValue(reply, "error")
+    If m = "" Then m = "HTTP " & status_
+    ServerError = m
+End Function
+
+Private Function DownloadFile(ByVal path As String, ByVal saveAs As String) As Boolean
+    Dim http As Object, stm As Object
+    On Error GoTo Bad
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    http.setTimeouts 10000, 10000, 60000, 180000
+    http.Open "GET", ServerUrl() & path, False
+    http.setRequestHeader "X-API-Key", ApiKey()
+    http.send
+    If http.Status <> 200 Then
+        MsgBox "Could not download the Management Account: " & http.Status & " " & _
+               JsonValue(http.responseText, "error"), vbExclamation, "Suwin ERP"
+        Exit Function
+    End If
+    Set stm = CreateObject("ADODB.Stream")
+    stm.Type = 1
+    stm.Open
+    stm.Write http.responseBody
+    stm.SaveToFile saveAs, 2
+    stm.Close
+    DownloadFile = True
+    Exit Function
+Bad:
+    MsgBox "Could not download the Management Account - " & Err.Description, vbExclamation, "Suwin ERP"
+End Function
+
+' ---- Buttons ---------------------------------------------------------------
+Public Sub SetApiKey()
+    Dim k As String
+    k = Trim$(InputBox("Paste the API key from Settings > Excel Data Entry on the website.", _
+                       "Suwin ERP - API key", ApiKey()))
+    If k = "" Then Exit Sub
+    SetupSheet().Range("B4").Value = k
+    SayResult "API key saved"
+End Sub
+
+Public Sub LoadMonth()
+    Dim file As String, src As Workbook, sh As Worksheet, lastSh As Worksheet, i As Long, n As Long, m As String
+    m = MonthText()
+    If m = "" Then
+        MsgBox "Type the month in C3, like 2026-09.", vbExclamation, "Suwin ERP"
+        Sh("Home").Range("C3").Select
+        Exit Sub
+    End If
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    Application.StatusBar = "Suwin ERP: downloading the Management Account for " & m & "..."
+    file = Environ$("TEMP") & "\SuwinMA_" & Format$(Now, "yyyymmdd_hhnnss") & ".xlsx"
+    If Not DownloadFile("/api/xl/management_account/export?month=" & m, file) Then
+        Application.StatusBar = False
+        Exit Sub
+    End If
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    ' Out with the previous month's report tabs (everything except Home / Setup)
+    For i = ThisWorkbook.Worksheets.Count To 1 Step -1
+        Select Case ThisWorkbook.Worksheets(i).Name
+        Case "Home", "Setup"
+        Case Else
+            ThisWorkbook.Worksheets(i).Delete
+        End Select
+    Next i
+    Set src = Workbooks.Open(Filename:=file, ReadOnly:=True)
+    Set lastSh = Sh("Home")
+    For Each sh In src.Worksheets
+        sh.Copy After:=lastSh
+        Set lastSh = ThisWorkbook.ActiveSheet
+        lastSh.Tab.Color = RGB(3, 131, 135)
+        n = n + 1
+    Next sh
+    src.Close SaveChanges:=False
+    Application.DisplayAlerts = True
+    On Error Resume Next
+    Kill file
+    On Error GoTo 0
+    ThisWorkbook.Activate
+    AddButtons
+    Application.ScreenUpdating = True
+    SetupSheet().Range("B5").Value = Format$(Now, "yyyy-mm-dd hh:nn")
+    Sh("Home").Range("C4").Value = m
+    On Error Resume Next
+    ThisWorkbook.Worksheets("P&L").Activate
+    On Error GoTo 0
+    SayResult "Loaded " & m & " (" & n & " tabs)"
+End Sub
+
+Public Sub SaveStock()
+    Dim ws As Worksheet, body As String, r As String, st As Long, m As String
+    Set ws = Sh("Home")
+    m = MonthText()
+    If m = "" Then MsgBox "Type the month in C3 first.", vbExclamation, "Suwin ERP": Exit Sub
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    body = "{" & Jq("month", JsonStr(m)) & "," & _
+           Jq("opening_bar", JsonNumOrNull(ws.Range("C8").Value)) & "," & _
+           Jq("opening_food", JsonNumOrNull(ws.Range("D8").Value)) & "," & _
+           Jq("opening_hk", JsonNumOrNull(ws.Range("E8").Value)) & "," & _
+           Jq("closing_bar", JsonNumOrNull(ws.Range("C9").Value)) & "," & _
+           Jq("closing_food", JsonNumOrNull(ws.Range("D9").Value)) & "," & _
+           Jq("closing_hk", JsonNumOrNull(ws.Range("E9").Value)) & "," & _
+           Jq("remarks", JsonStr(ws.Range("C11").Value)) & "}"
+    Application.StatusBar = "Suwin ERP: saving the stock figures..."
+    r = Http("POST", "/api/xl/management_account/save", body, st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "You are offline - nothing was sent. Try again when you are connected.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        SayResult "Save failed: " & ServerError(st, r)
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    SayResult JsonValue(r, "message")
+    If MsgBox(JsonValue(r, "message") & vbCrLf & vbCrLf & "Load the month again to see the new figures?", _
+              vbYesNo + vbQuestion, "Suwin ERP") = vbYes Then LoadMonth
+End Sub
+
+Public Sub PrevMonth()
+    ShiftMonth -1
+End Sub
+
+Public Sub NextMonth()
+    ShiftMonth 1
+End Sub
+
+Private Sub ShiftMonth(ByVal step_ As Long)
+    Dim m As String, y As Long, mm As Long
+    m = MonthText()
+    If Len(m) < 7 Then Exit Sub
+    y = CLng(Left$(m, 4))
+    mm = CLng(Mid$(m, 6, 2)) + step_
+    Do While mm < 1
+        mm = mm + 12
+        y = y - 1
+    Loop
+    Do While mm > 12
+        mm = mm - 12
+        y = y + 1
+    Loop
+    Sh("Home").Range("C3").Value = "'" & Format$(y, "0000") & "-" & Format$(mm, "00")
+    LoadMonth
+End Sub
+
+Public Sub GoHome()
+    Sh("Home").Activate
+End Sub
+
+Private Sub PutButtons(ByVal sheetName As String, ByVal anchor As String, ByVal specs As Variant, _
+                       Optional ByVal vertical As Boolean = False)
+    Dim ws As Worksheet, i As Long, x As Double, y As Double, btn As Object
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(sheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+    For i = ws.Buttons.Count To 1 Step -1
+        If Left$(ws.Buttons(i).Name, 4) = "xlb_" Then ws.Buttons(i).Delete
+    Next i
+    x = ws.Range(anchor).Left
+    y = ws.Range(anchor).Top + 3
+    For i = LBound(specs) To UBound(specs) Step 2
+        Set btn = ws.Buttons.Add(x, y, 130, 28)
+        btn.Name = "xlb_" & i
+        btn.Caption = specs(i)
+        btn.OnAction = specs(i + 1)
+        btn.Font.Bold = True
+        If vertical Then y = y + 32 Else x = x + 136
+    Next i
+End Sub
+
+Public Sub AddButtons()
+    Dim ws As Worksheet
+    PutButtons "Home", "G3", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock", _
+                                   "Previous Month", "PrevMonth", "Next Month", "NextMonth", _
+                                   "Set API Key", "SetApiKey"), True
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name <> "Home" And ws.Name <> "Setup" Then PutButtons ws.Name, "A1", Array("< Home", "GoHome")
+    Next ws
+End Sub
+
+Public Sub Auto_Open()
+    On Error Resume Next
+    AddButtons
+    Sh("Home").Activate
+    On Error GoTo 0
+End Sub
+'''
+
+
+@app.route('/excel_ma_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Reports', 'Access_Accounting', 'Access_Settings')
+def excel_ma_workbook():
+    """The Management Account as a workbook of its own: every report tab for
+    the month, plus a Home sheet for the month, the stock figures and the
+    buttons. Opens with the figures already in it, so it works offline."""
+    try:
+        import excel_export as xl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('management_account'))
+
+    month = request.args.get('month') or date.today().strftime('%Y-%m')
+    cur = _mgmt_compute(month)
+    prev = _mgmt_compute(cur['prev_period'])
+    wb = _mgmt_export_book(cur, prev)
+
+    NAVY, PALE = '1F3864', 'EEF3FA'
+    AMT = '#,##0.00'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    input_fill = fill('FFF8DC')
+    label_font = Font(bold=True, color='1F2937')
+    note_font = Font(italic=True, color='6B7280', size=9)
+
+    # Home sheet, in front of the report tabs
+    ws = wb.create_sheet('Home', 0)
+    ws.sheet_properties.tabColor = NAVY
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 34
+    for col in 'CDE':
+        ws.column_dimensions[col].width = 18
+    ws.column_dimensions['F'].width = 3
+    ws.column_dimensions['G'].width = 20
+    ws.merge_cells('A1:G1')
+    ws.merge_cells('A2:G2')
+    t = ws['A1']
+    t.value = (_company_display_name() + '  -  ' if _company_display_name() else '') + 'Management Account'
+    t.font, t.alignment = Font(bold=True, size=16, color='FFFFFF'), Alignment(vertical='center')
+    s = ws['A2']
+    s.value = 'Type the month and press Load Month. The report tabs are replaced each time.'
+    s.font = Font(italic=True, color='445566', size=9)
+    for c in range(1, 8):
+        ws.cell(row=1, column=c).fill = fill(NAVY)
+        ws.cell(row=2, column=c).fill = fill(PALE)
+    ws.row_dimensions[1].height = 32
+    ws.row_dimensions[2].height = 20
+
+    ws['B3'] = 'Month (YYYY-MM)'
+    ws['B3'].font = label_font
+    ws['C3'] = cur['period']
+    ws['C3'].number_format = '@'
+    ws['C3'].fill, ws['C3'].border = input_fill, box
+    ws['B4'] = 'Tabs below are for'
+    ws['B4'].font = label_font
+    ws['C4'] = cur['month_label']
+    ws['C4'].font = Font(bold=True, color=NAVY)
+
+    ws['B6'] = 'Stock for the month'
+    ws['B6'].font = Font(bold=True, size=12, color=NAVY)
+    for i, h in enumerate(['Bar', 'Food', 'Housekeeping'], start=3):
+        c = ws.cell(row=7, column=i, value=h)
+        c.font, c.alignment = Font(bold=True, color=NAVY), Alignment(horizontal='center')
+    st = cur['stock']
+    for rw, label, key in ((8, 'Opening Stock', 'opening'), (9, 'Closing Stock', 'closing')):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        for i, k in enumerate(('bar', 'food', 'hk'), start=3):
+            c = ws.cell(row=rw, column=i, value=st[k].get(key))
+            c.number_format, c.fill, c.border = AMT, input_fill, box
+    ws['B10'] = 'Opening left blank = last month’s closing'
+    ws['B10'].font = note_font
+    ws['B11'] = 'Remarks'
+    ws['B11'].font = label_font
+    ws.merge_cells('C11:E11')
+    ws['C11'] = cur.get('remarks') or ''
+    ws['C11'].fill, ws['C11'].border = input_fill, box
+
+    ws['B13'] = 'What is in this workbook'
+    ws['B13'].font = Font(bold=True, size=12, color=NAVY)
+    ws['B14'] = 'Last result'
+    ws['B14'].font = label_font
+    ws.merge_cells('C14:E14')
+    ws['C14'].font = Font(bold=True, color=NAVY)
+    for i, text in enumerate([
+        'P&L - the trading profit and loss account, in the printed layout.',
+        'Variance Analysis - this month against last month.',
+        'Notes 1 to 8 - the lines behind each note.',
+        'Note 3 - cost of sales, with opening and closing stock.',
+        'Note 3 Purchases - every supplier invoice behind the purchases, with Net / VAT / Gross.',
+        'Sales Percentage, Pie Chart, Day Summary.',
+        '',
+        'Save Stock sends the opening / closing stock and remarks above back to the system.',
+    ], start=16):
+        ws.cell(row=i, column=2, value=text).font = Font(size=10)
+        ws.merge_cells(start_row=i, start_column=2, end_row=i, end_column=5)
+
+    st_ws = wb.create_sheet('Setup')
+    for i, (k, v) in enumerate((('Server URL', request.url_root.rstrip('/')), ('API Key', ''),
+                                ('Last load', datetime.now().strftime('%Y-%m-%d %H:%M') + ' (workbook download)'),
+                                ('Last result', 'Ready')), start=3):
+        st_ws.cell(row=i, column=1, value=k)
+        st_ws.cell(row=i, column=2, value=v)
+    st_ws.sheet_state = 'veryHidden'
+
+    wb.active = 0
+    return xl.workbook_response(wb, f"SuwinERP_ManagementAccount_{cur['period']}.xlsx")
+
+
+@app.route('/excel_ma_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Reports', 'Access_Accounting', 'Access_Settings')
+def excel_ma_workbook_macro():
+    """The Management Account workbook's macro (Alt+F11 > File > Import File)."""
+    code = _XL_MA_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinMA.bas'
     return resp
 
 

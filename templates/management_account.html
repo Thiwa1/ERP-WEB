@@ -55,6 +55,8 @@
       <input type="hidden" name="tab" value="{{ tab }}">
     </form>
     <a href="{{ url_for('management_account_export', month=cur.period) }}" class="btn btn-outline-success btn-sm"><i class="fas fa-file-excel me-1"></i> Excel</a>
+    <a href="{{ url_for('excel_ma_workbook', month=cur.period) }}" class="btn btn-warning btn-sm"
+       title="A workbook of its own: every tab plus Load Month and Save Stock buttons"><i class="fas fa-laptop me-1"></i> Workbook</a>
     <div class="dropdown">
       <button type="button" class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown"><i class="fas fa-print me-1"></i> Print</button>
       <ul class="dropdown-menu dropdown-menu-end">
