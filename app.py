@@ -30984,8 +30984,9 @@ def xl_inv_adjust():
         diff = round(counted - system_qty, 4)
         if abs(diff) < 0.0001:
             continue
-        memo = (str(l.get('reason') or '').strip()[:200]
-                or f'Stock count {count_date}: system {system_qty:g}, counted {counted:g}')
+        # inventory_recodcol_memo is a short column on this database, so keep
+        # the note brief - the full story stays on the count sheet.
+        memo = (str(l.get('reason') or '').strip() or 'Stock count')[:20]
         moves.append((m['inventoy_name'], m['inventoy_code'], m['unit'], float(m['cost'] or 0), diff, memo))
         changed += 1
     if not moves:
@@ -31000,7 +31001,7 @@ def xl_inv_adjust():
             qty_in = diff if diff > 0 else 0
             qty_out = -diff if diff < 0 else 0
             # NB: inventory_recod_total_value is a GENERATED column - never insert it.
-            cursor.execute("""
+            sql = """
                 INSERT INTO inventory_recod (
                     inventoy_name, inventoy_code, inventory_recod_action_date,
                     inventory_recod_moument_in, inventory_recod_movment_out,
@@ -31008,7 +31009,17 @@ def xl_inv_adjust():
                     inventory_recod_account, inventory_recodcol_memo, inventory_recod_user_id,
                     inventory_recod_user_recod_date
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'Stock Adjustment', %s, %s, %s)
-            """, (name, code, count_date, qty_in, qty_out, unit, cost, memo, user_pk, date.today()))
+            """
+            args = [name, code, count_date, qty_in, qty_out, unit, cost, memo, user_pk, date.today()]
+            try:
+                cursor.execute(sql, tuple(args))
+            except mysql.connector.Error as e:
+                # The memo column is short on some databases - shorten and retry
+                # rather than losing the whole count over a note.
+                if e.errno != 1265:
+                    raise
+                args[7] = 'Count'
+                cursor.execute(sql, tuple(args))
         cursor.execute("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'ADJ', NULL, %s)",
                        (ref, user_pk))
         conn.commit()
