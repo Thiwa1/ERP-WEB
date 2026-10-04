@@ -143,6 +143,8 @@ const MM_SECTIONS = {{ sections | tojson }};
 const MM_LINES = {{ lines | tojson }};
 const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
+// account|sub -> what that account (or account+sub) holds in the month shown
+const MM_GL_MONTH = {{ cur.gl_month | default({}, true) | tojson }};
 const MM_DELETED = [];
 const MM_IGNORE = [];
 const MM_UNIGNORE = [];
@@ -184,7 +186,25 @@ function mmSourceHtml(s) {
     '<select class="form-select mm-s-cat no-select2" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
     '<select class="form-select mm-s-sign no-select2" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
     '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="mmRemoveSrc(this)"></i>' +
+    '<span class="mm-s-amt small text-muted ms-1" title="What this source picks up in the month shown"></span>' +
   '</div>';
+}
+
+// What each GL source actually picks up this month - the quickest way to see
+// that a line is pointed at the wrong account or sub-account (it reads 0.00).
+function mmShowAmounts() {
+  document.querySelectorAll('.mm-src').forEach(function(src) {
+    const out = src.querySelector('.mm-s-amt');
+    if (!out) return;
+    if (src.querySelector('.mm-s-type').value !== 'GL') { out.textContent = ''; return; }
+    const acct = (src.querySelector('.mm-s-acct').value || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!acct) { out.textContent = ''; return; }
+    const sub = src.querySelector('.mm-s-sub').value || '';
+    const v = MM_GL_MONTH[acct + '|' + (sub ? String(parseInt(sub, 10)) : '')];
+    out.textContent = (v === undefined) ? '  no postings' : '  ' + mmFmt(v);
+    out.className = 'mm-s-amt small ms-1 ' +
+      ((v === undefined || Math.abs(v) < 0.005) ? 'text-danger' : 'text-muted');
+  });
 }
 
 function mmSectionOptions(selected) {
@@ -563,5 +583,8 @@ window.addEventListener('beforeunload', function(e) {
 mmRender();
 mmSuggestAll();
 mmCheckDupes();
+mmShowAmounts();
+// Keep the per-source amounts current as accounts and sub-accounts are changed
+document.addEventListener('change', function() { setTimeout(mmShowAmounts, 50); }, true);
 </script>
 {% endblock %}

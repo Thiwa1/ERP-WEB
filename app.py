@@ -22443,6 +22443,15 @@ def _mgmt_compute(period_raw):
         a[0] += dr
         a[1] += cr
 
+    # What each account and sub-account actually holds this month, so the
+    # Mapping screen can show the amount a source would pick up. Income is
+    # credit less debit; everything else debit less credit.
+    gl_month = {}
+    for (key, sub), (dr, cr, raw_name) in gl_pair.items():
+        gl_month[f'{key}|{sub}'] = round(cr - dr, 2)
+    for key, (dr, cr, raw_name) in gl_acct.items():
+        gl_month[f'{key}|'] = round(cr - dr, 2)
+
     purch = {}
     try:
         prow, _t = _supplier_purchasing_rows(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'), None)
@@ -22651,7 +22660,8 @@ def _mgmt_compute(period_raw):
     return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
             'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
             'unmapped': unmapped, 'ignored': ignored, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
-            'sales_pct': sales_pct, 'purchasing': purchasing, 'cost_base_lines': cost_base_lines}
+            'sales_pct': sales_pct, 'purchasing': purchasing, 'cost_base_lines': cost_base_lines,
+            'gl_month': gl_month}
 
 
 @app.route('/management_account', methods=['GET'])
