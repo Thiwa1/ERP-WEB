@@ -28510,7 +28510,9 @@ def xl_vat_export():
 
 @app.route('/api/xl/supplier_payments', methods=['GET'])
 def xl_supplier_payments():
-    """Supplier payment history (cash and bank / cheque), newest first."""
+    """Supplier payment history - what has been paid, the postdated cheques
+    not yet cleared, and (unless ?paid_only=1) what is still outstanding, so
+    one sheet shows the whole picture per supplier."""
     user_pk, err = _xl_auth('Access_Reports')
     if err:
         return err
@@ -28520,10 +28522,23 @@ def xl_supplier_payments():
     rows = _supplier_payment_rows(d_from.strftime('%Y-%m-%d'), d_to.strftime('%Y-%m-%d'))
     out = [[_xl_day(r['date']), r['supplier'] or '', 'Cheque' if r['method'] == 'Bank' else 'Cash',
             r['account'] or '', r['cheque'] or '', r['voucher'] or '', r['jv'] or '',
-            r.get('status') or 'Paid', r['amount']] for r in rows]
+            r.get('status') or 'Paid', r['amount'], ''] for r in rows]
+
+    # Invoices still owed. They are not payments, so they carry no method or
+    # voucher - the Status says Not paid and the amount is what is outstanding.
+    if request.args.get('paid_only') != '1':
+        try:
+            pending, _total, _ready = _grn_payment_ready_rows('', '', '')
+            for p in pending:
+                out.append([_xl_day(p['inv_date']), p['supplier'] or '', '', '', '', '',
+                            p['jv'] or '', 'Not paid', round(float(p['amount'] or 0), 2),
+                            p['invoice_no'] or ''])
+        except Exception as e:
+            logging.warning(f'payment history: outstanding invoices skipped ({e})')
+
     return _xl_table(['Date', 'Supplier', 'Method', 'Bank / Cash Account', 'Cheque No', 'Voucher', 'JV',
-                      'Status', 'Amount'],
-                     ['d', 't', 't', 't', 't', 't', 't', 't', 'n'], out)
+                      'Status', 'Amount', 'Invoice No'],
+                     ['d', 't', 't', 't', 't', 't', 't', 't', 'n', 't'], out)
 
 
 @app.route('/api/xl/management_account/save', methods=['POST'])
@@ -30063,7 +30078,7 @@ Public Sub LoadPaymentHistory()
     n = LoadTable("Payment History", "/api/xl/supplier_payments?" & HistoryQuery())
     If n < 0 Then Exit Sub
     ThisWorkbook.Worksheets("Payment History").Activate
-    SayResult "Supplier payment history loaded: " & n & " payment(s)"
+    SayResult "Supplier payment history loaded: " & n & " row(s) - paid, PDC pending and not paid"
 End Sub
 '''
 
@@ -30975,8 +30990,49 @@ def xl_inv_counted():
     for r in _stock_count_rows(as_of):
         rows.append(['ITEM', r['name'] or '', r['code'] or '', r['unit'] or '', r['main_cat'] or '',
                      r['qty'], r['cost'], r['value'], r['adj_qty'], r['adj_value'],
-                     'Yes' if r['kept'] else 'No'])
+                     'Yes' if r['kept'] else 'No',
+                     r['fixed_cost'] if r['fixed_cost'] else '', r['grn_cost'] or ''])
     return _xl_tsv(rows)
+
+
+@app.route('/api/xl/inv/price_fix', methods=['POST'])
+def xl_inv_price_fix():
+    """Fix the cost an item is valued at, from the workbook. A blank price
+    clears the fix, so the item goes back to its last GRN price."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    changed = cleared = 0
+    unknown = []
+    for it in (_xl_body().get('items') or []):
+        name = str(it.get('item') or '').strip()
+        if not name:
+            continue
+        raw = str(it.get('price') if it.get('price') is not None else '').strip().replace(',', '')
+        rows = db.execute_query("SELECT id FROM inventoy_items WHERE inventoy_name = %s", (name,)) or []
+        if not rows:
+            unknown.append(name)
+            continue
+        for r in rows:
+            if raw == '':
+                db.execute_query("UPDATE inventoy_items SET valuation_cost = NULL WHERE id = %s",
+                                 (r['id'],), commit=True)
+            else:
+                db.execute_query("UPDATE inventoy_items SET valuation_cost = %s WHERE id = %s",
+                                 (round(parse_float(raw), 4), r['id']), commit=True)
+        if raw == '':
+            cleared += 1
+        else:
+            changed += 1
+    parts = []
+    if changed:
+        parts.append(f'{changed} fixed price(s) saved')
+    if cleared:
+        parts.append(f'{cleared} back to the GRN price')
+    if unknown:
+        parts.append(f"not in the system: {', '.join(unknown[:5])}")
+    return _xl_json({'ok': not unknown, 'message': '. '.join(parts) or 'Nothing changed.'},
+                    200 if not unknown else 400)
 
 
 @app.route('/api/xl/inv/adjust', methods=['POST'])
@@ -31493,7 +31549,14 @@ def excel_inventory_workbook():
                 'on that date.')
     ws['B5'].font = note_font
     head_row(ws, 7, ['Item', 'Code', 'Unit', 'Category', 'Counted / Balance Qty', 'Unit Cost', 'Value',
-                     'Count Adjustment', 'Adjustment Value'], first_col=2)
+                     'Count Adjustment', 'Adjustment Value', 'Fixed Price (type to correct)',
+                     'GRN Price'], first_col=2)
+    for col, w in (('K', 20), ('L', 14)):
+        ws.column_dimensions[col].width = w
+    ws.column_dimensions['M'].hidden = True   # keeps the price as loaded, to spot changes
+    ws['B4'] = ('Unit Cost is the GRN price. Type a figure in Fixed Price to correct an item, then press '
+                'Save Prices - blank goes back to the GRN price.')
+    ws['B4'].font = note_font
 
     # ---------------- SRN Entry (Service Entry) ----------------
     ws = wb.create_sheet('SRN Entry')
@@ -32160,7 +32223,7 @@ Public Sub LoadCountedBalance()
         Exit Sub
     End If
     Application.ScreenUpdating = False
-    ws.Range("B8:J20000").ClearContents
+    ws.Range("B8:M20000").ClearContents
     rw = 8
     rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
     For i = 0 To UBound(rows_)
@@ -32179,6 +32242,15 @@ Public Sub LoadCountedBalance()
                     ws.Cells(rw, 9).Value = Val(cols(8))
                     ws.Cells(rw, 10).Value = Val(cols(9))
                 End If
+                If UBound(cols) >= 11 Then
+                    If Trim197121cols(11)) <> "" Then
+                        ws.Cells(rw, 11).Value = Val(cols(11))
+                        ws.Cells(rw, 13).Value = Val(cols(11))   ' as loaded, to spot changes
+                    End If
+                End If
+                If UBound(cols) >= 12 Then
+                    If Trim$(cols(12)) <> "" Then ws.Cells(rw, 12).Value = Val(cols(12))
+                End If
                 rw = rw + 1
                 n = n + 1
             End If
@@ -32189,6 +32261,8 @@ Public Sub LoadCountedBalance()
         ws.Range("G8").Resize(n, 3).NumberFormat = "#,##0.00"
         ws.Range("I8").Resize(n, 1).NumberFormat = "#,##0.00##"
         ws.Range("J8").Resize(n, 1).NumberFormat = "#,##0.00;[Red]-#,##0.00"
+        ws.Range("K8").Resize(n, 2).NumberFormat = "#,##0.00"
+        ws.Range("K8").Resize(n, 1).Interior.Color = RGB(255, 248, 220)
         With ws.Range("B8").Resize(n, 9).Borders
             .LineStyle = 1
             .Color = RGB(200, 206, 216)
@@ -32197,6 +32271,48 @@ Public Sub LoadCountedBalance()
     Application.ScreenUpdating = True
     ws.Activate
     SayResult "Counted Stock Balance loaded - " & n & " item(s) as at " & d
+End Sub
+
+' Send the Fixed Price column back: a figure fixes what the item is valued at,
+' blank puts it back to the GRN price. Only rows you changed are sent.
+Public Sub SavePrices()
+    Dim ws As Worksheet, rw As Long, last As Long, items As String, r As String, st As Long, n As Long
+    Set ws = Sh("Counted Balance")
+    last = ws.Cells(ws.Rows.Count, 2).End(-4162).Row
+    For rw = 8 To last
+        If Trim$(CStr(ws.Cells(rw, 2).Value)) <> "" Then
+            ' Column M keeps what was loaded, so only real changes go up
+            If CStr(ws.Cells(rw, 11).Value) <> CStr(ws.Cells(rw, 13).Value) Then
+                items = AddItem(items, Jq("item", JsonStr(ws.Cells(rw, 2).Value)) & "," & _
+                        Jq("price", JsonStr(ws.Cells(rw, 11).Value)))
+                n = n + 1
+            End If
+        End If
+    Next rw
+    If n = 0 Then
+        MsgBox "No price has been changed. Type a figure in the Fixed Price column first.", _
+               vbInformation, "Suwin ERP"
+        Exit Sub
+    End If
+    If MsgBox("Save " & n & " price change(s)?" & vbCrLf & vbCrLf & _
+              "A figure fixes what the item is valued at; blank puts it back to the GRN price.", _
+              vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    If ApiKey() = "" Then SetApiKey
+    If ApiKey() = "" Then Exit Sub
+    Application.StatusBar = "Suwin ERP: saving prices..."
+    r = Http("POST", "/api/xl/inv/price_fix", "{" & Jq("items", "[" & items & "]") & "}", st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "You are offline - nothing was saved. Try again when you are connected.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If st <> 200 Then
+        MsgBox ServerError(st, r), vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    SayResult JsonValue(r, "message")
+    MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+    LoadCountedBalance        ' reload, so the values use the new prices
 End Sub
 
 Public Sub GoCountedBalance()
@@ -32814,8 +32930,8 @@ Public Sub AddButtons()
     PutButtons "Stock Adjustment", "J1", Array("Submit Count", "SubmitCount", "Find Item", "FindItem", _
                                                "Clear Counted", "ClearCount", "Sync from System", "SyncFromSystem", _
                                                "Counted Balance", "GoCountedBalance", "GRN Entry", "GoGRN")
-    PutButtons "Counted Balance", "L1", Array("Load Balance", "LoadCountedBalance", "Find Item", "FindItem", _
-                                              "Stock Count", "GoCount")
+    PutButtons "Counted Balance", "O1", Array("Load Balance", "LoadCountedBalance", "Save Prices", "SavePrices", _
+                                              "Find Item", "FindItem", "Stock Count", "GoCount")
     PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
                                         "Find in list", "PickFromList", "GRN Entry", "GoGRN")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
