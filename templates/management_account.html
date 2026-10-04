@@ -306,7 +306,8 @@
             <td class="num">{{ c.invoices }}</td>
             <td class="num">{{ money(c.gross) }}</td>
             <td>
-              {% if c.in_cogs %}{% for l in c.lines %}{{ '- ' if l.sign < 0 }}{{ l.label }}{{ ', ' if not loop.last }}{% endfor %}
+              {% if c.in_cogs %}{% for l in c.lines %}{{ '- ' if l.sign < 0 }}{{ l.label }}
+                <span class="badge {{ 'bg-warning text-dark' if l.section_label == 'Bar' and 'kitchen' in (c.category or '')|lower else 'bg-light text-muted border' }}">{{ l.section_label }}</span>{{ ', ' if not loop.last }}{% endfor %}
               {% else %}<span class="text-danger">not in Cost of Sales &mdash; no Note 3 line uses this category</span>{% endif %}
             </td>
           </tr>

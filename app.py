@@ -22605,6 +22605,11 @@ def _mgmt_compute(period_raw):
             if c:
                 cat_lines.setdefault(c, []).append(
                     {'label': ln['label'], 'section': ln['section'],
+                     # which note the line sits under - a kitchen category
+                     # charged to a line under Purchases - Bar is the usual
+                     # reason food purchases look empty
+                     'section_label': (MGMT_SECTION_LABEL.get(ln['section'], '')
+                                       .replace('Purchases - ', '').replace(' (Note 3)', '')),
                      'sign': -1 if int(s['sign'] or 1) < 0 else 1})
     buckets = {}
     for r in prow:
@@ -23265,7 +23270,8 @@ def _mgmt_export_book(cur, prev):
         warn = ws.cell(row=row, column=1,
                        value='DOUBLE-COUNTED: ' + '; '.join(
                            f"{c.get('category') or '-'} is charged to " +
-                           ', '.join(l['label'] for l in c['lines']) for c in dbl[:4]) +
+                           ', '.join(f"{l['label']} [{l.get('section_label') or ''}]" for l in c['lines'])
+                           for c in dbl[:4]) +
                              '. Remove the extra source on the Mapping page, or Note 3 is overstated.')
         warn.font = xl.Font(bold=True, color=xl.RED_DARK, size=10)
         warn.fill = xl._fill('FDECEA')
