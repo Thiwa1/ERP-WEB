@@ -211,13 +211,13 @@ function mmLineHtml(l) {
   let srcs = '';
   (l.sources || []).forEach(function(s) { srcs += mmSourceHtml(s); });
   return '<tr class="mm-line" data-id="' + mmEsc(l.id) + '" data-section="' + l.section + '">' +
-    '<td style="width:56px;min-width:56px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmDirty()"></td>' +
-    '<td style="min-width:200px;width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmDirty(); mmFillLinkLists();">' +
+    '<td style="width:56px;min-width:56px"><input class="form-control form-control-sm mm-order" value="' + mmEsc(l.display_order) + '" onchange="mmMark(this); mmDirty()"></td>' +
+    '<td style="min-width:200px;width:22%"><input class="form-control form-control-sm mm-label" value="' + mmEsc(l.label) + '" onchange="mmMark(this); mmDirty(); mmFillLinkLists();">' +
       '<div class="d-flex align-items-center gap-2 mt-1">' +
-      (incomeSales ? '<select class="form-select form-select-sm mm-cost no-select2" style="width:auto" onchange="mmDirty()"><option value="">Cost %: none</option>' +
+      (incomeSales ? '<select class="form-select form-select-sm mm-cost no-select2" style="width:auto" onchange="mmMark(this); mmDirty()"><option value="">Cost %: none</option>' +
         '<option value="BAR"' + (l.cost_base === 'BAR' ? ' selected' : '') + '>Cost %: Bar</option>' +
         '<option value="FOOD"' + (l.cost_base === 'FOOD' ? ' selected' : '') + '>Cost %: Food</option></select>' : '') +
-      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmDirty()"> Manual</label></div>' +
+      '<label class="small text-nowrap mb-0" title="Type this line\'s amount in each month instead of reading GL accounts"><input type="checkbox" class="mm-manual"' + (l.is_manual ? ' checked' : '') + ' onchange="mmMark(this); mmDirty()"> Manual</label></div>' +
       // Move a line to another note without deleting and rebuilding it
       '<select class="form-select form-select-sm mm-section no-select2 mt-1" title="Which note this line belongs to"' +
         ' onchange="mmSectionChanged(this)">' + mmSectionOptions(l.section) + '</select></td>' +
