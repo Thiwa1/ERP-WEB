@@ -33396,6 +33396,9 @@ Public Sub SetApiKey()
                        "Suwin ERP - API key", ApiKey()))
     If k = "" Then Exit Sub
     SetupSheet().Range("B4").Value = k
+    On Error Resume Next
+    Sh("Home").Range("C12").Value = k      ' keep the visible box in step
+    On Error GoTo 0
     SayResult "API key saved"
 End Sub
 
@@ -34406,8 +34409,18 @@ Private Function ServerUrl() As String
     Loop
 End Function
 
+' The key can be pasted straight into Home C12 (handy before the macro is in
+' the workbook); it is copied into the hidden Setup sheet from there.
 Private Function ApiKey() As String
-    ApiKey = Trim$(CStr(SetupSheet().Range("B4").Value))
+    Dim k As String
+    k = Trim$(CStr(SetupSheet().Range("B4").Value))
+    If k = "" Then
+        On Error Resume Next
+        k = Trim$(CStr(Sh("Home").Range("C12").Value))
+        On Error GoTo 0
+        If k <> "" Then SetupSheet().Range("B4").Value = k
+    End If
+    ApiKey = k
 End Function
 
 Private Sub SayResult(ByVal msg As String)
@@ -34542,6 +34555,9 @@ Public Sub SetApiKey()
                        "Suwin ERP - API key", ApiKey()))
     If k = "" Then Exit Sub
     SetupSheet().Range("B4").Value = k
+    On Error Resume Next
+    Sh("Home").Range("C12").Value = k      ' keep the visible box in step
+    On Error GoTo 0
     SayResult "API key saved"
 End Sub
 
@@ -34779,6 +34795,15 @@ def excel_ma_workbook():
     ws.merge_cells('C11:E11')
     ws['C11'] = cur.get('remarks') or ''
     ws['C11'].fill, ws['C11'].border = input_fill, box
+
+    # The key lives here as well as in the hidden Setup sheet, so it can be
+    # pasted before the macro (and its buttons) are in the workbook.
+    ws['B12'] = 'API Key'
+    ws['B12'].font = label_font
+    ws.merge_cells('C12:E12')
+    ws['C12'].fill, ws['C12'].border = input_fill, box
+    ws['F12'] = 'from Settings > Excel Data Entry on the website'
+    ws['F12'].font = note_font
 
     ws['B13'] = 'What is in this workbook'
     ws['B13'].font = Font(bold=True, size=12, color=NAVY)
