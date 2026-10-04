@@ -261,6 +261,39 @@
         Housekeeping is shown here but, as in the workbook, isn't part of Cost of Sales on the P&amp;L.
         Sales for Cost % = Note 1 / Note 2 lines marked Bar or Food on the Mapping screen.
       </div>
+      {# Which sales lines feed each Cost % base - so a base that looks short can be traced #}
+      <div class="row g-3 mt-1">
+        {% for base, title in [('BAR', 'Sales counted as Bar'), ('FOOD', 'Sales counted as Food')] %}
+        <div class="col-md-4">
+          <table class="ma">
+            <thead><tr><th>{{ title }}</th><th class="num">Rs</th></tr></thead>
+            <tbody>
+              {% for l in cur.cost_base_lines.get(base, []) %}
+              <tr><td>{{ l.label }}</td><td class="num">{{ money(l.amount) }}</td></tr>
+              {% else %}<tr class="muted"><td colspan="2">No line is marked {{ base|title }}.</td></tr>{% endfor %}
+              <tr class="sub"><td>Base</td><td class="num">{{ money(t['base_' ~ base|lower]) }}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+        <div class="col-md-4">
+          <table class="ma">
+            <thead><tr><th>Sales counted in no Cost %</th><th class="num">Rs</th></tr></thead>
+            <tbody>
+              {% for l in cur.cost_base_lines.get(None, []) %}
+              <tr class="muted"><td>{{ l.label }}</td><td class="num">{{ money(l.amount) }}</td></tr>
+              {% else %}<tr class="muted"><td colspan="2">Every sales line is marked.</td></tr>{% endfor %}
+              <tr class="sub"><td>Not in any base</td><td class="num">{{ money(t.base_untagged) }}</td></tr>
+            </tbody>
+          </table>
+          {% if t.base_untagged %}
+          <div class="small text-danger mt-1">
+            These sales are in Note 1 / Note 2 but in no Cost % base, so the cost ratios read high.
+            Mark each one Bar or Food on the Mapping screen.
+          </div>
+          {% endif %}
+        </div>
+      </div>
       {% if can_edit %}
       <div class="row g-2 mt-2 align-items-end">
         <div class="col-md-8"><label class="form-label small mb-0">Remarks</label>

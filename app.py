@@ -22581,10 +22581,19 @@ def _mgmt_compute(period_raw):
     t['net_profit'] = round(t['after_service'] - t['expenses'], 2)
     t['gp_margin'] = (t['gross_profit'] / t['sales'] * 100) if t['sales'] else None
     t['np_margin'] = (t['net_profit'] / t['sales'] * 100) if t['sales'] else None
+    # The Cost % base is only the sales lines tagged Cost %: Bar / Food in the
+    # mapping. Keep the list (and what is tagged to neither) so the Note 3 tab
+    # can show why the base differs from the Note 1 / Note 2 totals.
+    cost_base_lines = {'BAR': [], 'FOOD': [], None: []}
+    for sec in ('NOTE1', 'NOTE2'):
+        for l in sections[sec]:
+            cost_base_lines.setdefault(l['cost_base'] or None, []).append(
+                {'label': l['label'], 'section': sec, 'amount': l['amount']})
     for base in ('BAR', 'FOOD'):
-        b = round(sum(l['amount'] for sec in ('NOTE1', 'NOTE2') for l in sections[sec] if l['cost_base'] == base), 2)
+        b = round(sum(l['amount'] for l in cost_base_lines.get(base, [])), 2)
         t[f'base_{base.lower()}'] = b
         t[f'cost_pct_{base.lower()}'] = (t[f'cogs_{base.lower()}'] / b * 100) if b else None
+    t['base_untagged'] = round(sum(l['amount'] for l in cost_base_lines.get(None, [])), 2)
 
     sales_pct = []
     for sec in ('NOTE1', 'NOTE2'):
@@ -22642,7 +22651,7 @@ def _mgmt_compute(period_raw):
     return {'period': period, 'start': start, 'end': end, 'prev_period': prev_period,
             'month_label': start.strftime('%B %Y'), 'sections': sections, 't': t, 'stock': stock,
             'unmapped': unmapped, 'ignored': ignored, 'duplicates': duplicates, 'remarks': mrow.get('remarks') or '',
-            'sales_pct': sales_pct, 'purchasing': purchasing}
+            'sales_pct': sales_pct, 'purchasing': purchasing, 'cost_base_lines': cost_base_lines}
 
 
 @app.route('/management_account', methods=['GET'])
