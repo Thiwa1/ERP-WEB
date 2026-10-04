@@ -22610,6 +22610,9 @@ def _mgmt_compute(period_raw):
                      # reason food purchases look empty
                      'section_label': (MGMT_SECTION_LABEL.get(ln['section'], '')
                                        .replace('Purchases - ', '').replace(' (Note 3)', '')),
+                     # a Manual line ignores its sources and uses the figure
+                     # typed for the month, so the category feeds nothing
+                     'is_manual': bool(ln.get('is_manual')),
                      'sign': -1 if int(s['sign'] or 1) < 0 else 1})
     buckets = {}
     for r in prow:

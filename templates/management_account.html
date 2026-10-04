@@ -307,7 +307,8 @@
             <td class="num">{{ money(c.gross) }}</td>
             <td>
               {% if c.in_cogs %}{% for l in c.lines %}{{ '- ' if l.sign < 0 }}{{ l.label }}
-                <span class="badge {{ 'bg-warning text-dark' if l.section_label == 'Bar' and 'kitchen' in (c.category or '')|lower else 'bg-light text-muted border' }}">{{ l.section_label }}</span>{{ ', ' if not loop.last }}{% endfor %}
+                <span class="badge {{ 'bg-warning text-dark' if l.section_label == 'Bar' and 'kitchen' in (c.category or '')|lower else 'bg-light text-muted border' }}">{{ l.section_label }}</span>{%
+                if l.is_manual %}<span class="badge bg-danger" title="This line is ticked Manual, so it ignores this category and uses the amount typed for the month. Untick Manual on the Mapping page.">Manual &mdash; category ignored</span>{% endif %}{{ ', ' if not loop.last }}{% endfor %}
               {% else %}<span class="text-danger">not in Cost of Sales &mdash; no Note 3 line uses this category</span>{% endif %}
             </td>
           </tr>

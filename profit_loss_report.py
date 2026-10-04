@@ -173,15 +173,23 @@ class ProfitLossReportGenerator:
                   AND entry_sub_account_code IS NOT NULL AND entry_sub_account_code != 0
                 GROUP BY account_name, entry_sub_account_code
             """, tuple(params))
+            # Match the account by a normalised name: entry_details often holds
+            # the name with different spacing or case, and a miss here used to
+            # treat an income account as an expense, so its credits came out
+            # negative and "(Unallocated)" absorbed twice the amount.
+            meta_by_name = {}
+            for acc_name, acc_data in acc_map.items():
+                meta_by_name[' '.join(str(acc_name or '').split()).lower()] = acc_data.get('meta', {})
             for r in cursor.fetchall():
                 name = r['account_name']
-                is_income = acc_map.get(name, {}).get('meta', {}).get('account_income') == 1
+                meta = meta_by_name.get(' '.join(str(name or '').split()).lower(), {})
+                is_income = meta.get('account_income') == 1
                 vals = []
                 for i in range(n):
                     dr = float(r.get(f'dr_{i}', 0) or 0)
                     cr = float(r.get(f'cr_{i}', 0) or 0)
                     vals.append((cr - dr) if is_income else (dr - cr))
-                values_by[((name or '').strip(), str(r['entry_sub_account_code']))] = vals
+                values_by[(' '.join(str(name or '').split()).lower(), str(r['entry_sub_account_code']))] = vals
         except Exception:
             pass
 
@@ -190,8 +198,9 @@ class ProfitLossReportGenerator:
             subs_def = defined.get((name or '').strip())
             if not subs_def:
                 continue
+            key_name = ' '.join(str(name or '').split()).lower()
             subs = [{'name': s['name'], 'code': s['code'],
-                     'values': values_by.get(((name or '').strip(), s['code']), [0.0] * n)}
+                     'values': values_by.get((key_name, s['code']), [0.0] * n)}
                     for s in subs_def]
             subs.sort(key=lambda s: str(s['name']).lower())
             acc_map[name]['sub_accounts'] = subs
