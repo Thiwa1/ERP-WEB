@@ -4547,6 +4547,35 @@ def api_srn_accounts():
     """) or []
     return jsonify([r['account_name'] for r in rows])
 
+def _user_display_names(codes):
+    """Map whatever was stored as the entering user (a User_Code like 'ADM001'
+    on some screens, a User_Name on others) to a readable name. Anything that
+    can't be matched is returned as it was stored, so a row never loses the
+    only clue it has about who entered it."""
+    wanted = sorted({str(c).strip() for c in codes if c is not None and str(c).strip()})
+    if not wanted:
+        return {}
+    out = {c: c for c in wanted}
+    try:
+        placeholders = ','.join(['%s'] * len(wanted))
+        params = tuple(wanted) + tuple(wanted)
+        rows = db.execute_query(
+            f"SELECT User_Code, User_Name FROM Login_Table "
+            f"WHERE User_Code IN ({placeholders}) OR User_Name IN ({placeholders})",
+            params) or []
+        for r in rows:
+            name = (r.get('User_Name') or '').strip()
+            if not name:
+                continue
+            for key in (r.get('User_Code'), r.get('User_Name')):
+                key = str(key or '').strip()
+                if key in out:
+                    out[key] = name
+    except Exception as e:
+        logging.warning(f"Could not resolve user names: {e}")
+    return out
+
+
 def _get_supplier_history_data(supplier_name):
     """Helper to fetch common supplier details, outstanding invoices, and
     payment history for a supplier. History is the COMBINED Cash + Bank
@@ -4571,7 +4600,8 @@ def _get_supplier_history_data(supplier_name):
     bank_history = db.execute_query("""
         SELECT bank_book_recod_voucher_no as voucher, Bank_Payment_Date as date,
                bank_book__accont_name as account, bank_book__recode_cr as amount,
-               bank_book__naration as narration, jv_numbers_jv_id as jv_no,
+               bank_book__naration as narration, Bank_User_Id as user_id,
+               jv_numbers_jv_id as jv_no,
                bank_book__suplier_oustanding_id as inv_id
         FROM bank_book_recod
         WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
@@ -4605,9 +4635,14 @@ def _get_supplier_history_data(supplier_name):
                 'is_grn': r.get('jv_user_code') == 'JV FROM GRN'
             }
 
+    # Who entered each payment — stored as Bank_User_Id / User_Enter, resolved
+    # to a readable name so both payment screens can show a User column.
+    user_names = _user_display_names([h.get('user_id') for h in combined])
+
     hist_list = []
     for h in combined:
         inv_info = inv_map.get(h.get('inv_id')) or {}
+        stored_user = str(h.get('user_id') or '').strip()
         hist_list.append({
             'voucher': h['voucher'],
             'date': str(h['date']),
@@ -4619,6 +4654,7 @@ def _get_supplier_history_data(supplier_name):
             'inv_jv': inv_info.get('inv_jv'),
             'is_grn': inv_info.get('is_grn', False),
             'user_id': h.get('user_id'),
+            'user_name': user_names.get(stored_user) or stored_user,
             'narration': h.get('narration'),
         })
 
@@ -12303,11 +12339,14 @@ def bank_payment_reversal():
             b.Bank_Payment_Date as Date,
             b.bank_book__accont_name as Account,
             b.bank_book__suplier_name as Supplier,
+            sid.suppliers_invoice_number as Invoice,
             b.bank_book__recode_cr as Amount,
             b.jv_numbers_jv_id as JV,
             CASE WHEN (b.bank_book_book_recode_dr IS NOT NULL AND b.bank_book_book_recode_dr > 0)
                  THEN 1 ELSE 0 END as is_reversed
         FROM bank_book_recod b
+        LEFT JOIN suppliers_invoice_data sid
+               ON sid.s_i_id = b.bank_book__suplier_oustanding_id
         WHERE b.bank_book__recode_cr > 0
         ORDER BY b.Bank_Payment_Date DESC, b.id DESC
         LIMIT 100

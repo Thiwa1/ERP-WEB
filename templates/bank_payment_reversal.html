@@ -39,6 +39,7 @@
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Date</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Supplier</th>
+                        <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice No</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:right;">Amount</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;text-align:center;">Status</th>
                         <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;width:100px;">Action</th>
@@ -54,6 +55,7 @@
                             <td style="padding:.6rem .75rem;">{{ row.Date }}</td>
                             <td style="padding:.6rem .75rem;">{{ row.Account }}</td>
                             <td style="padding:.6rem .75rem;">{{ row.Supplier }}</td>
+                            <td class="font-monospace" style="padding:.6rem .75rem;">{{ row.Invoice or '—' }}</td>
                             <td class="text-end fw-bold font-monospace" style="padding:.6rem .75rem;">{{ "{:,.2f}".format(row.Amount|float) }}</td>
                             <td class="text-center" style="padding:.5rem .75rem;">
                                 {% if reversed %}
@@ -81,7 +83,7 @@
                         {% endfor %}
                     {% else %}
                         <tr>
-                            <td colspan="7" class="text-center py-4" style="color:#a0a0a0;font-size:.875rem;">
+                            <td colspan="8" class="text-center py-4" style="color:#a0a0a0;font-size:.875rem;">
                                 <i class="fas fa-inbox me-2"></i>No bank payments found.
                             </td>
                         </tr>

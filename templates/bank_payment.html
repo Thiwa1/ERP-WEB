@@ -247,6 +247,7 @@
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Paid Amount</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice</th>
+                            <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Payment User</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
                             <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Action</th>
                         </tr>
@@ -390,6 +391,7 @@ function loadSupplierData() {
                         <td style="padding:.5rem .75rem;">${pdc.account || '-'}</td>
                         <td class="fw-bold font-monospace" style="padding:.5rem .75rem;color:#8a6100;">${fmtNum(pdc.amount)}</td>
                         <td class="font-monospace" style="padding:.5rem .75rem;">${invs}</td>
+                        <td style="padding:.5rem .75rem;">&mdash;</td>
                         <td style="padding:.5rem .75rem;">Postdated cheque issued ${pdc.issue_date || ''} &mdash; posts to the books when cleared on/after ${pdc.post_date}</td>
                         <td style="padding:.35rem .75rem;">
                             <a href="/postdated_cheques" target="_blank" class="btn btn-sm btn-outline-warning" style="font-size:.78rem;" title="Clear / reschedule / cancel on Postdated Cheques">
@@ -408,7 +410,8 @@ function loadSupplierData() {
                 const methodPill = isBank
                     ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e6f0fd;color:#1b5fb8;">Bank</span>'
                     : '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e7f7ee;color:#0a7d3f;">Cash</span>';
-                const noteCell = isBank ? (hist.narration || '-') : (hist.user_id || '-');
+                const userCell = hist.user_name || hist.user_id || '-';
+                const noteCell = hist.narration || '-';
                 const printType = isBank ? 'bank' : 'cash';
                 // "Print Cheque" only makes sense for a Bank payment.
                 const chequeBtn = isBank
@@ -424,6 +427,7 @@ function loadSupplierData() {
                         <td style="padding:.5rem .75rem;">${hist.account}</td>
                         <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(hist.amount)}</td>
                         <td class="font-monospace" style="padding:.5rem .75rem;">${histInvCell}</td>
+                        <td style="padding:.5rem .75rem;">${userCell}</td>
                         <td style="padding:.5rem .75rem;">${noteCell}</td>
                         <td style="padding:.35rem .75rem;">
                             <div class="btn-group btn-group-sm">

@@ -121,7 +121,8 @@
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Amount</th>
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Account</th>
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Invoice</th>
-                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">User / Narration</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Payment User</th>
+                                <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Narration</th>
                                 <th style="font-size:.72rem;text-transform:uppercase;font-weight:700;color:#605E5C;">Action</th>
                             </tr>
                         </thead>
@@ -337,6 +338,7 @@
                             <td class="font-monospace fw-bold" style="padding:.45rem .75rem;color:#8a6100;">${fmtNum(pdc.amount)}</td>
                             <td style="padding:.45rem .75rem;">${pdc.account || '-'}</td>
                             <td class="font-monospace" style="padding:.45rem .75rem;">${invs}</td>
+                            <td style="padding:.45rem .75rem;">&mdash;</td>
                             <td style="padding:.45rem .75rem;">Postdated cheque &mdash; posts when cleared on/after ${pdc.post_date}</td>
                             <td style="padding:.35rem .75rem;"><a href="/postdated_cheques" target="_blank" class="btn btn-sm btn-outline-warning" style="font-size:.78rem;"><i class="fas fa-calendar-check"></i> Manage</a></td>
                         </tr>`;
@@ -350,7 +352,8 @@
                     const methodPill = h.method === 'Bank'
                         ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e6f0fd;color:#1b5fb8;">Bank</span>'
                         : '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e7f7ee;color:#0a7d3f;">Cash</span>';
-                    const noteCell = h.method === 'Bank' ? (h.narration || '-') : (h.user_id || '-');
+                    const userCell = h.user_name || h.user_id || '-';
+                    const noteCell = h.narration || '-';
                     const printType = h.method === 'Bank' ? 'bank' : 'cash';
                     histBody.innerHTML += `
                         <tr>
@@ -360,6 +363,7 @@
                             <td class="font-monospace" style="padding:.45rem .75rem;">${fmtNum(h.amount)}</td>
                             <td style="padding:.45rem .75rem;">${h.account}</td>
                             <td class="font-monospace" style="padding:.45rem .75rem;">${hInvCell}</td>
+                            <td style="padding:.45rem .75rem;">${userCell}</td>
                             <td style="padding:.45rem .75rem;">${noteCell}</td>
                             <td style="padding:.35rem .75rem;">
                                 <a href="/voucher/print/${printType}/${h.jv_no}" target="_blank"
