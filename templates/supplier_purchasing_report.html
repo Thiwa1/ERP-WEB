@@ -124,7 +124,13 @@
         <tbody>
           {% for r in rows %}
           <tr>
-            <td class="ps-3">{{ r.inv_date }}</td>
+            <td class="ps-3">
+              <a href="#" onclick="openMetaEdit('{{ r.jv }}', '', '{{ r.inv_date }}', ''); return false;"
+                 title="Wrong date? This invoice only reaches the Management Account for the month it is dated in. Click to correct it."
+                 style="color:#0f172a;text-decoration:none;border-bottom:1px dashed #cbd5e1;">
+                {{ r.inv_date }} <i class="fas fa-pen ms-1" style="font-size:.6rem;color:#94a3b8;"></i>
+              </a>
+            </td>
             <td class="fw-semibold">{{ r.supplier or '-' }}</td>
             <td>
               {% if r.is_grn %}
@@ -215,4 +221,7 @@
   </div>
 </div>
 {% endif %}
+
+{% set _meta_color = '#7c3aed' %}
+{% include '_edit_metadata_modal.html' %}
 {% endblock %}
