@@ -349,6 +349,9 @@
                             ? `<a href="/grn/view/${h.inv_jv}" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">${h.invoice_no} <i class="fas fa-truck-loading" style="font-size:.68rem;"></i></a>`
                             : h.invoice_no)
                         : '-';
+                    const revPill = h.is_reversed
+                        ? ' <span style="font-size:.66rem;font-weight:700;padding:.1rem .45rem;border-radius:20px;background:#fce4ec;color:#c62828;">REVERSED</span>'
+                        : '';
                     const methodPill = h.method === 'Bank'
                         ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e6f0fd;color:#1b5fb8;">Bank</span>'
                         : '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e7f7ee;color:#0a7d3f;">Cash</span>';
@@ -356,11 +359,11 @@
                     const noteCell = h.narration || '-';
                     const printType = h.method === 'Bank' ? 'bank' : 'cash';
                     histBody.innerHTML += `
-                        <tr>
+                        <tr${h.is_reversed ? ' style="opacity:.6;"' : ''}>
                             <td class="font-monospace" style="padding:.45rem 1rem;">${h.voucher}</td>
                             <td style="padding:.45rem .75rem;">${h.date}</td>
-                            <td style="padding:.45rem .75rem;">${methodPill}</td>
-                            <td class="font-monospace" style="padding:.45rem .75rem;">${fmtNum(h.amount)}</td>
+                            <td style="padding:.45rem .75rem;">${methodPill}${revPill}</td>
+                            <td class="font-monospace" style="padding:.45rem .75rem;${h.is_reversed ? 'text-decoration:line-through;' : ''}">${fmtNum(h.amount)}</td>
                             <td style="padding:.45rem .75rem;">${h.account}</td>
                             <td class="font-monospace" style="padding:.45rem .75rem;">${hInvCell}</td>
                             <td style="padding:.45rem .75rem;">${userCell}</td>

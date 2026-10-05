@@ -4587,14 +4587,23 @@ def _get_supplier_history_data(supplier_name):
     if not details:
         return {'error': 'Supplier not found'}, 404
 
+    # Only rows that are actually a payment OUT (cr > 0). Without that filter the
+    # same tables' customer-receipt and reversal rows (which carry the amount on
+    # the DR side) came back too and showed as 0.00 lines in the history grid.
+    # User_Revers / bank_book_book_recode_dr are the existing reversed-flag
+    # conventions, same as the two reversal screens use.
     cash_history = db.execute_query("""
         SELECT cash_book_recod_voucher_no as voucher, Payment_Date as date,
                cash_book_recode_accont_name as account, cash_book_recode_cr as amount,
+               cash_book_recode_naration as narration,
                User_Enter as user_id, jv_numbers_jv_id as jv_no,
-               cash_book_recode_suplier_oustanding_id as inv_id
+               cash_book_recode_suplier_oustanding_id as inv_id,
+               CASE WHEN User_Revers IS NOT NULL THEN 1 ELSE 0 END as is_reversed
         FROM cash_book_recode
         WHERE TRIM(cash_book_recode_suplier_name) = TRIM(%s)
+          AND cash_book_recode_cr > 0
         ORDER BY chash_book_recod_id DESC
+        LIMIT 200
     """, (supplier_name,)) or []
 
     bank_history = db.execute_query("""
@@ -4602,10 +4611,14 @@ def _get_supplier_history_data(supplier_name):
                bank_book__accont_name as account, bank_book__recode_cr as amount,
                bank_book__naration as narration, Bank_User_Id as user_id,
                jv_numbers_jv_id as jv_no,
-               bank_book__suplier_oustanding_id as inv_id
+               bank_book__suplier_oustanding_id as inv_id,
+               CASE WHEN (bank_book_book_recode_dr IS NOT NULL AND bank_book_book_recode_dr > 0)
+                    THEN 1 ELSE 0 END as is_reversed
         FROM bank_book_recod
         WHERE TRIM(bank_book__suplier_name) = TRIM(%s)
+          AND bank_book__recode_cr > 0
         ORDER BY id DESC
+        LIMIT 200
     """, (supplier_name,)) or []
 
     combined = [dict(h, method='Cash') for h in cash_history] + \
@@ -4613,7 +4626,16 @@ def _get_supplier_history_data(supplier_name):
     # Merge-sort the two already-descending lists by date (falling back to
     # jv_no as a tie-breaker so same-day payments still stay in a stable,
     # newest-first order).
-    combined.sort(key=lambda h: (str(h.get('date') or ''), h.get('jv_no') or 0), reverse=True)
+    def _jv_order(v):
+        # JV numbers come back as int from one table and str from the other on
+        # some installs; comparing the raw values blows the whole sort up with
+        # a TypeError and the grid then loads nothing at all.
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return 0
+
+    combined.sort(key=lambda h: (str(h.get('date') or ''), _jv_order(h.get('jv_no'))), reverse=True)
 
     # Look up the original invoice (and its GRN, if any) each payment history row settled,
     # so a "View" link can still be shown after the invoice is fully paid off and has
@@ -4656,6 +4678,7 @@ def _get_supplier_history_data(supplier_name):
             'user_id': h.get('user_id'),
             'user_name': user_names.get(stored_user) or stored_user,
             'narration': h.get('narration'),
+            'is_reversed': bool(h.get('is_reversed')),
         })
 
     return {'details': details, 'invoices': inv_list, 'history': hist_list,

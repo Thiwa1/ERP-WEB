@@ -407,6 +407,9 @@ function loadSupplierData() {
                         : hist.invoice_no)
                     : '-';
                 const isBank = hist.method === 'Bank';
+                const revPill = hist.is_reversed
+                    ? ' <span style="font-size:.66rem;font-weight:700;padding:.1rem .45rem;border-radius:20px;background:#fce4ec;color:#c62828;">REVERSED</span>'
+                    : '';
                 const methodPill = isBank
                     ? '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e6f0fd;color:#1b5fb8;">Bank</span>'
                     : '<span style="font-size:.68rem;font-weight:700;padding:.1rem .5rem;border-radius:20px;background:#e7f7ee;color:#0a7d3f;">Cash</span>';
@@ -420,12 +423,12 @@ function loadSupplierData() {
                        </a>`
                     : '';
                 const row = `
-                    <tr>
+                    <tr${hist.is_reversed ? ' style="opacity:.6;"' : ''}>
                         <td class="font-monospace" style="padding:.5rem 1rem;">${hist.voucher || '-'}</td>
                         <td style="padding:.5rem .75rem;">${hist.date}</td>
-                        <td style="padding:.5rem .75rem;">${methodPill}</td>
+                        <td style="padding:.5rem .75rem;">${methodPill}${revPill}</td>
                         <td style="padding:.5rem .75rem;">${hist.account}</td>
-                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;">${fmtNum(hist.amount)}</td>
+                        <td class="fw-bold font-monospace" style="padding:.5rem .75rem;${hist.is_reversed ? 'text-decoration:line-through;' : ''}">${fmtNum(hist.amount)}</td>
                         <td class="font-monospace" style="padding:.5rem .75rem;">${histInvCell}</td>
                         <td style="padding:.5rem .75rem;">${userCell}</td>
                         <td style="padding:.5rem .75rem;">${noteCell}</td>
