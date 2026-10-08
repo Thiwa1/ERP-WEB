@@ -10096,6 +10096,10 @@ def bank_reconciliation():
     # and the statement they are on cannot be reconciled. Ticking one off
     # clears it to the books (see process_reconciliation).
     if bank_account:
+        # execute_query hands back None when nothing matches, and appending a
+        # cheque to that would fail the whole page.
+        deposits = list(deposits or [])
+        payments = list(payments or [])
         pdc_pending = db.execute_query("""
             SELECT id, pdc_type, party_name, cheque_no, post_date, amount, narration
             FROM postdated_cheques
@@ -10473,8 +10477,14 @@ def process_reconciliation():
 
                     rec_id = cursor.lastrowid
 
-                    # Insert Uncleared Transactions into details table
+                    # Insert Uncleared Transactions into details table. A pdc:
+                    # id is a cheque that has not been posted, so it has no
+                    # entry_details row - and entry_details.id is an INT, so
+                    # comparing it to 'pdc:12' raises a truncation warning,
+                    # which this connection turns into an error.
                     for d in uncleared_deposits:
+                        if str(d).startswith('pdc:'):
+                            continue
                         cursor.execute("SELECT id, enty_values_DR, entry_naration FROM entry_details WHERE id = %s", (d,))
                         detail = cursor.fetchone()
                         if detail:
@@ -10482,6 +10492,8 @@ def process_reconciliation():
                                          (rec_id, detail['id'], detail['enty_values_DR'], 0, detail['entry_naration'], ''))
 
                     for p in uncleared_payments:
+                        if str(p).startswith('pdc:'):
+                            continue
                         cursor.execute("SELECT id, enty_values_CR, entry_naration FROM entry_details WHERE id = %s", (p,))
                         detail = cursor.fetchone()
                         if detail:
@@ -10496,8 +10508,16 @@ def process_reconciliation():
                     flash(msg, 'success')
 
     except Exception as e:
-            conn.rollback()
-            flash(f'Error processing reconciliation: {str(e)}', 'danger')
+        # The connection is already closed by the `with` block on the way out,
+        # so rolling back here can raise a second time and turn what should be
+        # a readable message into a 500 page that hides the real cause.
+        try:
+            if conn is not None:
+                conn.rollback()
+        except Exception:
+            pass
+        logging.error(f"Bank reconciliation error: {e}", exc_info=True)
+        flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
 
