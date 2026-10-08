@@ -27987,6 +27987,10 @@ def xl_lists():
         if what == 'sales_categories':
             return _xl_tsv([[c['id'], c['category_group'], c['description'], c['particulars'] or '']
                             for c in _daily_sales_categories()])
+        if what == 'bar_items':
+            return _xl_tsv([[i['item_code'], i['item_name'], i.get('category_name') or '',
+                             i.get('unit_type') or '', i.get('unit_price') or 0]
+                            for i in _bar_inv_items()])
         return _xl_tsv([[k, lbl, grp, 1 if q else 0] for k, lbl, grp, q in BAR_SALES_RECORD_LINES])
     out = {'ok': True}
     if what in ('all', 'sales_categories'):
@@ -27997,6 +28001,11 @@ def xl_lists():
     if what in ('all', 'accounts'):
         out['accounts'] = [a['account_name'] for a in (db.execute_query(
             "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [])]
+    if what in ('all', 'bar_items'):
+        out['bar_items'] = [{'code': i['item_code'], 'name': i['item_name'],
+                             'category': i.get('category_name') or '',
+                             'unit': i.get('unit_type') or '', 'price': i.get('unit_price') or 0}
+                            for i in _bar_inv_items()]
     if what in ('all', 'bar_sales_lines'):
         out['bar_sales_lines'] = [{'key': k, 'label': lbl, 'group': grp, 'has_qty': bool(q)}
                                   for k, lbl, grp, q in BAR_SALES_RECORD_LINES]
@@ -34918,6 +34927,278 @@ def excel_ma_workbook_macro():
     resp = make_response(code.encode('cp1252', errors='replace'))
     resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinMA.bas'
+    return resp
+
+
+_XL_BARITEMS_VBA_CODE = """\
+Option Explicit
+
+' Suwin ERP - Bar Item Categories
+' Alt+F11 > File > Import File > this .bas, then press the buttons on Setup.
+'   Load Bar Items  - refreshes the "Bar Items" sheet from the system
+'   Fill Categories - fills the Category column on "My List" by item code
+
+Private Function BaseUrl() As String
+    BaseUrl = Trim$(CStr(Sheets("Setup").Range("C4").value))
+    If Right$(BaseUrl, 1) = "/" Then BaseUrl = Left$(BaseUrl, Len(BaseUrl) - 1)
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(Sheets("Setup").Range("C6").value))
+End Function
+
+Private Sub Say(ByVal msg As String)
+    Sheets("Setup").Range("C8").value = msg
+End Sub
+
+Private Function HttpGet(ByVal path As String, ByRef okOut As Boolean) As String
+    Dim h As Object, url As String
+    okOut = False
+    If BaseUrl() = "" Or ApiKey() = "" Then
+        Say "Put the web address and your API key on this sheet first."
+        Exit Function
+    End If
+    url = BaseUrl() & path
+    On Error GoTo Failed
+    Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    h.setTimeouts 20000, 20000, 60000, 120000
+    h.Open "GET", url, False
+    h.setRequestHeader "X-API-Key", ApiKey()
+    h.send
+    If h.Status <> 200 Then
+        Say "Server said " & h.Status & ". Check the key on Settings > Excel Data Entry."
+        Exit Function
+    End If
+    HttpGet = h.responseText
+    okOut = True
+    Exit Function
+Failed:
+    Say "Could not reach " & url & " - " & Err.Description
+End Function
+
+Public Sub LoadBarItems()
+    Dim body As String, ok As Boolean, lines() As String, parts() As String
+    Dim ws As Worksheet, i As Long, r As Long, n As Long
+
+    body = HttpGet("/api/xl/lists?what=bar_items&format=tsv", ok)
+    If Not ok Then Exit Sub
+
+    Set ws = Sheets("Bar Items")
+    ws.Range("A2:E100000").ClearContents
+
+    body = Replace(body, vbCrLf, vbLf)
+    lines = Split(body, vbLf)
+    r = 2
+    For i = LBound(lines) To UBound(lines)
+        If Len(Trim$(lines(i))) > 0 Then
+            parts = Split(lines(i), vbTab)
+            If UBound(parts) >= 2 Then
+                ws.Cells(r, 1).value = Trim$(parts(0))
+                ws.Cells(r, 2).value = parts(1)
+                ws.Cells(r, 3).value = parts(2)
+                If UBound(parts) >= 3 Then ws.Cells(r, 4).value = parts(3)
+                If UBound(parts) >= 4 Then ws.Cells(r, 5).value = Val(parts(4))
+                r = r + 1
+                n = n + 1
+            End If
+        End If
+    Next i
+    Say "Loaded " & n & " bar items."
+    FillCategories
+End Sub
+
+Public Sub FillCategories()
+    Dim src As Worksheet, dst As Worksheet
+    Dim map As Object, i As Long, lastSrc As Long, lastDst As Long
+    Dim code As String, hit As Long, miss As Long
+
+    Set src = Sheets("Bar Items")
+    Set dst = Sheets("My List")
+    Set map = CreateObject("Scripting.Dictionary")
+    map.CompareMode = 1
+
+    lastSrc = src.Cells(src.Rows.Count, 1).End(-4162).Row
+    For i = 2 To lastSrc
+        code = Trim$(CStr(src.Cells(i, 1).value))
+        If code <> "" And Not map.Exists(code) Then map.Add code, CStr(src.Cells(i, 3).value)
+    Next i
+
+    If map.Count = 0 Then
+        Say "The Bar Items sheet is empty - press Load Bar Items first."
+        Exit Sub
+    End If
+
+    lastDst = dst.Cells(dst.Rows.Count, 1).End(-4162).Row
+    For i = 2 To lastDst
+        code = Trim$(CStr(dst.Cells(i, 1).value))
+        If code <> "" Then
+            If map.Exists(code) Then
+                dst.Cells(i, 5).value = map(code)
+                dst.Cells(i, 5).Font.Color = RGB(31, 56, 100)
+                hit = hit + 1
+            Else
+                dst.Cells(i, 5).value = "NOT IN SYSTEM"
+                dst.Cells(i, 5).Font.Color = RGB(192, 43, 28)
+                miss = miss + 1
+            End If
+        End If
+    Next i
+    Say "Categories filled for " & hit & " item(s)." & IIf(miss > 0, " " & miss & " code(s) are not in the system.", "")
+End Sub
+
+Public Sub AddButtons()
+    Dim ws As Worksheet, b As Object
+    Set ws = Sheets("Setup")
+    For Each b In ws.Buttons
+        b.Delete
+    Next b
+    AddOne ws, "E3", "Load Bar Items", "LoadBarItems"
+    AddOne ws, "E5", "Fill Categories", "FillCategories"
+End Sub
+
+Private Sub AddOne(ws As Worksheet, ByVal anchor As String, ByVal caption As String, ByVal macroName As String)
+    Dim rng As Range, b As Object
+    Set rng = ws.Range(anchor)
+    Set b = ws.Buttons.Add(rng.Left, rng.Top, 118, 24)
+    b.Caption = caption
+    b.OnAction = macroName
+End Sub
+
+Public Sub Auto_Open()
+    On Error Resume Next
+    AddButtons
+End Sub
+"""
+
+
+@app.route('/excel_bar_items_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Settings')
+def excel_bar_items_workbook():
+    """A small workbook for tagging a pasted list of bar items with the
+    category each one carries on the Bar Inventory page. The Bar Items sheet
+    is written out with the live categories so the lookup works offline; the
+    macro refreshes it and fills My List by item code."""
+    try:
+        import excel_export as xl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('bar_inventory'))
+
+    NAVY = '1F3864'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    this_box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_font = Font(bold=True, color='FFFFFF', size=10)
+    note_font = Font(italic=True, color='6B7280', size=9)
+
+    items = _bar_inv_items()
+
+    wb = xl.new_workbook('Setup')
+
+    ws = wb['Setup']
+    ws.sheet_properties.tabColor = NAVY
+    ws.sheet_view.showGridLines = False
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 26
+    ws.column_dimensions['C'].width = 52
+    ws.column_dimensions['D'].width = 2
+    ws.column_dimensions['E'].width = 20
+    ws.merge_cells('A1:E1')
+    t = ws['A1']
+    t.value = 'Bar Item Categories'
+    t.font = Font(bold=True, size=15, color='FFFFFF')
+    t.fill = fill(NAVY)
+    t.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 26
+
+    ws['B4'] = 'Web address'
+    ws['C4'] = request.url_root.rstrip('/')
+    ws['B6'] = 'API key'
+    ws['C6'] = ''
+    ws['B8'] = 'Status'
+    ws['C8'] = 'Paste your list on My List, then press Fill Categories.'
+    for cell in ('B4', 'B6', 'B8'):
+        ws[cell].font = Font(bold=True, color='1F2937')
+    for cell in ('C4', 'C6'):
+        ws[cell].fill = fill('FFF8DC')
+        ws[cell].border = this_box
+    ws['C8'].font = note_font
+
+    ws['B10'] = 'How it works'
+    ws['B10'].font = Font(bold=True, color='1F2937')
+    for i, line in enumerate([
+            'Put your item code in column A of My List - the number shown on the Bar Inventory page.',
+            'Press Fill Categories. Column E fills from the Bar Items sheet by matching that code.',
+            'A code the system does not have is marked NOT IN SYSTEM in red.',
+            'Press Load Bar Items after adding or re-categorising items on the website.',
+            'Bar Items already holds the live list, so this works with no internet.']):
+        c = ws.cell(row=11 + i, column=2)
+        c.value = u'•  ' + line
+        c.font = note_font
+        ws.merge_cells(start_row=11 + i, start_column=2, end_row=11 + i, end_column=5)
+
+    ws2 = wb.create_sheet('My List')
+    ws2.sheet_properties.tabColor = '2E75B6'
+    heads = ['Code', 'Item Name', 'Price', 'Value', 'Category']
+    widths = [10, 36, 14, 14, 26]
+    for i, (h, w) in enumerate(zip(heads, widths), start=1):
+        c = ws2.cell(row=1, column=i)
+        c.value = h
+        c.font = head_font
+        c.fill = fill(NAVY)
+        c.border = this_box
+        c.alignment = Alignment(horizontal='center')
+        ws2.column_dimensions[c.column_letter].width = w
+    ws2.freeze_panes = 'A2'
+    for r in range(2, 402):
+        for col in range(1, 6):
+            ws2.cell(row=r, column=col).border = this_box
+        ws2.cell(row=r, column=3).number_format = '#,##0.00'
+        ws2.cell(row=r, column=4).number_format = '#,##0.00'
+        # Works with no macro at all - looks the code up on the Bar Items sheet.
+        ws2.cell(row=r, column=5).value = (
+            '=IF($A{r}="","",IFERROR(VLOOKUP($A{r},\'Bar Items\'!$A:$C,3,FALSE),"NOT IN SYSTEM"))'.format(r=r))
+
+    ws3 = wb.create_sheet('Bar Items')
+    ws3.sheet_properties.tabColor = '548235'
+    heads3 = ['Code', 'Item Name', 'Category', 'Unit', 'Unit Price']
+    widths3 = [10, 38, 26, 14, 14]
+    for i, (h, w) in enumerate(zip(heads3, widths3), start=1):
+        c = ws3.cell(row=1, column=i)
+        c.value = h
+        c.font = head_font
+        c.fill = fill(NAVY)
+        c.border = this_box
+        c.alignment = Alignment(horizontal='center')
+        ws3.column_dimensions[c.column_letter].width = w
+    ws3.freeze_panes = 'A2'
+    for r, it in enumerate(items, start=2):
+        ws3.cell(row=r, column=1).value = str(it['item_code'] or '')
+        ws3.cell(row=r, column=2).value = it['item_name']
+        ws3.cell(row=r, column=3).value = it.get('category_name') or ''
+        ws3.cell(row=r, column=4).value = it.get('unit_type') or ''
+        pc = ws3.cell(row=r, column=5)
+        pc.value = float(it.get('unit_price') or 0)
+        pc.number_format = '#,##0.00'
+        for col in range(1, 6):
+            ws3.cell(row=r, column=col).border = this_box
+        if not (it.get('category_name') or ''):
+            ws3.cell(row=r, column=3).fill = fill('FDE8E8')
+
+    return xl.workbook_response(wb, 'SuwinERP_BarItemCategories.xlsx')
+
+
+@app.route('/excel_bar_items_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Settings')
+def excel_bar_items_workbook_macro():
+    """The Bar Item Categories workbook's macro (Alt+F11 > File > Import File)."""
+    code = _XL_BARITEMS_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinBarItems.bas'
     return resp
 
 
