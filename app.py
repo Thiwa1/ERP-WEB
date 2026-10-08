@@ -7625,6 +7625,45 @@ def postdated_cheques():
                            type_filter=type_filter, today_str=date.today().strftime('%Y-%m-%d'))
 
 
+def _pdc_clear_in_txn(conn, pdc_id, current_user):
+    """Post one pending postdated cheque to the books inside a transaction
+    the caller already owns, and mark it cleared. Returns (jv_no, pdc_row),
+    or (None, None) if it is no longer pending. Shared by the Postdated
+    Cheques screen and by ticking the cheque off on Bank Reconciliation, so
+    both routes settle invoices and write the JV exactly the same way."""
+    cur = conn.cursor(dictionary=True)
+    try:
+        cur.execute("SELECT * FROM postdated_cheques WHERE id = %s AND status = 'pending' FOR UPDATE", (pdc_id,))
+        pdc = cur.fetchone()
+        if not pdc:
+            return None, None
+        payload = json.loads(pdc['payload'] or '{}')
+        effective_date = str(pdc['post_date'])
+        cur2 = conn.cursor()
+        try:
+            if pdc['pdc_type'] == 'payment':
+                jv_no, _voucher, _master, _total = _post_bank_payment_entries(
+                    cur2, current_user, payload['supplier_name'], payload['bank_account'],
+                    effective_date, payload['narration'], payload.get('cheque_no'),
+                    payload['payments'], payload.get('wht_base', 0.0), payload.get('manual_voucher'))
+            else:
+                jv_no, _receipt, _total = _post_customer_receipt_entries(
+                    cur2, current_user, payload['customer_id'], payload['account_type'],
+                    payload['account_name'], effective_date, payload['narration'], payload['payments'],
+                    payload.get('manual_receipt_no'), payload.get('online_payment_received', False),
+                    payload.get('transaction_code'), payload.get('card_last_digits'),
+                    payload.get('bank_transfer_confirmed', False), payload.get('transfer_id'),
+                    payload.get('cheque_no'))
+            cur2.execute(
+                "UPDATE postdated_cheques SET status = 'cleared', cleared_jv = %s, cleared_date = %s WHERE id = %s",
+                (jv_no, date.today(), pdc_id))
+        finally:
+            cur2.close()
+        return jv_no, pdc
+    finally:
+        cur.close()
+
+
 @app.route('/postdated_cheques/clear', methods=['POST'])
 @login_required
 @has_permission('Access_Reversals')
@@ -7642,38 +7681,13 @@ def postdated_cheques_clear():
     cursor2 = None
     try:
         conn = db.get_connection()
-        cursor = conn.cursor(dictionary=True)
         conn.start_transaction()
 
-        cursor.execute("SELECT * FROM postdated_cheques WHERE id = %s AND status = 'pending' FOR UPDATE", (pdc_id,))
-        pdc = cursor.fetchone()
+        jv_no, pdc = _pdc_clear_in_txn(conn, pdc_id, get_current_user_id())
         if not pdc:
             conn.rollback()
             flash('Postdated cheque not found or already processed.', 'danger')
             return redirect(url_for('postdated_cheques'))
-
-        payload = json.loads(pdc['payload'] or '{}')
-        effective_date = str(pdc['post_date'])
-        current_user = get_current_user_id()
-        cursor2 = conn.cursor()
-
-        if pdc['pdc_type'] == 'payment':
-            jv_no, new_voucher, master_voucher_no, _ = _post_bank_payment_entries(
-                cursor2, current_user, payload['supplier_name'], payload['bank_account'],
-                effective_date, payload['narration'], payload.get('cheque_no'),
-                payload['payments'], payload.get('wht_base', 0.0), payload.get('manual_voucher'))
-        else:
-            jv_no, receipt_no, _ = _post_customer_receipt_entries(
-                cursor2, current_user, payload['customer_id'], payload['account_type'],
-                payload['account_name'], effective_date, payload['narration'], payload['payments'],
-                payload.get('manual_receipt_no'), payload.get('online_payment_received', False),
-                payload.get('transaction_code'), payload.get('card_last_digits'),
-                payload.get('bank_transfer_confirmed', False), payload.get('transfer_id'),
-                payload.get('cheque_no'))
-
-        cursor2.execute(
-            "UPDATE postdated_cheques SET status = 'cleared', cleared_jv = %s, cleared_date = %s WHERE id = %s",
-            (jv_no, date.today(), pdc_id))
 
         conn.commit()
         flash(f"Postdated cheque #{pdc['cheque_no']} cleared and posted to the books (JV: {jv_no}).", 'success')
@@ -10077,6 +10091,44 @@ def bank_reconciliation():
             logging.error(f"Opening balance error: {e}")
             opening_balance = 0
 
+    # Postdated cheques that have reached their date but have not been posted
+    # yet. They carry no GL entry, so without this they are invisible here -
+    # and the statement they are on cannot be reconciled. Ticking one off
+    # clears it to the books (see process_reconciliation).
+    if bank_account:
+        pdc_pending = db.execute_query("""
+            SELECT id, pdc_type, party_name, cheque_no, post_date, amount, narration
+            FROM postdated_cheques
+            WHERE status = 'pending'
+              AND TRIM(account_name) = TRIM(%s)
+              AND post_date <= %s
+            ORDER BY post_date, id
+        """, (bank_account, rec_date)) or []
+        for p in pdc_pending:
+            row = {
+                'id': 'pdc:%s' % p['id'],
+                'is_pdc': True,
+                'entry_save': 0,
+                'entry_date': None,
+                'entry_jv': 'PDC',
+                'entry_effective_date': p['post_date'],
+                'entry_naration': 'Postdated cheque %s - %s%s' % (
+                    p['cheque_no'] or '', p['party_name'] or '',
+                    (' - ' + p['narration']) if p['narration'] else ''),
+                'bank_book_chque_no': p['cheque_no'],
+            }
+            if p['pdc_type'] == 'payment':
+                row['enty_values_CR'] = p['amount']
+                payments.append(row)
+            else:
+                row['enty_values_DR'] = p['amount']
+                deposits.append(row)
+        # Sort as text: one source hands back a date and the other a
+        # datetime, and comparing the two raises TypeError.
+        by_date = lambda r: str(r.get('entry_effective_date') or '')
+        deposits.sort(key=by_date)
+        payments.sort(key=by_date)
+
     return render_template('bank_reconciliation.html',
                            bank_accounts=bank_accounts,
                            selected_account=bank_account,
@@ -10221,6 +10273,33 @@ def bank_reconciliation_export_xlsx():
     return xl.workbook_response(wb, fname)
 
 
+def _reconcile_pdc(conn, cursor, pdc_id, bank_account, rec_date, side):
+    """Tick a pending postdated cheque off on Bank Reconciliation: post it to
+    the books, then mark the bank line of the JV it just created reconciled.
+    Returns the amount reconciled, or None if the cheque was already handled
+    (someone cleared it on the Postdated Cheques screen in the meantime).
+    The caller owns the transaction, so a failure here rolls the lot back."""
+    jv_no, pdc = _pdc_clear_in_txn(conn, pdc_id, get_current_user_id())
+    if not pdc:
+        return None
+    col = 'enty_values_DR' if side == 'DR' else 'enty_values_CR'
+    cursor.execute(
+        "SELECT id, {c} AS amt FROM entry_details "
+        "WHERE entry_jv = %s AND TRIM(account_name) = TRIM(%s) AND {c} > 0 "
+        "AND entry_deleted = 0".format(c=col),
+        (jv_no, bank_account))
+    rows = cursor.fetchall() or []
+    total = 0.0
+    for row in rows:
+        # The effective date stays on the cheque's post date - that is when
+        # the money moved. Only the reconciled flag is set here.
+        cursor.execute(
+            "UPDATE entry_details SET entry_Rec = 1, entry_save = 1, entry_date = %s WHERE id = %s",
+            (str(rec_date) + " 00:00:00", row['id']))
+        total += float(row['amt'] or 0)
+    return total
+
+
 @app.route('/bank_reconciliation/process', methods=['POST'])
 @login_required
 def process_reconciliation():
@@ -10247,11 +10326,17 @@ def process_reconciliation():
                 uncleared_payments = request.form.getlist('uncleared_payments[]')
 
                 if action == 'save':
-                    # Save Progress
+                    # Save Progress. A pdc: id has no entry_details row yet -
+                    # the cheque is only posted when the reconciliation is
+                    # processed, so there is nothing to mark as saved.
+                    is_gl = lambda v: not str(v).startswith('pdc:')
+
                     # Process cleared deposits
                     for d in cleared_deposits:
                         parts = d.split('|')
                         d_id = parts[0]
+                        if not is_gl(d_id):
+                            continue
                         d_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_id))
 
@@ -10259,14 +10344,18 @@ def process_reconciliation():
                     for p in cleared_payments:
                         parts = p.split('|')
                         p_id = parts[0]
+                        if not is_gl(p_id):
+                            continue
                         p_date = parts[1] if len(parts) > 1 and parts[1] else datetime.now().strftime('%Y-%m-%d %H:%M:%S')
                         cursor.execute("UPDATE entry_details SET entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_id))
 
                     # Mark uncleared as entry_save = 0
                     for d in uncleared_deposits:
-                        cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
+                        if is_gl(d):
+                            cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (d,))
                     for p in uncleared_payments:
-                        cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
+                        if is_gl(p):
+                            cursor.execute("UPDATE entry_details SET entry_save = 0, entry_date = NULL WHERE id = %s", (p,))
 
                     conn.commit()
                     flash('Progress saved successfully!', 'success')
@@ -10293,10 +10382,15 @@ def process_reconciliation():
                     cleared_pay_sum = 0
 
                     # Clear Deposits
+                    pdc_cleared = 0
+                    pdc_todo = []     # postdated cheques, handled after both loops
                     for d in cleared_deposits:
                         parts = d.split('|')
                         d_id = parts[0]
                         d_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                        if str(d_id).startswith('pdc:'):
+                            pdc_todo.append((d_id[4:], d_date, 'DR'))
+                            continue
                         cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (d_date, d_date + " 00:00:00", d_id))
                         cursor.execute("SELECT enty_values_DR FROM entry_details WHERE id = %s", (d_id,))
                         cleared_dep_sum += float(cursor.fetchone()['enty_values_DR'] or 0)
@@ -10306,9 +10400,30 @@ def process_reconciliation():
                         parts = p.split('|')
                         p_id = parts[0]
                         p_date = parts[1] if len(parts) > 1 and parts[1] else rec_date
+                        if str(p_id).startswith('pdc:'):
+                            pdc_todo.append((p_id[4:], p_date, 'CR'))
+                            continue
                         cursor.execute("UPDATE entry_details SET entry_Rec = 1, entry_effective_date = %s, entry_save = 1, entry_date = %s WHERE id = %s", (p_date, p_date + " 00:00:00", p_id))
                         cursor.execute("SELECT enty_values_CR FROM entry_details WHERE id = %s", (p_id,))
                         cleared_pay_sum += float(cursor.fetchone()['enty_values_CR'] or 0)
+
+                    # Postdated cheques are posted last, once nothing is left
+                    # half-read on this connection's cursor - opening another
+                    # cursor mid-result is what raises "Unread result found".
+                    if pdc_todo:
+                        try:
+                            cursor.fetchall()
+                        except Exception:
+                            pass
+                        for pdc_id, when, side in pdc_todo:
+                            amt = _reconcile_pdc(conn, cursor, pdc_id, bank_account, when, side)
+                            if amt is None:
+                                continue
+                            if side == 'DR':
+                                cleared_dep_sum += amt
+                            else:
+                                cleared_pay_sum += amt
+                            pdc_cleared += 1
 
                     closing_balance = opening_balance + cleared_dep_sum - cleared_pay_sum
 
@@ -10374,7 +10489,11 @@ def process_reconciliation():
                                          (rec_id, detail['id'], 0, detail['enty_values_CR'], detail['entry_naration'], ''))
 
                     conn.commit()
-                    flash(f'Reconciliation processed successfully! ID: {rec_id}', 'success')
+                    msg = f'Reconciliation processed successfully! ID: {rec_id}'
+                    if pdc_cleared:
+                        msg += (f' {pdc_cleared} postdated cheque(s) were posted to the books '
+                                f'and removed from the pending list.')
+                    flash(msg, 'success')
 
     except Exception as e:
             conn.rollback()

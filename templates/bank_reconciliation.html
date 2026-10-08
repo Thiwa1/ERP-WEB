@@ -107,7 +107,9 @@
                                         <input type="hidden" name="uncleared_deposits[]" value="{{ item.id }}" class="uncleared-deposit" {% if item.entry_save == 1 %}disabled{% endif %}>
                                     </td>
                                     <td class="align-middle">
-                                        {% if item.entry_effective_date %}
+                                        {% if item.is_pdc %}
+                                        <span class="badge" style="background:#fff1c2;color:#8a6100;font-size:.64rem;font-weight:700;">PDC</span>
+                                        {% elif item.entry_effective_date %}
                                         <a href="/ledger_view?account={{ selected_account|urlencode }}&from={{ item.entry_effective_date.strftime('%Y-%m-01') }}&to={{ item.entry_effective_date.strftime('%Y-%m-%d') }}&jv={{ item.entry_jv }}"
                                            target="_blank" title="Open this transaction in the account ledger"
                                            style="text-decoration:none;font-weight:600;color:#0d6efd;">
@@ -115,17 +117,26 @@
                                         </a>
                                         {% else %}<span class="text-muted">#{{ item.id }}</span>{% endif %}
                                     </td>
-                                    <td class="align-middle mono-cell">{{ item.entry_jv }}</td>
+                                    <td class="align-middle mono-cell">
+                                        {% if item.is_pdc %}<span class="text-muted" style="font-size:.72rem;">not posted yet</span>
+                                        {% else %}{{ item.entry_jv }}{% endif %}
+                                    </td>
                                     <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
                                     <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
                                     <td class="text-end fw-bold align-middle mono-cell">{{ item.enty_values_DR|currency }}</td>
                                     <td class="text-center align-middle">
+                                        {% if item.is_pdc %}
+                                        <a href="/postdated_cheques" target="_blank"
+                                           class="btn btn-sm btn-outline-warning py-0 px-1" style="font-size:.72rem;"
+                                           title="Postdated cheque - ticking it here posts it to the books"><i class="fas fa-calendar-check"></i></a>
+                                        {% else %}
                                         <a href="/journal_entry/print/{{ item.entry_jv }}" target="_blank"
                                            class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
                                            title="View this JV (opens in a new tab)">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% else %}
@@ -175,7 +186,9 @@
                                         <input type="hidden" name="uncleared_payments[]" value="{{ item.id }}" class="uncleared-payment" {% if item.entry_save == 1 %}disabled{% endif %}>
                                     </td>
                                     <td class="align-middle">
-                                        {% if item.entry_effective_date %}
+                                        {% if item.is_pdc %}
+                                        <span class="badge" style="background:#fff1c2;color:#8a6100;font-size:.64rem;font-weight:700;">PDC</span>
+                                        {% elif item.entry_effective_date %}
                                         <a href="/ledger_view?account={{ selected_account|urlencode }}&from={{ item.entry_effective_date.strftime('%Y-%m-01') }}&to={{ item.entry_effective_date.strftime('%Y-%m-%d') }}&jv={{ item.entry_jv }}"
                                            target="_blank" title="Open this transaction in the account ledger"
                                            style="text-decoration:none;font-weight:600;color:#0d6efd;">
@@ -183,17 +196,26 @@
                                         </a>
                                         {% else %}<span class="text-muted">#{{ item.id }}</span>{% endif %}
                                     </td>
-                                    <td class="align-middle mono-cell">{{ item.entry_jv }}</td>
+                                    <td class="align-middle mono-cell">
+                                        {% if item.is_pdc %}<span class="text-muted" style="font-size:.72rem;">not posted yet</span>
+                                        {% else %}{{ item.entry_jv }}{% endif %}
+                                    </td>
                                     <td class="align-middle">{{ item.entry_effective_date.strftime('%Y-%m-%d') if item.entry_effective_date else '' }}</td>
                                     <td class="align-middle"><small>{{ item.entry_naration }}</small></td>
                                     <td class="align-middle"><small>{{ item.bank_book_chque_no or '-' }}</small></td>
                                     <td class="text-end fw-bold align-middle mono-cell">{{ item.enty_values_CR|currency }}</td>
                                     <td class="text-center align-middle">
+                                        {% if item.is_pdc %}
+                                        <a href="/postdated_cheques" target="_blank"
+                                           class="btn btn-sm btn-outline-warning py-0 px-1" style="font-size:.72rem;"
+                                           title="Postdated cheque - ticking it here posts it to the books"><i class="fas fa-calendar-check"></i></a>
+                                        {% else %}
                                         <a href="/journal_entry/print/{{ item.entry_jv }}" target="_blank"
                                            class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.72rem;"
                                            title="View this JV (opens in a new tab)">
                                             <i class="fas fa-eye"></i>
                                         </a>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 {% else %}
