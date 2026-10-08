@@ -35095,9 +35095,7 @@ def excel_bar_items_workbook():
 
     items = _bar_inv_items()
 
-    wb = xl.new_workbook('Setup')
-
-    ws = wb['Setup']
+    wb, ws = xl.new_workbook('Setup')
     ws.sheet_properties.tabColor = NAVY
     ws.sheet_view.showGridLines = False
     ws.column_dimensions['A'].width = 2
