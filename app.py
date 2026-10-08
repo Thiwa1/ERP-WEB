@@ -24005,6 +24005,26 @@ def _bar_inv_items():
     """) or []
 
 
+def _bar_inv_current_qty(as_of=None):
+    """Each bar item's stock right now: the Closing Balance on the most
+    recent day entered up to as_of, falling back to the item's own starting
+    Opening Balance where it has never been on a sheet. One query for every
+    item rather than one per item. In the item's base unit - ml for a
+    Bottle+Ml item, whole units otherwise."""
+    as_of = as_of or date.today().strftime('%Y-%m-%d')
+    rows = db.execute_query("""
+        SELECT dl.item_id, dl.closing_balance
+        FROM bar_inventory_day_lines dl
+        JOIN bar_inventory_days d ON dl.day_id = d.id
+        WHERE d.entry_date <= %s
+        ORDER BY d.entry_date ASC, dl.id ASC
+    """, (as_of,)) or []
+    qty = {}
+    for r in rows:                      # ordered oldest first, so the last wins
+        qty[r['item_id']] = r['closing_balance']
+    return qty
+
+
 def _bar_inv_categories(active_only=True):
     where = "WHERE is_active = 1" if active_only else ""
     return db.execute_query(f"""
@@ -27988,8 +28008,10 @@ def xl_lists():
             return _xl_tsv([[c['id'], c['category_group'], c['description'], c['particulars'] or '']
                             for c in _daily_sales_categories()])
         if what == 'bar_items':
+            qty = _bar_inv_current_qty()
             return _xl_tsv([[i['item_code'], i['item_name'], i.get('category_name') or '',
-                             i.get('unit_type') or '', i.get('unit_price') or 0]
+                             i.get('unit_type') or '', i.get('unit_price') or 0,
+                             qty.get(i['id'], i.get('opening_balance') or 0)]
                             for i in _bar_inv_items()])
         return _xl_tsv([[k, lbl, grp, 1 if q else 0] for k, lbl, grp, q in BAR_SALES_RECORD_LINES])
     out = {'ok': True}
@@ -28002,9 +28024,11 @@ def xl_lists():
         out['accounts'] = [a['account_name'] for a in (db.execute_query(
             "SELECT account_name FROM new_account_table WHERE account_active = 1 ORDER BY account_name") or [])]
     if what in ('all', 'bar_items'):
+        _bq = _bar_inv_current_qty()
         out['bar_items'] = [{'code': i['item_code'], 'name': i['item_name'],
                              'category': i.get('category_name') or '',
-                             'unit': i.get('unit_type') or '', 'price': i.get('unit_price') or 0}
+                             'unit': i.get('unit_type') or '', 'price': i.get('unit_price') or 0,
+                             'qty': _bq.get(i['id'], i.get('opening_balance') or 0)}
                             for i in _bar_inv_items()]
     if what in ('all', 'bar_sales_lines'):
         out['bar_sales_lines'] = [{'key': k, 'label': lbl, 'group': grp, 'has_qty': bool(q)}
@@ -34984,7 +35008,7 @@ Public Sub LoadBarItems()
     If Not ok Then Exit Sub
 
     Set ws = Sheets("Bar Items")
-    ws.Range("A2:E100000").ClearContents
+    ws.Range("A2:F100000").ClearContents
 
     body = Replace(body, vbCrLf, vbLf)
     lines = Split(body, vbLf)
@@ -34998,6 +35022,7 @@ Public Sub LoadBarItems()
                 ws.Cells(r, 3).value = parts(2)
                 If UBound(parts) >= 3 Then ws.Cells(r, 4).value = parts(3)
                 If UBound(parts) >= 4 Then ws.Cells(r, 5).value = Val(parts(4))
+                If UBound(parts) >= 5 Then ws.Cells(r, 6).value = Val(parts(5))
                 r = r + 1
                 n = n + 1
             End If
@@ -35009,21 +35034,27 @@ End Sub
 
 Public Sub FillCategories()
     Dim src As Worksheet, dst As Worksheet
-    Dim map As Object, i As Long, lastSrc As Long, lastDst As Long
+    Dim cats As Object, qtys As Object
+    Dim i As Long, lastSrc As Long, lastDst As Long
     Dim code As String, hit As Long, miss As Long
 
     Set src = Sheets("Bar Items")
     Set dst = Sheets("My List")
-    Set map = CreateObject("Scripting.Dictionary")
-    map.CompareMode = 1
+    Set cats = CreateObject("Scripting.Dictionary")
+    Set qtys = CreateObject("Scripting.Dictionary")
+    cats.CompareMode = 1
+    qtys.CompareMode = 1
 
     lastSrc = src.Cells(src.Rows.Count, 1).End(-4162).Row
     For i = 2 To lastSrc
         code = Trim$(CStr(src.Cells(i, 1).value))
-        If code <> "" And Not map.Exists(code) Then map.Add code, CStr(src.Cells(i, 3).value)
+        If code <> "" And Not cats.Exists(code) Then
+            cats.Add code, CStr(src.Cells(i, 3).value)
+            qtys.Add code, src.Cells(i, 6).value
+        End If
     Next i
 
-    If map.Count = 0 Then
+    If cats.Count = 0 Then
         Say "The Bar Items sheet is empty - press Load Bar Items first."
         Exit Sub
     End If
@@ -35032,18 +35063,21 @@ Public Sub FillCategories()
     For i = 2 To lastDst
         code = Trim$(CStr(dst.Cells(i, 1).value))
         If code <> "" Then
-            If map.Exists(code) Then
-                dst.Cells(i, 5).value = map(code)
+            If cats.Exists(code) Then
+                dst.Cells(i, 5).value = cats(code)
                 dst.Cells(i, 5).Font.Color = RGB(31, 56, 100)
+                dst.Cells(i, 4).value = qtys(code)
+                dst.Cells(i, 4).NumberFormat = "#,##0.####"
                 hit = hit + 1
             Else
                 dst.Cells(i, 5).value = "NOT IN SYSTEM"
                 dst.Cells(i, 5).Font.Color = RGB(192, 43, 28)
+                dst.Cells(i, 4).ClearContents
                 miss = miss + 1
             End If
         End If
     Next i
-    Say "Categories filled for " & hit & " item(s)." & IIf(miss > 0, " " & miss & " code(s) are not in the system.", "")
+    Say "Category and quantity filled for " & hit & " item(s)." & IIf(miss > 0, " " & miss & " code(s) are not in the system.", "")
 End Sub
 
 Public Sub AddButtons()
@@ -35071,6 +35105,21 @@ End Sub
 """
 
 
+def _bar_items_lookup(row, last_col, col_index, fallback):
+    """One My List cell's VLOOKUP into the Bar Items sheet. Item codes are
+    written to Bar Items as text so a code like 007 keeps its shape, but a
+    pasted code comes in as a number - and a number never matches text in
+    VLOOKUP. So try the cell as it stands, then its text form, then its
+    numeric form, before giving up."""
+    rng = "'Bar Items'!$A:${c}".format(c=last_col)
+    base = 'VLOOKUP({key},' + rng + ',' + str(col_index) + ',FALSE)'
+    as_is = base.format(key='$A{r}'.format(r=row))
+    as_text = base.format(key='TEXT($A{r},"0")'.format(r=row))
+    as_num = base.format(key='IFERROR(VALUE($A{r}),$A{r})'.format(r=row))
+    return ('=IF($A{r}="","",IFERROR({a},IFERROR({b},IFERROR({c},{f}))))'
+            .format(r=row, a=as_is, b=as_text, c=as_num, f=fallback))
+
+
 @app.route('/excel_bar_items_workbook', methods=['GET'])
 @login_required
 @has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Settings')
@@ -35094,6 +35143,7 @@ def excel_bar_items_workbook():
     note_font = Font(italic=True, color='6B7280', size=9)
 
     items = _bar_inv_items()
+    qty_now = _bar_inv_current_qty()
 
     wb, ws = xl.new_workbook('Setup')
     ws.sheet_properties.tabColor = NAVY
@@ -35128,7 +35178,9 @@ def excel_bar_items_workbook():
     ws['B10'].font = Font(bold=True, color='1F2937')
     for i, line in enumerate([
             'Put your item code in column A of My List - the number shown on the Bar Inventory page.',
-            'Press Fill Categories. Column E fills from the Bar Items sheet by matching that code.',
+            'Press Fill Categories. Category and Value both fill from Bar Items by matching that code.',
+            'Value is the item\'s stock now: the Closing Balance on the last day entered.',
+            'Quantity is in the item\'s own unit - ml for a Bottle+Ml item, whole units otherwise.',
             'A code the system does not have is marked NOT IN SYSTEM in red.',
             'Press Load Bar Items after adding or re-categorising items on the website.',
             'Bar Items already holds the live list, so this works with no internet.']):
@@ -35139,8 +35191,8 @@ def excel_bar_items_workbook():
 
     ws2 = wb.create_sheet('My List')
     ws2.sheet_properties.tabColor = '2E75B6'
-    heads = ['Code', 'Item Name', 'Price', 'Value', 'Category']
-    widths = [10, 36, 14, 14, 26]
+    heads = ['Code', 'Item Name', 'Price', 'Value (Qty now)', 'Category']
+    widths = [10, 36, 14, 16, 26]
     for i, (h, w) in enumerate(zip(heads, widths), start=1):
         c = ws2.cell(row=1, column=i)
         c.value = h
@@ -35154,15 +35206,17 @@ def excel_bar_items_workbook():
         for col in range(1, 6):
             ws2.cell(row=r, column=col).border = this_box
         ws2.cell(row=r, column=3).number_format = '#,##0.00'
-        ws2.cell(row=r, column=4).number_format = '#,##0.00'
-        # Works with no macro at all - looks the code up on the Bar Items sheet.
-        ws2.cell(row=r, column=5).value = (
-            '=IF($A{r}="","",IFERROR(VLOOKUP($A{r},\'Bar Items\'!$A:$C,3,FALSE),"NOT IN SYSTEM"))'.format(r=r))
+        ws2.cell(row=r, column=4).number_format = '#,##0.####'
+        # Both work with no macro at all - they look the code up on Bar Items.
+        # The codes are written there as text, but a pasted code arrives as a
+        # number, so each lookup is tried as-is and then as text.
+        ws2.cell(row=r, column=4).value = _bar_items_lookup(r, 'F', 6, '""')
+        ws2.cell(row=r, column=5).value = _bar_items_lookup(r, 'C', 3, '"NOT IN SYSTEM"')
 
     ws3 = wb.create_sheet('Bar Items')
     ws3.sheet_properties.tabColor = '548235'
-    heads3 = ['Code', 'Item Name', 'Category', 'Unit', 'Unit Price']
-    widths3 = [10, 38, 26, 14, 14]
+    heads3 = ['Code', 'Item Name', 'Category', 'Unit', 'Unit Price', 'Current Qty']
+    widths3 = [10, 38, 26, 14, 14, 15]
     for i, (h, w) in enumerate(zip(heads3, widths3), start=1):
         c = ws3.cell(row=1, column=i)
         c.value = h
@@ -35180,7 +35234,10 @@ def excel_bar_items_workbook():
         pc = ws3.cell(row=r, column=5)
         pc.value = float(it.get('unit_price') or 0)
         pc.number_format = '#,##0.00'
-        for col in range(1, 6):
+        qc = ws3.cell(row=r, column=6)
+        qc.value = float(qty_now.get(it['id'], it.get('opening_balance') or 0) or 0)
+        qc.number_format = '#,##0.####'
+        for col in range(1, 7):
             ws3.cell(row=r, column=col).border = this_box
         if not (it.get('category_name') or ''):
             ws3.cell(row=r, column=3).fill = fill('FDE8E8')
