@@ -21462,9 +21462,11 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
                 """, (cost_account, amount, entry_date, date.today(), narr, current_user_pk, jv_no))
 
-            # Petty cash: Cr each line's account (sub-account); Dr the petty cash
-            # account with the total of its lines (one debit per petty cash account).
-            petty_dr = {}
+            # Petty cash is money spent OUT of the tin, so each line's expense
+            # account is debited (the expense goes up) and the petty cash
+            # account is credited with the total of its lines (the cash goes
+            # down) - one credit per petty cash account.
+            petty_cr = {}
             for r in petty_rows:
                 amt = round(float(r['amount'] or 0), 2)
                 if not amt:
@@ -21474,16 +21476,16 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
                         entry_create_date, entry_naration, entry_create_user, entry_jv, entry_sub_account_code
-                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s, %s)
                 """, (r['expense_account'], amt, entry_date, date.today(), narr, current_user_pk, jv_no,
                       r['expense_sub_account_code'] or 0))
-                petty_dr[r['cash_account']] = round(petty_dr.get(r['cash_account'], 0) + amt, 2)
-            for petty_account, total in petty_dr.items():
+                petty_cr[r['cash_account']] = round(petty_cr.get(r['cash_account'], 0) + amt, 2)
+            for petty_account, total in petty_cr.items():
                 cursor.execute("""
                     INSERT INTO entry_details (
                         account_name, enty_values_DR, enty_values_CR, entry_effective_date,
                         entry_create_date, entry_naration, entry_create_user, entry_jv
-                    ) VALUES (%s, %s, 0, %s, %s, %s, %s, %s)
+                    ) VALUES (%s, 0, %s, %s, %s, %s, %s, %s)
                 """, (petty_account, total, entry_date, date.today(), f"Petty Cash total - Daily Sales {entry_date}",
                       current_user_pk, jv_no))
 
