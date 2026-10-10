@@ -29827,7 +29827,12 @@ End Sub
 
 ' ---- Runs by itself when the workbook opens --------------------------------
 Public Sub Auto_Open()
-    Dim r As String
+    Dim r As String, probe As Worksheet
+    ' Only for the Daily Sales workbook - stay quiet if this module was imported into another one
+    On Error Resume Next
+    Set probe = ThisWorkbook.Worksheets("Daily Sales")
+    On Error GoTo 0
+    If probe Is Nothing Then Exit Sub
     On Error Resume Next
     SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
     ThisWorkbook.Worksheets("Daily Sales").Range("H3").Value = Date
