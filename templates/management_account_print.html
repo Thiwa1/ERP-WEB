@@ -186,33 +186,23 @@
   </div>
 
 {% elif part == 'day' %}
-  {# The workbook's "Day Sumory" sheet #}
-  {% macro dn(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% else %}{% set a = v | abs %}{% set txt = '{:,.0f}'.format(a) if (a - (a | round(0))) | abs < 0.005 else '{:,.2f}'.format(a) %}{{ '(' ~ txt ~ ')' if v < 0 else txt }}{% endif %}{% endmacro %}
-  <div class="day-title">{{ company_name or '' }} &mdash; DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
+  {# The accountant's "MONTHLY REPORT" sheet - same columns as the Day Summary tab #}
+  {% macro xn(v, cnt=False) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% elif cnt %}{{ '{:,.0f}'.format(v) }}{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+  {% set ncol = day.cols | length %}
   <table class="day-t">
-    <thead><tr>
-      <th>Date</th>
-      {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
-      <th class="sum">TOTAL</th>
-      {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
-      <th class="sum">BAR SALES</th><th class="sum">TOTAL</th>
-    </tr></thead>
+    <thead>
+      <tr><th colspan="{{ [3, ncol + 1] | min }}" style="background:#fff"></th>
+        {% if ncol + 1 > 3 %}<th colspan="{{ ncol + 1 - 3 }}" style="background:#fff;font-size:10pt;font-weight:400">{{ day.title }}</th>{% endif %}</tr>
+      <tr><th>DATE</th>{% for c in day.cols %}<th class="{{ 'sum' if c.col_type in ('TOTAL', 'GRAND') }}">{{ c.label }}</th>{% endfor %}</tr>
+    </thead>
     <tbody>
-    {% for d in daily.days %}
-      <tr><td class="dt">{{ d.date.strftime('%d/%m') }}</td>
-        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
-        <td class="n sum">{{ dn(d.rr_total) }}</td>
-        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
-        <td class="n sum">{{ dn(d.bar_total) }}</td><td class="n sum">{{ dn(d.grand) }}</td></tr>
+    {% for d in day.days %}
+      <tr><td class="dt" style="width:auto;text-align:left">{{ d.date.day }}-{{ d.date.strftime('%b-%y') }}</td>
+        {% for c in day.cols %}<td class="n{{ ' sum' if c.col_type in ('TOTAL', 'GRAND') }}">{{ xn(d.vals.get(c.id), c.is_count) }}</td>{% endfor %}</tr>
     {% endfor %}
-      <tr class="tot"><td>TOTAL</td>
-        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
-        <td class="n">{{ dn(daily.rr_total) }}</td>
-        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
-        <td class="n">{{ dn(daily.bar_total) }}</td><td class="n">{{ dn(daily.grand) }}</td></tr>
+      <tr class="tot"><td></td>{% for c in day.cols %}<td class="n">{{ xn(day.totals.get(c.id), c.is_count) }}</td>{% endfor %}</tr>
     </tbody>
   </table>
-  {% if daily.has_manual %}<div class="legend" style="margin-top:4px">Lines typed in manually each month have no daily split &mdash; only their month total is shown.</div>{% endif %}
 
 {% elif part == 'note3' %}
   {{ title('NOTE 3 - COST OF SALES', cur.month_label) }}

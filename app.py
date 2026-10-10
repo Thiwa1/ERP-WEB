@@ -22874,10 +22874,11 @@ def management_account():
     cur = _mgmt_compute(request.args.get('month') or date.today().strftime('%Y-%m'))
     prev = _mgmt_compute(cur['prev_period'])
     prev_amounts = {l['id']: l['amount'] for sec in prev['sections'].values() for l in sec}
+    daily = _mgmt_daily(cur)
     return render_template('management_account.html', cur=cur, prev=prev, prev_amounts=prev_amounts,
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
                            pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
-                           daily=_mgmt_daily(cur),
+                           daily=daily, day=_mgmt_day_xl(cur, daily),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -23140,6 +23141,290 @@ def _mgmt_daily(cur):
             'grand': round(rr_t + bar_t, 2), 'has_manual': any(l['is_manual'] for _s, ls in groups for l in ls)}
 
 
+# ---- Day Summary in the accountant's own Excel layout ("MONTHLY REPORT" sheet):
+#      a configurable list of columns, each filled from
+#        LINES  - Management Account report lines (that day's GL movements)
+#        DS_AMT - Daily Sales Entry category amounts   (rooms, extra bed, No.10 ...)
+#        DS_NOS - Daily Sales Entry category NOS       (R.NO / RO.NO room counts)
+#        MANUAL - typed in per day on the Day Summary tab (KEG ...)
+#        TOTAL  - sum of the "in total" columns since the previous TOTAL
+#        GRAND  - sum of every "in total" column (the sheet's last TOTAL)
+#      A column may also take away another column ("less"), e.g. BAR SALE less KEG
+#      when the keg sales are still posted inside the bar sales account.
+MGMT_DAY_TYPES = [('LINES', 'Report lines (GL)'), ('DS_AMT', 'Daily Sales - amount'),
+                  ('DS_NOS', 'Daily Sales - NOS (count)'), ('MANUAL', 'Typed in per day'),
+                  ('TOTAL', 'TOTAL (since last total)'), ('GRAND', 'TOTAL (everything)')]
+
+# label, type, items, in_total, is_count, less (label of an earlier column)
+# items: Daily Sales category keys for DS_*, or report-line names for LINES
+# (matched by name; anything not found is left for the Layout screen).
+_MGMT_DAY_DEFAULT = [
+    ('R.NO', 'DS_NOS', ['ROOM1_NORMAL', 'ROOM1_WEDDING', 'ROOM1_FOREIGN'], 0, 1, None),
+    ('NON A/C', 'DS_AMT', ['ROOM1_NORMAL'], 1, 0, None),
+    ('EXTRA BED', 'DS_AMT', ['ROOM1_EXTRABED', 'ROOM2_EXTRABED'], 1, 0, None),
+    ('W/CUPLES', 'DS_AMT', ['ROOM1_WEDDING'], 1, 0, None),
+    ('FORING', 'DS_AMT', ['ROOM1_FOREIGN'], 1, 0, None),
+    ('RO.NO', 'DS_NOS', ['ROOM2_NORMAL', 'ROOM2_WEDDING', 'ROOM2_FOREIGN'], 0, 1, None),
+    ('A/C', 'DS_AMT', ['ROOM2_NORMAL'], 1, 0, None),
+    ('W/CUPLES', 'DS_AMT', ['ROOM2_WEDDING'], 1, 0, None),
+    ('NO.10', 'DS_AMT', ['ROOM10_LOCAL', 'ROOM10_FOREIGN'], 1, 0, None),
+    ('FORING', 'DS_AMT', ['ROOM2_FOREIGN'], 1, 0, None),
+    ('ROOM/FOOD', 'LINES', ['room food', 'room food sale'], 1, 0, None),
+    ('R\\H SALE', 'LINES', ['restaurant food sale', 'restaurant food sales'], 1, 0, None),
+    ('DESSERT', 'LINES', ['dessert'], 1, 0, None),
+    ('FRUITS', 'LINES', ['fruits', 'food hut sale', 'food hut sales'], 1, 0, None),
+    ('T/AWAY', 'LINES', ['t away', 'take away', 'take away sales'], 1, 0, None),
+    ('PICKME SALE', 'LINES', ['pick me food sale', 'pick me sale', 'pickme sale', 'pick me sales'], 1, 0, None),
+    # the workbook's TOTAL leaves BAR FOOD out (=SUM(C:AD)-C-H-S)
+    ('BAR FOOD', 'LINES', ['bar food'], 0, 0, None),
+    ('BEVERAGE', 'LINES', ['beverage', 'beverage sale'], 1, 0, None),
+    ('SUNDRY', 'LINES', ['sundry', 'sundry sale'], 1, 0, None),
+    ('R/H BAR', 'LINES', ['restaurant beverage sale', 'restaurant beverage'], 1, 0, None),
+    ('A/WATER', 'LINES', ['a water', 'aerated water'], 1, 0, None),
+    ('LOTUS FOOD', 'LINES', ['lotus food'], 1, 0, None),
+    ('LOTUS LIQUOR', 'LINES', ['lotus bev', 'lotus liquor', 'lotus beverage'], 1, 0, None),
+    ('LOTUS ROOM CHARGE', 'LINES', ['lotus room charge', 'lotus room charges', 'lotus room'], 1, 0, None),
+    ('BUFFET BF', 'LINES', ['buffet bf', 'buffet breakfast'], 1, 0, None),
+    ('BUFFET LUNCH', 'LINES', ['buffet lunch'], 1, 0, None),
+    ('S/CHAGE', 'LINES', ['service charges', 'service charge'], 1, 0, None),
+    ('FOOD', 'MANUAL', [], 1, 0, None),
+    ('TOTAL', 'TOTAL', [], 0, 0, None),
+    ('KEG', 'MANUAL', [], 1, 0, None),
+    ('BAR SALE', 'LINES', ['bar sale', 'bar sales'], 1, 0, 'KEG'),
+    ('TOTAL', 'GRAND', [], 0, 0, None),
+]
+
+
+def _mgmt_norm(s):
+    return ' '.join(re.sub(r'[^a-z0-9]+', ' ', str(s or '').lower()).split())
+
+
+def _mgmt_day_ensure_tables():
+    _ensure_table('mgmt_day_cols', """
+        CREATE TABLE mgmt_day_cols (
+          id INT NOT NULL AUTO_INCREMENT, display_order INT NOT NULL DEFAULT 0,
+          label VARCHAR(60) NOT NULL, col_type VARCHAR(10) NOT NULL,
+          items VARCHAR(1000) NULL, in_total TINYINT NOT NULL DEFAULT 1,
+          is_count TINYINT NOT NULL DEFAULT 0, less_col_id INT NULL,
+          PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+    _ensure_table('mgmt_day_manual', """
+        CREATE TABLE mgmt_day_manual (
+          id INT NOT NULL AUTO_INCREMENT, entry_date DATE NOT NULL, col_id INT NOT NULL,
+          amount DOUBLE NOT NULL DEFAULT 0,
+          PRIMARY KEY (id), UNIQUE KEY date_col_UNIQUE (entry_date, col_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""")
+
+
+def _mgmt_day_seed():
+    """Fill mgmt_day_cols with the Excel layout, matching report lines by name."""
+    by_name = {}
+    for ln in _mgmt_lines():
+        if ln['section'] in ('NOTE1', 'NOTE2', 'SERVICE'):
+            by_name.setdefault(_mgmt_norm(ln['label']), ln['id'])
+    db.execute_query("DELETE FROM mgmt_day_cols", commit=True)
+    ids = {}
+    for i, (label, typ, items, in_total, is_count, less) in enumerate(_MGMT_DAY_DEFAULT, start=1):
+        if typ == 'LINES':
+            found = [by_name[_mgmt_norm(n)] for n in items if _mgmt_norm(n) in by_name]
+            items_txt = ','.join(str(x) for x in dict.fromkeys(found))
+        else:
+            items_txt = ','.join(items)
+        db.execute_query("""
+            INSERT INTO mgmt_day_cols (display_order, label, col_type, items, in_total, is_count, less_col_id)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (i * 10, label, typ, items_txt, in_total, is_count, ids.get(less)), commit=True)
+        got = db.execute_query("SELECT MAX(id) AS id FROM mgmt_day_cols") or [{}]
+        ids.setdefault(label, got[0].get('id'))
+
+
+def _mgmt_day_cols():
+    _mgmt_day_ensure_tables()
+    cols = db.execute_query("SELECT * FROM mgmt_day_cols ORDER BY display_order, id") or []
+    if not cols:
+        _mgmt_day_seed()
+        cols = db.execute_query("SELECT * FROM mgmt_day_cols ORDER BY display_order, id") or []
+    for c in cols:
+        c['item_list'] = [x.strip() for x in str(c.get('items') or '').split(',') if x.strip()]
+        if c['col_type'] == 'LINES':
+            c['item_list'] = [int(x) for x in c['item_list'] if x.isdigit()]
+    return cols
+
+
+def _mgmt_day_xl(cur, daily=None):
+    """The Day Summary in the Excel layout: rows = days, columns = mgmt_day_cols."""
+    from datetime import timedelta
+    daily = daily or _mgmt_daily(cur)
+    start, end = cur['start'], cur['end']
+    cols = _mgmt_day_cols()
+
+    # Daily Sales Entry amounts and NOS per day / category
+    ds = {}
+    for r in db.execute_query("""
+        SELECT e.entry_date AS d, c.category_key AS k,
+               COALESCE(SUM(l.nos), 0) AS nos, COALESCE(SUM(l.amount), 0) AS amt
+        FROM daily_sales_entry_lines l
+        JOIN daily_sales_entries e ON e.id = l.entry_id
+        JOIN daily_sales_categories c ON c.id = l.category_id
+        WHERE e.entry_date BETWEEN %s AND %s
+        GROUP BY e.entry_date, c.category_key""", (start, end)) or []:
+        d = r['d'].date() if hasattr(r['d'], 'date') else r['d']
+        ds[(d, str(r['k']))] = (float(r['nos'] or 0), float(r['amt'] or 0))
+
+    manual = {}
+    for r in db.execute_query("SELECT entry_date, col_id, amount FROM mgmt_day_manual WHERE entry_date BETWEEN %s AND %s",
+                              (start, end)) or []:
+        d = r['entry_date'].date() if hasattr(r['entry_date'], 'date') else r['entry_date']
+        manual[(d, int(r['col_id']))] = float(r['amount'] or 0)
+
+    day_vals = {dd['date']: dd['vals'] for dd in daily['days']}
+    col_by_id = {c['id']: c for c in cols}
+
+    def raw(c, d):
+        t = c['col_type']
+        if t == 'LINES':
+            v = day_vals.get(d, {})
+            return round(sum((v.get(lid) or 0) for lid in c['item_list']), 2)
+        if t in ('DS_AMT', 'DS_NOS'):
+            i = 0 if t == 'DS_NOS' else 1
+            return round(sum(ds.get((d, k), (0.0, 0.0))[i] for k in c['item_list']), 2)
+        if t == 'MANUAL':
+            return manual.get((d, c['id']))
+        return None
+
+    def finish(vals):
+        """Apply the 'less' columns, then the TOTAL / GRAND columns, in place."""
+        for c in cols:
+            lc = c.get('less_col_id')
+            if lc and lc in vals and c['col_type'] not in ('TOTAL', 'GRAND') and vals.get(lc) is not None:
+                vals[c['id']] = round((vals.get(c['id']) or 0) - vals[lc], 2)
+        run, grand = 0.0, 0.0
+        for c in cols:
+            if c['col_type'] == 'TOTAL':
+                vals[c['id']] = round(run, 2)
+                run = 0.0
+            elif c['col_type'] == 'GRAND':
+                vals[c['id']] = round(grand, 2)
+                run = 0.0
+            elif c['in_total'] and not c['is_count']:
+                run += vals.get(c['id']) or 0
+                grand += vals.get(c['id']) or 0
+        return vals
+
+    days, raw_days = [], []
+    d = start
+    while d <= end:
+        rv = {c['id']: raw(c, d) for c in cols}
+        raw_days.append(rv)
+        days.append({'date': d, 'vals': finish(dict(rv))})
+        d += timedelta(days=1)
+
+    # Month totals, before 'less' / TOTAL columns are applied: GL report lines use the
+    # note's month amount (so a line typed in manually for the month still counts);
+    # everything else is the sum of the days.
+    tot = {}
+    for c in cols:
+        if c['col_type'] == 'LINES':
+            tot[c['id']] = round(sum(daily['totals'].get(lid, 0.0) for lid in c['item_list']), 2)
+        elif c['col_type'] in ('DS_AMT', 'DS_NOS', 'MANUAL'):
+            tot[c['id']] = round(sum((rv.get(c['id']) or 0) for rv in raw_days), 2)
+    finish(tot)
+
+    used = {lid for c in cols if c['col_type'] == 'LINES' for lid in c['item_list']}
+    unplaced = [l for sec, ls in daily['groups'] for l in ls if l['id'] not in used and abs(l['amount'] or 0) >= 0.005]
+    manual_lines = [l['label'] for c in cols if c['col_type'] == 'LINES'
+                    for sec, ls in daily['groups'] for l in ls if l['id'] in c['item_list'] and l['is_manual']]
+    return {'cols': cols, 'days': days, 'totals': tot, 'unplaced': unplaced, 'manual_lines': manual_lines,
+            'has_manual_cols': any(c['col_type'] == 'MANUAL' for c in cols),
+            'title': start.strftime('%B-%y'), 'col_by_id': col_by_id}
+
+
+@app.route('/management_account/day_manual', methods=['POST'])
+@login_required
+@has_permission('Access_Accounting')
+def management_account_day_manual():
+    """Save the typed-in (MANUAL) Day Summary cells: fields m_<col id>_<yyyy-mm-dd>."""
+    period, start, end, _p = _mgmt_period(request.form.get('month'))
+    _mgmt_day_ensure_tables()
+    manual_ids = {c['id'] for c in _mgmt_day_cols() if c['col_type'] == 'MANUAL'}
+    n = 0
+    try:
+        for key, raw in request.form.items():
+            m = re.match(r'^m_(\d+)_(\d{4}-\d{2}-\d{2})$', key)
+            if not m or int(m.group(1)) not in manual_ids:
+                continue
+            d = datetime.strptime(m.group(2), '%Y-%m-%d').date()
+            if not (start <= d <= end):
+                continue
+            txt = (raw or '').replace(',', '').strip()
+            if txt == '':
+                db.execute_query("DELETE FROM mgmt_day_manual WHERE entry_date = %s AND col_id = %s",
+                                 (d, int(m.group(1))), commit=True)
+            else:
+                db.execute_query("""
+                    INSERT INTO mgmt_day_manual (entry_date, col_id, amount) VALUES (%s, %s, %s)
+                    ON DUPLICATE KEY UPDATE amount = VALUES(amount)""",
+                    (d, int(m.group(1)), round(parse_float(txt), 2)), commit=True)
+                n += 1
+        flash(f'Day Summary figures for {period} saved.', 'success')
+    except Exception as e:
+        flash(f'Error saving: {str(e)}', 'danger')
+    return redirect(url_for('management_account', month=period, tab='day'))
+
+
+@app.route('/management_account/day_layout', methods=['GET', 'POST'])
+@login_required
+@has_permission('Access_Accounting')
+def management_account_day_layout():
+    """Choose the Day Summary columns: order, heading, where the figures come from."""
+    month = request.values.get('month') or date.today().strftime('%Y-%m')
+    cols = _mgmt_day_cols()
+    if request.method == 'POST':
+        f = request.form
+        if f.get('action') == 'reset':
+            _mgmt_day_seed()
+            flash('Day Summary columns reset to the Excel layout.', 'success')
+            return redirect(url_for('management_account_day_layout', month=month))
+        valid = {k for k, _ in MGMT_DAY_TYPES}
+        try:
+            for i in range(int(f.get('rows') or 0)):
+                cid = (f.get(f'id_{i}') or '').strip()
+                label = (f.get(f'label_{i}') or '').strip()[:60]
+                typ = f.get(f'type_{i}') or ''
+                if cid and f.get(f'del_{i}'):
+                    db.execute_query("DELETE FROM mgmt_day_cols WHERE id = %s", (int(cid),), commit=True)
+                    db.execute_query("DELETE FROM mgmt_day_manual WHERE col_id = %s", (int(cid),), commit=True)
+                    db.execute_query("UPDATE mgmt_day_cols SET less_col_id = NULL WHERE less_col_id = %s", (int(cid),), commit=True)
+                    continue
+                if not label or typ not in valid:
+                    continue
+                if typ == 'LINES':
+                    items = ','.join(x for x in f.getlist(f'lines_{i}') if x.isdigit())
+                elif typ in ('DS_AMT', 'DS_NOS'):
+                    items = ','.join(x.strip() for x in f.getlist(f'cats_{i}') if x.strip())
+                else:
+                    items = ''
+                less = f.get(f'less_{i}') or ''
+                less = int(less) if less.isdigit() and less != cid else None
+                vals = (int(parse_float(f.get(f'order_{i}') or 0)), label, typ, items,
+                        1 if f.get(f'total_{i}') else 0, 1 if f.get(f'count_{i}') else 0, less)
+                if cid:
+                    db.execute_query("""UPDATE mgmt_day_cols SET display_order=%s, label=%s, col_type=%s, items=%s,
+                                        in_total=%s, is_count=%s, less_col_id=%s WHERE id=%s""",
+                                     vals + (int(cid),), commit=True)
+                else:
+                    db.execute_query("""INSERT INTO mgmt_day_cols (display_order, label, col_type, items, in_total, is_count, less_col_id)
+                                        VALUES (%s, %s, %s, %s, %s, %s, %s)""", vals, commit=True)
+            flash('Day Summary columns saved.', 'success')
+        except Exception as e:
+            flash(f'Error saving: {str(e)}', 'danger')
+        return redirect(url_for('management_account_day_layout', month=month))
+    lines = [l for l in _mgmt_lines() if l['section'] in ('NOTE1', 'SERVICE', 'NOTE2')]
+    cats = [c for c in _daily_sales_categories() if (c.get('category_group') or 'SALES') == 'SALES']
+    return render_template('management_account_day_layout.html', cols=cols, lines=lines, cats=cats,
+                           types=MGMT_DAY_TYPES, section_label=MGMT_SECTION_LABEL, month=month)
+
+
 @app.route('/management_account/print')
 @login_required
 @has_permission('Access_Reports')
@@ -23155,6 +23440,7 @@ def management_account_print():
                            pie_items=_mgmt_pie_items(cur),
                            pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis") if 'pie' in parts else '',
                            daily=_mgmt_daily(cur) if 'day' in parts else None,
+                           day=_mgmt_day_xl(cur) if 'day' in parts else None,
                            company_name=_company_display_name(), printed_on=datetime.now())
 
 
@@ -23634,7 +23920,59 @@ def _mgmt_export_book(cur, prev):
     if daily['has_manual']:
         ws.cell(row=row + 1, column=1, value='Lines typed in manually have no daily split; only their month total '
                                               'is shown.').font = xl.Font(italic=True, size=9, color=xl.GREY_TEXT)
+    _mgmt_monthly_report_sheet(wb, cur, daily)
     return wb
+
+
+def _mgmt_monthly_report_sheet(wb, cur, daily=None):
+    """The accountant's own "MONTHLY REPORT" sheet: month title over the columns,
+    DATE + the Day Summary columns, one row per day, a totals row - Calibri,
+    thin borders, accounting format, as in their 2026 monthly report workbook."""
+    from openpyxl.styles import Alignment, Border, Font, Side
+    from openpyxl.utils import get_column_letter
+    day = _mgmt_day_xl(cur, daily)
+    ws = wb.create_sheet('Monthly Report')
+    thin = Side(style='thin')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    acc = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
+    cnt = '_(* #,##0_);_(* \\(#,##0\\);_(* "-"??_);_(@_)'
+    f16, f16b = Font(name='Calibri', size=16), Font(name='Calibri', size=16, bold=True)
+    cols = day['cols']
+    n = len(cols) + 1
+    first = min(3, n)
+    ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=1 + first)
+    if n > 3:
+        ws.merge_cells(start_row=2, start_column=5, end_row=2, end_column=1 + n)
+        c = ws.cell(row=2, column=5, value=cur['start'])
+        c.number_format, c.font, c.alignment = 'mmmm\\-yy;@', f16, Alignment(horizontal='center')
+    heads = ['DATE '] + [c['label'] for c in cols]
+    for j, h in enumerate(heads, start=2):
+        c = ws.cell(row=3, column=j, value=h)
+        c.font, c.border, c.alignment = f16b, box, Alignment(horizontal='center', vertical='center')
+    r = 4
+    for d in day['days']:
+        c = ws.cell(row=r, column=2, value=d['date'])
+        c.number_format, c.font, c.border, c.alignment = 'd\\-mmm\\-yy;@', f16, box, Alignment(horizontal='left')
+        for j, col in enumerate(cols, start=3):
+            v = d['vals'].get(col['id'])
+            c = ws.cell(row=r, column=j, value=v if v not in (None, 0) else None)
+            c.number_format = cnt if col['is_count'] else acc
+            c.font, c.border = (f16b if col['col_type'] in ('TOTAL', 'GRAND') else f16), box
+        r += 1
+    ws.cell(row=r, column=2).border = box
+    for j, col in enumerate(cols, start=3):
+        c = ws.cell(row=r, column=j, value=day['totals'].get(col['id']))
+        c.number_format = cnt if col['is_count'] else acc
+        c.font = f16b
+        c.border = Border(left=thin, right=thin, top=Side(style='medium'), bottom=Side(style='double'))
+    ws.column_dimensions['A'].width = 2
+    ws.column_dimensions['B'].width = 14.3
+    for j, col in enumerate(cols, start=3):
+        ws.column_dimensions[get_column_letter(j)].width = 7 if col['is_count'] else (21 if col['col_type'] in ('TOTAL', 'GRAND') else 17.2)
+    ws.freeze_panes = 'C4'
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.fitToWidth = 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
 
 
 @app.route('/management_account/mapping', methods=['GET', 'POST'])

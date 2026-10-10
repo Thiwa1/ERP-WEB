@@ -419,42 +419,86 @@
 </div>
 
 {# ================================================================ Day Summary #}
-{% macro dn(v) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% else %}{% set a = v | abs %}{% set txt = '{:,.0f}'.format(a) if (a - (a | round(0))) | abs < 0.005 else '{:,.2f}'.format(a) %}{{ '(' ~ txt ~ ')' if v < 0 else txt }}{% endif %}{% endmacro %}
+{# Laid out like the accountant's "MONTHLY REPORT" Excel sheet - columns set on the Day Summary Layout screen #}
+{% macro xn(v, cnt=False) %}{% if v is none %}{% elif v | round(2) == 0 %}-{% elif cnt %}{{ '{:,.0f}'.format(v) }}{% elif v < 0 %}({{ '{:,.2f}'.format(-v) }}){% else %}{{ '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+{% set ncol = day.cols | length %}
 <div class="tab-pane fade {{ 'show active' if tab == 'day' }}" id="ma_day">
   <div class="ma-card"><div class="ma-body">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-      <div class="fw-bold">DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
-      <a class="btn btn-outline-secondary btn-sm no-print" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print Day Summary</a>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2 no-print">
+      <div class="fw-bold">MONTHLY REPORT &mdash; {{ cur.month_label | upper }}</div>
+      <div class="d-flex gap-2 flex-wrap">
+        {% if can_edit and day.has_manual_cols %}
+        <button type="button" class="btn btn-outline-primary btn-sm" id="xlEditBtn" onclick="xlEdit(true)"><i class="fas fa-keyboard me-1"></i> Enter manual figures</button>
+        <button type="submit" form="xlManualForm" class="btn btn-primary btn-sm d-none" id="xlSaveBtn"><i class="fas fa-save me-1"></i> Save</button>
+        <button type="button" class="btn btn-outline-secondary btn-sm d-none" id="xlCancelBtn" onclick="xlEdit(false)">Cancel</button>
+        {% endif %}
+        {% if can_edit %}<a class="btn btn-outline-secondary btn-sm" href="{{ url_for('management_account_day_layout', month=cur.period) }}"><i class="fas fa-columns me-1"></i> Columns</a>{% endif %}
+        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print</a>
+      </div>
     </div>
-    <div class="small text-muted mb-2 no-print">Each day's takings per report line, from that day's GL entries on the line's mapped accounts &mdash; so the month totals agree with the P&amp;L.
-      {% if daily.has_manual %}Lines typed in manually have no daily split; only their month total is shown.{% endif %}</div>
+    {% if day.unplaced %}
+    <div class="alert alert-warning small py-2 no-print"><i class="fas fa-exclamation-triangle me-1"></i>
+      Not on this sheet (their amounts are left out of the totals here):
+      {% for l in day.unplaced %}<strong>{{ l.label }}</strong> {{ xn(l.amount) }}{{ ', ' if not loop.last }}{% endfor %}
+      {% if can_edit %}&mdash; add them on the <a href="{{ url_for('management_account_day_layout', month=cur.period) }}">Columns</a> screen.{% endif %}</div>
+    {% endif %}
+    <form method="POST" action="{{ url_for('management_account_day_manual') }}" id="xlManualForm">
+    <input type="hidden" name="month" value="{{ cur.period }}">
     <div class="ma-day-wrap">
-    <table class="ma-day">
-      <thead><tr>
-        <th class="dt">Date</th>
-        {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
-        <th class="sum">TOTAL</th>
-        {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<th>{{ l.label }}</th>{% endfor %}{% endfor %}
-        <th class="sum">BAR SALES</th><th class="sum">TOTAL</th>
-      </tr></thead>
+    <table class="xl-day" id="xlDay">
+      <thead>
+        <tr class="xl-ttl"><th class="dt" colspan="{{ [3, ncol + 1] | min }}"></th>
+          {% if ncol + 1 > 3 %}<th colspan="{{ ncol + 1 - 3 }}">{{ day.title }}</th>{% endif %}</tr>
+        <tr class="xl-head"><th class="dt">DATE</th>
+          {% for c in day.cols %}<th class="{{ 'sum' if c.col_type in ('TOTAL', 'GRAND') }}">{{ c.label }}</th>{% endfor %}</tr>
+      </thead>
       <tbody>
-      {% for d in daily.days %}
-        <tr class="{{ 'wkend' if d.date.weekday() >= 5 }}"><td class="dt">{{ d.date.strftime('%d/%m %a') }}</td>
-          {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
-          <td class="n sum">{{ dn(d.rr_total) }}</td>
-          {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(d.vals[l.id]) }}</td>{% endfor %}{% endfor %}
-          <td class="n sum">{{ dn(d.bar_total) }}</td><td class="n sum">{{ dn(d.grand) }}</td></tr>
+      {% for d in day.days %}
+        <tr><td class="dt">{{ d.date.day }}-{{ d.date.strftime('%b-%y') }}</td>
+          {% for c in day.cols %}{% set v = d.vals.get(c.id) %}
+          {% if c.col_type == 'MANUAL' %}
+          <td class="n man"><span class="xl-v">{{ xn(v, c.is_count) }}</span>{% if can_edit %}<input class="xl-in" name="m_{{ c.id }}_{{ d.date.isoformat() }}" value="{{ '' if v is none else ('%g' % v) }}" inputmode="decimal" autocomplete="off">{% endif %}</td>
+          {% else %}
+          <td class="n{{ ' sum' if c.col_type in ('TOTAL', 'GRAND') }}{{ ' cnt' if c.is_count }}">{{ xn(v, c.is_count) }}</td>
+          {% endif %}{% endfor %}</tr>
       {% endfor %}
-        <tr class="tot"><td class="dt">TOTAL</td>
-          {% for sec, lines in daily.groups if sec != 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
-          <td class="n">{{ dn(daily.rr_total) }}</td>
-          {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
-          <td class="n">{{ dn(daily.bar_total) }}</td><td class="n">{{ dn(daily.grand) }}</td></tr>
+        <tr class="tot"><td class="dt"></td>
+          {% for c in day.cols %}<td class="n">{{ xn(day.totals.get(c.id), c.is_count) }}</td>{% endfor %}</tr>
       </tbody>
     </table>
     </div>
+    </form>
+    <div class="small text-muted mt-2 no-print">
+      Rooms (R.NO, NON A/C, A/C, EXTRA BED, NO.10 &hellip;) come from Daily Sales Entry (NOS and amounts); sales columns from that day's GL entries on each report line;
+      {% if day.has_manual_cols %}columns marked in yellow are typed in here with <em>Enter manual figures</em>.{% endif %}
+      {% if day.manual_lines %}<br>{{ day.manual_lines | join(', ') }}: typed in for the month only, so they appear in the TOTAL row but not on the days.{% endif %}
+    </div>
   </div></div>
 </div>
+<style>
+  table.xl-day { border-collapse:collapse; font-family:Calibri, Carlito, 'Segoe UI', Arial, sans-serif; font-size:12.5px; color:#000; }
+  table.xl-day th, table.xl-day td { border:1px solid #000; padding:2px 6px; white-space:nowrap; }
+  table.xl-day thead th { background:#fff; position:sticky; z-index:2; text-align:center; font-weight:700; }
+  table.xl-day tr.xl-ttl th { top:0; font-size:16px; font-weight:400; height:28px; }
+  table.xl-day tr.xl-head th { top:28px; font-size:12.5px; }
+  table.xl-day td.n { text-align:right; font-variant-numeric:tabular-nums; min-width:78px; }
+  table.xl-day td.cnt { min-width:38px; text-align:center; }
+  table.xl-day td.dt { text-align:left; position:sticky; left:0; background:#fff; z-index:1; }
+  table.xl-day thead th.dt { left:0; z-index:3; }
+  table.xl-day td.man { background:#fffbe6; }
+  table.xl-day tr.tot td { font-weight:700; border-top:2px solid #000; background:#fff; position:sticky; bottom:0; }
+  table.xl-day .xl-in { display:none; width:90px; text-align:right; border:1px solid #9ab; padding:0 3px; font:inherit; }
+  table.xl-day.editing .xl-in { display:inline-block; }
+  table.xl-day.editing .xl-v { display:none; }
+</style>
+<script>
+  function xlEdit(on) {
+    document.getElementById('xlDay').classList.toggle('editing', on);
+    ['xlSaveBtn', 'xlCancelBtn'].forEach(function (id) { document.getElementById(id).classList.toggle('d-none', !on); });
+    document.getElementById('xlEditBtn').classList.toggle('d-none', on);
+    if (!on) document.getElementById('xlManualForm').reset();
+  }
+</script>
 
 {# ================================================================ Not mapped #}
 <div class="tab-pane fade {{ 'show active' if tab == 'unmapped' }}" id="ma_unmapped">

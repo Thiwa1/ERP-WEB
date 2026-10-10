@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block title %}Management Account - Day Summary Columns{% endblock %}
+
+{% block content %}
+<style>
+  .dl-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px;
+             box-shadow:0 2px 8px rgba(0,0,0,0.04); margin-bottom:16px; overflow:auto; }
+  table.dl { width:100%; border-collapse:collapse; font-size:0.8rem; }
+  table.dl th, table.dl td { border-bottom:1px solid #eee; padding:4px 6px; vertical-align:top; }
+  table.dl th { background:#fafafa; font-size:0.72rem; text-transform:uppercase; color:#666; white-space:nowrap; }
+  table.dl .form-control-sm, table.dl .form-select-sm { font-size:0.78rem; padding:2px 6px; }
+  table.dl select[multiple] { min-width:260px; height:92px; }
+  table.dl tr.new td { background:#f8fbff; }
+  table.dl tr.del td { opacity:.45; text-decoration:line-through; }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+  <h4 class="mb-0 fw-bold"><i class="fas fa-columns me-2 text-primary"></i>Day Summary &mdash; Columns</h4>
+  <a href="{{ url_for('management_account', month=month, tab='day') }}" class="btn btn-outline-secondary btn-sm"><i class="fas fa-arrow-left me-1"></i> Day Summary</a>
+</div>
+
+<p class="small text-muted mb-2">
+  One row per column of the monthly report, left to right in <strong>Order</strong>. Each column takes its figures from
+  <strong>Report lines</strong> (the day's GL entries), <strong>Daily Sales</strong> rows (amount, or NOS for room counts),
+  or is <strong>typed in per day</strong> on the Day Summary tab. A <strong>TOTAL</strong> adds the ticked
+  <em>In total</em> columns since the previous TOTAL; <strong>TOTAL (everything)</strong> adds them all.
+  <strong>Less</strong> takes another column off this one (e.g. BAR SALE less KEG while keg sales are still posted in bar sales).
+  Hold Ctrl to pick several items.
+</p>
+
+<form method="POST" id="dlForm">
+<input type="hidden" name="month" value="{{ month }}">
+<input type="hidden" name="rows" value="{{ cols | length + 3 }}">
+<div class="dl-card">
+<table class="dl">
+  <thead><tr><th style="width:70px">Order</th><th>Heading</th><th>Figures from</th><th>Items</th>
+    <th>In total</th><th>Count (no decimals)</th><th>Less</th><th>Delete</th></tr></thead>
+  <tbody>
+  {% for i in range(cols | length + 3) %}
+    {% set c = cols[i] if i < cols | length else none %}
+    {% set typ = c.col_type if c else 'LINES' %}
+    <tr class="{{ 'new' if not c }}" data-row="{{ i }}">
+      <td><input type="hidden" name="id_{{ i }}" value="{{ c.id if c else '' }}">
+        <input class="form-control form-control-sm" name="order_{{ i }}" value="{{ c.display_order if c else (cols | length + i + 1) * 10 }}"></td>
+      <td><input class="form-control form-control-sm" name="label_{{ i }}" value="{{ c.label if c else '' }}" maxlength="60" placeholder="{{ 'New column heading' if not c }}"></td>
+      <td><select class="form-select form-select-sm dl-type" name="type_{{ i }}">
+        {% for k, lbl in types %}<option value="{{ k }}" {{ 'selected' if k == typ }}>{{ lbl }}</option>{% endfor %}</select></td>
+      <td>
+        <select multiple class="form-select form-select-sm dl-lines" name="lines_{{ i }}">
+          {% for l in lines %}<option value="{{ l.id }}" {{ 'selected' if c and c.col_type == 'LINES' and l.id in c.item_list }}>{{ l.label }} &middot; {{ section_label.get(l.section, l.section) | replace('Note 1 - ', '') | replace('Note 2 - ', '') }}{{ ' (manual)' if l.is_manual }}</option>{% endfor %}
+        </select>
+        <select multiple class="form-select form-select-sm dl-cats" name="cats_{{ i }}">
+          {% for k in cats %}<option value="{{ k.category_key }}" {{ 'selected' if c and c.col_type in ('DS_AMT', 'DS_NOS') and k.category_key in c.item_list }}>{{ k.description }}{{ ' - ' ~ k.particulars if k.particulars }}</option>{% endfor %}
+        </select>
+        <span class="dl-none small text-muted">&mdash;</span>
+      </td>
+      <td class="text-center"><input type="checkbox" class="form-check-input" name="total_{{ i }}" {{ 'checked' if (c.in_total if c else True) }}></td>
+      <td class="text-center"><input type="checkbox" class="form-check-input" name="count_{{ i }}" {{ 'checked' if c and c.is_count }}></td>
+      <td><select class="form-select form-select-sm" name="less_{{ i }}">
+        <option value="">&mdash;</option>
+        {% for o in cols if (not c or o.id != c.id) and o.col_type not in ('TOTAL', 'GRAND') %}<option value="{{ o.id }}" {{ 'selected' if c and c.less_col_id == o.id }}>{{ o.label }}</option>{% endfor %}
+      </select></td>
+      <td class="text-center">{% if c %}<input type="checkbox" class="form-check-input dl-del" name="del_{{ i }}">{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+<div class="d-flex gap-2 justify-content-between flex-wrap">
+  <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-save me-1"></i> Save columns</button>
+  <button type="submit" name="action" value="reset" class="btn btn-outline-danger btn-sm"
+          onclick="return confirm('Put every column back to the Excel layout? Your column changes are lost; figures typed in for deleted columns are not restored.')">
+    <i class="fas fa-undo me-1"></i> Reset to Excel layout</button>
+</div>
+</form>
+
+<script>
+  function dlSync(tr) {
+    var t = tr.querySelector('.dl-type').value;
+    tr.querySelector('.dl-lines').style.display = t === 'LINES' ? '' : 'none';
+    tr.querySelector('.dl-cats').style.display = (t === 'DS_AMT' || t === 'DS_NOS') ? '' : 'none';
+    tr.querySelector('.dl-none').style.display = (t === 'LINES' || t === 'DS_AMT' || t === 'DS_NOS') ? 'none' : '';
+  }
+  document.querySelectorAll('table.dl tbody tr').forEach(function (tr) {
+    dlSync(tr);
+    tr.querySelector('.dl-type').addEventListener('change', function () { dlSync(tr); });
+    var del = tr.querySelector('.dl-del');
+    if (del) del.addEventListener('change', function () { tr.classList.toggle('del', del.checked); });
+  });
+</script>
+{% endblock %}

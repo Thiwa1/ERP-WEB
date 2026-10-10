@@ -71,6 +71,7 @@ def run_migrations(conn):
         _migrate_daily_sales_cash_difference(cursor)
         _migrate_item_stock_maintained(cursor)
         _migrate_item_valuation_cost(cursor)
+        _migrate_management_day_layout(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1834,6 +1835,54 @@ def _migrate_item_stock_maintained(cursor):
     except Exception:
         pass
 
+
+def _migrate_management_day_layout(cursor):
+    """Management Account Day Summary in the accountant's Excel layout:
+      mgmt_day_cols   - the report's columns (heading, order, where the figures
+                        come from: report lines / Daily Sales amount or NOS /
+                        typed in per day / TOTAL). Seeded by the app on first use.
+      mgmt_day_manual - per day figures for the typed-in columns (KEG ...).
+    Also adds Room No.10 to Daily Sales Entry - one room let to locals and to
+    foreigners at two prices, so two rows (Local / Foreign) under 'Room No.10'.
+    Their GL account is left blank: set it on Daily Sales - GL Mapping."""
+    try:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mgmt_day_cols (
+              id INT NOT NULL AUTO_INCREMENT, display_order INT NOT NULL DEFAULT 0,
+              label VARCHAR(60) NOT NULL, col_type VARCHAR(10) NOT NULL,
+              items VARCHAR(1000) NULL, in_total TINYINT NOT NULL DEFAULT 1,
+              is_count TINYINT NOT NULL DEFAULT 0, less_col_id INT NULL,
+              PRIMARY KEY (id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mgmt_day_manual (
+              id INT NOT NULL AUTO_INCREMENT, entry_date DATE NOT NULL, col_id INT NOT NULL,
+              amount DOUBLE NOT NULL DEFAULT 0,
+              PRIMARY KEY (id), UNIQUE KEY date_col_UNIQUE (entry_date, col_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        """)
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_categories'")
+        if cursor.fetchone():
+            for key, part, order in (('ROOM10_LOCAL', 'Local', 82), ('ROOM10_FOREIGN', 'Foreign', 84)):
+                cursor.execute("SELECT id FROM daily_sales_categories WHERE category_key = %s", (key,))
+                if not cursor.fetchone():
+                    cursor.execute("""
+                        INSERT INTO daily_sales_categories
+                            (category_key, description, particulars, display_order, entry_side)
+                        VALUES (%s, 'Room No.10', %s, %s, 'CR')
+                    """, (key, part, order))
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
 
 def _migrate_item_valuation_cost(cursor):
     """A fixed cost per item for valuing stock. Stock is normally valued at
