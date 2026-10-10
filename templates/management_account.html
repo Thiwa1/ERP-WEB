@@ -424,7 +424,10 @@
   <div class="ma-card"><div class="ma-body">
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
       <div class="fw-bold">DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
-      <a class="btn btn-outline-secondary btn-sm no-print" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print Day Summary</a>
+      <div class="d-flex gap-2 no-print">
+        <a class="btn btn-success btn-sm" href="{{ url_for('management_account_daily_sheet', month=cur.period) }}"><i class="fas fa-file-excel me-1"></i> Daily Sales Sheet (Excel)</a>
+        <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print Day Summary</a>
+      </div>
     </div>
     <div class="small text-muted mb-2 no-print">Each day's takings per report line, from that day's GL entries on the line's mapped accounts &mdash; so the month totals agree with the P&amp;L.
       {% if daily.has_manual %}Lines typed in manually have no daily split; only their month total is shown.{% endif %}</div>

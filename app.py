@@ -23140,6 +23140,214 @@ def _mgmt_daily(cur):
             'grand': round(rr_t + bar_t, 2), 'has_manual': any(l['is_manual'] for _s, ls in groups for l in ls)}
 
 
+# ---- Daily Sales Sheet: the accountant's month sheet (DATE | R.NO | NON A/C ... | KEG | BAR SALE | TOTAL),
+#      one row per day, straight from the Daily Sales Entry and the Bar Sales Record.
+# (header, source) - source: ('cat', [category keys]), ('nos', [keys]), ('bar', field), ('keg',), or None (kept empty)
+DAILY_SHEET_COLUMNS = [
+    ('R.NO', ('nos', ['ROOM1_NORMAL'])),
+    ('NON A/C', ('cat', ['ROOM1_NORMAL'])),
+    ('EXTRA BED', ('cat', ['ROOM1_EXTRABED', 'ROOM2_EXTRABED'])),
+    ('W/CUPLES', ('cat', ['ROOM1_WEDDING'])),
+    ('FORING ', ('cat', ['ROOM1_FOREIGN'])),
+    ('RO.NO', ('nos', ['ROOM2_NORMAL'])),
+    ('A/C', ('cat', ['ROOM2_NORMAL'])),
+    ('W/CUPLES', ('cat', ['ROOM2_WEDDING'])),
+    ('NO.10', ('cat', ['ROOM2_FOREIGN'])),
+    ('FORING', None),
+    ('ROOM/FOOD', ('cat', ['ROOM_FOOD_SALE'])),
+    ('R\\H SALE ', ('cat', ['RESTAURANT_FOOD_SALES'])),
+    ('DESSERT', ('cat', ['DESSERT_DESSERT'])),
+    ('FRUITS', ('cat', ['DESSERT_FRUITS'])),
+    ('T/AWAY', ('cat', ['TAKE_AWAY_SALES'])),
+    ('PICKME SALE', ('cat', ['PICK_ME_SALES'])),
+    ('BAR FOOD', ('bar', 'food_sales')),
+    ('BEVERAGE ', ('cat', ['BEVERAGE_SALE'])),
+    ('SUNDRY', ('cat', ['SUNDRY_FOOD_DELIVERY', 'SUNDRY_WASHROOMS'])),
+    ('R/H BAR ', ('cat', ['RESTAURANT_SALES'])),
+    ('A/WATER', ('cat', ['AERATED_WATER'])),
+    ('LOTUS FOOD', ('cat', ['LOTUS_FOOD'])),
+    ('LOUTS LIQUOR', ('cat', ['LOTUS_LIQUOR'])),
+    ('LOUTS ROOM CHARGE', None),
+    ('BUFFET BF', ('cat', ['BUFFET_BREAKFAST'])),
+    ('BUFFET LUNCH', ('cat', ['BUFFET_LUNCH'])),
+    ('S/CHAGE', ('cat', ['SERVICE_CHARGE'])),
+    ('FOOD', ('cat', ['FOOD_HUT_SALES'])),
+]
+
+
+def _mgmt_daily_sheet_data(period_raw):
+    """Day rows for the Daily Sales Sheet. Any sales line not in the fixed
+    layout (Discount, Bar Revenue, a new category...) is added to the FOOD
+    column - the sheet's last R&R column - so the columns stay exactly the
+    accountant's and the day's TOTAL still equals the Daily Sales Entry's
+    Total Income. A note under the sheet says what went into FOOD."""
+    period, start, end, _prev = _mgmt_period(period_raw)
+    cats = {c['id']: c for c in (db.execute_query(
+        "SELECT id, category_key, category_group, entry_side, description, particulars FROM daily_sales_categories") or [])}
+    used = {k for _h, src in DAILY_SHEET_COLUMNS if src and src[0] == 'cat' for k in src[1]}
+    entries = {e['id']: e for e in (db.execute_query(
+        "SELECT id, entry_date FROM daily_sales_entries WHERE entry_date BETWEEN %s AND %s", (start, end)) or [])}
+    amt, nos, other, other_names = {}, {}, {}, set()
+    if entries:
+        marks = ','.join(['%s'] * len(entries))
+        for l in db.execute_query(f"""
+                SELECT entry_id, category_id, nos, amount FROM daily_sales_entry_lines WHERE entry_id IN ({marks})
+                """, tuple(entries)) or []:
+            c = cats.get(l['category_id'])
+            if not c or c['category_group'] != 'SALES':
+                continue
+            d = entries[l['entry_id']]['entry_date']
+            d = d.date() if hasattr(d, 'date') and not isinstance(d, date) else d
+            a = float(l['amount'] or 0) * (-1 if c['entry_side'] == 'DR' else 1)
+            key = c['category_key']
+            amt[(d, key)] = amt.get((d, key), 0) + a
+            if l['nos'] not in (None, ''):
+                nos[(d, key)] = nos.get((d, key), 0) + float(l['nos'] or 0)
+            if key not in used and a:
+                other[d] = other.get(d, 0) + a
+                other_names.add(c['description'] + (f" - {c['particulars']}" if c['particulars'] else ''))
+    bar = {}
+    for b in db.execute_query("""
+            SELECT d.entry_date, d.food_sales,
+                   (SELECT COALESCE(SUM(amount), 0) FROM bar_sales_lines l WHERE l.day_id = d.id AND l.line_key = 'BAR_SALES') AS bar_sale,
+                   (SELECT COALESCE(SUM(amount), 0) FROM bar_sales_lines l WHERE l.day_id = d.id
+                     AND l.line_key IN ('KEG_PITCHERS', 'KEG_MUG')) AS keg
+            FROM bar_sales_days d WHERE d.entry_date BETWEEN %s AND %s
+            """, (start, end)) or []:
+        d = b['entry_date']
+        bar[d] = {'food_sales': float(b['food_sales'] or 0), 'bar_sale': float(b['bar_sale'] or 0),
+                  'keg': float(b['keg'] or 0)}
+    days = []
+    d = start
+    while d <= end:
+        vals = []
+        for _h, src in DAILY_SHEET_COLUMNS:
+            if not src:
+                v = None
+            elif src[0] == 'cat':
+                v = sum(amt.get((d, k), 0) for k in src[1]) if any((d, k) in amt for k in src[1]) else None
+            elif src[0] == 'nos':
+                v = sum(nos.get((d, k), 0) for k in src[1]) if any((d, k) in nos for k in src[1]) else None
+            else:
+                v = (bar.get(d) or {}).get(src[1])
+            vals.append(round(v, 2) if v else None)
+        if other.get(d):
+            vals[-1] = round((vals[-1] or 0) + other[d], 2) or None   # FOOD column
+        days.append({'date': d, 'vals': vals,
+                     'keg': round((bar.get(d) or {}).get('keg', 0), 2) or None,
+                     'bar_sale': round((bar.get(d) or {}).get('bar_sale', 0), 2) or None})
+        d += timedelta(days=1)
+    return {'period': period, 'start': start, 'days': days, 'has_other': bool(other),
+            'other_names': sorted(other_names)}
+
+
+def _mgmt_daily_sheet_write(ws, data):
+    """Write the Daily Sales Sheet in the accountant's layout: Calibri 16, thin
+    borders, headers turned up, the month across row 2, a day per row, the
+    R&R TOTAL (rooms counted, bar food left out), KEG, BAR SALE and TOTAL."""
+    from openpyxl.styles import Alignment, Border, Font, Side
+    from openpyxl.utils import get_column_letter as L
+    thin = Side(style='thin')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    f16, f16b = Font(name='Calibri', size=16), Font(name='Calibri', size=16, bold=True)
+    ACC = '_(* #,##0.00_);_(* \\(#,##0.00\\);_(* "-"??_);_(@_)'
+    DATEF = '[$-409]d\\-mmm\\-yy;@'
+    heads = [h for h, _s in DAILY_SHEET_COLUMNS]
+    first = 3                                   # column C
+    last_in = first + len(heads) - 1            # last column inside the R&R TOTAL
+    c_tot, c_keg, c_bar, c_all = last_in + 1, last_in + 2, last_in + 3, last_in + 4
+    count_cols = [first + i for i, (_h, s) in enumerate(DAILY_SHEET_COLUMNS) if s and s[0] == 'nos']
+    barfood_col = first + [h for h, _s in DAILY_SHEET_COLUMNS].index('BAR FOOD')
+
+    ws.sheet_view.zoomScale = 96
+    ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=4)
+    ws.merge_cells(start_row=2, start_column=5, end_row=2, end_column=c_all)
+    m = ws.cell(row=2, column=5, value=datetime(data['start'].year, data['start'].month, 1))
+    m.font, m.number_format, m.alignment = Font(name='Calibri', size=16), '[$-409]mmmm\\-yy;@', \
+        Alignment(horizontal='center', vertical='center')
+    for c in range(2, c_all + 1):
+        ws.cell(row=2, column=c).border = Border(bottom=thin)
+    ws.row_dimensions[2].height = 21
+
+    for col, h in zip([2] + list(range(first, last_in + 1)) + [c_tot, c_keg, c_bar, c_all],
+                      ['DATE '] + heads + ['TOTAL', 'KEG', 'BAR SALE', 'TOTAL']):
+        cell = ws.cell(row=3, column=col, value=h)
+        cell.font, cell.border = f16b, box
+        cell.alignment = Alignment(horizontal='center', vertical='center', text_rotation=90)
+    ws.row_dimensions[3].height = 69
+
+    row = 4
+    for dday in data['days']:
+        vals = dday['vals']
+        dc = ws.cell(row=row, column=2, value=datetime(dday['date'].year, dday['date'].month, dday['date'].day))
+        dc.number_format, dc.font, dc.border, dc.alignment = DATEF, f16, box, Alignment(horizontal='left')
+        for i, v in enumerate(vals):
+            col = first + i
+            c = ws.cell(row=row, column=col, value=v)
+            c.font, c.border, c.alignment = f16, box, Alignment(horizontal='left')
+            c.number_format = 'General' if col in count_cols else ACC
+        minus = ''.join(f'-{L(c)}{row}' for c in count_cols + [barfood_col])
+        ws.cell(row=row, column=c_tot, value=f'=SUM({L(first)}{row}:{L(last_in)}{row}){minus}')
+        ws.cell(row=row, column=c_keg, value=dday['keg'])
+        ws.cell(row=row, column=c_bar, value=dday['bar_sale'])
+        ws.cell(row=row, column=c_all, value=f'=({L(c_keg)}{row}+{L(c_tot)}{row}+{L(c_bar)}{row})')
+        for col in (c_tot, c_keg, c_bar, c_all):
+            c = ws.cell(row=row, column=col)
+            c.font, c.border, c.number_format = f16, box, ACC
+        ws.row_dimensions[row].height = 21
+        row += 1
+    last_day = row - 1
+    tc = ws.cell(row=row, column=2)
+    tc.font, tc.border, tc.number_format = f16, box, DATEF
+    for col in list(range(first, last_in + 1)) + [c_tot, c_keg, c_bar, c_all]:
+        c = ws.cell(row=row, column=col, value=f'=SUM({L(col)}4:{L(col)}{last_day})')
+        c.font, c.border = f16, box
+        c.number_format = 'General' if col in count_cols else ACC
+    ws.row_dimensions[row].height = 21
+    if data['has_other']:
+        n = ws.cell(row=row + 2, column=2, value='FOOD column also includes: ' + ', '.join(data['other_names'])
+                    + ' (Discount as a minus)')
+        n.font = Font(name='Calibri', size=11, italic=True)
+
+    widths = {'B': 14.3, 'C': 6.0, 'D': 17.1, 'E': 16.3, 'F': 5.1, 'G': 12.3, 'H': 5.1, 'I': 17.1, 'J': 6.1,
+              'K': 15.6, 'L': 8.0, 'M': 17.1, 'N': 19.6, 'O': 17.1, 'P': 17.1, 'Q': 19.6, 'R': 15.6, 'S': 17.1,
+              'T': 15.6, 'U': 14.0, 'V': 19.6, 'W': 17.1, 'X': 15.6, 'Y': 17.1, 'Z': 14.0, 'AA': 17.1,
+              'AB': 17.1, 'AC': 17.1, 'AD': 15.6}
+    for col in range(2, c_all + 1):
+        ws.column_dimensions[L(col)].width = widths.get(L(col), 17.1)
+    for col in (c_tot, c_bar):
+        ws.column_dimensions[L(col)].width = 19.6
+    ws.column_dimensions[L(c_all)].width = 21.1
+    ws.column_dimensions['A'].width = 3
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.paperSize = 5
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 1
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.freeze_panes = 'C4'
+    return ws
+
+
+@app.route('/management_account/daily_sheet')
+@login_required
+@has_permission('Access_Reports')
+def management_account_daily_sheet():
+    """The month's Daily Sales Sheet as an Excel file, in the accountant's layout."""
+    from io import BytesIO
+    from openpyxl import Workbook
+    data = _mgmt_daily_sheet_data(request.args.get('month') or date.today().strftime('%Y-%m'))
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Sheet1'
+    _mgmt_daily_sheet_write(ws, data)
+    buf = BytesIO()
+    wb.save(buf)
+    resp = make_response(buf.getvalue())
+    resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    label = data['start'].strftime('%Y_%B').upper()
+    resp.headers['Content-Disposition'] = f'attachment; filename={label}_MONTHLY_REPORT.xlsx'
+    return resp
+
+
 @app.route('/management_account/print')
 @login_required
 @has_permission('Access_Reports')
@@ -23575,6 +23783,12 @@ def _mgmt_export_book(cur, prev):
     ws.column_dimensions['D'].width = 22
     ws.column_dimensions['E'].width = 12
     ws.page_setup.orientation = 'landscape'
+
+    # ---- Daily Sales Sheet (the accountant's month sheet, from the Daily Sales Entry)
+    try:
+        _mgmt_daily_sheet_write(wb.create_sheet('Daily Sales Sheet'), _mgmt_daily_sheet_data(cur['period']))
+    except Exception as e:
+        logging.error(f"Daily Sales Sheet not added to the export: {e}")
 
     # ---- Day Summary
     daily = _mgmt_daily(cur)
