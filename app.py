@@ -23580,13 +23580,13 @@ def management_account_export():
 
 
 def _mgmt_export_book(cur, prev):
-    """Every Management Account tab except Not Mapped, as a workbook: P&L,
-    Variance Analysis, each note, Note 3, Sales Percentage, Pie Chart and
-    Day Summary. Used by the web export and by the Excel data-entry workbook."""
+    """The Management Account as a workbook, for the month only (no previous
+    month or variance): P&L, each note, Note 3, Sales Percentage, Pie Chart,
+    Bank Reconciliation, Daily Sales 2 and Day Summary. Used by the web export
+    and by the Excel workbooks."""
     import excel_export as xl
-    t, pt = cur['t'], prev['t']
+    t = cur['t']
     company = _company_display_name()
-    head = ['Description', cur['month_label'], prev['month_label']]
 
     # ---- P&L, laid out like the accountant's own workbook sheet: boxed,
     # Description | Note | Rs | Rs., line amounts in the first Rs column and
@@ -23688,42 +23688,17 @@ def _mgmt_export_book(cur, prev):
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
     ws.sheet_properties.pageSetUpPr.fitToPage = True
 
-    ws = wb.create_sheet('Variance Analysis')
-    vhead = ['Description', cur['month_label'], prev['month_label'], 'Variance (Rs)', 'Variance %']
-    row = xl.title_block(ws, 5, company, 'VARIANCE ANALYSIS', f"{cur['month_label']} compared with {prev['month_label']}")
-    row = xl.header_row(ws, row, vhead)
-    for r in _mgmt_pl_rows(t, pt):
-        if r['kind'] in ('sec', 'sec_red'):
-            row = xl.section_row(ws, row, 5, r['label'], **({'color': xl.RED_DARK, 'bg': 'FDECEA'} if r['kind'] == 'sec_red' else {}))
-            continue
-        vals = [r['cur'] or 0, r['prev'] or 0, r['diff'], r['pct'] or 0]
-        label = r['label'] + (f" (Note {r['note']})" if r['note'] else '')
-        if r['kind'] == 'item' or r['kind'] == 'pct':
-            row = xl.item_row(ws, row, label, vals, color=('107C10' if r['fav'] else 'C42B1C' if r['fav'] is False else '333333'))
-        else:
-            row = xl.total_row(ws, row, label, vals, bg={'gp': 'EAF6EA', 'np': 'E8F3FF'}.get(r['kind'], 'F3F3F3'))
-    row += 1
-    for n in _mgmt_note_rows(cur, prev):
-        row = xl.section_row(ws, row, 5, n['label'], **({} if n['kind'] == 'income' else {'color': xl.RED_DARK, 'bg': 'FDECEA'}))
-        for l in n['lines']:
-            row = xl.item_row(ws, row, l['label'], [l['cur'], l['prev'], l['diff'], l['pct'] or 0],
-                              color=('107C10' if l['fav'] else 'C42B1C' if l['fav'] is False else '333333'))
-        tt = n['total']
-        row = xl.total_row(ws, row, 'TOTAL', [tt['cur'], tt['prev'], tt['diff'], tt['pct'] or 0])
-    xl.finish(ws, 5)
-
     for sec, label, _kind in MGMT_SECTIONS:
         if sec.startswith('PURCH'):
             continue
         ws = wb.create_sheet(label.split(' - ')[0][:31] if sec.startswith('NOTE') else 'Service Charges')
-        row = xl.title_block(ws, 3, company, label.upper(), cur['month_label'])
-        row = xl.header_row(ws, row, head)
-        pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
+        # This month only - no previous-month column on the printed notes
+        row = xl.title_block(ws, 2, company, label.upper(), cur['month_label'])
+        row = xl.header_row(ws, row, ['Description', cur['month_label']])
         for l in cur['sections'].get(sec, []):
-            row = xl.item_row(ws, row, l['label'], [l['amount'], pmap.get(l['id'], 0)])
-        row = xl.total_row(ws, row, 'TOTAL', [sum(l['amount'] for l in cur['sections'].get(sec, [])),
-                                             sum(l['amount'] for l in prev['sections'].get(sec, []))])
-        xl.finish(ws, 3)
+            row = xl.item_row(ws, row, l['label'], [l['amount']])
+        row = xl.total_row(ws, row, 'TOTAL', [sum(l['amount'] for l in cur['sections'].get(sec, []))])
+        xl.finish(ws, 2)
 
     ws = wb.create_sheet('Note 3 - Cost of Sales')
     row = xl.title_block(ws, 4, company, 'NOTE 3 - COST OF SALES', cur['month_label'])
