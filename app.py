@@ -22878,6 +22878,7 @@ def management_account():
                            pl_rows=_mgmt_pl_rows(cur['t'], prev['t']), note_rows=_mgmt_note_rows(cur, prev),
                            pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
                            daily=_mgmt_daily(cur),
+                           ds2=_mgmt_daily_sheet_data(cur['period']),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -23237,8 +23238,19 @@ def _mgmt_daily_sheet_data(period_raw):
                      'keg': round((bar.get(d) or {}).get('keg', 0), 2) or None,
                      'bar_sale': round((bar.get(d) or {}).get('bar_sale', 0), 2) or None})
         d += timedelta(days=1)
+    heads = [h for h, _s in DAILY_SHEET_COLUMNS]
+    skip = {i for i, (_h, src) in enumerate(DAILY_SHEET_COLUMNS) if src and src[0] == 'nos'} | {heads.index('BAR FOOD')}
+    for dd in days:
+        dd['rr_total'] = round(sum(v or 0 for i, v in enumerate(dd['vals']) if i not in skip), 2)
+        dd['grand'] = round(dd['rr_total'] + (dd['keg'] or 0) + (dd['bar_sale'] or 0), 2)
+    totals = [round(sum(dd['vals'][i] or 0 for dd in days), 2) for i in range(len(heads))]
     return {'period': period, 'start': start, 'days': days, 'has_other': bool(other),
-            'other_names': sorted(other_names)}
+            'other_names': sorted(other_names), 'heads': heads, 'count_idx': sorted(
+                i for i, (_h, src) in enumerate(DAILY_SHEET_COLUMNS) if src and src[0] == 'nos'),
+            'totals': totals, 'rr_total': round(sum(dd['rr_total'] for dd in days), 2),
+            'keg': round(sum(dd['keg'] or 0 for dd in days), 2),
+            'bar_sale': round(sum(dd['bar_sale'] or 0 for dd in days), 2),
+            'grand': round(sum(dd['grand'] for dd in days), 2)}
 
 
 def _mgmt_daily_sheet_write(ws, data):
@@ -23337,14 +23349,14 @@ def management_account_daily_sheet():
     data = _mgmt_daily_sheet_data(request.args.get('month') or date.today().strftime('%Y-%m'))
     wb = Workbook()
     ws = wb.active
-    ws.title = 'Sheet1'
+    ws.title = 'Daily Sales 2'
     _mgmt_daily_sheet_write(ws, data)
     buf = BytesIO()
     wb.save(buf)
     resp = make_response(buf.getvalue())
     resp.headers['Content-Type'] = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     label = data['start'].strftime('%Y_%B').upper()
-    resp.headers['Content-Disposition'] = f'attachment; filename={label}_MONTHLY_REPORT.xlsx'
+    resp.headers['Content-Disposition'] = f'attachment; filename=Daily_Sales_2_{label}.xlsx'
     return resp
 
 
@@ -23786,7 +23798,7 @@ def _mgmt_export_book(cur, prev):
 
     # ---- Daily Sales Sheet (the accountant's month sheet, from the Daily Sales Entry)
     try:
-        _mgmt_daily_sheet_write(wb.create_sheet('Daily Sales Sheet'), _mgmt_daily_sheet_data(cur['period']))
+        _mgmt_daily_sheet_write(wb.create_sheet('Daily Sales 2'), _mgmt_daily_sheet_data(cur['period']))
     except Exception as e:
         logging.error(f"Daily Sales Sheet not added to the export: {e}")
 

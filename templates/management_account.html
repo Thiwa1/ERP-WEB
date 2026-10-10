@@ -88,7 +88,7 @@
 {% endif %}
 
 <ul class="nav nav-tabs mb-3 no-print">
-  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('ds2', 'Daily Sales 2'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
   {% endfor %}
 </ul>
@@ -425,7 +425,6 @@
     <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
       <div class="fw-bold">DAY SUMMARY &mdash; {{ cur.month_label | upper }}</div>
       <div class="d-flex gap-2 no-print">
-        <a class="btn btn-success btn-sm" href="{{ url_for('management_account_daily_sheet', month=cur.period) }}"><i class="fas fa-file-excel me-1"></i> Daily Sales Sheet (Excel)</a>
         <a class="btn btn-outline-secondary btn-sm" target="_blank" href="{{ url_for('management_account_print', month=cur.period, part='day') }}"><i class="fas fa-print me-1"></i> Print Day Summary</a>
       </div>
     </div>
@@ -453,6 +452,41 @@
           <td class="n">{{ dn(daily.rr_total) }}</td>
           {% for sec, lines in daily.groups if sec == 'NOTE2' %}{% for l in lines %}<td class="n">{{ dn(daily.totals[l.id]) }}</td>{% endfor %}{% endfor %}
           <td class="n">{{ dn(daily.bar_total) }}</td><td class="n">{{ dn(daily.grand) }}</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div></div>
+</div>
+
+{# ================================================================ Daily Sales 2 (accountant's monthly sheet) #}
+{% macro d2(v, cnt=False) %}{% if v is none or v == 0 %}{% elif cnt %}{{ '%g' % v }}{% else %}{% set a = v | abs %}{{ ('(' if v < 0 else '') ~ '{:,.2f}'.format(a) ~ (')' if v < 0 else '') }}{% endif %}{% endmacro %}
+<div class="tab-pane fade {{ 'show active' if tab == 'ds2' }}" id="ma_ds2">
+  <div class="ma-card"><div class="ma-body">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+      <div class="fw-bold">DAILY SALES 2 &mdash; {{ cur.month_label | upper }}</div>
+      <a class="btn btn-success btn-sm no-print" href="{{ url_for('management_account_daily_sheet', month=cur.period) }}"><i class="fas fa-file-excel me-1"></i> Excel</a>
+    </div>
+    <div class="small text-muted mb-2 no-print">From the Daily Sales Entry and the Bar Sales Record, in the accountant's monthly sheet layout.
+      TOTAL leaves out the room counts and bar food; the last TOTAL is TOTAL + KEG + BAR SALE.
+      {% if ds2.has_other %}FOOD also includes: {{ ds2.other_names | join(', ') }} (Discount as a minus).{% endif %}</div>
+    <div class="ma-day-wrap">
+    <table class="ma-day">
+      <thead><tr>
+        <th class="dt">DATE</th>
+        {% for h in ds2.heads %}<th>{{ h }}</th>{% endfor %}
+        <th class="sum">TOTAL</th><th>KEG</th><th>BAR SALE</th><th class="sum">TOTAL</th>
+      </tr></thead>
+      <tbody>
+      {% for d in ds2.days %}
+        <tr class="{{ 'wkend' if d.date.weekday() >= 5 }}"><td class="dt">{{ d.date.strftime('%d-%b-%y') }}</td>
+          {% for v in d.vals %}<td class="n">{{ d2(v, loop.index0 in ds2.count_idx) }}</td>{% endfor %}
+          <td class="n sum">{{ d2(d.rr_total) }}</td><td class="n">{{ d2(d.keg) }}</td><td class="n">{{ d2(d.bar_sale) }}</td>
+          <td class="n sum">{{ d2(d.grand) }}</td></tr>
+      {% endfor %}
+        <tr class="tot"><td class="dt">TOTAL</td>
+          {% for v in ds2.totals %}<td class="n">{{ d2(v, loop.index0 in ds2.count_idx) }}</td>{% endfor %}
+          <td class="n">{{ d2(ds2.rr_total) }}</td><td class="n">{{ d2(ds2.keg) }}</td><td class="n">{{ d2(ds2.bar_sale) }}</td>
+          <td class="n">{{ d2(ds2.grand) }}</td></tr>
       </tbody>
     </table>
     </div>
