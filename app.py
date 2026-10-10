@@ -22879,6 +22879,7 @@ def management_account():
                            pie_svg=_mgmt_pie_svg(_mgmt_pie_items(cur), f"{cur['month_label']} Sales Analysis"),
                            daily=_mgmt_daily(cur),
                            ds2=_mgmt_daily_sheet_data(cur['period']),
+                           brec=_mgmt_bank_rec(cur['period']),
                            sections=MGMT_SECTIONS, section_label=MGMT_SECTION_LABEL,
                            company_name=_company_display_name(),
                            can_edit=check_permission('Access_Accounting'),
@@ -23366,6 +23367,186 @@ def management_account_daily_sheet():
     return resp
 
 
+# ---- Bank Reconciliation for the Management Account (one block per bank account)
+def _mgmt_bank_rec(period_raw):
+    """For each bank account: last month's reconciled balance as the opening, the
+    month's supplier cheque payments (supplier, amount, cheque no, posted date,
+    cleared date), the book and bank statement balances at month end, and the
+    cheques issued but not presented (and deposits not yet credited) at month end.
+    Posted date comes from the bank book (clearing moves a ledger line's date to
+    the day it cleared); cleared date is when the reconciliation ticked it off."""
+    period, start, end, _prev = _mgmt_period(period_raw)
+    accounts = [r['n'] for r in (db.execute_query(
+        "SELECT bank_bookcol_account_number AS n FROM bank_book ORDER BY bank_bookcol_account_number") or []) if r['n']]
+    recs = {}
+    try:
+        for r in db.execute_query("""
+                SELECT bank_accont_no, closing_date, closing_balance, Book_Balance, Bank_statment_Balance, id
+                FROM bank_reconciliation_recodes ORDER BY closing_date, id
+                """) or []:
+            recs.setdefault(r['bank_accont_no'], []).append(r)
+    except Exception:
+        recs = {}
+
+    def day(v):
+        if v is None:
+            return None
+        return v.date() if hasattr(v, 'date') and not isinstance(v, date) else v
+
+    out = []
+    for acct in accounts:
+        rows = db.execute_query("""
+            SELECT ed.id, ed.entry_jv, ed.enty_values_DR AS dr, ed.enty_values_CR AS cr, ed.entry_naration,
+                   ed.entry_Rec, ed.entry_date, ed.entry_effective_date, ed.entry_create_date,
+                   MIN(bbr.bank_book__suplier_name) AS supplier, MIN(bbr.bank_book_chque_no) AS cheque,
+                   MIN(bbr.Bank_Payment_Date) AS paid_on
+            FROM entry_details ed
+            LEFT JOIN bank_book_recod bbr ON bbr.jv_numbers_jv_id = ed.entry_jv AND TRIM(bbr.bank_book__accont_name) = TRIM(ed.account_name)
+            WHERE ed.account_name = %s AND COALESCE(ed.entry_deleted, 0) = 0
+            GROUP BY ed.id, ed.entry_jv, ed.enty_values_DR, ed.enty_values_CR, ed.entry_naration, ed.entry_Rec,
+                     ed.entry_date, ed.entry_effective_date, ed.entry_create_date
+        """, (acct,)) or []
+        if not rows and acct not in recs:
+            continue
+        payments, unpresented, uncredited = [], [], []
+        book = 0.0
+        for r in rows:
+            dr, cr = float(r['dr'] or 0), float(r['cr'] or 0)
+            cleared = day(r['entry_date']) if r['entry_Rec'] else None
+            # When the line was put in the books (before reconciliation moved its date)
+            posted = day(r['paid_on']) or (day(r['entry_create_date']) if r['entry_Rec'] else None) \
+                or day(r['entry_effective_date']) or day(r['entry_create_date'])
+            if posted is None:
+                continue
+            if posted <= end:
+                book += dr - cr
+            outstanding = posted <= end and (cleared is None or cleared > end)
+            item = {'supplier': r['supplier'] or '', 'narration': r['entry_naration'] or '', 'cheque': r['cheque'] or '',
+                    'amount': round(cr or dr, 2), 'posted': posted, 'cleared': cleared, 'jv': r['entry_jv'],
+                    'outstanding': outstanding}
+            if cr and start <= posted <= end and (r['supplier'] or r['cheque']):
+                payments.append(item)
+            if outstanding and cr:
+                unpresented.append(item)
+            elif outstanding and dr:
+                uncredited.append(item)
+        hist = recs.get(acct, [])
+        last = [h for h in hist if day(h['closing_date']) and day(h['closing_date']) < start]
+        this = [h for h in hist if day(h['closing_date']) and start <= day(h['closing_date']) <= end]
+        opening = last[-1] if last else None
+        stmt = this[-1] if this else None
+        unp = round(sum(i['amount'] for i in unpresented), 2)
+        unc = round(sum(i['amount'] for i in uncredited), 2)
+        stmt_bal = float(stmt['Bank_statment_Balance']) if stmt and stmt['Bank_statment_Balance'] is not None else None
+        adjusted = round(stmt_bal - unp + unc, 2) if stmt_bal is not None else None
+        sort = lambda i: (str(i['posted']), str(i['cheque']))
+        out.append({
+            'account': acct,
+            'opening_date': day(opening['closing_date']) if opening else None,
+            'opening_balance': float(opening['closing_balance'] or 0) if opening else None,
+            'opening_statement': float(opening['Bank_statment_Balance'] or 0) if opening and opening['Bank_statment_Balance'] is not None else None,
+            'payments': sorted(payments, key=sort),
+            'payments_total': round(sum(i['amount'] for i in payments), 2),
+            'book_balance': round(book, 2),
+            'statement_date': day(stmt['closing_date']) if stmt else None,
+            'statement_balance': stmt_bal,
+            'unpresented': sorted(unpresented, key=sort), 'unpresented_total': unp,
+            'uncredited': sorted(uncredited, key=sort), 'uncredited_total': unc,
+            'adjusted_bank': adjusted,
+            'difference': round(book - adjusted, 2) if adjusted is not None else None,
+        })
+    return {'period': period, 'start': start, 'end': end, 'accounts': out}
+
+
+def _mgmt_bank_rec_write(ws, data, company):
+    """The Bank Reconciliation sheet of the Management Account workbook."""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    thin = Side(style='thin', color='BFBFBF')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    AMT = '#,##0.00;(#,##0.00);-'
+    head_fill, band = PatternFill('solid', fgColor='0F6CBD'), PatternFill('solid', fgColor='DDEBF7')
+    widths = {'A': 40, 'B': 16, 'C': 14, 'D': 13, 'E': 13, 'F': 12, 'G': 30}
+    for k, v in widths.items():
+        ws.column_dimensions[k].width = v
+    ws.sheet_view.showGridLines = False
+    ws['A1'] = company or ''
+    ws['A1'].font = Font(bold=True, size=14)
+    ws['A2'] = 'BANK RECONCILIATION - ' + data['start'].strftime('%B %Y').upper()
+    ws['A2'].font = Font(bold=True, size=12, color='605E5C')
+    row = 4
+
+    def label_amt(label, value, bold=False, fill=None, note=''):
+        nonlocal row
+        ws.cell(row=row, column=1, value=label).font = Font(bold=bold)
+        c = ws.cell(row=row, column=2, value=value)
+        c.number_format, c.font = AMT, Font(bold=bold)
+        if fill:
+            for col in (1, 2):
+                ws.cell(row=row, column=col).fill = PatternFill('solid', fgColor=fill)
+        if note:
+            ws.cell(row=row, column=3, value=note).font = Font(italic=True, size=9, color='6B7280')
+        row += 1
+
+    def table(title, items, total, empty):
+        nonlocal row
+        ws.cell(row=row, column=1, value=title).font = Font(bold=True, color='1F3864')
+        row += 1
+        for i, h in enumerate(['Supplier / Narration', 'Amount', 'Cheque No', 'Posted', 'Cleared', 'JV', 'Status'], start=1):
+            c = ws.cell(row=row, column=i, value=h)
+            c.font, c.fill, c.border = Font(bold=True, color='FFFFFF'), head_fill, box
+        row += 1
+        if not items:
+            ws.cell(row=row, column=1, value=empty).font = Font(italic=True, color='6B7280')
+            row += 1
+        for it in items:
+            vals = [it['supplier'] or it['narration'], it['amount'], it['cheque'], it['posted'], it['cleared'], it['jv'],
+                    'Not presented at month end' if it['outstanding'] else 'Cleared']
+            for i, v in enumerate(vals, start=1):
+                c = ws.cell(row=row, column=i, value=v)
+                c.border = box
+                if i == 2:
+                    c.number_format = AMT
+                if i in (4, 5) and v:
+                    c.number_format = 'yyyy-mm-dd'
+                if i == 7 and it['outstanding']:
+                    c.font = Font(color='A4262C')
+            row += 1
+        ws.cell(row=row, column=1, value='Total').font = Font(bold=True)
+        c = ws.cell(row=row, column=2, value=total)
+        c.number_format, c.font = AMT, Font(bold=True)
+        c.border = Border(top=Side(style='thin'), bottom=Side(style='double'))
+        row += 2
+
+    if not data['accounts']:
+        ws.cell(row=row, column=1, value='No bank accounts with activity.')
+    for a in data['accounts']:
+        for col in range(1, 8):
+            ws.cell(row=row, column=col).fill = band
+        ws.cell(row=row, column=1, value=a['account']).font = Font(bold=True, size=12, color='1F3864')
+        row += 1
+        label_amt('Opening - last reconciled balance', a['opening_balance'],
+                  note=(f"reconciled to {a['opening_date']}" if a['opening_date'] else 'no earlier reconciliation'))
+        row += 1
+        table('Supplier payments this month', a['payments'], a['payments_total'], 'No supplier cheques this month.')
+        label_amt('Balance as per bank statement', a['statement_balance'],
+                  note=(f"reconciliation of {a['statement_date']}" if a['statement_date'] else 'not reconciled for this month yet'))
+        label_amt('Less: cheques issued but not presented', -a['unpresented_total'])
+        label_amt('Add: deposits not yet credited', a['uncredited_total'])
+        label_amt('Adjusted bank balance', a['adjusted_bank'], bold=True, fill='E8F3E8')
+        label_amt('Balance as per books (month end)', a['book_balance'], bold=True)
+        label_amt('Difference', a['difference'], bold=True, fill='FDE7E9' if a['difference'] else 'E8F3E8')
+        row += 1
+        table('Cheques issued but not presented at month end', a['unpresented'], a['unpresented_total'],
+              'None - every cheque issued by month end has cleared.')
+        if a['uncredited']:
+            table('Deposits not yet credited at month end', a['uncredited'], a['uncredited_total'], '')
+        row += 1
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    return ws
+
+
 @app.route('/management_account/print')
 @login_required
 @has_permission('Access_Reports')
@@ -23801,6 +23982,12 @@ def _mgmt_export_book(cur, prev):
     ws.column_dimensions['D'].width = 22
     ws.column_dimensions['E'].width = 12
     ws.page_setup.orientation = 'landscape'
+
+    # ---- Bank Reconciliation
+    try:
+        _mgmt_bank_rec_write(wb.create_sheet('Bank Reconciliation'), _mgmt_bank_rec(cur['period']), company)
+    except Exception as e:
+        logging.error(f"Bank Reconciliation not added to the export: {e}")
 
     # ---- Daily Sales Sheet (the accountant's month sheet, from the Daily Sales Entry)
     try:

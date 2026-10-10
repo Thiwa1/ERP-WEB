@@ -88,7 +88,7 @@
 {% endif %}
 
 <ul class="nav nav-tabs mb-3 no-print">
-  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('ds2', 'Daily Sales 2'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
+  {% for key, label in [('pl', 'P&L'), ('variance', 'Variance Analysis'), ('notes', 'Notes 1, 2, 4-8'), ('note3', 'Note 3 - Cost of Sales'), ('purch', 'Purchasing (Note 3 support)'), ('pct', 'Sales %'), ('day', 'Day Summary'), ('ds2', 'Daily Sales 2'), ('brec', 'Bank Rec'), ('unmapped', 'Not Mapped (' ~ (cur.unmapped | length) ~ ')')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if tab == key }}" data-bs-toggle="tab" data-bs-target="#ma_{{ key }}" type="button">{{ label }}</button></li>
   {% endfor %}
 </ul>
@@ -492,6 +492,56 @@
     </table>
     </div>
   </div></div>
+</div>
+
+{# ================================================================ Bank Reconciliation #}
+{% macro bm(v) %}{% if v is none %}<span class="text-muted">&mdash;</span>{% else %}{{ ('(' ~ '{:,.2f}'.format(-v) ~ ')') if v < 0 else '{:,.2f}'.format(v) }}{% endif %}{% endmacro %}
+{% macro btable(items, total, empty) %}
+  <table class="ma mb-3">
+    <thead><tr><th>Supplier / Narration</th><th class="num">Amount</th><th>Cheque No</th><th>Posted</th><th>Cleared</th><th>JV</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr><td>{{ it.supplier or it.narration }}</td><td class="num">{{ bm(it.amount) }}</td><td>{{ it.cheque }}</td>
+        <td>{{ it.posted }}</td><td>{{ it.cleared or '' }}</td><td>{{ it.jv or '' }}</td>
+        <td class="{{ 'unfav' if it.outstanding else 'fav' }}">{{ 'Not presented at month end' if it.outstanding else 'Cleared' }}</td></tr>
+      {% else %}
+      <tr class="muted"><td colspan="7">{{ empty }}</td></tr>
+      {% endfor %}
+      <tr class="sub"><td>Total</td><td class="num">{{ bm(total) }}</td><td colspan="5"></td></tr>
+    </tbody>
+  </table>
+{% endmacro %}
+<div class="tab-pane fade {{ 'show active' if tab == 'brec' }}" id="ma_brec">
+  {% for a in brec.accounts %}
+  <div class="ma-card"><div class="ma-body">
+    <div class="fw-bold mb-2">BANK RECONCILIATION &mdash; {{ a.account }} &mdash; {{ cur.month_label | upper }}</div>
+    <table class="ma mb-3" style="max-width:640px">
+      <tbody>
+        <tr><td>Opening &mdash; last reconciled balance <span class="text-muted small">{{ ('(reconciled to ' ~ a.opening_date ~ ')') if a.opening_date else '(no earlier reconciliation)' }}</span></td><td class="num">{{ bm(a.opening_balance) }}</td></tr>
+      </tbody>
+    </table>
+    <div class="fw-semibold mb-1">Supplier payments this month</div>
+    {{ btable(a.payments, a.payments_total, 'No supplier cheques this month.') }}
+    <table class="ma mb-3" style="max-width:640px">
+      <tbody>
+        <tr><td>Balance as per bank statement <span class="text-muted small">{{ ('(reconciliation of ' ~ a.statement_date ~ ')') if a.statement_date else '(not reconciled for this month yet)' }}</span></td><td class="num">{{ bm(a.statement_balance) }}</td></tr>
+        <tr><td class="ind">Less: cheques issued but not presented</td><td class="num">{{ bm(-a.unpresented_total) }}</td></tr>
+        <tr><td class="ind">Add: deposits not yet credited</td><td class="num">{{ bm(a.uncredited_total) }}</td></tr>
+        <tr class="sub"><td>Adjusted bank balance</td><td class="num">{{ bm(a.adjusted_bank) }}</td></tr>
+        <tr class="sub"><td>Balance as per books (month end)</td><td class="num">{{ bm(a.book_balance) }}</td></tr>
+        <tr class="sub"><td>Difference</td><td class="num {{ 'unfav' if a.difference else '' }}">{{ bm(a.difference) }}</td></tr>
+      </tbody>
+    </table>
+    <div class="fw-semibold mb-1">Cheques issued but not presented at month end</div>
+    {{ btable(a.unpresented, a.unpresented_total, 'None - every cheque issued by month end has cleared.') }}
+    {% if a.uncredited %}
+    <div class="fw-semibold mb-1">Deposits not yet credited at month end</div>
+    {{ btable(a.uncredited, a.uncredited_total, '') }}
+    {% endif %}
+  </div></div>
+  {% else %}
+  <div class="ma-card"><div class="ma-body text-muted">No bank accounts with activity.</div></div>
+  {% endfor %}
 </div>
 
 {# ================================================================ Not mapped #}
