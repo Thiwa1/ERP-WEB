@@ -23579,6 +23579,35 @@ def management_account_export():
     return xl.workbook_response(_mgmt_export_book(cur, prev), f"Management_Account_{cur['period']}.xlsx")
 
 
+def _xl_plain_colours(wb):
+    """Print-friendly look for the Management Account workbook: no dark or
+    coloured fills and no coloured text. Any shaded cell becomes the light grey
+    of the note headings (F3F3F3) and every font turns black, so each sheet
+    prints like the P&L. Charts are left as they are."""
+    from copy import copy
+    from openpyxl.styles import PatternFill
+    from openpyxl.styles.colors import Color
+    grey = PatternFill('solid', fgColor='F3F3F3')
+    keep_fill = {'FFFFFFFF', '00FFFFFF', 'FFF3F3F3', '00F3F3F3', '00000000'}
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for c in row:
+                f = c.fill
+                if f is not None and f.fill_type == 'solid':
+                    rgb = f.fgColor.rgb if f.fgColor is not None and f.fgColor.type == 'rgb' else None
+                    if not (isinstance(rgb, str) and rgb.upper() in keep_fill):
+                        c.fill = grey
+                fn = c.font
+                if fn is not None and fn.color is not None:
+                    rgb = fn.color.rgb if fn.color.type == 'rgb' else None
+                    if not (isinstance(rgb, str) and rgb.upper()[-6:] in ('000000', '1A1A2E', '333333')):
+                        nf = copy(fn)
+                        nf.color = Color(rgb='FF000000')
+                        c.font = nf
+        ws.sheet_properties.tabColor = None
+    return wb
+
+
 def _mgmt_export_book(cur, prev):
     """The Management Account as a workbook, for the month only (no previous
     month or variance): P&L, each note, Note 3, Sales Percentage, Pie Chart,
@@ -24030,6 +24059,7 @@ def _mgmt_export_book(cur, prev):
     if daily['has_manual']:
         ws.cell(row=row + 1, column=1, value='Lines typed in manually have no daily split; only their month total '
                                               'is shown.').font = xl.Font(italic=True, size=9, color=xl.GREY_TEXT)
+    _xl_plain_colours(wb)
     return wb
 
 
@@ -35348,8 +35378,14 @@ Public Sub AddButtons()
     PutButtons "Home", "G3", Array("Load Month", "LoadMonth", "Save Stock", "SaveStock", _
                                    "Previous Month", "PrevMonth", "Next Month", "NextMonth", _
                                    "Set API Key", "SetApiKey"), True
+    ' No buttons on the report sheets - they print clean. Clear any left from older versions.
+    Dim i As Long
     For Each ws In ThisWorkbook.Worksheets
-        If ws.Name <> "Home" And ws.Name <> "Setup" Then PutButtons ws.Name, "A1", Array("< Home", "GoHome")
+        If ws.Name <> "Home" And ws.Name <> "Setup" Then
+            For i = ws.Buttons.Count To 1 Step -1
+                If Left$(ws.Buttons(i).Name, 4) = "xlb_" Then ws.Buttons(i).Delete
+            Next i
+        End If
     Next ws
 End Sub
 
@@ -35460,12 +35496,11 @@ def excel_ma_workbook():
     ws['C14'].font = Font(bold=True, color=NAVY)
     for i, text in enumerate([
         'P&L - the trading profit and loss account, in the printed layout.',
-        'Variance Analysis - this month against last month.',
         'Notes 1 to 8 - the lines behind each note.',
         'Note 3 - cost of sales, with opening and closing stock.',
         'Note 3 Purchases - every supplier invoice behind the purchases, with Net / VAT / Gross.',
         'GL Entries - every journal entry behind the report lines, with its JV number.',
-        'Sales Percentage, Pie Chart, Day Summary.',
+        'Sales Percentage, Pie Chart, Bank Reconciliation, Daily Sales 2, Day Summary.',
         '',
         'Save Stock sends the opening / closing stock and remarks above back to the system.',
     ], start=16):
@@ -35481,6 +35516,7 @@ def excel_ma_workbook():
     st_ws.sheet_state = 'veryHidden'
 
     wb.active = 0
+    _xl_plain_colours(wb)
     return xl.workbook_response(wb, f"SuwinERP_ManagementAccount_{cur['period']}.xlsx")
 
 
