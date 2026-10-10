@@ -23647,8 +23647,10 @@ def _mgmt_export_book(cur, prev):
 
     row = 6
 
+    at = {}     # P&L rows by name, for the working beside it
+
     def pl(label, note='', inner=None, outer=None, bold=False, underline=False, indent=0,
-           inner_line=False, outer_line=False, outer_double=False):
+           inner_line=False, outer_line=False, outer_double=False, key=None):
         """One printed line: label (optionally indented), note number, and the
         amount in the inner (Rs) or outer (Rs.) column."""
         nonlocal row
@@ -23670,18 +23672,20 @@ def _mgmt_export_book(cur, prev):
         ws.cell(row=row, column=1).border = Border(left=thick)
         ws.cell(row=row, column=2).border = Border(right=thick)
         ws.row_dimensions[row].height = 16
+        if key:
+            at[key] = row
         row += 1
 
     pl('')
     pl('Sales')
     pl('-Room & Restaurant Revenue', '1', inner=t['sales_rr'], indent=3)
-    pl('- Bar Sales', '2', inner=t['sales_bar'], outer=t['sales'], indent=3, inner_line=True)
+    pl('- Bar Sales', '2', inner=t['sales_bar'], outer=t['sales'], indent=3, inner_line=True, key='sales')
     pl('Less', bold=True, underline=True)
     pl('Cost Of Sales', '3')
     pl('BAR', inner=t['cogs_bar'], indent=14)
     pl('FOOD', inner=t['cogs_food'], indent=14, inner_line=True)
     pl('', outer=t['cogs'], outer_line=True)
-    pl('Gross Profit', outer=t['gross_profit'], bold=True, outer_line=True)
+    pl('Gross Profit', outer=t['gross_profit'], bold=True, outer_line=True, key='gp')
     pl('')
     pl('')
     pl('Add', bold=True, underline=True)
@@ -23697,21 +23701,48 @@ def _mgmt_export_book(cur, prev):
         last = key == 'NOTE8'
         pl(label, note, inner=-(t[key] or 0),
            outer=(-(t['expenses'] or 0) if last else None), inner_line=last, outer_line=last)
-    pl('Net Profit', outer=t['net_profit'], bold=True, outer_double=True)
+    pl('Net Profit', outer=t['net_profit'], bold=True, outer_double=True, key='np')
     pl('')
-    pl('Gross Profit Margin', outer=None, bold=True)
+    pl('Gross Profit Margin', outer=None, bold=True, key='gpm')
     gm = ws.cell(row=row - 1, column=4, value=(t['gp_margin'] or 0) / 100.0)
-    gm.number_format, gm.font = '0%', Font(bold=True, size=11, color=BLACK)
+    gm.number_format, gm.font = '0.00%', Font(bold=True, size=11, color=BLACK)
     gm.alignment = Alignment(horizontal='right')
-    pl('Net Profit Margin', outer=None, bold=True)
+    pl('Net Profit Margin', outer=None, bold=True, key='npm')
     nm = ws.cell(row=row - 1, column=4, value=(t['np_margin'] or 0) / 100.0)
-    nm.number_format, nm.font = '0%', Font(bold=True, size=11, color=BLACK)
+    nm.number_format, nm.font = '0.00%', Font(bold=True, size=11, color=BLACK)
     nm.alignment = Alignment(horizontal='right')
     # Close the box
     for col in range(1, 5):
         cell = ws.cell(row=row - 1, column=col)
         b = cell.border
         cell.border = Border(left=b.left, right=b.right, top=b.top, bottom=thick)
+    # ---- How the percentages are worked out, beside the P&L (live Excel formulas)
+    S, G, N = f"D{at['sales']}", f"D{at['gp']}", f"D{at['np']}"
+    gm.value = f'=IF({S}=0,0,{G}/{S})'
+    nm.value = f'=IF({S}=0,0,{N}/{S})'
+    ws.column_dimensions['F'].width = 30
+    ws.column_dimensions['G'].width = 18
+    ws.column_dimensions['H'].width = 36
+    side = [('HOW THE PERCENTAGES ARE WORKED OUT', None, None),
+            ('Total Sales (Note 1 + Note 2)', f'={S}', 'Room & Restaurant + Bar Sales'),
+            ('Gross Profit', f'={G}', 'Total Sales - Cost of Sales'),
+            ('Gross Profit Margin', f'=IF({S}=0,0,{G}/{S})', 'Gross Profit / Total Sales x 100'),
+            ('', None, None),
+            ('Net Profit', f'={N}', 'Gross Profit + Service Charges - Expenses'),
+            ('Net Profit Margin', f'=IF({S}=0,0,{N}/{S})', 'Net Profit / Total Sales x 100')]
+    for i, (label, formula, how) in enumerate(side):
+        r_ = at['sales'] + i - 1
+        lc = ws.cell(row=r_, column=6, value=label)
+        lc.font = Font(bold=(i == 0 or 'Margin' in label), size=11, color=BLACK, underline='single' if i == 0 else None)
+        if formula:
+            vc = ws.cell(row=r_, column=7, value=formula)
+            vc.number_format = '0.00%' if 'Margin' in label else NUM
+            vc.font = Font(bold='Margin' in label, size=11, color=BLACK)
+            vc.alignment = Alignment(horizontal='right')
+            vc.border = Border(bottom=hair) if 'Margin' in label else Border()
+        if how:
+            ws.cell(row=r_, column=8, value=how).font = Font(italic=True, size=9, color='605E5C')
+    ws.print_area = f'A1:H{row - 1}'
     ws.sheet_view.showGridLines = False
     ws.page_setup.orientation = 'portrait'
     ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
