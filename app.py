@@ -23210,6 +23210,7 @@ def _mgmt_daily_sheet_data(period_raw):
     bar = {}
     for b in db.execute_query("""
             SELECT d.entry_date, d.food_sales,
+                   COALESCE(d.bar_commission, 0) + COALESCE(d.food_commission, 0) AS card_svc,
                    (SELECT COALESCE(SUM(amount), 0) FROM bar_sales_lines l WHERE l.day_id = d.id AND l.line_key = 'BAR_SALES') AS bar_sale,
                    (SELECT COALESCE(SUM(amount), 0) FROM bar_sales_lines l WHERE l.day_id = d.id
                      AND l.line_key IN ('KEG_PITCHERS', 'KEG_MUG')) AS keg
@@ -23217,7 +23218,7 @@ def _mgmt_daily_sheet_data(period_raw):
             """, (start, end)) or []:
         d = b['entry_date']
         bar[d] = {'food_sales': float(b['food_sales'] or 0), 'bar_sale': float(b['bar_sale'] or 0),
-                  'keg': float(b['keg'] or 0)}
+                  'keg': float(b['keg'] or 0), 'card_svc': float(b['card_svc'] or 0)}
     days = []
     d = start
     while d <= end:
@@ -23234,12 +23235,18 @@ def _mgmt_daily_sheet_data(period_raw):
             vals.append(round(v, 2) if v else None)
         if other.get(d):
             vals[-1] = round((vals[-1] or 0) + other[d], 2) or None   # FOOD column
+        # S/CHAGE also carries the bar card service charge from the Bar Sales Record -
+        # it is credited to the same Service Charges account, as in Day Summary
+        svc = (bar.get(d) or {}).get('card_svc')
+        if svc:
+            i_svc = [h for h, _s in DAILY_SHEET_COLUMNS].index('S/CHAGE')
+            vals[i_svc] = round((vals[i_svc] or 0) + svc, 2) or None
         days.append({'date': d, 'vals': vals,
                      'keg': round((bar.get(d) or {}).get('keg', 0), 2) or None,
                      'bar_sale': round((bar.get(d) or {}).get('bar_sale', 0), 2) or None})
         d += timedelta(days=1)
     heads = [h for h, _s in DAILY_SHEET_COLUMNS]
-    skip = {i for i, (_h, src) in enumerate(DAILY_SHEET_COLUMNS) if src and src[0] == 'nos'} | {heads.index('BAR FOOD')}
+    skip = {i for i, (_h, src) in enumerate(DAILY_SHEET_COLUMNS) if src and src[0] == 'nos'}
     for dd in days:
         dd['rr_total'] = round(sum(v or 0 for i, v in enumerate(dd['vals']) if i not in skip), 2)
         dd['grand'] = round(dd['rr_total'] + (dd['keg'] or 0) + (dd['bar_sale'] or 0), 2)
@@ -23256,7 +23263,7 @@ def _mgmt_daily_sheet_data(period_raw):
 def _mgmt_daily_sheet_write(ws, data):
     """Write the Daily Sales Sheet in the accountant's layout: Calibri 16, thin
     borders, headers turned up, the month across row 2, a day per row, the
-    R&R TOTAL (rooms counted, bar food left out), KEG, BAR SALE and TOTAL."""
+    R&R TOTAL (room counts left out), KEG, BAR SALE and TOTAL."""
     from openpyxl.styles import Alignment, Border, Font, Side
     from openpyxl.utils import get_column_letter as L
     thin = Side(style='thin')
@@ -23269,7 +23276,6 @@ def _mgmt_daily_sheet_write(ws, data):
     last_in = first + len(heads) - 1            # last column inside the R&R TOTAL
     c_tot, c_keg, c_bar, c_all = last_in + 1, last_in + 2, last_in + 3, last_in + 4
     count_cols = [first + i for i, (_h, s) in enumerate(DAILY_SHEET_COLUMNS) if s and s[0] == 'nos']
-    barfood_col = first + [h for h, _s in DAILY_SHEET_COLUMNS].index('BAR FOOD')
 
     ws.sheet_view.zoomScale = 96
     ws.merge_cells(start_row=2, start_column=2, end_row=2, end_column=4)
@@ -23298,7 +23304,7 @@ def _mgmt_daily_sheet_write(ws, data):
             c = ws.cell(row=row, column=col, value=v)
             c.font, c.border, c.alignment = f16, box, Alignment(horizontal='left')
             c.number_format = 'General' if col in count_cols else ACC
-        minus = ''.join(f'-{L(c)}{row}' for c in count_cols + [barfood_col])
+        minus = ''.join(f'-{L(c)}{row}' for c in count_cols)   # room counts are not money
         ws.cell(row=row, column=c_tot, value=f'=SUM({L(first)}{row}:{L(last_in)}{row}){minus}')
         ws.cell(row=row, column=c_keg, value=dday['keg'])
         ws.cell(row=row, column=c_bar, value=dday['bar_sale'])

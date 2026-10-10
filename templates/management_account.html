@@ -467,7 +467,8 @@
       <a class="btn btn-success btn-sm no-print" href="{{ url_for('management_account_daily_sheet', month=cur.period) }}"><i class="fas fa-file-excel me-1"></i> Excel</a>
     </div>
     <div class="small text-muted mb-2 no-print">From the Daily Sales Entry and the Bar Sales Record, in the accountant's monthly sheet layout.
-      TOTAL leaves out the room counts and bar food; the last TOTAL is TOTAL + KEG + BAR SALE.
+      TOTAL includes bar food and leaves out the room counts; S/CHAGE includes the bar card service charge.
+      The last TOTAL is TOTAL + KEG + BAR SALE.
       {% if ds2.has_other %}FOOD also includes: {{ ds2.other_names | join(', ') }} (Discount as a minus).{% endif %}</div>
     <div class="ma-day-wrap">
     <table class="ma-day">
