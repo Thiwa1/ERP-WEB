@@ -23696,6 +23696,8 @@ def _mgmt_export_book(cur, prev):
         row = xl.title_block(ws, 2, company, label.upper(), cur['month_label'])
         row = xl.header_row(ws, row, ['Description', cur['month_label']])
         for l in cur['sections'].get(sec, []):
+            if abs(float(l['amount'] or 0)) < 0.005:
+                continue      # nothing posted this month - leave the line off the printed note
             row = xl.item_row(ws, row, l['label'], [l['amount']])
         row = xl.total_row(ws, row, 'TOTAL', [sum(l['amount'] for l in cur['sections'].get(sec, []))])
         xl.finish(ws, 2)
