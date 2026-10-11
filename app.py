@@ -22556,6 +22556,10 @@ MGMT_SECTIONS = [
 # rest of the notes down.
 MGMT_SCHEDULE_NO = {'SERVICE': '2A'}
 
+# Body text size on the Management Account's Excel sheets. Titles sit a point
+# or two above this; the small italic notes beside the margins stay smaller.
+MGMT_XL_SIZE = 12
+
 # Figures a mapping line can take straight from the Bar Sales Record instead
 # of the GL. Keg is entered on the register but posts to the GL inside the
 # bar sales account, so the only way to show it on its own - and have it
@@ -23673,17 +23677,17 @@ def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
 
     ws.merge_cells('A1:C1')
     t = ws.cell(row=1, column=1, value=month_label)
-    t.font = Font(italic=True, size=10, color='000000')
+    t.font = Font(italic=True, size=MGMT_XL_SIZE, color='000000')
     t.alignment = Alignment(horizontal='center')
 
     s = ws.cell(row=3, column=1, value=('SCHEDULE No %s' % schedule_no).strip())
-    s.font = Font(bold=True, size=11, color='000000')
+    s.font = Font(bold=True, size=MGMT_XL_SIZE, color='000000')
 
     head = 4
     for col, text, align in ((1, desc_head, 'center'), (2, month_label, 'right'),
                              (3, prev_label, 'right')):
         c = ws.cell(row=head, column=col, value=text)
-        c.font = Font(size=10, color='000000')
+        c.font = Font(size=MGMT_XL_SIZE, color='000000')
         c.alignment = Alignment(horizontal=align)
         c.fill = grey
         c.border = Border(left=hair, right=hair, top=hair, bottom=hair)
@@ -23693,12 +23697,12 @@ def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
         if abs(float(amt_cur or 0)) < 0.005 and abs(float(amt_prev or 0)) < 0.005:
             continue
         lc = ws.cell(row=row, column=1, value=label)
-        lc.font = Font(size=10, color='000000')
+        lc.font = Font(size=MGMT_XL_SIZE, color='000000')
         lc.border = Border(left=hair, right=hair)
         for col, amt in ((2, amt_cur), (3, amt_prev)):
             vc = ws.cell(row=row, column=col, value=round(float(amt or 0), 2))
             vc.number_format = NUM
-            vc.font = Font(size=10, color='000000')
+            vc.font = Font(size=MGMT_XL_SIZE, color='000000')
             vc.alignment = Alignment(horizontal='right')
             vc.border = Border(left=hair, right=hair)
         row += 1
@@ -23710,13 +23714,13 @@ def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
 
     row += 1
     tl = ws.cell(row=row, column=1, value=total_label)
-    tl.font = Font(bold=True, size=10, color='000000')
+    tl.font = Font(bold=True, size=MGMT_XL_SIZE, color='000000')
     tl.alignment = Alignment(horizontal='right')
     for col, amt in ((2, sum(float(l[1] or 0) for l in lines)),
                      (3, sum(float(l[2] or 0) for l in lines))):
         vc = ws.cell(row=row, column=col, value=round(amt, 2))
         vc.number_format = NUM
-        vc.font = Font(bold=True, size=10, color='000000')
+        vc.font = Font(bold=True, size=MGMT_XL_SIZE, color='000000')
         vc.alignment = Alignment(horizontal='right')
         vc.border = Border(top=hair, bottom=Side(style='double', color='000000'))
 
@@ -23728,36 +23732,40 @@ def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
     return row
 
 
-def _mgmt_note2_sheet(ws, lines, service_total, note_label='NOTE NO 2',
+def _mgmt_note2_sheet(ws, lines, service_total, month_label='', schedule_no='2',
                       title='BAR SALES', head='BAR SALE'):
-    """Note 2 in the accountant's own breakdown: the note number on a grey
-    band, the title underlined beneath it, then one ruled box holding the bar
-    sale lines with TOTAL closing it, and the service charge in a small box
-    of its own underneath. `lines` is [(label, amount)]."""
-    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    """Note 2 in the accountant's own breakdown: the same heading the other
+    schedules carry - month centred in italics, SCHEDULE No at the left -
+    then the title underlined, one ruled box holding the bar sale lines with
+    TOTAL closing it, and the service charge in a small box of its own
+    underneath. `lines` is [(label, amount)]."""
+    from openpyxl.styles import Alignment, Border, Font, Side
 
     med = Side(style='medium', color='000000')
     hair = Side(style='thin', color='000000')
     NUM = '#,##0.00;(#,##0.00)'
-    grey = PatternFill('solid', fgColor='EDEDED')
 
     ws.column_dimensions['A'].width = 4
     ws.column_dimensions['B'].width = 30
     ws.column_dimensions['C'].width = 20
 
-    n = ws.cell(row=2, column=2, value=note_label)
-    n.font = Font(size=11, color='000000')
-    n.fill = grey
-    ws.cell(row=3, column=2, value=title).font = Font(size=11, color='000000', underline='single')
+    ws.merge_cells('A1:C1')
+    m = ws.cell(row=1, column=1, value=month_label)
+    m.font = Font(italic=True, size=MGMT_XL_SIZE, color='000000')
+    m.alignment = Alignment(horizontal='center')
+
+    n = ws.cell(row=3, column=2, value=('SCHEDULE No %s' % schedule_no).strip())
+    n.font = Font(bold=True, size=MGMT_XL_SIZE, color='000000')
+    ws.cell(row=4, column=2, value=title).font = Font(size=MGMT_XL_SIZE, color='000000', underline='single')
 
     body = [(head, None)] + list(lines) + [('TOTAL', sum(float(a or 0) for _, a in lines))]
-    top = 5
+    top = 6                       # title sits on row 4, one blank row under it
     last = top + len(body) - 1
     for i, (label, amt) in enumerate(body):
         r_ = top + i
         bold = (i == 0 or i == len(body) - 1)
         lc = ws.cell(row=r_, column=2, value=label)
-        lc.font = Font(bold=bold, size=11, color='000000')
+        lc.font = Font(bold=bold, size=MGMT_XL_SIZE, color='000000')
         lc.border = Border(left=med, right=hair,
                            top=med if r_ == top else hair,
                            bottom=med if r_ == last else hair)
@@ -23766,19 +23774,19 @@ def _mgmt_note2_sheet(ws, lines, service_total, note_label='NOTE NO 2',
             vc.value = round(float(amt or 0), 2)
             vc.number_format = NUM
             vc.alignment = Alignment(horizontal='right')
-        vc.font = Font(bold=bold, size=11, color='000000')
+        vc.font = Font(bold=bold, size=MGMT_XL_SIZE, color='000000')
         vc.border = Border(left=hair, right=med,
                            top=med if r_ == top else hair,
                            bottom=med if r_ == last else hair)
 
     sc = last + 3
     sl = ws.cell(row=sc, column=2, value='S/ CHARGE')
-    sl.font = Font(size=11, color='000000')
+    sl.font = Font(size=MGMT_XL_SIZE, color='000000')
     sl.border = Border(left=hair, right=hair, top=hair, bottom=hair)
     sv = ws.cell(row=sc, column=3, value=round(float(service_total or 0), 2))
     sv.number_format = NUM
     sv.alignment = Alignment(horizontal='right')
-    sv.font = Font(size=11, color='000000')
+    sv.font = Font(size=MGMT_XL_SIZE, color='000000')
     sv.border = Border(left=hair, right=hair, top=hair, bottom=hair)
 
     ws.sheet_view.showGridLines = False
@@ -23837,17 +23845,17 @@ def _mgmt_export_book(cur, prev):
         amount in the inner (Rs) or outer (Rs.) column."""
         nonlocal row
         c = ws.cell(row=row, column=1, value=label)
-        c.font = Font(bold=bold, underline='single' if underline else None, size=11, color=BLACK)
+        c.font = Font(bold=bold, underline='single' if underline else None, size=MGMT_XL_SIZE, color=BLACK)
         c.alignment = Alignment(indent=indent, vertical='bottom')
         n = ws.cell(row=row, column=2, value=note)
         n.alignment = Alignment(horizontal='center')
-        n.font = Font(size=11, color=BLACK)
+        n.font = Font(size=MGMT_XL_SIZE, color=BLACK)
         for col, val, line, double in ((3, inner, inner_line, False), (4, outer, outer_line, outer_double)):
             cell = ws.cell(row=row, column=col)
             if val is not None:
                 cell.value = round(float(val), 2)
                 cell.number_format = NUM
-                cell.font = Font(bold=bold, size=11, color=BLACK)
+                cell.font = Font(bold=bold, size=MGMT_XL_SIZE, color=BLACK)
                 cell.alignment = Alignment(horizontal='right')
             cell.border = Border(left=thick, right=thick,
                                  bottom=(dbl if double else (hair if line else None)))
@@ -23887,11 +23895,11 @@ def _mgmt_export_book(cur, prev):
     pl('')
     pl('Gross Profit Margin', outer=None, bold=True, key='gpm')
     gm = ws.cell(row=row - 1, column=4, value=(t['gp_margin'] or 0) / 100.0)
-    gm.number_format, gm.font = '0.00%', Font(bold=True, size=11, color=BLACK)
+    gm.number_format, gm.font = '0.00%', Font(bold=True, size=MGMT_XL_SIZE, color=BLACK)
     gm.alignment = Alignment(horizontal='right')
     pl('Net Profit Margin', outer=None, bold=True, key='npm')
     nm = ws.cell(row=row - 1, column=4, value=(t['np_margin'] or 0) / 100.0)
-    nm.number_format, nm.font = '0.00%', Font(bold=True, size=11, color=BLACK)
+    nm.number_format, nm.font = '0.00%', Font(bold=True, size=MGMT_XL_SIZE, color=BLACK)
     nm.alignment = Alignment(horizontal='right')
     # Close the box
     for col in range(1, 5):
@@ -23915,11 +23923,11 @@ def _mgmt_export_book(cur, prev):
     for i, (label, formula, how) in enumerate(side):
         r_ = at['sales'] + i - 1
         lc = ws.cell(row=r_, column=6, value=label)
-        lc.font = Font(bold=(i == 0 or 'Margin' in label), size=11, color=BLACK, underline='single' if i == 0 else None)
+        lc.font = Font(bold=(i == 0 or 'Margin' in label), size=MGMT_XL_SIZE, color=BLACK, underline='single' if i == 0 else None)
         if formula:
             vc = ws.cell(row=r_, column=7, value=formula)
             vc.number_format = '0.00%' if 'Margin' in label else NUM
-            vc.font = Font(bold='Margin' in label, size=11, color=BLACK)
+            vc.font = Font(bold='Margin' in label, size=MGMT_XL_SIZE, color=BLACK)
             vc.alignment = Alignment(horizontal='right')
             vc.border = Border(bottom=hair) if 'Margin' in label else Border()
         if how:
@@ -23941,7 +23949,9 @@ def _mgmt_export_book(cur, prev):
                 ws,
                 [(l['label'], l['amount']) for l in cur['sections'].get(sec, [])
                  if abs(float(l['amount'] or 0)) >= 0.005],
-                sum(float(l['amount'] or 0) for l in cur['sections'].get('SERVICE', [])))
+                sum(float(l['amount'] or 0) for l in cur['sections'].get('SERVICE', [])),
+                month_label=cur['month_label'],
+                schedule_no=MGMT_SCHEDULE_NO.get(sec, ''.join(ch for ch in sec if ch.isdigit())))
             continue
         # Every other note is printed as a schedule: this month beside last
         # month, in the accountant's own boxed layout.
