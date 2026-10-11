@@ -144,6 +144,7 @@ const MM_LINES = {{ lines | tojson }};
 const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
 const MM_REGS = {{ register_sources | default([], true) | tojson }};
+const MM_REG_MONTH = {{ register_totals | default({}, true) | tojson }};
 // account|sub -> what that account (or account+sub) holds in the month shown
 const MM_GL_MONTH = {{ cur.gl_month | default({}, true) | tojson }};
 const MM_DELETED = [];
@@ -206,7 +207,16 @@ function mmShowAmounts() {
   document.querySelectorAll('.mm-src').forEach(function(src) {
     const out = src.querySelector('.mm-s-amt');
     if (!out) return;
-    if (src.querySelector('.mm-s-type').value !== 'GL') { out.textContent = ''; return; }
+    const stype = src.querySelector('.mm-s-type').value;
+    if (stype === 'REG') {
+      const k = src.querySelector('.mm-s-reg').value;
+      const rv = k ? MM_REG_MONTH[k] : undefined;
+      out.textContent = (rv === undefined) ? '' : '  ' + mmFmt(rv);
+      out.className = 'mm-s-amt small ms-1 ' +
+        ((rv === undefined || Math.abs(rv) < 0.005) ? 'text-danger' : 'text-muted');
+      return;
+    }
+    if (stype !== 'GL') { out.textContent = ''; return; }
     const acct = (src.querySelector('.mm-s-acct').value || '').replace(/\s+/g, ' ').trim().toLowerCase();
     if (!acct) { out.textContent = ''; return; }
     const sub = src.querySelector('.mm-s-sub').value || '';

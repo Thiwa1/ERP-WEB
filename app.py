@@ -24448,7 +24448,9 @@ def management_account_mapping():
                            accounts=accounts, categories=[c['c'] for c in categories],
                            sub_accounts=sub_accounts, cur=cur, month=cur['period'], history=history,
                            register_sources=[{'key': k, 'label': l}
-                                             for k, l, _ in MGMT_REGISTER_SOURCES])
+                                             for k, l, _ in MGMT_REGISTER_SOURCES],
+                           register_totals=_mgmt_register_totals(
+                               cur['start'].strftime('%Y-%m-%d'), cur['end'].strftime('%Y-%m-%d')))
 
 
 # ================================================================
