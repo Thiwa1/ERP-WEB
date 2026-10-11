@@ -22555,6 +22555,35 @@ MGMT_SECTIONS = [
 # beside Bar Sales in the P&L, so it is numbered 2A rather than pushing the
 # rest of the notes down.
 MGMT_SCHEDULE_NO = {'SERVICE': '2A'}
+
+# Figures a mapping line can take straight from the Bar Sales Record instead
+# of the GL. Keg is entered on the register but posts to the GL inside the
+# bar sales account, so the only way to show it on its own - and have it
+# agree with the KEG column on Daily Sales 2 - is to read the register and
+# subtract it from the bar line. Keys are stored in mgmt_acc_sources
+# .purchase_category with source_type 'REG'.
+MGMT_REGISTER_SOURCES = [
+    ('KEG', 'Keg Sales (Bar)', ('KEG_PITCHERS', 'KEG_MUG')),
+    ('REST_KEG', 'Keg Sales (Restaurant)', ('REST_KEG_PITCHERS', 'REST_KEG_TOWERS', 'REST_KEG_MUG')),
+    ('BAR_SALES', 'Bar Sales line', ('BAR_SALES',)),
+]
+
+
+def _mgmt_register_totals(start, end):
+    """Bar Sales Record totals for the month, by register key - the same
+    numbers the Daily Sales 2 sheet prints, so anything mapped to one of
+    these agrees with that sheet by construction."""
+    by = {}
+    for r in db.execute_query("""
+            SELECT l.line_key, COALESCE(SUM(l.amount), 0) AS amt
+            FROM bar_sales_lines l
+            JOIN bar_sales_days d ON l.day_id = d.id
+            WHERE d.entry_date BETWEEN %s AND %s
+            GROUP BY l.line_key
+        """, (start, end)) or []:
+        by[r['line_key']] = float(r['amt'] or 0)
+    return {key: round(sum(by.get(k, 0.0) for k in keys), 2)
+            for key, _label, keys in MGMT_REGISTER_SOURCES}
 MGMT_SECTION_LABEL = {k: l for k, l, _ in MGMT_SECTIONS}
 MGMT_SECTION_KIND = {k: kind for k, _, kind in MGMT_SECTIONS}
 
@@ -22609,6 +22638,10 @@ def _mgmt_src_text(line_id):
         sign = '-' if int(s['sign'] or 1) < 0 else '+'
         if s['source_type'] == 'PURCH':
             parts.append(f"{sign} Purchases: {s['purchase_category']}")
+        elif s['source_type'] == 'REG':
+            key = str(s['purchase_category'] or '').strip().upper()
+            parts.append(f"{sign} Bar Record: "
+                         + next((l for k, l, _ in MGMT_REGISTER_SOURCES if k == key), key))
         else:
             parts.append(f"{sign} {' '.join(str(s['gl_account'] or '').split())}"
                          + (f" / sub {s['sub_account_code']}" if s['sub_account_code'] else ' / all subs'))
@@ -22669,6 +22702,12 @@ def _mgmt_compute(period_raw):
     except Exception:
         prow = []
 
+    try:
+        reg = _mgmt_register_totals(start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d'))
+    except Exception as e:
+        logging.warning(f"Bar Sales Record totals unavailable for {period}: {e}")
+        reg = {}
+
     manual = {r['line_id']: float(r['amount'] or 0) for r in (
         db.execute_query("SELECT line_id, amount FROM mgmt_acc_manual WHERE period = %s", (period,)) or [])}
 
@@ -22694,6 +22733,9 @@ def _mgmt_compute(period_raw):
                 sign = -1 if int(s['sign'] or 1) < 0 else 1
                 if s['source_type'] == 'PURCH':
                     amount += sign * purch.get(str(s['purchase_category'] or '').strip().lower(), 0.0)
+                    continue
+                if s['source_type'] == 'REG':
+                    amount += sign * reg.get(str(s['purchase_category'] or '').strip().upper(), 0.0)
                     continue
                 key = ' '.join(str(s['gl_account'] or '').split()).lower()
                 if not key:
@@ -24317,13 +24359,13 @@ def management_account_mapping():
                     if sig in seen_src:
                         continue   # the same source twice on one line would count it twice
                     seen_src.add(sig)
-                    if s.get('type') == 'PURCH':
+                    if s.get('type') in ('PURCH', 'REG'):
                         cat = str(s.get('category') or '').strip()[:100]
                         if cat:
                             db.execute_query("""
                                 INSERT INTO mgmt_acc_sources (line_id, source_type, purchase_category, sign)
-                                VALUES (%s, 'PURCH', %s, %s)
-                            """, (line_id, cat, sign), commit=True)
+                                VALUES (%s, %s, %s, %s)
+                            """, (line_id, s['type'], cat, sign), commit=True)
                     else:
                         acct = str(s.get('account') or '').strip()[:150]
                         sub = str(s.get('sub') or '').strip()
@@ -24404,7 +24446,9 @@ def management_account_mapping():
         history = []
     return render_template('management_account_mapping.html', lines=lines, sections=MGMT_SECTIONS,
                            accounts=accounts, categories=[c['c'] for c in categories],
-                           sub_accounts=sub_accounts, cur=cur, month=cur['period'], history=history)
+                           sub_accounts=sub_accounts, cur=cur, month=cur['period'], history=history,
+                           register_sources=[{'key': k, 'label': l}
+                                             for k, l, _ in MGMT_REGISTER_SOURCES])
 
 
 # ================================================================

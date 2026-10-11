@@ -143,6 +143,7 @@ const MM_SECTIONS = {{ sections | tojson }};
 const MM_LINES = {{ lines | tojson }};
 const MM_SUBS = {{ sub_accounts | tojson }};
 const MM_CATS = {{ categories | tojson }};
+const MM_REGS = {{ register_sources | default([], true) | tojson }};
 // account|sub -> what that account (or account+sub) holds in the month shown
 const MM_GL_MONTH = {{ cur.gl_month | default({}, true) | tojson }};
 const MM_DELETED = [];
@@ -176,14 +177,23 @@ function mmSubOptions(account, selected) {
 function mmSourceHtml(s) {
   s = s || {source_type: 'GL'};
   const isP = s.source_type === 'PURCH';
+  const isR = s.source_type === 'REG';
   let cats = '<option value="">- category -</option>';
   MM_CATS.forEach(function(c) { cats += '<option' + (c === s.purchase_category ? ' selected' : '') + '>' + mmEsc(c) + '</option>'; });
   if (s.purchase_category && MM_CATS.indexOf(s.purchase_category) === -1) cats += '<option selected>' + mmEsc(s.purchase_category) + '</option>';
+  let regs = '<option value="">- figure -</option>';
+  MM_REGS.forEach(function(r) {
+    regs += '<option value="' + mmEsc(r.key) + '"' + (isR && r.key === s.purchase_category ? ' selected' : '') + '>' + mmEsc(r.label) + '</option>';
+  });
   return '<div class="mm-src" data-uid="' + (++mmSrcUid) + '">' +
-    '<select class="form-select mm-s-type no-select2" style="width:92px" onchange="mmTypeChanged(this)"><option value="GL"' + (isP ? '' : ' selected') + '>GL</option><option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option></select>' +
-    '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
-    '<select class="form-select mm-s-sub no-select2" style="width:170px;' + (isP ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
+    '<select class="form-select mm-s-type no-select2" style="width:110px" onchange="mmTypeChanged(this)">' +
+      '<option value="GL"' + (!isP && !isR ? ' selected' : '') + '>GL</option>' +
+      '<option value="PURCH"' + (isP ? ' selected' : '') + '>Purchases</option>' +
+      '<option value="REG"' + (isR ? ' selected' : '') + '>Bar Record</option></select>' +
+    '<input class="form-control mm-s-acct" list="mmAccounts" placeholder="GL account" style="width:210px;' + (isP || isR ? 'display:none;' : '') + '" value="' + mmEsc(s.gl_account) + '" onchange="mmAcctChanged(this)">' +
+    '<select class="form-select mm-s-sub no-select2" style="width:170px;' + (isP || isR ? 'display:none;' : '') + '" onchange="mmDirty()">' + mmSubOptions(s.gl_account, s.sub_account_code) + '</select>' +
     '<select class="form-select mm-s-cat no-select2" style="width:180px;' + (isP ? '' : 'display:none;') + '" onchange="mmDirty()">' + cats + '</select>' +
+    '<select class="form-select mm-s-reg no-select2" style="width:200px;' + (isR ? '' : 'display:none;') + '" onchange="mmDirty()">' + regs + '</select>' +
     '<select class="form-select mm-s-sign no-select2" style="width:52px" onchange="mmDirty()"><option value="1">+</option><option value="-1"' + (String(s.sign) === '-1' ? ' selected' : '') + '>&minus;</option></select>' +
     '<i class="fas fa-times text-danger" style="cursor:pointer" title="Remove source" onclick="mmRemoveSrc(this)"></i>' +
     '<span class="mm-s-amt small text-muted ms-1" title="What this source picks up in the month shown"></span>' +
@@ -267,9 +277,11 @@ function mmRender() {
 function mmTypeChanged(sel) {
   const src = sel.closest('.mm-src');
   const isP = sel.value === 'PURCH';
-  src.querySelector('.mm-s-acct').style.display = isP ? 'none' : '';
-  src.querySelector('.mm-s-sub').style.display = isP ? 'none' : '';
+  const isR = sel.value === 'REG';
+  src.querySelector('.mm-s-acct').style.display = (isP || isR) ? 'none' : '';
+  src.querySelector('.mm-s-sub').style.display = (isP || isR) ? 'none' : '';
   src.querySelector('.mm-s-cat').style.display = isP ? '' : 'none';
+  src.querySelector('.mm-s-reg').style.display = isR ? '' : 'none';
   mmDirty();
 }
 function mmAcctChanged(inp) {
@@ -564,8 +576,11 @@ function mmSave() {
     const sources = [];
     tr.querySelectorAll('.mm-src:not(.mm-src-off)').forEach(function(s) {
       const type = s.querySelector('.mm-s-type').value;
+      // REG keeps its figure key in the same `category` slot PURCH uses.
+      const cat = type === 'REG' ? s.querySelector('.mm-s-reg').value
+                                 : s.querySelector('.mm-s-cat').value;
       sources.push({type: type, account: s.querySelector('.mm-s-acct').value, sub: s.querySelector('.mm-s-sub').value,
-                    category: s.querySelector('.mm-s-cat').value, sign: s.querySelector('.mm-s-sign').value});
+                    category: cat, sign: s.querySelector('.mm-s-sign').value});
     });
     const cost = tr.querySelector('.mm-cost');
     lines.push({id: tr.dataset.id, section: tr.dataset.section, label: label, order: tr.querySelector('.mm-order').value,
