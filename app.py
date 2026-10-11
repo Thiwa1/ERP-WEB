@@ -23681,6 +23681,67 @@ def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
     return row
 
 
+def _mgmt_note2_sheet(ws, lines, service_total, note_label='NOTE NO 2',
+                      title='BAR SALES', head='BAR SALE'):
+    """Note 2 in the accountant's own breakdown: the note number on a grey
+    band, the title underlined beneath it, then one ruled box holding the bar
+    sale lines with TOTAL closing it, and the service charge in a small box
+    of its own underneath. `lines` is [(label, amount)]."""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    med = Side(style='medium', color='000000')
+    hair = Side(style='thin', color='000000')
+    NUM = '#,##0.00;(#,##0.00)'
+    grey = PatternFill('solid', fgColor='EDEDED')
+
+    ws.column_dimensions['A'].width = 4
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 20
+
+    n = ws.cell(row=2, column=2, value=note_label)
+    n.font = Font(size=11, color='000000')
+    n.fill = grey
+    ws.cell(row=3, column=2, value=title).font = Font(size=11, color='000000', underline='single')
+
+    body = [(head, None)] + list(lines) + [('TOTAL', sum(float(a or 0) for _, a in lines))]
+    top = 5
+    last = top + len(body) - 1
+    for i, (label, amt) in enumerate(body):
+        r_ = top + i
+        bold = (i == 0 or i == len(body) - 1)
+        lc = ws.cell(row=r_, column=2, value=label)
+        lc.font = Font(bold=bold, size=11, color='000000')
+        lc.border = Border(left=med, right=hair,
+                           top=med if r_ == top else hair,
+                           bottom=med if r_ == last else hair)
+        vc = ws.cell(row=r_, column=3)
+        if amt is not None:
+            vc.value = round(float(amt or 0), 2)
+            vc.number_format = NUM
+            vc.alignment = Alignment(horizontal='right')
+        vc.font = Font(bold=bold, size=11, color='000000')
+        vc.border = Border(left=hair, right=med,
+                           top=med if r_ == top else hair,
+                           bottom=med if r_ == last else hair)
+
+    sc = last + 3
+    sl = ws.cell(row=sc, column=2, value='S/ CHARGE')
+    sl.font = Font(size=11, color='000000')
+    sl.border = Border(left=hair, right=hair, top=hair, bottom=hair)
+    sv = ws.cell(row=sc, column=3, value=round(float(service_total or 0), 2))
+    sv.number_format = NUM
+    sv.alignment = Alignment(horizontal='right')
+    sv.font = Font(size=11, color='000000')
+    sv.border = Border(left=hair, right=hair, top=hair, bottom=hair)
+
+    ws.sheet_view.showGridLines = False
+    ws.print_area = 'A1:C%d' % sc
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    return sc
+
+
 def _mgmt_export_book(cur, prev):
     """The Management Account as a workbook: P&L, each note as a schedule
     (this month beside last month, in the accountant's boxed layout), Note 3,
@@ -23826,8 +23887,17 @@ def _mgmt_export_book(cur, prev):
         if sec.startswith('PURCH'):
             continue
         ws = wb.create_sheet(label.split(' - ')[0][:31] if sec.startswith('NOTE') else 'Service Charges')
-        # Every note is printed as a schedule: this month beside last month,
-        # in the accountant's own boxed layout.
+        if sec == 'NOTE2':
+            # Note 2 has its own breakdown: one ruled box of bar sale lines,
+            # with the service charge in a small box beneath it.
+            _mgmt_note2_sheet(
+                ws,
+                [(l['label'], l['amount']) for l in cur['sections'].get(sec, [])
+                 if abs(float(l['amount'] or 0)) >= 0.005],
+                sum(float(l['amount'] or 0) for l in cur['sections'].get('SERVICE', [])))
+            continue
+        # Every other note is printed as a schedule: this month beside last
+        # month, in the accountant's own boxed layout.
         pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
         lines = [(l['label'], l['amount'], pmap.get(l['id'], 0.0))
                  for l in cur['sections'].get(sec, [])]
