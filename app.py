@@ -23608,11 +23608,85 @@ def _xl_plain_colours(wb):
     return wb
 
 
+def _mgmt_schedule_sheet(ws, month_label, prev_label, lines, schedule_no='',
+                         total_label='TOTAL', desc_head='Description'):
+    """One note written as the accountant's schedule: the month centred in
+    italics above, the schedule number top left, then a boxed table of
+    Description / this month / last month with a ruled TOTAL underneath.
+    `lines` is [(label, cur, prev)] - lines with nothing in either month are
+    left off, the way the printed pack does it."""
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
+    hair = Side(style='thin', color='000000')
+    NUM = '#,##0.00;(#,##0.00)'
+    grey = PatternFill('solid', fgColor='EDEDED')
+
+    for col, w in zip('ABC', (46, 18, 18)):
+        ws.column_dimensions[col].width = w
+
+    ws.merge_cells('A1:C1')
+    t = ws.cell(row=1, column=1, value=month_label)
+    t.font = Font(italic=True, size=10, color='000000')
+    t.alignment = Alignment(horizontal='center')
+
+    s = ws.cell(row=3, column=1, value=('SCHEDULE No %s' % schedule_no).strip())
+    s.font = Font(bold=True, size=11, color='000000')
+
+    head = 4
+    for col, text, align in ((1, desc_head, 'center'), (2, month_label, 'right'),
+                             (3, prev_label, 'right')):
+        c = ws.cell(row=head, column=col, value=text)
+        c.font = Font(size=10, color='000000')
+        c.alignment = Alignment(horizontal=align)
+        c.fill = grey
+        c.border = Border(left=hair, right=hair, top=hair, bottom=hair)
+
+    row = head + 1
+    for label, amt_cur, amt_prev in lines:
+        if abs(float(amt_cur or 0)) < 0.005 and abs(float(amt_prev or 0)) < 0.005:
+            continue
+        lc = ws.cell(row=row, column=1, value=label)
+        lc.font = Font(size=10, color='000000')
+        lc.border = Border(left=hair, right=hair)
+        for col, amt in ((2, amt_cur), (3, amt_prev)):
+            vc = ws.cell(row=row, column=col, value=round(float(amt or 0), 2))
+            vc.number_format = NUM
+            vc.font = Font(size=10, color='000000')
+            vc.alignment = Alignment(horizontal='right')
+            vc.border = Border(left=hair, right=hair)
+        row += 1
+
+    # close the box, then the ruled total a line below it
+    for col in range(1, 4):
+        ws.cell(row=row - 1, column=col).border = Border(
+            left=hair, right=hair, bottom=hair)
+
+    row += 1
+    tl = ws.cell(row=row, column=1, value=total_label)
+    tl.font = Font(bold=True, size=10, color='000000')
+    tl.alignment = Alignment(horizontal='right')
+    for col, amt in ((2, sum(float(l[1] or 0) for l in lines)),
+                     (3, sum(float(l[2] or 0) for l in lines))):
+        vc = ws.cell(row=row, column=col, value=round(amt, 2))
+        vc.number_format = NUM
+        vc.font = Font(bold=True, size=10, color='000000')
+        vc.alignment = Alignment(horizontal='right')
+        vc.border = Border(top=hair, bottom=Side(style='double', color='000000'))
+
+    ws.sheet_view.showGridLines = False
+    ws.print_area = 'A1:C%d' % row
+    ws.page_setup.orientation = 'portrait'
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    return row
+
+
 def _mgmt_export_book(cur, prev):
-    """The Management Account as a workbook, for the month only (no previous
-    month or variance): P&L, each note, Note 3, Sales Percentage, Pie Chart,
-    Bank Reconciliation, Daily Sales 2 and Day Summary. Used by the web export
-    and by the Excel workbooks."""
+    """The Management Account as a workbook: P&L, each note as a schedule
+    (this month beside last month, in the accountant's boxed layout), Note 3,
+    Sales Percentage, Pie Chart, Bank Reconciliation, Daily Sales 2 and Day
+    Summary. The P&L itself stays month-only - no variance analysis. Used by
+    the web export and by the Excel workbooks."""
     import excel_export as xl
     t = cur['t']
     company = _company_display_name()
@@ -23752,15 +23826,13 @@ def _mgmt_export_book(cur, prev):
         if sec.startswith('PURCH'):
             continue
         ws = wb.create_sheet(label.split(' - ')[0][:31] if sec.startswith('NOTE') else 'Service Charges')
-        # This month only - no previous-month column on the printed notes
-        row = xl.title_block(ws, 2, company, label.upper(), cur['month_label'])
-        row = xl.header_row(ws, row, ['Description', cur['month_label']])
-        for l in cur['sections'].get(sec, []):
-            if abs(float(l['amount'] or 0)) < 0.005:
-                continue      # nothing posted this month - leave the line off the printed note
-            row = xl.item_row(ws, row, l['label'], [l['amount']])
-        row = xl.total_row(ws, row, 'TOTAL', [sum(l['amount'] for l in cur['sections'].get(sec, []))])
-        xl.finish(ws, 2)
+        # Every note is printed as a schedule: this month beside last month,
+        # in the accountant's own boxed layout.
+        pmap = {l['id']: l['amount'] for l in prev['sections'].get(sec, [])}
+        lines = [(l['label'], l['amount'], pmap.get(l['id'], 0.0))
+                 for l in cur['sections'].get(sec, [])]
+        _mgmt_schedule_sheet(ws, cur['month_label'], prev['month_label'], lines,
+                             schedule_no=''.join(ch for ch in sec if ch.isdigit()))
 
     ws = wb.create_sheet('Note 3 - Cost of Sales')
     row = xl.title_block(ws, 4, company, 'NOTE 3 - COST OF SALES', cur['month_label'])
