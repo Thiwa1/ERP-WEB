@@ -22550,6 +22550,11 @@ MGMT_SECTIONS = [
     ('NOTE7', 'Note 7 - Finance Expenses', 'expense'),
     ('NOTE8', 'Note 8 - Additional Expenses', 'expense'),
 ]
+# Schedule number printed on each note's Excel sheet. Taken from the section
+# key where it holds a digit; Service Charges has none of its own, and sits
+# beside Bar Sales in the P&L, so it is numbered 2A rather than pushing the
+# rest of the notes down.
+MGMT_SCHEDULE_NO = {'SERVICE': '2A'}
 MGMT_SECTION_LABEL = {k: l for k, l, _ in MGMT_SECTIONS}
 MGMT_SECTION_KIND = {k: kind for k, _, kind in MGMT_SECTIONS}
 
@@ -23902,7 +23907,8 @@ def _mgmt_export_book(cur, prev):
         lines = [(l['label'], l['amount'], pmap.get(l['id'], 0.0))
                  for l in cur['sections'].get(sec, [])]
         _mgmt_schedule_sheet(ws, cur['month_label'], prev['month_label'], lines,
-                             schedule_no=''.join(ch for ch in sec if ch.isdigit()))
+                             schedule_no=MGMT_SCHEDULE_NO.get(
+                                 sec, ''.join(ch for ch in sec if ch.isdigit())))
 
     ws = wb.create_sheet('Note 3 - Cost of Sales')
     row = xl.title_block(ws, 4, company, 'NOTE 3 - COST OF SALES', cur['month_label'])
