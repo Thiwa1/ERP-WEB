@@ -328,12 +328,16 @@ function loadSupplierData() {
                     const ivLabel = inv.is_grn
                         ? '<a href="/grn/view/' + inv.jv + '" target="_blank" title="View GRN" style="color:#018574;text-decoration:none;">' + inv.invoice_no + ' <i class="fas fa-truck-loading" style="font-size:.68rem;"></i></a>'
                         : inv.invoice_no;
-                    // Note: an invoice already covered by a pending postdated cheque is
-                    // excluded server-side (see _get_supplier_base_data) — it won't appear
-                    // in data.invoices at all until that cheque clears or is cancelled.
+                    // Note: what a pending postdated cheque covers is already taken off
+                    // the balance server-side (see _get_supplier_base_data). An invoice
+                    // a cheque covers in full is left out of data.invoices entirely;
+                    // one it covers in part shows here with the rest still payable.
+                    const pdcNote = inv.pdc_pending
+                        ? `<div class="small" style="color:#8a6100;">less cheque ${(inv.pdc_cheques || []).map(c => '#' + c).join(', ')} &middot; ${fmtNum(inv.pdc_pending)} pending</div>`
+                        : '';
                     const row = `
                         <tr>
-                            <td style="padding:.65rem .9rem;" class="font-monospace">${ivLabel} <input type="hidden" name="inv_id[]" value="${inv.id}"></td>
+                            <td style="padding:.65rem .9rem;" class="font-monospace">${ivLabel} <input type="hidden" name="inv_id[]" value="${inv.id}">${pdcNote}</td>
                             <td style="padding:.65rem .75rem;">${inv.date}</td>
                             <td style="padding:.65rem .75rem;">${inv.due_date}</td>
                             <td class="text-end font-monospace" style="padding:.65rem .75rem;">${fmtNum(inv.total)}</td>

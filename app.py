@@ -4793,12 +4793,13 @@ def _get_supplier_base_data(supplier_name):
             'is_grn': inv.get('jv_user_code') == 'JV FROM GRN'
         })
 
-    # An invoice already covered by a not-yet-cleared postdated cheque is
-    # tracked from the Postdated Cheques page instead — remove it from this
-    # Outstanding list entirely as soon as ANY pending cheque references it
-    # (regardless of the amount), so it doesn't clutter the list or get paid
-    # twice. It automatically reappears here the moment that cheque is
-    # Cancelled (status stops being 'pending').
+    # A not-yet-cleared postdated cheque is tracked from the Postdated Cheques
+    # page, so what it covers is taken off this Outstanding list - but only
+    # what it covers. A cheque written for part of an invoice used to hide the
+    # whole invoice, leaving the rest of the balance unpayable until the
+    # cheque cleared. Now the pending amount is deducted and the invoice drops
+    # off only once nothing is left. Cancelling the cheque restores it, since
+    # its status stops being 'pending'.
     try:
         pdc_rows = db.execute_query(
             "SELECT id, cheque_no, post_date, payload FROM postdated_cheques "
@@ -4807,16 +4808,35 @@ def _get_supplier_base_data(supplier_name):
     except Exception:
         pdc_rows = []
 
-    covered_ids = set()
+    covered = {}
+    cheques_for = {}
     for pdc in pdc_rows:
         try:
             payload = json.loads(pdc['payload'] or '{}')
         except Exception:
             continue
         for p in payload.get('payments', []):
-            covered_ids.add(str(p.get('id')))
+            key = str(p.get('id'))
+            amt = p.get('base')
+            if amt in (None, ''):
+                amt = p.get('amount') or 0
+            covered[key] = round(covered.get(key, 0.0) + float(amt or 0), 2)
+            cheques_for.setdefault(key, []).append(str(pdc['cheque_no'] or ''))
 
-    inv_list = [item for item in inv_list if str(item['id']) not in covered_ids]
+    kept = []
+    for item in inv_list:
+        held = covered.get(str(item['id']), 0.0)
+        if not held:
+            kept.append(item)
+            continue
+        remaining = round(item['balance'] - held, 2)
+        if remaining <= 0.005:
+            continue                      # the cheque covers it all
+        item['balance'] = remaining
+        item['pdc_pending'] = held
+        item['pdc_cheques'] = [c for c in cheques_for.get(str(item['id']), []) if c]
+        kept.append(item)
+    inv_list = kept
 
     return details, inv_list, sup_id
 
@@ -7185,16 +7205,34 @@ def _grn_payment_ready_rows(supplier, method, ready):
             "SELECT payload FROM postdated_cheques WHERE pdc_type = 'payment' AND status = 'pending'") or []
     except Exception:
         pdc_rows = []
-    covered_ids = set()
+    covered = {}
     for pdc in pdc_rows:
         try:
             payload = json.loads(pdc['payload'] or '{}')
         except Exception:
             continue
         for p in payload.get('payments', []):
-            covered_ids.add(str(p.get('id')))
-    if covered_ids:
-        rows = [r for r in rows if str(r['id']) not in covered_ids]
+            amt = p.get('base')
+            if amt in (None, ''):
+                amt = p.get('amount') or 0
+            key = str(p.get('id'))
+            covered[key] = round(covered.get(key, 0.0) + float(amt or 0), 2)
+    if covered:
+        # Deduct what a pending cheque covers rather than dropping the whole
+        # invoice: a part-paid one still has a balance someone has to pay.
+        kept = []
+        for r in rows:
+            held = covered.get(str(r['id']), 0.0)
+            if not held:
+                kept.append(r)
+                continue
+            remaining = round(float(r['amount'] or 0) - held, 2)
+            if remaining <= 0.01:
+                continue
+            r['amount'] = remaining
+            r['pdc_pending'] = held
+            kept.append(r)
+        rows = kept
 
     for r in rows:
         r['amount'] = float(r['amount'] or 0)
