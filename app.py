@@ -31698,7 +31698,9 @@ def _inv_mv_ref(m):
 
 @app.route('/api/xl/inv/masters', methods=['GET'])
 def xl_inv_masters():
-    """Items with balances (Inventory Balance, all items), suppliers, locations, jobs."""
+    """Items with balances, suppliers, locations, jobs - for the GRN, SRN and
+    count sheets. Stock-maintained items only, unless Stock Maintained Items
+    has been switched to send them all."""
     user_pk, err = _xl_auth('Access_Inventory')
     if err:
         return err
