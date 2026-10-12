@@ -31579,10 +31579,35 @@ def _inv_window_start(months):
     return date(y, m, 1)
 
 
+def _inv_excel_all_items():
+    """True when the Inventory workbook should carry every active item, not
+    only the ones ticked on Stock Maintained Items. Set from that page."""
+    try:
+        r = db.execute_query(
+            "SELECT setting_value FROM system_settings WHERE setting_key = 'inv_excel_all_items'")
+        return bool(r) and str(r[0]['setting_value']).strip().lower() in ('1', 'true', 'yes', 'on')
+    except Exception:
+        return False
+
+
+def _inv_set_excel_all_items(on):
+    value = '1' if on else '0'
+    if db.execute_query("SELECT id FROM system_settings WHERE setting_key = 'inv_excel_all_items'"):
+        db.execute_query("UPDATE system_settings SET setting_value = %s WHERE setting_key = 'inv_excel_all_items'",
+                         (value,), commit=True)
+    else:
+        db.execute_query("INSERT INTO system_settings (setting_key, setting_value, description) "
+                         "VALUES ('inv_excel_all_items', %s, 'Send every item to the Excel Inventory workbook')",
+                         (value,), commit=True)
+
+
 def _inv_masters(from_day):
     """Items with balance, value, prices and opening qty at `from_day`, plus
-    suppliers, locations and jobs - everything the workbook needs offline."""
-    items = db.execute_query("""
+    suppliers, locations and jobs - everything the workbook needs offline.
+    Limited to stock-maintained items unless Stock Maintained Items has been
+    set to send them all."""
+    keep_filter = '' if _inv_excel_all_items() else 'AND COALESCE(ii.stock_maintained, 1) = 1'
+    items = db.execute_query(f"""
         SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code, ii.inventoy_bach_code AS barcode,
                ii.inventoy_items_messurment_unit AS unit, ii.Main_Catogry AS main_cat, ii.Sub_Catogory AS sub_cat,
                COALESCE(ii.min_qty, 0) AS min_qty,
@@ -31607,7 +31632,7 @@ def _inv_masters(from_day):
                ON p.id = (SELECT MAX(p2.id) FROM inventory_price_recod p2
                           WHERE p2.inventory_price_link = ii.id)
         LEFT JOIN inventory_recod r ON ii.inventoy_name = r.inventoy_name
-        WHERE ii.active = 1 AND COALESCE(ii.stock_maintained, 1) = 1
+        WHERE ii.active = 1 {keep_filter}
         GROUP BY ii.id, ii.inventoy_name, ii.inventoy_code, ii.inventoy_bach_code, ii.inventoy_items_messurment_unit,
                  ii.Main_Catogry, ii.Sub_Catogory, ii.min_qty, p.inventory_price_selling, p.inventory_price_purcharsing
         ORDER BY ii.inventoy_name
@@ -31917,7 +31942,7 @@ def xl_inv_counted():
         return err
     as_of = _dse_parse_date(request.args.get('date')).strftime('%Y-%m-%d')
     rows = [['AS_OF', as_of, _company_display_name()]]
-    for r in _stock_count_rows(as_of):
+    for r in _stock_count_rows(as_of, kept_only=not _inv_excel_all_items()):
         rows.append(['ITEM', r['name'] or '', r['code'] or '', r['unit'] or '', r['main_cat'] or '',
                      r['qty'], r['cost'], r['value'], r['adj_qty'], r['adj_value'],
                      'Yes' if r['kept'] else 'No',
@@ -36079,6 +36104,16 @@ def inventory_stock_maintained():
     """Which items stock is kept for. Only ticked items go to the Excel
     Inventory workbook - its stock balance, bin card and physical count."""
     if request.method == 'POST':
+        if request.form.get('action') == 'all_items':
+            send_all = request.form.get('all_items') == '1'
+            try:
+                _inv_set_excel_all_items(send_all)
+                flash('Every item now goes to the Excel Inventory workbook.' if send_all
+                      else 'Only stock maintained items now go to the Excel Inventory workbook.', 'success')
+            except Exception as e:
+                flash(f'Could not save: {e}', 'danger')
+            return redirect(url_for('inventory_stock_maintained', search=request.form.get('search', ''),
+                                    show=request.form.get('show', '')))
         ticked = {i for i in request.form.getlist('keep[]') if i.isdigit()}
         shown = [i for i in request.form.getlist('shown[]') if i.isdigit()]
         on = off = 0
@@ -36134,7 +36169,8 @@ def inventory_stock_maintained():
     except Exception:
         dupes = []
     return render_template('inventory_stock_maintained.html', items=items, search=search, show=show,
-                           kept=kept, total=len(items), dupes=dupes)
+                           kept=kept, total=len(items), dupes=dupes,
+                           all_items=_inv_excel_all_items())
 
 
 
