@@ -32452,8 +32452,11 @@ def xl_inv_issue():
             return fail(f'Item "{name}" is not in the system.')
         if qty <= 0:
             return fail(f'"{name}": the quantity must be more than 0.')
-        if cost <= 0:
-            return fail(f'"{name}": the unit cost must be more than 0.')
+        # An item never bought in has no cost yet. Let the stock go out at
+        # zero rather than blocking the issue - the cost arrives with the
+        # next GRN, and a zero line moves no value anyway.
+        if cost < 0:
+            return fail(f'"{name}": the unit cost cannot be negative.')
         lines.append((name, items[name], qty, cost))
         total_value += qty * cost
     if not lines:
@@ -32479,14 +32482,17 @@ def xl_inv_issue():
                 ) VALUES (%s,%s,%s,%s,0,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (name, it['inventoy_code'], it['unit'], cost, qty, f"ISS-{jv_no}", user_pk,
                   date.today(), location, issue_date, narration[:20], jv_no))
-        for acct, dr, cr in ((account, total_value, 0), ('Inventory', 0, total_value)):
-            cursor.execute("""
-                INSERT INTO entry_details (
-                    account_name, enty_values_DR, enty_values_CR, entry_effective_date,
-                    entry_create_date, entry_naration, entry_create_user, entry_jv, entry_job_number
-                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
-            """, (acct, dr, cr, issue_date, date.today(), narration, user_pk, jv_no,
-                  job_no or None))
+        # Nothing to post to the GL when every line went out at zero cost -
+        # the stock still moves, but a 0.00 / 0.00 journal would only be noise.
+        if total_value > 0.005:
+            for acct, dr, cr in ((account, total_value, 0), ('Inventory', 0, total_value)):
+                cursor.execute("""
+                    INSERT INTO entry_details (
+                        account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                        entry_create_date, entry_naration, entry_create_user, entry_jv, entry_job_number
+                    ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (acct, dr, cr, issue_date, date.today(), narration, user_pk, jv_no,
+                      job_no or None))
         cursor.execute("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'ISS', %s, %s)",
                        (ref, jv_no, user_pk))
         conn.commit()
@@ -32501,8 +32507,12 @@ def xl_inv_issue():
         if conn:
             conn.close()
 
-    return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no,
-                     'message': f'Issued on JV {jv_no}. Dr {account} / Cr Inventory {total_value:,.2f}.'})
+    if total_value > 0.005:
+        msg = f'Issued on JV {jv_no}. Dr {account} / Cr Inventory {total_value:,.2f}.'
+    else:
+        msg = (f'Issued on JV {jv_no}. Stock is out, but nothing went to the ledger - '
+               f'no unit cost on these items yet. The cost comes with the next GRN.')
+    return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no, 'message': msg})
 
 
 @app.route('/excel_inventory_workbook', methods=['GET'])
@@ -32938,7 +32948,8 @@ def excel_inventory_workbook():
         inp(ws.cell(row=rw, column=6))
         dv_iitem.add(ws.cell(row=rw, column=2))
     ws['B62'] = ('Unit Cost fills from the Items sheet when you pick an item - type over it if the issue '
-                 'should go out at a different cost.')
+                 'should go out at a different cost. An item that has never been bought in has no cost '
+                 'yet: leave it blank and the stock still goes out, with the cost picked up on the next GRN.')
     ws['B62'].font = note_font
 
     # ---------------- Bin Card ----------------
@@ -33762,8 +33773,10 @@ Public Sub SubmitIssue()
         qty = Val(Replace(CStr(ws.Cells(rw, 3).Value), ",", ""))
         cost = Val(Replace(CStr(ws.Cells(rw, 4).Value), ",", ""))
         If itemName <> "" And qty > 0 Then
-            If cost <= 0 Then
-                MsgBox "Line " & rw & ": type the unit cost for """ & itemName & """.", vbExclamation, "Suwin ERP"
+            ' No cost yet (never bought in) is allowed - the stock still goes
+            ' out, and the cost arrives with the next GRN.
+            If cost < 0 Then
+                MsgBox "Line " & rw & ": the unit cost cannot be negative.", vbExclamation, "Suwin ERP"
                 ws.Cells(rw, 4).Select
                 Exit Sub
             End If
