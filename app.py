@@ -22322,7 +22322,7 @@ def _daily_sales_report_data(as_of):
     days_in_period = as_of.day
 
     entries = db.execute_query("""
-        SELECT id, entry_date, status, total_income, cash_amount, credit_card_sampath_amount,
+        SELECT id, entry_date, status, total_income, total_expenditure, cash_amount, credit_card_sampath_amount,
                credit_card_hnb_amount, bank_transfer_amount, bank_transfer_2_amount, cash_difference, petty_cash, telephone_income,
                misc_expense_1_label, misc_expense_1_amount, misc_expense_2_label, misc_expense_2_amount,
                misc_expense_3_label, misc_expense_3_amount
@@ -22437,8 +22437,10 @@ def _daily_sales_report_data(as_of):
 
     # ---------------- R2
     def e_sum(field):
-        return (round(float(today_entry[field] or 0), 2) if today_entry else 0.0,
-                round(sum(float(e[field] or 0) for e in entries), 2))
+        # .get so a column this query does not select cannot 500 the whole
+        # report - it reads as zero and the rest still renders.
+        return (round(float(today_entry.get(field) or 0), 2) if today_entry else 0.0,
+                round(sum(float(e.get(field) or 0) for e in entries), 2))
 
     cash = e_sum('cash_amount')
     sampath = e_sum('credit_card_sampath_amount')
