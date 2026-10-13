@@ -33089,7 +33089,26 @@ Private Function SetupSheet() As Worksheet
 End Function
 
 Private Function Sh(ByVal nm As String) As Worksheet
+    ' A missing sheet nearly always means this module was imported into the
+    ' wrong workbook - say so instead of "Subscript out of range".
+    On Error Resume Next
     Set Sh = ThisWorkbook.Worksheets(nm)
+    On Error GoTo 0
+    If Sh Is Nothing Then
+        MsgBox "This is the Suwin ERP Inventory macro, but """ & ThisWorkbook.Name & """ has no """ & nm & """ sheet." & vbCrLf & vbCrLf & _
+               "It looks like SuwinInventory.bas was imported into the wrong workbook. Remove this module " & _
+               "(Alt+F11, right-click SuwinInventory > Remove), and import it into the Inventory workbook instead.", _
+               vbExclamation, "Suwin ERP"
+        End
+    End If
+End Function
+
+Private Function IsInventoryBook() As Boolean
+    Dim probe As Worksheet
+    On Error Resume Next
+    Set probe = ThisWorkbook.Worksheets("GRN Entry")
+    On Error GoTo 0
+    IsInventoryBook = Not probe Is Nothing
 End Function
 
 Private Function ServerUrl() As String
@@ -33230,6 +33249,9 @@ End Sub
 ' ---- Opening the workbook --------------------------------------------------
 Public Sub Auto_Open()
     Dim r As String, st As Long, pend As Long
+    ' Only for the Inventory workbook - stay quiet if this module was imported
+    ' into another one, rather than erroring on its missing sheets.
+    If Not IsInventoryBook() Then Exit Sub
     On Error Resume Next
     HideSystemSheets
     AddButtons
@@ -34349,6 +34371,7 @@ Public Sub PickFromList()
 End Sub
 
 Public Sub AddButtons()
+    If Not IsInventoryBook() Then Exit Sub
     PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "New Issue", "GoIssue", _
                                    "Stock Count", "GoCount", _
                                    "Counted Balance", "GoCountedBalance", "Submit Pending", "SubmitPending", _
