@@ -22601,6 +22601,71 @@ def _daily_sales_report_data(as_of):
         'closing': round(opening_debt + given_mtd - received_mtd, 2),
     }
 
+    # ---- Cash Book reconciliation: sales down to what was collected.
+    # Same arithmetic as _daily_sales_expected_received, which is what the
+    # Daily Sales Entry screen checks each day against - but for the month,
+    # so a month that does not tie can be read line by line.
+    def reg_pair(rows, pick):
+        """(today, mtd) of pick(row) over register rows dated in the period."""
+        t = m = 0.0
+        for r in rows:
+            v = float(pick(r) or 0)
+            if not v:
+                continue
+            d_ = r.get('entry_date')
+            if d_ and d_ >= month_start:
+                m += v
+            if d_ == as_of:
+                t += v
+        return round(t, 2), round(m, 2)
+
+    all_settlements = [dict(s, _parent=c) for c in out['credits'] for s in c['settlements']]
+    cash_receipts = [s for s in all_settlements if s.get('settle_mode') != 'SETOFF'] + \
+                    [r for r in out['unlinked_receipts'] if r.get('settle_mode') != 'SETOFF']
+    setoff_receipts = [s for s in all_settlements if s.get('settle_mode') == 'SETOFF'] + \
+                      [r for r in out['unlinked_receipts'] if r.get('settle_mode') == 'SETOFF']
+
+    cr_cash = reg_pair(cash_receipts, lambda r: r['amount'])
+    cr_setoff = reg_pair(setoff_receipts, lambda r: r['amount'])
+    cg = reg_pair(out['credits'], lambda c: c['amount'])
+    adv_recv = reg_pair(out['adv_received'], lambda a: a['amount'])
+    adv_given = reg_pair(out['adv_given'], lambda a: a['amount'])
+    adv_recv_settled = reg_pair([s for a in out['adv_received'] for s in a['settlements']], lambda s: s['amount'])
+    adv_given_recov = reg_pair([s for a in out['adv_given'] for s in a['settlements']
+                                if s.get('settle_mode') == 'RECOVERED'], lambda s: s['amount'])
+
+    telephone = e_sum('telephone_income')
+    other_exp = e_sum('total_expenditure')
+    petty_tot = (round(sum(p['today'] for p in petty.values()), 2),
+                 round(sum(p['mtd'] for p in petty.values()), 2))
+    comm_tot = (round(sum(c['today'] for c in commission.values()), 2),
+                round(sum(c['mtd'] for c in commission.values()), 2))
+
+    recon_lines = [
+        ('Sales entered (Daily Sales Entry + Bar Sales Record)',
+         (round(total_income_today + bar_income_today, 2),
+          round(total_income_mtd + bar_income_mtd, 2)), 1),
+        ('Add: Advances received', adv_recv, 1),
+        ('Less: Advances settled against a bill / refunded', adv_recv_settled, -1),
+        ('Add: Advances given, recovered in cash', adv_given_recov, 1),
+        ('Less: Advances given out', adv_given, -1),
+        ('Less: Credit given (billed, not collected)', cg, -1),
+        ('Add: Credit collected in cash', cr_cash, 1),
+        ('Less: Commission kept by agents', comm_tot, -1),
+        ('Less: Petty cash and expenses paid from takings', petty_tot, -1),
+        ('Less: Telephone', telephone, -1),
+        ('Less: Other expenditure', other_exp, -1),
+    ]
+    expected = (round(sum(sign * v[0] for _l, v, sign in recon_lines), 2),
+                round(sum(sign * v[1] for _l, v, sign in recon_lines), 2))
+    cashbook_recon = {
+        'lines': [{'label': l, 'today': v[0], 'mtd': v[1], 'sign': s} for l, v, s in recon_lines],
+        'expected': expected,
+        'actual': (collections[0], collections[1]),
+        'diff': (round(collections[0] - expected[0], 2), round(collections[1] - expected[1], 2)),
+        'setoff': cr_setoff,
+    }
+
     credit_by_id = {c['id']: c for c in out['credits']}
     all_receipts = [s for c in out['credits'] for s in c['settlements']] + out['unlinked_receipts']
     creditors = group_by_name(
@@ -22638,6 +22703,7 @@ def _daily_sales_report_data(as_of):
         'collections': collections, 'cash': cash, 'sampath': sampath, 'hnb': hnb, 'bank': bank,
         'card_other': card_other, 'bar_extra': bar_extra,
         'debtors': debtors, 'creditors': creditors, 'debtor_recon': debtor_recon,
+        'cashbook_recon': cashbook_recon,
         'petty': list(petty.values()),
         'commission': list(commission.values()),
         'adv_debtors': advance_rows(out['adv_given']),
@@ -34620,6 +34686,20 @@ def _daily_sales_reports_export_build():
             continue
         r = xl.item_row(ws, r, label, [pair[0], pair[1]])
     r = xl.total_row(ws, r, 'TOTAL COLLECTIONS', [d['collections'][0], d['collections'][1]])
+
+    rc = d.get('cashbook_recon')
+    if rc:
+        r += 1
+        r = xl.section_row(ws, r, 3, 'RECONCILIATION - SALES DOWN TO WHAT WAS COLLECTED')
+        r = xl.header_row(ws, r, ['Description', 'To Day', 'Month To Date'])
+        for l in rc['lines']:
+            r = xl.item_row(ws, r, l['label'], [l['today'] * l['sign'], l['mtd'] * l['sign']])
+        r = xl.total_row(ws, r, 'Expected collections', [rc['expected'][0], rc['expected'][1]])
+        r = xl.total_row(ws, r, 'Actually collected', [rc['actual'][0], rc['actual'][1]])
+        r = xl.total_row(ws, r, 'Difference (should be nil)', [rc['diff'][0], rc['diff'][1]])
+        r = xl.item_row(ws, r, f"Set-off settlements of {rc['setoff'][1]:,.2f} MTD are left out - a set-off "
+                               f"never reaches the till, so it is not a collection.", [])
+        r += 1
 
     def name_table(title, rows, ref_head=None, with_balance=False):
         """Same shape as the page: name, the invoice / ref numbers, To Day,
