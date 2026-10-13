@@ -31925,6 +31925,13 @@ def xl_inv_masters():
             SELECT sub_new_account, sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
             WHERE active = 1 ORDER BY sub_sub_accaount_name""") or []):
         rows.append(['SUB', s['sub_new_account'] or '', f"{s['sub_account_code']} - {s['sub_sub_accaount_name']}"])
+    # Accounts an Inventory Issue can be charged to - expense or asset, which
+    # is a different list from the SRN's income/expense one.
+    for a in (db.execute_query("""
+            SELECT account_name FROM new_account_table
+            WHERE account_active = 1 AND (account_expenses = 1 OR account_assets = 1)
+            ORDER BY account_name""") or []):
+        rows.append(['IACC', a['account_name']])
     return _xl_tsv(rows)
 
 
@@ -32392,6 +32399,112 @@ def xl_inv_srn():
                      'message': f'Saved as Service Entry JV {jv_no}.' if jv_no else ' '.join(msgs)})
 
 
+@app.route('/api/xl/inv/issue', methods=['POST'])
+def xl_inv_issue():
+    """Post one Inventory Issue from the workbook: stock out of a location,
+    Dr the cost account charged, Cr Inventory - the same entries the website's
+    Inventory Issue screen writes."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    b = _xl_body()
+    ref = str(b.get('ref') or '').strip()[:64]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'ref': ref, 'message': msg}, 400)
+
+    if not ref:
+        return fail('Missing issue reference.')
+    _xl_sync_log_ready()
+    done = db.execute_query("SELECT jv_no FROM excel_sync_log WHERE client_ref = %s", (ref,)) or []
+    if done:
+        return _xl_json({'ok': True, 'ref': ref, 'jv': done[0]['jv_no'],
+                         'message': f"Already in the system (JV {done[0]['jv_no']})."})
+
+    issue_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    location = str(b.get('location') or '').strip()
+    account = str(b.get('account') or '').strip()
+    job_no = str(b.get('job_no') or '').strip()
+    narration = str(b.get('narration') or '').strip() or 'Inventory Issue'
+
+    if not location:
+        return fail('The source location is required.')
+    if not db.execute_query("SELECT 1 FROM inventory_locations WHERE inventory_locations_name = %s", (location,)):
+        return fail(f'Location "{location}" is not in the system.')
+    if not account:
+        return fail('The cost account to charge is required.')
+    if not db.execute_query("""SELECT 1 FROM new_account_table WHERE account_name = %s AND account_active = 1
+                               AND (account_expenses = 1 OR account_assets = 1)""", (account,)):
+        return fail(f'Account "{account}" is not an active expense or asset account.')
+
+    items = {i['inventoy_name']: i for i in (db.execute_query(
+        "SELECT inventoy_name, inventoy_code, inventoy_items_messurment_unit AS unit "
+        "FROM inventoy_items WHERE active = 1") or [])}
+
+    lines, total_value = [], 0.0
+    for l in b.get('lines') or []:
+        name = str(l.get('item') or '').strip()
+        qty = round(parse_float(l.get('qty')), 4)
+        cost = round(parse_float(l.get('cost')), 4)
+        if not name and not qty:
+            continue
+        if name not in items:
+            return fail(f'Item "{name}" is not in the system.')
+        if qty <= 0:
+            return fail(f'"{name}": the quantity must be more than 0.')
+        if cost <= 0:
+            return fail(f'"{name}": the unit cost must be more than 0.')
+        lines.append((name, items[name], qty, cost))
+        total_value += qty * cost
+    if not lines:
+        return fail('No items to issue.')
+    total_value = round(total_value, 2)
+
+    conn = cursor = None
+    try:
+        conn = db.get_connection()
+        cursor = conn.cursor()
+        conn.start_transaction()
+        cursor.execute("INSERT INTO jv_numbers (jv_user_code, jv_naration) VALUES (%s, %s)",
+                       ('JV FROM INVENTORY ISSUE', f"Inventory Issue: {narration}"))
+        jv_no = cursor.lastrowid
+        for name, it, qty, cost in lines:
+            cursor.execute("""
+                INSERT INTO inventory_recod (
+                    inventoy_name, inventoy_code, inventory_recod_mesrmet,
+                    inventory_recod_unit_price, inventory_recod_moument_in, inventory_recod_movment_out,
+                    inventory_recod_suplier_iv_no, inventory_recod_user_id,
+                    inventory_recod_user_recod_date, inventory_recod_location,
+                    inventory_recod_action_date, inventory_recodcol_memo, JV_No
+                ) VALUES (%s,%s,%s,%s,0,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (name, it['inventoy_code'], it['unit'], cost, qty, f"ISS-{jv_no}", user_pk,
+                  date.today(), location, issue_date, narration[:20], jv_no))
+        for acct, dr, cr in ((account, total_value, 0), ('Inventory', 0, total_value)):
+            cursor.execute("""
+                INSERT INTO entry_details (
+                    account_name, enty_values_DR, enty_values_CR, entry_effective_date,
+                    entry_create_date, entry_naration, entry_create_user, entry_jv, entry_job_number
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (acct, dr, cr, issue_date, date.today(), narration, user_pk, jv_no,
+                  job_no or None))
+        cursor.execute("INSERT INTO excel_sync_log (client_ref, kind, jv_no, created_by) VALUES (%s, 'ISS', %s, %s)",
+                       (ref, jv_no, user_pk))
+        conn.commit()
+    except Exception as e:
+        if conn:
+            conn.rollback()
+        logging.error(f"Excel inventory issue {ref} failed: {e}")
+        return fail(str(e))
+    finally:
+        if cursor:
+            cursor.close()
+        if conn:
+            conn.close()
+
+    return _xl_json({'ok': True, 'ref': ref, 'jv': jv_no,
+                     'message': f'Issued on JV {jv_no}. Dr {account} / Cr Inventory {total_value:,.2f}.'})
+
+
 @app.route('/excel_inventory_workbook', methods=['GET'])
 @login_required
 @has_any_permission('Access_Inventory', 'Access_Settings')
@@ -32772,6 +32885,62 @@ def excel_inventory_workbook():
     ws['B62'] = 'Each line is debited to its account; the total (with VAT) is credited to Account Payable.'
     ws['B62'].font = note_font
 
+    # ---------------- Issue Entry ----------------
+    ws = wb.create_sheet('Issue Entry')
+    look(ws, 'B45309', freeze='A10')
+    banner(ws, 'Issue Entry (Inventory Issue)', 'Stock going out to a department or job - fill the yellow cells, '
+           'then Submit Issue. Needs internet (it posts straight to the system).', 2, 9)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFGHI', (40, 16, 12, 16, 16, 18, 20, 18)):
+        ws.column_dimensions[col].width = w
+    for rw, label in ((4, 'Issue Date'), (5, 'From Location'), (6, 'Charge to Account'), (7, 'Job No (optional)')):
+        ws.cell(row=rw, column=2, value=label).font = label_font
+        ws.merge_cells(start_row=rw, start_column=3, end_row=rw, end_column=4)
+        inp(ws.cell(row=rw, column=3))
+        inp(ws.cell(row=rw, column=4))
+    ws['C4'] = date.today()
+    ws['C4'].number_format = 'yyyy-mm-dd'
+    ws['B8'] = 'Narration'
+    ws['B8'].font = label_font
+    ws.merge_cells('C8:F8')
+    inp(ws['C8'])
+    ws.cell(row=4, column=7, value='Total Value').font = label_font
+    tv = ws.cell(row=4, column=8, value='=ROUND(SUMPRODUCT(D11:D60,E11:E60),2)')
+    tv.number_format, tv.border = AMT, box
+    tv.font = Font(bold=True, color=NAVY, size=12)
+    tv.fill = fill('E8F3E8')
+    ws['G6'] = 'Dr the account above, Cr Inventory.'
+    ws['G6'].font = note_font
+    ws['B9'] = 'Long list? Click the cell, press Ctrl+Shift+F, type part of the item or account name.'
+    ws['B9'].font = note_font
+    head_row(ws, 10, ['Item (pick from list)', 'Qty Out', 'Unit Cost', 'Value', 'Memo'],
+             first_col=2, widths=[40, 12, 16, 16, 30])
+    dv_iitem = DataValidation(type='list', formula1='ItemList', allow_blank=True, showErrorMessage=True,
+                              errorTitle='Item', error='Pick an item from the list.')
+    dv_iacc = DataValidation(type='list', formula1='IssueAccountList', allow_blank=True, showErrorMessage=False)
+    dv_iloc = DataValidation(type='list', formula1='LocationList', allow_blank=True, showErrorMessage=False)
+    dv_ijob = DataValidation(type='list', formula1='JobList', allow_blank=True, showErrorMessage=False)
+    for dv in (dv_iitem, dv_iacc, dv_iloc, dv_ijob):
+        ws.add_data_validation(dv)
+    dv_iloc.add(ws['C5'])
+    dv_iacc.add(ws['C6'])
+    dv_ijob.add(ws['C7'])
+    for rw in range(11, 61):
+        inp(ws.cell(row=rw, column=2))
+        inp(ws.cell(row=rw, column=3), QTY)
+        # Starts as the item's cost from the Items sheet; typing a figure
+        # replaces the formula, which is what the note under the table says.
+        inp(ws.cell(row=rw, column=4), AMT)
+        ws.cell(row=rw, column=4).value = (
+            f'=IF($B{rw}="","",IFERROR(INDEX(Items!$J:$J,MATCH($B{rw},Items!$B:$B,0)),""))')
+        v = ws.cell(row=rw, column=5, value=f'=IF(C{rw}="","",ROUND(C{rw}*D{rw},2))')
+        v.number_format, v.border = AMT, box
+        inp(ws.cell(row=rw, column=6))
+        dv_iitem.add(ws.cell(row=rw, column=2))
+    ws['B62'] = ('Unit Cost fills from the Items sheet when you pick an item - type over it if the issue '
+                 'should go out at a different cost.')
+    ws['B62'].font = note_font
+
     # ---------------- Bin Card ----------------
     ws = wb.create_sheet('Bin Card')
     look(ws, '038387', freeze='A9', landscape=False)
@@ -32827,14 +32996,21 @@ def excel_inventory_workbook():
     sub_accounts = [f"{s['sub_account_code']} - {s['sub_sub_accaount_name']}" for s in (db.execute_query("""
         SELECT sub_account_code, sub_sub_accaount_name FROM sub_accont_for_new_account
         WHERE active = 1 ORDER BY sub_sub_accaount_name""") or [])]
-    ws.append(['Suppliers', 'Payment method', 'Locations', 'Jobs', 'Accounts (SRN)', 'Sub accounts (SRN)'])
-    for k in range(max(len(suppliers), len(locations), len(jobs), len(accounts), len(sub_accounts))):
+    issue_accounts = [a['account_name'] for a in (db.execute_query("""
+        SELECT account_name FROM new_account_table
+        WHERE account_active = 1 AND (account_expenses = 1 OR account_assets = 1)
+        ORDER BY account_name""") or [])]
+    ws.append(['Suppliers', 'Payment method', 'Locations', 'Jobs', 'Accounts (SRN)', 'Sub accounts (SRN)',
+               'Accounts (Issue)'])
+    for k in range(max(len(suppliers), len(locations), len(jobs), len(accounts), len(sub_accounts),
+                       len(issue_accounts))):
         ws.append([suppliers[k]['name'] if k < len(suppliers) else None,
                    suppliers[k]['method'] if k < len(suppliers) else None,
                    locations[k] if k < len(locations) else None,
                    jobs[k] if k < len(jobs) else None,
                    accounts[k] if k < len(accounts) else None,
-                   sub_accounts[k] if k < len(sub_accounts) else None])
+                   sub_accounts[k] if k < len(sub_accounts) else None,
+                   issue_accounts[k] if k < len(issue_accounts) else None])
     ws.sheet_state = 'hidden'
 
     ws = wb.create_sheet('Setup')
@@ -32853,7 +33029,8 @@ def excel_inventory_workbook():
                       ('LocationList', 'OFFSET(Lists!$C$2,0,0,MAX(1,COUNTA(Lists!$C:$C)-1),1)'),
                       ('JobList', 'OFFSET(Lists!$D$2,0,0,MAX(1,COUNTA(Lists!$D:$D)-1),1)'),
                       ('AccountList', 'OFFSET(Lists!$E$2,0,0,MAX(1,COUNTA(Lists!$E:$E)-1),1)'),
-                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)')):
+                      ('SubAccountList', 'OFFSET(Lists!$F$2,0,0,MAX(1,COUNTA(Lists!$F:$F)-1),1)'),
+                      ('IssueAccountList', 'OFFSET(Lists!$G$2,0,0,MAX(1,COUNTA(Lists!$G:$G)-1),1)')):
         dn = DefinedName(name, attr_text=ref)
         try:
             wb.defined_names[name] = dn
@@ -33571,6 +33748,89 @@ Public Sub GoSRN()
     Sh("SRN Entry").Range("C4").Select
 End Sub
 
+Public Sub SubmitIssue()
+    Dim ws As Worksheet, rw As Long, lines As String, body As String, r As String
+    Dim loc As String, acct As String, ref As String, st As Long, total As Double
+    Dim itemName As String, qty As Double, cost As Double
+    Set ws = Sh("Issue Entry")
+    loc = Trim$(CStr(ws.Range("C5").Value))
+    acct = Trim$(CStr(ws.Range("C6").Value))
+    If loc = "" Then MsgBox "Pick the location the stock goes out of (C5).", vbExclamation, "Suwin ERP": ws.Range("C5").Select: Exit Sub
+    If acct = "" Then MsgBox "Pick the account to charge (C6).", vbExclamation, "Suwin ERP": ws.Range("C6").Select: Exit Sub
+    For rw = 11 To 60
+        itemName = Trim$(CStr(ws.Cells(rw, 2).Value))
+        qty = Val(Replace(CStr(ws.Cells(rw, 3).Value), ",", ""))
+        cost = Val(Replace(CStr(ws.Cells(rw, 4).Value), ",", ""))
+        If itemName <> "" And qty > 0 Then
+            If cost <= 0 Then
+                MsgBox "Line " & rw & ": type the unit cost for """ & itemName & """.", vbExclamation, "Suwin ERP"
+                ws.Cells(rw, 4).Select
+                Exit Sub
+            End If
+            lines = AddItem(lines, Jq("item", JsonStr(itemName)) & "," & _
+                    Jq("qty", JsonNum(ws.Cells(rw, 3).Value)) & "," & _
+                    Jq("cost", JsonNum(ws.Cells(rw, 4).Value)) & "," & _
+                    Jq("memo", JsonStr(ws.Cells(rw, 6).Value)))
+            total = total + qty * cost
+        ElseIf itemName <> "" And qty <= 0 Then
+            MsgBox "Line " & rw & ": type the quantity for """ & itemName & """.", vbExclamation, "Suwin ERP"
+            ws.Cells(rw, 3).Select
+            Exit Sub
+        End If
+    Next rw
+    If lines = "" Then MsgBox "Type at least one item with a quantity.", vbExclamation, "Suwin ERP": Exit Sub
+    If MsgBox("Post this Inventory Issue to the system?" & vbCrLf & vbCrLf & _
+              "Out of " & loc & vbCrLf & "Charged to " & acct & vbCrLf & _
+              "Total " & Format$(total, "#,##0.00"), _
+              vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+
+    ref = Trim$(CStr(SetupSheet().Range("B7").Value)) & "-ISS-" & Format$(Now, "yyyymmddhhnnss")
+    body = "{" & Jq("ref", JsonStr(ref)) & "," & _
+           Jq("date", JsonStr(Ymd(ws.Range("C4").Value))) & "," & _
+           Jq("location", JsonStr(loc)) & "," & _
+           Jq("account", JsonStr(acct)) & "," & _
+           Jq("job_no", JsonStr(ws.Range("C7").Value)) & "," & _
+           Jq("narration", JsonStr(ws.Range("C8").Value)) & "," & _
+           Jq("lines", "[" & lines & "]") & "}"
+    Application.StatusBar = "Suwin ERP: posting the Inventory Issue..."
+    r = Http("POST", "/api/xl/inv/issue", body, st)
+    Application.StatusBar = False
+    If st = 0 Then
+        MsgBox "No internet connection - an Issue has to be posted online. Try again when you are connected.", _
+               vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    If JsonValue(r, "ok") = "true" Then
+        SayResult JsonValue(r, "message")
+        MsgBox JsonValue(r, "message"), vbInformation, "Suwin ERP"
+        ClearIssue True
+    Else
+        MsgBox JsonValue(r, "message") & JsonValue(r, "error"), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+Public Sub ClearIssue(Optional ByVal silent As Boolean = False)
+    Dim ws As Worksheet
+    Set ws = Sh("Issue Entry")
+    If Not silent Then
+        If MsgBox("Clear the Issue form?", vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+    End If
+    ws.Range("C5").MergeArea.ClearContents
+    ws.Range("C6").MergeArea.ClearContents
+    ws.Range("C7").MergeArea.ClearContents
+    ws.Range("C8").MergeArea.ClearContents
+    ws.Range("B11:D60").ClearContents
+    ws.Range("F11:F60").ClearContents
+    ws.Range("C4").Value = Date
+    ws.Activate
+    ws.Range("C5").Select
+End Sub
+
+Public Sub GoIssue()
+    Sh("Issue Entry").Activate
+    Sh("Issue Entry").Range("C5").Select
+End Sub
+
 Public Sub ClearGRN(Optional ByVal silent As Boolean = False)
     Dim ws As Worksheet
     Set ws = Sh("GRN Entry")
@@ -33660,7 +33920,7 @@ End Sub
 ' ---- Download items, balances and movements --------------------------------
 Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
     Dim r As String, st As Long, rows_ As Variant, cols As Variant, i As Long, j As Long, n As Long
-    Dim items() As Variant, ns As Long, nl As Long, nj As Long, na As Long, nsa As Long, lst As Worksheet, itm As Worksheet
+    Dim items() As Variant, ns As Long, nl As Long, nj As Long, na As Long, nsa As Long, nia As Long, lst As Worksheet, itm As Worksheet
     Dim sb As Worksheet, mv As Worksheet, months As Long, mvData() As Variant, m As Long, reg As Worksheet, rw As Long
     If ApiKey() = "" Then
         If Not quiet Then SetApiKey
@@ -33685,7 +33945,7 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
     Set lst = Sh("Lists")
     Set sb = Sh("Stock Balance")
     itm.Range("A2:M20000").ClearContents
-    lst.Range("A2:F20000").ClearContents
+    lst.Range("A2:G20000").ClearContents
     If n > 0 Then ReDim items(1 To n, 1 To 13)
     n = 0
     For i = 0 To UBound(rows_)
@@ -33715,6 +33975,9 @@ Public Sub SyncFromSystem(Optional ByVal quiet As Boolean = False)
             Case "SUB"
                 nsa = nsa + 1
                 lst.Cells(1 + nsa, 6).Value = cols(2)
+            Case "IACC"
+                nia = nia + 1
+                lst.Cells(1 + nia, 7).Value = cols(1)
             End Select
         End If
     Next i
@@ -34073,7 +34336,8 @@ Public Sub PickFromList()
 End Sub
 
 Public Sub AddButtons()
-    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "Stock Count", "GoCount", _
+    PutButtons "Home", "E4", Array("New GRN", "NewGRN", "New SRN", "GoSRN", "New Issue", "GoIssue", _
+                                   "Stock Count", "GoCount", _
                                    "Counted Balance", "GoCountedBalance", "Submit Pending", "SubmitPending", _
                                    "Sync from System", "SyncFromSystem", "Stock Balance", "GoStockBalance", _
                                    "Bin Card", "GoBinCard", "Set API Key", "SetApiKey"), True
@@ -34088,6 +34352,9 @@ Public Sub AddButtons()
                                               "Find Item", "FindItem", "Stock Count", "GoCount")
     PutButtons "SRN Entry", "L1", Array("Submit SRN", "SubmitSRN", "Clear Form", "ClearSRN", _
                                         "Find in list", "PickFromList", "GRN Entry", "GoGRN")
+    PutButtons "Issue Entry", "K1", Array("Submit Issue", "SubmitIssue", "Clear Form", "ClearIssue", _
+                                          "Find in list", "PickFromList", "GRN Entry", "GoGRN", _
+                                          "Home", "GoHome")
     PutButtons "GRN Register", "N1", Array("Submit Pending", "SubmitPending", "Sync from System", "SyncFromSystem")
     PutButtons "Stock Balance", "Q1", Array("Find Item", "FindItem", "Sync from System", "SyncFromSystem", _
                                             "Bin Card", "GoBinCard", "Counted Balance", "GoCountedBalance")
