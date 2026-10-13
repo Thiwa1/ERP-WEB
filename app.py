@@ -227,6 +227,7 @@ MENU_ITEMS_REGISTRY = [
     {'key': 'ledger_view',        'label': 'Ledger View',          'url': '/ledger_view',            'icon': 'fas fa-book-open',           'category': 'Reports'},
     {'key': 'trial_balance',      'label': 'Trial Balance',        'url': '/trial_balance',          'icon': 'fas fa-balance-scale-left',  'category': 'Reports'},
     {'key': 'bank_rec_history',   'label': 'Bank Rec. History',    'url': '/bank_reconciliation/history', 'icon': 'fas fa-clipboard-check',  'category': 'Reports'},
+    {'key': 'bank_forecast',      'label': 'Projected Bank Balance','url': '/bank_forecast',         'icon': 'fas fa-chart-line',          'category': 'Reports'},
     {'key': 'supplier_aging',     'label': 'Supplier Aging',       'url': '/supplier_aging',         'icon': 'fas fa-history',             'category': 'Reports'},
     {'key': 'supplier_payments',  'label': 'Supplier Payments',    'url': '/supplier_payments_report','icon': 'fas fa-money-check-dollar', 'category': 'Reports'},
     {'key': 'grn_payment_method', 'label': 'Supplier Payment Method',   'url': '/grn_payment_method_report','icon': 'fas fa-money-check',       'category': 'Reports'},
@@ -10558,6 +10559,157 @@ def process_reconciliation():
         flash(f'Error processing reconciliation: {str(e)}', 'danger')
 
     return redirect(url_for('bank_reconciliation', bank_account=bank_account, rec_date=rec_date))
+
+BANK_FORECAST_CARD_FEE = 2.5     # % the card company keeps on a settlement
+
+
+def _bank_forecast(bank_account, days=60, card_fee=BANK_FORECAST_CARD_FEE):
+    """What the bank balance becomes once everything already in the books
+    reaches the bank: today's balance, then the dated movements still to come.
+
+    Card takings sit in their own control account until the card company
+    settles them, and settle net of commission - so they come in at
+    (100 - fee)%, with the fee shown as its own outgoing line. Postdated
+    cheques land on the date written on the cheque, not today."""
+    today = date.today()
+    horizon = today + timedelta(days=days)
+
+    opening = 0.0
+    row = db.execute_query("""
+        SELECT COALESCE(SUM(enty_values_DR), 0) - COALESCE(SUM(enty_values_CR), 0) AS bal
+        FROM entry_details
+        WHERE TRIM(account_name) = TRIM(%s) AND entry_deleted = 0
+          AND DATE(COALESCE(entry_effective_date, entry_create_date)) <= %s
+    """, (bank_account, today))
+    if row:
+        opening = float(row[0]['bal'] or 0)
+
+    items = []
+
+    # Card control accounts: whatever is sitting in them is money taken but
+    # not yet settled into the bank.
+    card_keys = ('daily_sales_card_sampath_account', 'daily_sales_card_hnb_account')
+    placeholders = ','.join(['%s'] * len(card_keys))
+    for s in db.execute_query(
+            f"SELECT setting_key, setting_value FROM system_settings WHERE setting_key IN ({placeholders})",
+            card_keys) or []:
+        acct = (s['setting_value'] or '').strip()
+        if not acct:
+            continue
+        r = db.execute_query("""
+            SELECT COALESCE(SUM(enty_values_DR), 0) - COALESCE(SUM(enty_values_CR), 0) AS bal
+            FROM entry_details
+            WHERE TRIM(account_name) = TRIM(%s) AND entry_deleted = 0
+              AND DATE(COALESCE(entry_effective_date, entry_create_date)) <= %s
+        """, (acct, today))
+        held = round(float(r[0]['bal'] or 0), 2) if r else 0.0
+        if abs(held) < 0.005:
+            continue
+        fee = round(held * card_fee / 100.0, 2)
+        items.append({'date': today, 'kind': 'card', 'ref': acct,
+                      'detail': f'Card settlement ({acct})', 'amount': round(held - fee, 2)})
+        items.append({'date': today, 'kind': 'card_fee', 'ref': acct,
+                      'detail': f'Card commission {card_fee:g}% on {held:,.2f}', 'amount': -fee})
+
+    # Postdated cheques, on the date written on the cheque.
+    try:
+        for p in db.execute_query("""
+                SELECT pdc_type, party_name, cheque_no, post_date, amount, account_name
+                FROM postdated_cheques
+                WHERE status = 'pending' AND TRIM(account_name) = TRIM(%s)
+                ORDER BY post_date, id
+            """, (bank_account,)) or []:
+            amt = round(float(p['amount'] or 0), 2)
+            out = p['pdc_type'] == 'payment'
+            items.append({'date': p['post_date'], 'kind': 'cheque_out' if out else 'cheque_in',
+                          'ref': p['cheque_no'] or '',
+                          'detail': ('Cheque %s to %s' if out else 'Cheque %s from %s')
+                                    % (p['cheque_no'] or '', p['party_name'] or ''),
+                          'amount': -amt if out else amt})
+    except Exception as e:
+        logging.warning(f"Bank forecast: postdated cheques unavailable - {e}")
+
+    items = [i for i in items if i['date'] and i['date'] <= horizon]
+    items.sort(key=lambda i: (str(i['date']), i['detail']))
+
+    running = opening
+    for i in items:
+        running = round(running + i['amount'], 2)
+        i['balance'] = running
+        i['overdue'] = i['date'] < today
+
+    return {'bank_account': bank_account, 'today': today, 'horizon': horizon, 'days': days,
+            'card_fee': card_fee, 'opening': round(opening, 2), 'items': items,
+            'closing': round(running, 2),
+            'total_in': round(sum(i['amount'] for i in items if i['amount'] > 0), 2),
+            'total_out': round(sum(i['amount'] for i in items if i['amount'] < 0), 2)}
+
+
+@app.route('/bank_forecast')
+@login_required
+@has_any_permission('Access_Reports', 'Access_Accounting')
+def bank_forecast():
+    """Projected bank balance: what today's balance becomes once the card
+    settlements and postdated cheques already in the books reach the bank."""
+    bank_accounts = [b['bank_bookcol_account_number'] for b in (
+        db.execute_query("SELECT bank_bookcol_account_number FROM bank_book") or [])
+        if b['bank_bookcol_account_number']]
+    bank_account = (request.args.get('bank_account') or '').strip() or (bank_accounts[0] if bank_accounts else '')
+    try:
+        days = max(1, min(365, int(request.args.get('days') or 60)))
+    except ValueError:
+        days = 60
+    try:
+        card_fee = float(request.args.get('card_fee') or BANK_FORECAST_CARD_FEE)
+    except ValueError:
+        card_fee = BANK_FORECAST_CARD_FEE
+
+    data = _bank_forecast(bank_account, days, card_fee) if bank_account else None
+
+    if data and request.args.get('download') == 'xlsx':
+        try:
+            import excel_export as xl
+        except ImportError:
+            flash("The export needs the 'openpyxl' package on the server.", 'warning')
+            return redirect(url_for('bank_forecast', bank_account=bank_account, days=days))
+        wb, ws = xl.new_workbook('Bank Forecast')
+        _bank_forecast_write(ws, data, _company_display_name())
+        return xl.workbook_response(wb, f"Bank_Forecast_{bank_account}_{data['today']}.xlsx")
+
+    return render_template('bank_forecast.html', data=data, bank_accounts=bank_accounts,
+                           bank_account=bank_account, days=days, card_fee=card_fee)
+
+
+def _bank_forecast_write(ws, data, company):
+    """The forecast on a worksheet - used by the web export and the workbook."""
+    import excel_export as xl
+    row = xl.title_block(ws, 5, company, 'PROJECTED BANK BALANCE',
+                         f"{data['bank_account']} - as at {data['today']}, next {data['days']} day(s)")
+    row = xl.header_row(ws, row, ['Date', 'What', 'Reference', 'Amount', 'Balance'])
+    row = xl.data_row(ws, row, [str(data['today']), 'Balance in the books today', '', None, data['opening']],
+                      num_cols=(5,))
+    for i in data['items']:
+        row = xl.data_row(ws, row, [str(i['date']), i['detail'], i['ref'], i['amount'], i['balance']],
+                          num_cols=(4, 5))
+    # total_row writes the label in column 1 and amounts from column 2, which
+    # would scatter blanks across the middle of this table - so the closing
+    # line is written where it belongs instead.
+    from openpyxl.styles import Alignment, Font, PatternFill
+    band = PatternFill('solid', fgColor='F3F3F3')
+    for col in range(1, 6):
+        ws.cell(row=row, column=col).fill = band
+    lab = ws.cell(row=row, column=2, value='Projected balance on %s' % data['horizon'])
+    lab.font = Font(bold=True, size=10, color='1A1A2E')
+    lab.alignment = Alignment(horizontal='right')
+    end = ws.cell(row=row, column=5, value=float(data['closing']))
+    end.number_format = xl.NUM_FMT
+    end.font = Font(bold=True, size=10, color='1A1A2E')
+    end.alignment = Alignment(horizontal='right')
+    row += 1
+    xl.finish(ws, 5, first_col_width=14)
+    ws.column_dimensions['B'].width = 46
+    return row
+
 
 @app.route('/bank_reconciliation/history', methods=['GET'])
 @login_required

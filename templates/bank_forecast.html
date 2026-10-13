@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+
+{% block title %}Projected Bank Balance{% endblock %}
+
+{% block content %}
+{% macro money(v) %}{{ '{:,.2f}'.format(v or 0) }}{% endmacro %}
+<style>
+  .bf-card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:10px; margin-bottom:14px; overflow:hidden; }
+  table.bf { width:100%; border-collapse:collapse; font-size:0.84rem; }
+  table.bf th, table.bf td { border-bottom:1px solid #eee; padding:6px 10px; }
+  table.bf th { background:#f3f7fc; font-size:0.72rem; text-transform:uppercase; color:#555; }
+  table.bf td.num, table.bf th.num { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  tr.bf-open td, tr.bf-close td { background:#f3f9ff; font-weight:700; }
+  tr.bf-close td { border-top:2px solid rgba(0,103,192,0.25); }
+  .bf-in { color:#107c10; font-weight:600; }
+  .bf-out { color:#c0392b; font-weight:600; }
+  .bf-late { background:#fff8e6; }
+  @media print { .no-print { display:none !important; } }
+</style>
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3 no-print">
+  <div>
+    <h4 class="mb-0 fw-bold"><i class="fas fa-chart-line me-2 text-primary"></i>Projected Bank Balance</h4>
+    <small class="text-muted">What the balance becomes once the card settlements and postdated cheques
+      already in the books reach the bank.</small>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    {% if data %}
+    <a class="btn btn-success btn-sm" href="{{ url_for('bank_forecast', bank_account=bank_account, days=days, card_fee=card_fee, download='xlsx') }}">
+      <i class="fas fa-file-excel me-1"></i> Excel</a>
+    {% endif %}
+    <button class="btn btn-outline-secondary btn-sm" onclick="window.print()"><i class="fas fa-print me-1"></i> Print</button>
+  </div>
+</div>
+
+<div class="bf-card no-print">
+  <div class="p-3">
+    <form method="GET" class="row g-2 align-items-end">
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Bank account</label>
+        <select name="bank_account" class="form-select form-select-sm">
+          {% for b in bank_accounts %}
+          <option value="{{ b }}" {{ 'selected' if b == bank_account }}>{{ b }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Look ahead (days)</label>
+        <input type="number" name="days" value="{{ days }}" min="1" max="365" class="form-control form-control-sm" style="width:110px;">
+      </div>
+      <div class="col-auto">
+        <label class="form-label small fw-semibold mb-1">Card commission %</label>
+        <input type="number" name="card_fee" value="{{ card_fee }}" step="0.01" min="0" max="100" class="form-control form-control-sm" style="width:120px;">
+      </div>
+      <div class="col-auto">
+        <button class="btn btn-primary btn-sm"><i class="fas fa-sync me-1"></i> Show</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% if not data %}
+<div class="bf-card"><div class="p-4 text-center text-muted">No bank account to forecast.</div></div>
+{% else %}
+<div class="bf-card">
+  <div class="p-3">
+    <div class="fw-bold" style="font-size:1rem;">{{ data.bank_account }}</div>
+    <div class="text-muted small">As at {{ data.today }} &middot; to {{ data.horizon }}
+      &middot; card commission {{ '%g'|format(data.card_fee) }}%</div>
+  </div>
+  <div class="table-responsive">
+    <table class="bf">
+      <thead>
+        <tr>
+          <th style="width:110px;">Date</th><th>What</th><th style="width:140px;">Reference</th>
+          <th class="num" style="width:150px;">Amount</th><th class="num" style="width:160px;">Balance</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="bf-open">
+          <td>{{ data.today }}</td><td>Balance in the books today</td><td></td>
+          <td class="num"></td><td class="num">{{ money(data.opening) }}</td>
+        </tr>
+        {% for i in data['items'] %}
+        <tr class="{{ 'bf-late' if i.overdue }}">
+          <td>{{ i.date }}{% if i.overdue %} <span class="badge bg-warning text-dark" style="font-size:.62rem;">past</span>{% endif %}</td>
+          <td>{{ i.detail }}</td>
+          <td class="text-muted small">{{ i.ref }}</td>
+          <td class="num {{ 'bf-in' if i.amount > 0 else 'bf-out' }}">{{ money(i.amount) }}</td>
+          <td class="num">{{ money(i.balance) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="text-center text-muted py-4">Nothing on the way in or out of this account.</td></tr>
+        {% endfor %}
+        <tr class="bf-close">
+          <td></td><td>Projected balance on {{ data.horizon }}</td><td></td>
+          <td class="num"></td><td class="num">{{ money(data.closing) }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="p-3 small text-muted">
+    Coming in <span class="bf-in">{{ money(data.total_in) }}</span> &middot;
+    going out <span class="bf-out">{{ money(data.total_out) }}</span>.
+    Card takings sit in their own control account until the card company settles them, so they come in at
+    {{ '%g'|format(100 - data.card_fee) }}% with the commission shown as its own line.
+    Cheques land on the date written on the cheque &mdash; a
+    <span class="badge bg-warning text-dark" style="font-size:.62rem;">past</span> row is one whose date has
+    already gone by without being cleared.
+    <br><strong>This is only what is already in the books.</strong> Sales you have not entered, invoices not yet
+    raised and payments not yet recorded are not in it.
+  </div>
+</div>
+{% endif %}
+{% endblock %}
