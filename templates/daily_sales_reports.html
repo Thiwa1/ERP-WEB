@@ -131,7 +131,7 @@
             <tr class="rp-sec"><td colspan="3">Cross-check &mdash; where the revenue above was entered</td></tr>
             <tr class="rp-muted"><td>Total Income as per Daily Sales Entry <span class="fw-normal">(this page's entry, bar excluded)</span></td>
               <td class="num">{{ money(d.total_income[0]) }}</td><td class="num">{{ money(d.total_income[1]) }}</td></tr>
-            <tr class="rp-muted"><td>Add: Bar Sales Record <span class="fw-normal">(Bar + Bar Food, entered on the Bar Sales page)</span></td>
+            <tr class="rp-muted"><td>Add: Bar Sales Record <span class="fw-normal">(Bar + Bar Food + card service charge, entered on the Bar Sales page)</span></td>
               <td class="num">{{ money(d.bar_income[0]) }}</td><td class="num">{{ money(d.bar_income[1]) }}</td></tr>
             <tr class="rp-muted"><td>Total entered <span class="fw-normal">(should equal Total Revenue above)</span></td>
               <td class="num">{{ money(d.income_check[0]) }}</td><td class="num">{{ money(d.income_check[1]) }}</td></tr>

@@ -22343,7 +22343,10 @@ def _daily_sales_report_data(as_of):
     # Bar sales are recorded on the Bar Sales Record page, not in Daily Sales
     # Entry - report rows pick them up through the BARSALES:bar / BARSALES:food keys.
     bar_days = db.execute_query("""
-        SELECT entry_date, bar_sales, food_sales FROM bar_sales_days WHERE entry_date BETWEEN %s AND %s
+        SELECT entry_date, bar_sales, food_sales,
+               COALESCE(bar_commission, 0) AS bar_commission,
+               COALESCE(food_commission, 0) AS food_commission
+        FROM bar_sales_days WHERE entry_date BETWEEN %s AND %s
     """, (month_start, as_of)) or []
 
     def sums(keys, field):
@@ -22364,6 +22367,14 @@ def _daily_sales_report_data(as_of):
                             t += v
         return round(t, 2), round(m, 2)
 
+    # Card service charge taken on the Bar Sales Record. It is credited to
+    # the Service Charge account, so R1's Service Charge row has to carry it
+    # or the report disagrees with the ledger.
+    bar_card_svc_today = round(sum(float(d['bar_commission'] or 0) + float(d['food_commission'] or 0)
+                                   for d in bar_days if d['entry_date'] == as_of), 2)
+    bar_card_svc_mtd = round(sum(float(d['bar_commission'] or 0) + float(d['food_commission'] or 0)
+                                 for d in bar_days), 2)
+
     # ---------------- R1
     rows = db.execute_query("""
         SELECT id, row_key, label, row_type, category_keys, room_count, display_order
@@ -22376,6 +22387,13 @@ def _daily_sales_report_data(as_of):
         keys = {k.strip() for k in (r['category_keys'] or '').split(',') if k.strip()}
         if r['row_type'] == 'REVENUE':
             t, m = sums(keys, 'amount')
+            # The card service charge on the Bar Sales Record is credited to
+            # the same Service Charge account as the daily sales one, so a
+            # Service Charge row that counts only the Daily Sales Entry side
+            # reads short against the GL and against Daily Sales 2.
+            if 'SERVICE_CHARGE' in keys:
+                t = round(t + bar_card_svc_today, 2)
+                m = round(m + bar_card_svc_mtd, 2)
             mapped_revenue_keys |= keys
             tot_today += t
             tot_mtd += m
@@ -22409,9 +22427,13 @@ def _daily_sales_report_data(as_of):
     # Bar sales live on the Bar Sales Record page, so they are in the revenue
     # rows above but not in the Daily Sales Entry total - shown separately so
     # the cross-check at the foot of R1 adds up to Total Revenue.
+    # The card service charge is counted in the Service Charge row above, so
+    # it belongs on this side of the cross-check too - otherwise the foot of
+    # R1 no longer adds up to Total Revenue.
     bar_income_today = round(sum(float(d['bar_sales'] or 0) + float(d['food_sales'] or 0)
-                                 for d in bar_days if d['entry_date'] == as_of), 2)
-    bar_income_mtd = round(sum(float(d['bar_sales'] or 0) + float(d['food_sales'] or 0) for d in bar_days), 2)
+                                 for d in bar_days if d['entry_date'] == as_of), 2) + bar_card_svc_today
+    bar_income_mtd = round(sum(float(d['bar_sales'] or 0) + float(d['food_sales'] or 0)
+                               for d in bar_days), 2) + bar_card_svc_mtd
 
     # ---------------- R2
     def e_sum(field):
@@ -34583,7 +34605,7 @@ def _daily_sales_reports_export_build():
             r = xl.item_row(ws, r, ('(Less) ' if u['deduct'] else '') + u['label'], [u['today'], u['mtd']])
     r = xl.section_row(ws, r, 3, 'Cross-check - where the revenue above was entered')
     r = xl.item_row(ws, r, 'Total Income as per Daily Sales Entry (bar excluded)', [d['total_income'][0], d['total_income'][1]])
-    r = xl.item_row(ws, r, 'Add: Bar Sales Record (Bar + Bar Food)', [d['bar_income'][0], d['bar_income'][1]])
+    r = xl.item_row(ws, r, 'Add: Bar Sales Record (Bar + Bar Food + card service charge)', [d['bar_income'][0], d['bar_income'][1]])
     r = xl.total_row(ws, r, 'Total entered', [d['income_check'][0], d['income_check'][1]])
     xl.finish(ws, 3, first_col_width=46, num_col_width=20)
 
