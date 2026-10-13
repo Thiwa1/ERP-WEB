@@ -1635,8 +1635,11 @@ def add_inventory_item():
             supplier_code = request.form.get('supplier_code')
             batch_code = request.form.get('batch_code')
             unit = request.form.get('measurement_unit')
-            main_cat = request.form.get('main_category')
-            sub_cat = request.form.get('sub_category')
+            # Both columns are foreign keys into inventory_carogory. An empty
+            # string is not a category there and fails the constraint, while
+            # NULL is allowed - so "no category chosen" has to be NULL.
+            main_cat = (request.form.get('main_category') or '').strip() or None
+            sub_cat = (request.form.get('sub_category') or '').strip() or None
             min_qty = parse_float(request.form.get('min_qty', 0))
             stock_maintained = 1 if request.form.get('stock_maintained') else 0
 
@@ -9007,8 +9010,10 @@ def update_inventory_prices():
     for i in range(len(item_ids)):
         link_id = str(item_ids[i])
         new_name = item_names[i].strip() if i < len(item_names) else ''
-        new_main = main_cats[i].strip() if i < len(main_cats) else ''
-        new_sub = sub_cats[i].strip() if i < len(sub_cats) else ''
+        # Blank has to reach the UPDATE as NULL: both columns are foreign keys
+        # into inventory_carogory, and '' is not a category there.
+        new_main = (main_cats[i].strip() if i < len(main_cats) else '') or None
+        new_sub = (sub_cats[i].strip() if i < len(sub_cats) else '') or None
         prev_name = old_names[i] if i < len(old_names) else ''
         prev_main = old_main_cats[i] if i < len(old_main_cats) else ''
         prev_sub = old_sub_cats[i] if i < len(old_sub_cats) else ''
@@ -9033,10 +9038,12 @@ def update_inventory_prices():
         field_changes = []
         if new_name and new_name != prev_name:
             field_changes.append(('item_name', prev_name, new_name))
-        if new_main != prev_main:
-            field_changes.append(('main_category', prev_main, new_main))
-        if new_sub != prev_sub:
-            field_changes.append(('sub_category', prev_sub, new_sub))
+        # Compare as text: a cleared category is None here but '' in the
+        # baseline, which would otherwise log a change on every save.
+        if (new_main or '') != (prev_main or ''):
+            field_changes.append(('main_category', prev_main, new_main or ''))
+        if (new_sub or '') != (prev_sub or ''):
+            field_changes.append(('sub_category', prev_sub, new_sub or ''))
 
         if field_changes:
             effective_name = new_name if new_name else prev_name
