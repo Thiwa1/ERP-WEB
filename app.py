@@ -28495,6 +28495,154 @@ def food_costing():
                            outlets=outlets, costing_method=_fc_costing_method())
 
 
+@app.route('/api/xl/fc/lists', methods=['GET'])
+def xl_fc_lists():
+    """Everything the Food Costing workbook needs offline: the raw materials
+    with their current cost, and the menu items already saved with their
+    recipe lines."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    _fc_ensure_schema()
+    cost_map = _fc_ingredient_costs()
+    rows = [['INFO', date.today().strftime('%Y-%m-%d'), _company_display_name(), _fc_costing_method()]]
+    for r in (db.execute_query("""
+            SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code,
+                   ii.inventoy_items_messurment_unit AS unit
+            FROM inventoy_items ii WHERE ii.active = 1 ORDER BY ii.inventoy_name""") or []):
+        rows.append(['RAW', r['id'], r['name'] or '', r['code'] or '', r['unit'] or '',
+                     round(float(cost_map.get(r['name'], 0.0)), 4)])
+    for m in (db.execute_query("""
+            SELECT id, outlet, section, item_code, item_name, selling_price
+            FROM fc_menu_item WHERE active = 1 ORDER BY item_name""") or []):
+        rows.append(['MENU', m['id'], m['item_name'] or '', m['item_code'] or '',
+                     m['outlet'] or '', m['section'] or '', round(float(m['selling_price'] or 0), 2),
+                     round(float(_fc_plate_cost(m['id'], cost_map) or 0), 4)])
+    for l in (db.execute_query("""
+            SELECT menu_item_id, inventory_item_name, portion_qty, portion_unit
+            FROM fc_recipe_line ORDER BY menu_item_id, id""") or []):
+        rows.append(['LINE', l['menu_item_id'], l['inventory_item_name'] or '',
+                     round(float(l['portion_qty'] or 0), 4), l['portion_unit'] or ''])
+    return _xl_tsv(rows)
+
+
+@app.route('/api/xl/fc/menu', methods=['POST'])
+def xl_fc_menu():
+    """Save one menu item and its recipe from the workbook. Record only -
+    nothing here touches the ledger."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    _fc_ensure_schema()
+    b = _xl_body()
+    name = str(b.get('item_name') or '').strip()
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'message': msg}, 400)
+
+    if not name:
+        return fail('The menu item needs a name.')
+
+    items = {r['inventoy_name']: r['id'] for r in (db.execute_query(
+        "SELECT id, inventoy_name FROM inventoy_items WHERE active = 1") or [])}
+    lines = []
+    for l in b.get('lines') or []:
+        raw = str(l.get('item') or '').strip()
+        qty = round(parse_float(l.get('qty')), 4)
+        if not raw and not qty:
+            continue
+        if raw not in items:
+            return fail(f'Raw material "{raw}" is not in the system.')
+        if qty <= 0:
+            return fail(f'"{raw}": the quantity used must be more than 0.')
+        lines.append((items[raw], raw, qty, str(l.get('unit') or '').strip()))
+    if not lines:
+        return fail('Add at least one raw material with a quantity.')
+
+    existing = db.execute_query("SELECT id FROM fc_menu_item WHERE item_name = %s", (name,)) or []
+    price = round(parse_float(b.get('selling_price')), 2)
+    outlet = str(b.get('outlet') or 'Restaurant').strip()
+    section = str(b.get('section') or '').strip()
+    code = str(b.get('item_code') or '').strip()
+    if existing:
+        menu_id = existing[0]['id']
+        db.execute_query("""UPDATE fc_menu_item SET outlet=%s, section=%s, item_code=%s,
+                            selling_price=%s WHERE id=%s""",
+                         (outlet, section, code, price, menu_id), commit=True)
+    else:
+        menu_id = db.execute_query("""INSERT INTO fc_menu_item
+                            (outlet, section, item_code, item_name, selling_price)
+                            VALUES (%s,%s,%s,%s,%s)""",
+                                   (outlet, section, code, name, price), commit=True)
+    db.execute_query("DELETE FROM fc_recipe_line WHERE menu_item_id = %s", (menu_id,), commit=True)
+    for inv_id, raw, qty, unit in lines:
+        db.execute_query("""INSERT INTO fc_recipe_line
+                            (menu_item_id, inventory_item_id, inventory_item_name,
+                             portion_qty, portion_unit, stock_factor)
+                            VALUES (%s,%s,%s,%s,%s,1)""",
+                         (menu_id, inv_id, raw, qty, unit), commit=True)
+    cost = round(float(_fc_plate_cost(menu_id) or 0), 2)
+    return _xl_json({'ok': True, 'id': menu_id, 'plate_cost': cost,
+                     'message': f'"{name}" saved with {len(lines)} raw material(s). '
+                                f'Plate cost {cost:,.2f}.'})
+
+
+@app.route('/api/xl/fc/sales', methods=['POST'])
+def xl_fc_sales():
+    """Save one day's menu sales from the workbook: quantity sold and the
+    selling value per item. Record only - no GL entries are made."""
+    user_pk, err = _xl_auth('Access_Inventory')
+    if err:
+        return err
+    _fc_ensure_schema()
+    b = _xl_body()
+    ref = str(b.get('ref') or '').strip()[:64]
+
+    def fail(msg):
+        return _xl_json({'ok': False, 'ref': ref, 'message': msg}, 400)
+
+    sale_date = _dse_parse_date(b.get('date')).strftime('%Y-%m-%d')
+    menu = {m['item_name']: m for m in (db.execute_query(
+        "SELECT id, item_name, item_code, outlet, selling_price FROM fc_menu_item WHERE active = 1") or [])}
+    method = _fc_costing_method()
+    cost_map = _fc_ingredient_costs()
+
+    rows = []
+    for l in b.get('lines') or []:
+        name = str(l.get('item') or '').strip()
+        qty = round(parse_float(l.get('qty')), 4)
+        value = round(parse_float(l.get('value')), 2)
+        if not name and not qty:
+            continue
+        if name not in menu:
+            return fail(f'Menu item "{name}" is not in the system - save it on the Menu sheet first.')
+        if qty <= 0:
+            return fail(f'"{name}": the quantity sold must be more than 0.')
+        rows.append((menu[name], qty, value))
+    if not rows:
+        return fail('Nothing to save - type at least one item with a quantity.')
+
+    # Replacing the day means pressing Save twice cannot double a day's sales.
+    db.execute_query("DELETE FROM fc_sale WHERE sale_date = %s", (sale_date,), commit=True)
+    total_value = total_cost = 0.0
+    for m, qty, value in rows:
+        plate = round(float(_fc_plate_cost(m['id'], cost_map) or 0), 4)
+        unit_price = round(value / qty, 4) if qty else round(float(m['selling_price'] or 0), 4)
+        db.execute_query("""INSERT INTO fc_sale
+            (sale_date, outlet, menu_item_id, item_code, item_name, qty, unit_price,
+             plate_cost, cost_method, depleted)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,0)""",
+                         (sale_date, m['outlet'], m['id'], m['item_code'], m['item_name'],
+                          qty, unit_price, plate, method), commit=True)
+        total_value += value
+        total_cost += plate * qty
+    pct = round(total_cost / total_value * 100, 2) if total_value else 0
+    return _xl_json({'ok': True, 'ref': ref,
+                     'message': f'{len(rows)} item(s) saved for {sale_date}. '
+                                f'Sales {total_value:,.2f}, food cost {total_cost:,.2f} ({pct:g}%). '
+                                f'No ledger entries were made.'})
+
+
 @app.route('/api/food_costing/ingredients')
 @login_required
 def food_costing_ingredients():
@@ -36698,6 +36846,481 @@ def excel_bar_items_workbook_macro():
     resp = make_response(code.encode('cp1252', errors='replace'))
     resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
     resp.headers['Content-Disposition'] = 'attachment; filename=SuwinBarItems.bas'
+    return resp
+
+
+_XL_FC_VBA_CODE = r'''Attribute VB_Name = "SuwinFoodCosting"
+Option Explicit
+
+' Suwin ERP - Food Costing
+' Alt+F11 > File > Import File > this .bas, then press the buttons on Setup.
+'   Load Lists  - raw materials and the menus already saved
+'   Save Menu   - one menu item and its recipe
+'   Save Day    - one day's sales (quantity and value)
+' Nothing here posts to the ledger - Food Costing is a record only.
+
+Private Function Sh(ByVal nm As String) As Worksheet
+    On Error Resume Next
+    Set Sh = ThisWorkbook.Worksheets(nm)
+    On Error GoTo 0
+    If Sh Is Nothing Then
+        MsgBox "This is the Suwin ERP Food Costing macro, but """ & ThisWorkbook.Name & _
+               """ has no """ & nm & """ sheet." & vbCrLf & vbCrLf & _
+               "Import SuwinFoodCosting.bas into the Food Costing workbook instead.", _
+               vbExclamation, "Suwin ERP"
+        End
+    End If
+End Function
+
+Private Function IsFoodCostingBook() As Boolean
+    Dim probe As Worksheet
+    On Error Resume Next
+    Set probe = ThisWorkbook.Worksheets("Menu")
+    On Error GoTo 0
+    IsFoodCostingBook = Not probe Is Nothing
+End Function
+
+Private Function BaseUrl() As String
+    BaseUrl = Trim$(CStr(Sh("Setup").Range("C4").value))
+    If Right$(BaseUrl, 1) = "/" Then BaseUrl = Left$(BaseUrl, Len(BaseUrl) - 1)
+End Function
+
+Private Function ApiKey() As String
+    ApiKey = Trim$(CStr(Sh("Setup").Range("C6").value))
+End Function
+
+Private Sub Say(ByVal msg As String)
+    Sh("Setup").Range("C8").value = msg
+End Sub
+
+Private Function Esc(ByVal s As String) As String
+    s = Replace(s, "\", "\\")
+    s = Replace(s, """", "\""")
+    s = Replace(s, vbCr, " ")
+    s = Replace(s, vbLf, " ")
+    s = Replace(s, vbTab, " ")
+    Esc = s
+End Function
+
+Private Function Q(ByVal k As String, ByVal v As String) As String
+    Q = """" & k & """:""" & Esc(v) & """"
+End Function
+
+Private Function N(ByVal k As String, ByVal v As Variant) As String
+    N = """" & k & """:" & Replace(Trim$(CStr(Val(Replace(CStr(v), ",", "")))), ",", ".")
+End Function
+
+Private Function Ymd(ByVal v As Variant) As String
+    If IsDate(v) Then Ymd = Format$(CDate(v), "yyyy-mm-dd") Else Ymd = Trim$(CStr(v))
+End Function
+
+Private Function JsonVal(ByVal s As String, ByVal k As String) As String
+    Dim i As Long, j As Long
+    i = InStr(s, """" & k & """")
+    If i = 0 Then Exit Function
+    i = InStr(i, s, ":")
+    If i = 0 Then Exit Function
+    i = i + 1
+    Do While i <= Len(s) And (Mid$(s, i, 1) = " " Or Mid$(s, i, 1) = """")
+        i = i + 1
+    Loop
+    j = i
+    Do While j <= Len(s) And InStr(",}""", Mid$(s, j, 1)) = 0
+        j = j + 1
+    Loop
+    JsonVal = Mid$(s, i, j - i)
+End Function
+
+Private Function Http(ByVal verb As String, ByVal path As String, ByVal body As String, ByRef st As Long) As String
+    Dim h As Object
+    st = 0
+    If BaseUrl() = "" Or ApiKey() = "" Then
+        Say "Put the web address and your API key on this sheet first."
+        Exit Function
+    End If
+    On Error GoTo Failed
+    Set h = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    h.setTimeouts 20000, 20000, 60000, 120000
+    h.Open verb, BaseUrl() & path, False
+    h.setRequestHeader "X-API-Key", ApiKey()
+    If verb = "POST" Then h.setRequestHeader "Content-Type", "application/json"
+    h.send body
+    st = h.Status
+    Http = h.responseText
+    Exit Function
+Failed:
+    Say "Could not reach the server - " & Err.Description
+End Function
+
+Public Sub LoadLists()
+    Dim r As String, st As Long, lines_() As String, p() As String
+    Dim raw As Worksheet, mnu As Worksheet, i As Long, nr As Long, nm As Long
+
+    r = Http("GET", "/api/xl/fc/lists?format=tsv", "", st)
+    If st <> 200 Then
+        If st > 0 Then Say "Server said " & st & "."
+        Exit Sub
+    End If
+    Set raw = Sh("Raw Materials")
+    Set mnu = Sh("Saved Menus")
+    raw.Range("A2:E100000").ClearContents
+    mnu.Range("A2:F100000").ClearContents
+
+    r = Replace(r, vbCrLf, vbLf)
+    lines_ = Split(r, vbLf)
+    nr = 1
+    nm = 1
+    For i = LBound(lines_) To UBound(lines_)
+        If Len(Trim$(lines_(i))) > 0 Then
+            p = Split(lines_(i), vbTab)
+            Select Case p(0)
+            Case "RAW"
+                nr = nr + 1
+                raw.Cells(nr, 1).value = p(2)
+                raw.Cells(nr, 2).value = p(3)
+                raw.Cells(nr, 3).value = p(4)
+                raw.Cells(nr, 4).value = Val(p(5))
+            Case "MENU"
+                nm = nm + 1
+                mnu.Cells(nm, 1).value = p(2)
+                mnu.Cells(nm, 2).value = p(3)
+                mnu.Cells(nm, 3).value = p(4)
+                mnu.Cells(nm, 4).value = p(5)
+                mnu.Cells(nm, 5).value = Val(p(6))
+                mnu.Cells(nm, 6).value = Val(p(7))
+            End Select
+        End If
+    Next i
+    Say "Loaded " & (nr - 1) & " raw material(s) and " & (nm - 1) & " menu(s)."
+End Sub
+
+Public Sub SaveMenu()
+    Dim ws As Worksheet, rw As Long, lines_ As String, body As String, r As String, st As Long
+    Dim nm As String, itemName As String, qty As Double, cost As Double
+
+    Set ws = Sh("Menu")
+    nm = Trim$(CStr(ws.Range("C4").value))
+    If nm = "" Then MsgBox "Type the menu item name (C4).", vbExclamation, "Suwin ERP": ws.Range("C4").Select: Exit Sub
+
+    For rw = 12 To 61
+        itemName = Trim$(CStr(ws.Cells(rw, 2).value))
+        qty = Val(Replace(CStr(ws.Cells(rw, 3).value), ",", ""))
+        If itemName <> "" And qty > 0 Then
+            If lines_ <> "" Then lines_ = lines_ & ","
+            lines_ = lines_ & "{" & Q("item", itemName) & "," & N("qty", ws.Cells(rw, 3).value) & "," & _
+                     Q("unit", CStr(ws.Cells(rw, 4).value)) & "}"
+        ElseIf itemName <> "" And qty <= 0 Then
+            MsgBox "Line " & rw & ": type the quantity used for """ & itemName & """.", vbExclamation, "Suwin ERP"
+            ws.Cells(rw, 3).Select
+            Exit Sub
+        End If
+    Next rw
+    If lines_ = "" Then MsgBox "Add at least one raw material with a quantity.", vbExclamation, "Suwin ERP": Exit Sub
+
+    body = "{" & Q("item_name", nm) & "," & Q("item_code", CStr(ws.Range("C5").value)) & "," & _
+           Q("outlet", CStr(ws.Range("C6").value)) & "," & Q("section", CStr(ws.Range("C7").value)) & "," & _
+           N("selling_price", ws.Range("C8").value) & "," & """lines"":[" & lines_ & "]}"
+    Application.StatusBar = "Suwin ERP: saving the menu..."
+    r = Http("POST", "/api/xl/fc/menu", body, st)
+    Application.StatusBar = False
+    If st = 0 Then MsgBox "No internet connection. Try again when you are connected.", vbExclamation, "Suwin ERP": Exit Sub
+    If JsonVal(r, "ok") = "true" Then
+        Say JsonVal(r, "message")
+        MsgBox JsonVal(r, "message"), vbInformation, "Suwin ERP"
+        LoadLists
+    Else
+        MsgBox JsonVal(r, "message"), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+Public Sub SaveDay()
+    Dim ws As Worksheet, rw As Long, lines_ As String, body As String, r As String, st As Long
+    Dim d As String, itemName As String, qty As Double
+
+    Set ws = Sh("Day Sales")
+    d = Ymd(ws.Range("C4").value)
+    If d = "" Then MsgBox "Put the date in C4 first.", vbExclamation, "Suwin ERP": ws.Range("C4").Select: Exit Sub
+
+    For rw = 8 To 207
+        itemName = Trim$(CStr(ws.Cells(rw, 2).value))
+        qty = Val(Replace(CStr(ws.Cells(rw, 3).value), ",", ""))
+        If itemName <> "" And qty > 0 Then
+            If lines_ <> "" Then lines_ = lines_ & ","
+            lines_ = lines_ & "{" & Q("item", itemName) & "," & N("qty", ws.Cells(rw, 3).value) & "," & _
+                     N("value", ws.Cells(rw, 4).value) & "}"
+        ElseIf itemName <> "" And qty <= 0 Then
+            MsgBox "Line " & rw & ": type the quantity sold for """ & itemName & """.", vbExclamation, "Suwin ERP"
+            ws.Cells(rw, 3).Select
+            Exit Sub
+        End If
+    Next rw
+    If lines_ = "" Then MsgBox "Type at least one item with a quantity.", vbExclamation, "Suwin ERP": Exit Sub
+
+    If MsgBox("Save this day's sales?" & vbCrLf & vbCrLf & d & vbCrLf & vbCrLf & _
+              "This replaces whatever is already saved for that date. No ledger entries are made.", _
+              vbYesNo + vbQuestion, "Suwin ERP") <> vbYes Then Exit Sub
+
+    body = "{" & Q("ref", "FC-" & d) & "," & Q("date", d) & "," & """lines"":[" & lines_ & "]}"
+    Application.StatusBar = "Suwin ERP: saving the day's sales..."
+    r = Http("POST", "/api/xl/fc/sales", body, st)
+    Application.StatusBar = False
+    If st = 0 Then MsgBox "No internet connection. Try again when you are connected.", vbExclamation, "Suwin ERP": Exit Sub
+    If JsonVal(r, "ok") = "true" Then
+        Say JsonVal(r, "message")
+        MsgBox JsonVal(r, "message"), vbInformation, "Suwin ERP"
+    Else
+        MsgBox JsonVal(r, "message"), vbExclamation, "Suwin ERP"
+    End If
+End Sub
+
+Public Sub AddButtons()
+    Dim b As Object
+    If Not IsFoodCostingBook() Then Exit Sub
+    For Each b In Sh("Setup").Buttons
+        b.Delete
+    Next b
+    AddOne Sh("Setup"), "E3", "Load Lists", "LoadLists"
+    For Each b In Sh("Menu").Buttons
+        b.Delete
+    Next b
+    AddOne Sh("Menu"), "G3", "Save Menu", "SaveMenu"
+    AddOne Sh("Menu"), "G5", "Load Lists", "LoadLists"
+    For Each b In Sh("Day Sales").Buttons
+        b.Delete
+    Next b
+    AddOne Sh("Day Sales"), "G3", "Save Day", "SaveDay"
+    AddOne Sh("Day Sales"), "G5", "Load Lists", "LoadLists"
+End Sub
+
+Private Sub AddOne(ws As Worksheet, ByVal anchor As String, ByVal caption As String, ByVal macroName As String)
+    Dim rng As Range, b As Object
+    Set rng = ws.Range(anchor)
+    Set b = ws.Buttons.Add(rng.Left, rng.Top, 110, 24)
+    b.Caption = caption
+    b.OnAction = macroName
+End Sub
+
+Public Sub Auto_Open()
+    If Not IsFoodCostingBook() Then Exit Sub
+    On Error Resume Next
+    AddButtons
+End Sub
+'''
+
+
+@app.route('/excel_food_costing_workbook', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Settings')
+def excel_food_costing_workbook():
+    """Food Costing in Excel: build a menu from raw materials, and record a
+    day's sales quantity and value. Record only - no GL entries."""
+    try:
+        import excel_export as xl
+        from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+        from openpyxl.worksheet.datavalidation import DataValidation
+        from openpyxl.workbook.defined_name import DefinedName
+    except ImportError:
+        flash("The workbook needs the 'openpyxl' package on the server - run: pip install openpyxl", 'warning')
+        return redirect(url_for('food_costing'))
+
+    _fc_ensure_schema()
+    cost_map = _fc_ingredient_costs()
+    raws = db.execute_query("""
+        SELECT ii.id, ii.inventoy_name AS name, ii.inventoy_code AS code,
+               ii.inventoy_items_messurment_unit AS unit
+        FROM inventoy_items ii WHERE ii.active = 1 ORDER BY ii.inventoy_name""") or []
+    menus = db.execute_query("""
+        SELECT id, item_name, item_code, outlet, section, selling_price
+        FROM fc_menu_item WHERE active = 1 ORDER BY item_name""") or []
+
+    NAVY, AMT, QTY = '1F3864', '#,##0.00', '#,##0.####'
+    fill = lambda c: PatternFill('solid', fgColor=c)
+    thin = Side(style='thin', color='C8CED8')
+    box = Border(left=thin, right=thin, top=thin, bottom=thin)
+    head_font = Font(bold=True, color='FFFFFF', size=10)
+    note_font = Font(italic=True, color='6B7280', size=9)
+    label_font = Font(bold=True, color='1F2937')
+
+    def inp(cell, fmt=None):
+        cell.fill = fill('FFF8DC')
+        cell.border = box
+        if fmt:
+            cell.number_format = fmt
+
+    def banner(ws, title, sub, ncols):
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=ncols)
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=ncols)
+        t = ws.cell(row=1, column=1, value=title)
+        t.font = Font(bold=True, size=14, color='FFFFFF')
+        t.alignment = Alignment(vertical='center', indent=1)
+        s = ws.cell(row=2, column=2, value=sub)
+        s.font = Font(italic=True, size=10, color=NAVY)
+        for c in range(1, ncols + 1):
+            ws.cell(row=1, column=c).fill = fill(NAVY)
+            ws.cell(row=2, column=c).fill = fill('EEF3FA')
+        ws.row_dimensions[1].height = 24
+        ws.sheet_view.showGridLines = False
+
+    def head(ws, row, labels, first_col=1, widths=None):
+        for i, lb in enumerate(labels):
+            c = ws.cell(row=row, column=first_col + i, value=lb)
+            c.font = head_font
+            c.fill = fill(NAVY)
+            c.border = box
+            c.alignment = Alignment(horizontal='center')
+            if widths:
+                ws.column_dimensions[c.column_letter].width = widths[i]
+
+    wb, ws = xl.new_workbook('Setup')
+    ws.sheet_properties.tabColor = NAVY
+    ws.sheet_view.showGridLines = False
+    for col, w in zip('ABCDE', (2, 26, 52, 2, 18)):
+        ws.column_dimensions[col].width = w
+    ws.merge_cells('A1:E1')
+    t = ws['A1']
+    t.value = 'Food Costing'
+    t.font = Font(bold=True, size=15, color='FFFFFF')
+    t.fill = fill(NAVY)
+    t.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 26
+    ws['B4'], ws['C4'] = 'Web address', request.url_root.rstrip('/')
+    ws['B6'], ws['C6'] = 'API key', ''
+    ws['B8'], ws['C8'] = 'Status', 'Press Load Lists, then build a menu.'
+    for cell in ('B4', 'B6', 'B8'):
+        ws[cell].font = label_font
+    for cell in ('C4', 'C6'):
+        inp(ws[cell])
+    ws['C8'].font = note_font
+    ws['B10'] = 'How it works'
+    ws['B10'].font = label_font
+    for i, line in enumerate([
+            'Menu sheet: name the dish, list the raw materials and how much of each it uses, then Save Menu.',
+            'Day Sales sheet: put the date, pick each menu item, type the quantity sold and the sales value.',
+            'Saving a day replaces whatever was already saved for that date, so pressing it twice is safe.',
+            'Nothing here posts to the ledger - Food Costing is a record only.',
+            'Raw material costs come from the system and refresh every time you press Load Lists.']):
+        c = ws.cell(row=11 + i, column=2)
+        c.value = u'•  ' + line
+        c.font = note_font
+        ws.merge_cells(start_row=11 + i, start_column=2, end_row=11 + i, end_column=5)
+
+    # ---- Menu ----
+    ws = wb.create_sheet('Menu')
+    ws.sheet_properties.tabColor = '2E75B6'
+    banner(ws, 'Menu / Recipe', 'Name the dish, list what it uses, then Save Menu.', 7)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFG', (34, 26, 12, 16, 16, 16)):
+        ws.column_dimensions[col].width = w
+    for rw, lb in ((4, 'Menu item name'), (5, 'Item code'), (6, 'Outlet'),
+                   (7, 'Section'), (8, 'Selling price')):
+        ws.cell(row=rw, column=2, value=lb).font = label_font
+        inp(ws.cell(row=rw, column=3), AMT if rw == 8 else None)
+    ws['C6'] = 'Restaurant'
+    ws.cell(row=4, column=5, value='Plate cost').font = label_font
+    pc = ws.cell(row=4, column=6, value='=ROUND(SUMPRODUCT(C12:C61,D12:D61),2)')
+    pc.number_format, pc.border, pc.fill = AMT, box, fill('E8F3E8')
+    pc.font = Font(bold=True, color=NAVY, size=12)
+    ws.cell(row=5, column=5, value='Cost %').font = label_font
+    gp = ws.cell(row=5, column=6, value='=IF(C8=0,"",ROUND(F4/C8*100,2))')
+    gp.number_format, gp.border = '0.00', box
+    ws['B10'] = 'Pick the raw material, then type how much one portion uses. Unit cost comes from the system.'
+    ws['B10'].font = note_font
+    head(ws, 11, ['Raw material', 'Qty used', 'Unit cost', 'Unit', 'Line cost'], first_col=2,
+         widths=[34, 26, 12, 16, 16])
+    dv_raw = DataValidation(type='list', formula1='RawList', allow_blank=True, showErrorMessage=True,
+                            errorTitle='Raw material', error='Pick a raw material from the list.')
+    ws.add_data_validation(dv_raw)
+    for rw in range(12, 62):
+        inp(ws.cell(row=rw, column=2))
+        inp(ws.cell(row=rw, column=3), QTY)
+        c = ws.cell(row=rw, column=4,
+                    value=f'=IF($B{rw}="","",IFERROR(INDEX(\'Raw Materials\'!$D:$D,MATCH($B{rw},\'Raw Materials\'!$A:$A,0)),0))')
+        c.number_format, c.border = AMT, box
+        u = ws.cell(row=rw, column=5,
+                    value=f'=IF($B{rw}="","",IFERROR(INDEX(\'Raw Materials\'!$C:$C,MATCH($B{rw},\'Raw Materials\'!$A:$A,0)),""))')
+        u.border = box
+        lc = ws.cell(row=rw, column=6, value=f'=IF($C{rw}="","",ROUND($C{rw}*$D{rw},2))')
+        lc.number_format, lc.border = AMT, box
+        dv_raw.add(ws.cell(row=rw, column=2))
+
+    # ---- Day Sales ----
+    ws = wb.create_sheet('Day Sales')
+    ws.sheet_properties.tabColor = '548235'
+    banner(ws, 'Day Sales', 'One day at a time - quantity sold and the sales value. No ledger entries.', 7)
+    ws.column_dimensions['A'].width = 2
+    for col, w in zip('BCDEFG', (34, 14, 16, 16, 16, 16)):
+        ws.column_dimensions[col].width = w
+    ws.cell(row=4, column=2, value='Date').font = label_font
+    inp(ws.cell(row=4, column=3))
+    ws['C4'] = date.today()
+    ws['C4'].number_format = 'yyyy-mm-dd'
+    for i, (lb, formula) in enumerate((('Total sales', '=ROUND(SUM(D8:D207),2)'),
+                                       ('Food cost', '=ROUND(SUM(F8:F207),2)'),
+                                       ('Cost %', '=IF(E4=0,"",ROUND(E5/E4*100,2))'))):
+        ws.cell(row=4 + i, column=5, value=lb).font = label_font
+        c = ws.cell(row=4 + i, column=6, value=formula)
+        c.number_format, c.border = ('0.00' if lb == 'Cost %' else AMT), box
+        c.font = Font(bold=True, color=NAVY)
+    head(ws, 7, ['Menu item', 'Qty sold', 'Sales value', 'Plate cost', 'Food cost'], first_col=2,
+         widths=[34, 14, 16, 16, 16])
+    dv_menu = DataValidation(type='list', formula1='MenuList', allow_blank=True, showErrorMessage=True,
+                             errorTitle='Menu item', error='Pick a menu item, or save it on the Menu sheet first.')
+    ws.add_data_validation(dv_menu)
+    for rw in range(8, 208):
+        inp(ws.cell(row=rw, column=2))
+        inp(ws.cell(row=rw, column=3), QTY)
+        inp(ws.cell(row=rw, column=4), AMT)
+        p = ws.cell(row=rw, column=5,
+                    value=f'=IF($B{rw}="","",IFERROR(INDEX(\'Saved Menus\'!$F:$F,MATCH($B{rw},\'Saved Menus\'!$A:$A,0)),0))')
+        p.number_format, p.border = AMT, box
+        f = ws.cell(row=rw, column=6, value=f'=IF($C{rw}="","",ROUND($C{rw}*$E{rw},2))')
+        f.number_format, f.border = AMT, box
+        dv_menu.add(ws.cell(row=rw, column=2))
+
+    # ---- reference sheets ----
+    ws = wb.create_sheet('Raw Materials')
+    head(ws, 1, ['Raw material', 'Code', 'Unit', 'Unit cost'], widths=[36, 16, 14, 14])
+    ws.freeze_panes = 'A2'
+    for r, it in enumerate(raws, start=2):
+        ws.cell(row=r, column=1).value = it['name']
+        ws.cell(row=r, column=2).value = it['code'] or ''
+        ws.cell(row=r, column=3).value = it['unit'] or ''
+        c = ws.cell(row=r, column=4, value=round(float(cost_map.get(it['name'], 0.0)), 4))
+        c.number_format = AMT
+
+    ws = wb.create_sheet('Saved Menus')
+    head(ws, 1, ['Menu item', 'Code', 'Outlet', 'Section', 'Selling price', 'Plate cost'],
+         widths=[34, 16, 16, 20, 15, 15])
+    ws.freeze_panes = 'A2'
+    for r, m in enumerate(menus, start=2):
+        ws.cell(row=r, column=1).value = m['item_name']
+        ws.cell(row=r, column=2).value = m['item_code'] or ''
+        ws.cell(row=r, column=3).value = m['outlet'] or ''
+        ws.cell(row=r, column=4).value = m['section'] or ''
+        for col, v in ((5, m['selling_price']), (6, _fc_plate_cost(m['id'], cost_map))):
+            c = ws.cell(row=r, column=col, value=round(float(v or 0), 2))
+            c.number_format = AMT
+
+    for name, ref in (('RawList', "OFFSET('Raw Materials'!$A$2,0,0,MAX(1,COUNTA('Raw Materials'!$A:$A)-1),1)"),
+                      ('MenuList', "OFFSET('Saved Menus'!$A$2,0,0,MAX(1,COUNTA('Saved Menus'!$A:$A)-1),1)")):
+        dn = DefinedName(name, attr_text=ref)
+        try:
+            wb.defined_names[name] = dn
+        except TypeError:
+            wb.defined_names.append(dn)
+
+    return xl.workbook_response(wb, 'SuwinERP_FoodCosting.xlsx')
+
+
+@app.route('/excel_food_costing_workbook/macro', methods=['GET'])
+@login_required
+@has_any_permission('Access_Inventory', 'Access_Reports', 'Access_Settings')
+def excel_food_costing_workbook_macro():
+    """The Food Costing workbook's macro (Alt+F11 > File > Import File)."""
+    code = _XL_FC_VBA_CODE.replace('\r\n', '\n').replace('\n', '\r\n')
+    resp = make_response(code.encode('cp1252', errors='replace'))
+    resp.headers['Content-Type'] = 'text/plain; charset=windows-1252'
+    resp.headers['Content-Disposition'] = 'attachment; filename=SuwinFoodCosting.bas'
     return resp
 
 
