@@ -764,8 +764,22 @@ function dseRegisterTotals() {
   document.querySelectorAll('#dseCreditReceivedBody .dse-cr-row').forEach(function(tr) {
     const id = tr.querySelector('.dse-cr-link').value;
     const hint = tr.querySelector('.dse-cr-hint');
+    const modeSel = tr.querySelector('.dse-cr-mode');
+    const amtHere = dseNum(tr.querySelector('.dse-cr-amount'));
     hint.textContent = ''; hint.classList.remove('bad');
-    if (!id) return;
+    if (!id) {
+      // A set-off moves no cash: all it does is clear a debtor. Not linked to
+      // one, it settles nothing and the debt stays outstanding - which is
+      // what "the set-off did not remove the item" looks like.
+      if (modeSel && modeSel.value === 'SETOFF' && amtHere) {
+        hint.textContent = 'Pick the credit this set-off settles, or nothing is cleared.';
+        hint.classList.add('bad');
+        t.problems.push('Set-off of ' + dseMoney(amtHere) +
+          ': choose the credit it settles under "Credit being settled". A set-off brings in no cash, ' +
+          'so unless it is linked it clears nothing.');
+      }
+      return;
+    }
     const c = dseOpen.credits.find(function(x) { return String(x.id) === id; });
     if (!c) return;
     // A credit given earlier on this same day may have been edited on the page

@@ -21223,6 +21223,14 @@ def _daily_sales_process_entry(entry_date, narration, lines_in, total_expenditur
             credit_type = 'GIVEN' if cl.get('credit_type') == 'GIVEN' else 'RECEIVED'
             settles_credit_id = _row_id(cl.get('settles_credit_id')) if credit_type == 'RECEIVED' else None
             settle_mode = ('SETOFF' if cl.get('settle_mode') == 'SETOFF' else 'CASH') if credit_type == 'RECEIVED' else None
+            # A set-off moves no cash - clearing a debtor is all it does. With
+            # nothing linked it settles nothing, and the debt it was meant to
+            # clear stays outstanding.
+            if credit_type == 'RECEIVED' and settle_mode == 'SETOFF' and amount and not settles_credit_id:
+                raise ValueError(
+                    f'Set-off of {amount:,.2f} ({party_name or invoice_no or "no name"}): choose the credit it '
+                    f'settles. A set-off brings in no cash, so unless it is linked to a Credit Given it '
+                    f'clears nothing.')
             if amount or invoice_no or party_name or settles_credit_id:
                 clean_credit_lines.append({'id': _row_id(cl.get('id')), 'credit_type': credit_type,
                                            'invoice_no': invoice_no, 'party_name': party_name, 'amount': amount,
