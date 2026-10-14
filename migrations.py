@@ -71,6 +71,7 @@ def run_migrations(conn):
         _migrate_daily_sales_cash_difference(cursor)
         _migrate_item_stock_maintained(cursor)
         _migrate_item_valuation_cost(cursor)
+        _migrate_daily_sales_no10_category(cursor)
         _migrate_bar_inventory(cursor)
         _migrate_bar_inventory_item_code(cursor)
         _migrate_bar_inventory_ignored_codes(cursor)
@@ -1863,6 +1864,35 @@ def _migrate_item_valuation_cost(cursor):
         if not cursor.fetchone():
             cursor.execute("INSERT INTO system_settings (setting_key, setting_value, description) VALUES (%s, '', %s)",
                            ('daily_sales_bank2_account', 'Daily Sales Entry: GL account for Bank Transfer 2 collections'))
+    except mysql.connector.Error as e:
+        if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
+            logging.error(f"Schema Migration Error: {e}")
+    except Exception:
+        pass
+
+
+def _migrate_daily_sales_no10_category(cursor):
+    """A/C Rooms gets a "No.10" line, after Foreign.
+
+    No.10 is a room that was being taken on the Foreign line, which is why
+    the Daily Sales Sheet's NO.10 column had to read ROOM2_FOREIGN to show
+    anything. With a line of its own the two stop sharing.
+
+    Insert only - never touches an entry already recorded.
+    """
+    try:
+        cursor.execute("SHOW TABLES LIKE 'daily_sales_categories'")
+        if not cursor.fetchone():
+            return
+        cursor.execute("SELECT id FROM daily_sales_categories WHERE category_key = %s", ('ROOM2_NO10',))
+        if cursor.fetchone():
+            return
+        print("Migrating: Adding the A/C Rooms 'No.10' daily sales category")
+        cursor.execute("""
+            INSERT INTO daily_sales_categories
+                (category_key, category_group, description, particulars, display_order, entry_side, is_active)
+            VALUES ('ROOM2_NO10', 'SALES', 'A/C Rooms', 'No.10', 85, 'CR', 1)
+        """)
     except mysql.connector.Error as e:
         if e.errno not in (1050, 1007, 1060, 1061, 1146, 1054, 1452, 1062):
             logging.error(f"Schema Migration Error: {e}")
