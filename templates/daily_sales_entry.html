@@ -207,7 +207,7 @@
           <div class="dse-reg-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong class="dse-reg-title">Credit Received / Set-off <span class="text-muted fw-normal">(debtor settles)</span></strong>
-              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditReceived()"><i class="fas fa-plus"></i> Add</button>{% endif %}
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddCreditReceived(); dseRefreshPickers();"><i class="fas fa-plus"></i> Add</button>{% endif %}
             </div>
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Credit being settled</th><th style="width:20%">Mode</th><th style="width:18%">Ref No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
@@ -233,7 +233,7 @@
           <div class="dse-reg-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong class="dse-reg-title">Advance Received &mdash; Settlement</strong>
-              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('RECEIVED')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('RECEIVED'); dseRefreshPickers();"><i class="fas fa-plus"></i> Add</button>{% endif %}
             </div>
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
@@ -259,7 +259,7 @@
           <div class="dse-reg-box">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <strong class="dse-reg-title">Advance Given &mdash; Settlement</strong>
-              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('GIVEN')"><i class="fas fa-plus"></i> Add</button>{% endif %}
+              {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddSettlement('GIVEN'); dseRefreshPickers();"><i class="fas fa-plus"></i> Add</button>{% endif %}
             </div>
             <table class="table table-bordered table-sm dse-table mb-0">
               <thead><tr><th>Advance being settled</th><th style="width:22%">Mode</th><th style="width:18%">Bill No</th><th style="width:20%" class="text-end">Amount</th><th style="width:4%"></th></tr></thead>
@@ -590,7 +590,7 @@ function dseFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('e
 function dseMoney(v) { return dseFmt(v); }
 function dseNum(el) { return el ? (dseParse(el.value)) : 0; }
 function dseRemoveBtn() {
-  return dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" title="Remove" onclick="this.closest(\'tr\').remove(); dseRecalc();"></i>';
+  return dseReadonly ? '' : '<i class="fas fa-times dse-credit-remove" title="Remove" onclick="this.closest(\'tr\').remove(); dseRefreshPickers(); dseRecalc();"></i>';
 }
 
 // ---- Credit Given -------------------------------------------------------------
@@ -607,14 +607,52 @@ function dseAddCreditGiven(row) {
 }
 
 // ---- Credit Received / Set-off --------------------------------------------------
-function dseCreditOptions(selectedId) {
+// Which ids are already picked on the other rows of this picker, so the list
+// can mark them - with a dozen near-identical "Pik Me" lines there is
+// otherwise no way to see which one is already being settled.
+function dseUsedIds(selector, exceptSel) {
+  const used = {};
+  document.querySelectorAll(selector).forEach(function(s) {
+    if (s !== exceptSel && s.value) used[String(s.value)] = true;
+  });
+  return used;
+}
+
+function dseOptionHtml(id, label, selectedId, used) {
+  const isSel = String(id) === String(selectedId);
+  const taken = !isSel && used && used[String(id)];
+  return '<option value="' + id + '"' + (isSel ? ' selected' : '') +
+    (taken ? ' style="color:#9aa0a6;background:#f1f3f4;"' : '') +
+    (isSel ? ' style="font-weight:700;background:#fff3cd;"' : '') + '>' +
+    (isSel ? '▶ ' : (taken ? '✓ ' : '')) + dseEsc(label) +
+    (taken ? '  (already on another line)' : '') + '</option>';
+}
+
+function dseCreditOptions(selectedId, used) {
   let html = '<option value="">- not linked (type the name) -</option>';
   dseOpen.credits.forEach(function(c) {
     if (c.balance <= 0.005 && String(c.id) !== String(selectedId)) return;
-    html += '<option value="' + c.id + '"' + (String(c.id) === String(selectedId) ? ' selected' : '') + '>' +
-      dseEsc(c.entry_date + ' | ' + (c.invoice_no || '-') + ' | ' + (c.party_name || '(no name)') + ' | bal ' + dseMoney(c.balance)) + '</option>';
+    html += dseOptionHtml(c.id,
+      c.entry_date + ' | ' + (c.invoice_no || '-') + ' | ' + (c.party_name || '(no name)') + ' | bal ' + dseMoney(c.balance),
+      selectedId, used);
   });
   return html;
+}
+
+// Rebuild every picker so the "already on another line" marks stay true as
+// rows are added, changed or removed. Each select keeps its own value.
+function dseRefreshPickers() {
+  document.querySelectorAll('.dse-cr-link').forEach(function(s) {
+    const v = s.value;
+    s.innerHTML = dseCreditOptions(v, dseUsedIds('.dse-cr-link', s));
+    s.value = v;
+  });
+  document.querySelectorAll('.dse-set-advance').forEach(function(s) {
+    const v = s.value;
+    const type = s.closest('tr') ? s.closest('tr').dataset.type : 'RECEIVED';
+    s.innerHTML = dseAdvanceOptions(type, v, dseUsedIds('.dse-set-advance', s));
+    s.value = v;
+  });
 }
 
 function dseAddCreditReceived(row) {
@@ -644,6 +682,7 @@ function dseCrLinkChanged(sel) {
     const c = dseOpen.credits.find(function(x) { return String(x.id) === sel.value; });
     if (c) amt.value = dseMoney(c.balance);
   }
+  dseRefreshPickers();
   dseRecalc();
 }
 
@@ -661,13 +700,14 @@ function dseAddAdvance(type, row) {
     '</tr>');
 }
 
-function dseAdvanceOptions(type, selectedId) {
+function dseAdvanceOptions(type, selectedId, used) {
   const list = type === 'GIVEN' ? dseOpen.adv_given : dseOpen.adv_received;
   let html = '<option value="">- choose advance -</option>';
   list.forEach(function(a) {
     if (a.balance <= 0.005 && String(a.id) !== String(selectedId)) return;
-    html += '<option value="' + a.id + '"' + (String(a.id) === String(selectedId) ? ' selected' : '') + '>' +
-      dseEsc(a.entry_date + ' | ' + (a.receipt_no || '-') + ' | ' + (a.party_name || '(no name)') + ' | bal ' + dseMoney(a.balance)) + '</option>';
+    html += dseOptionHtml(a.id,
+      a.entry_date + ' | ' + (a.receipt_no || '-') + ' | ' + (a.party_name || '(no name)') + ' | bal ' + dseMoney(a.balance),
+      selectedId, used);
   });
   return html;
 }
@@ -702,6 +742,7 @@ function dseSetAdvanceChanged(sel) {
     const a = list.find(function(x) { return String(x.id) === sel.value; });
     if (a) amt.value = dseMoney(a.balance);
   }
+  dseRefreshPickers();
   dseRecalc();
 }
 
@@ -1190,6 +1231,7 @@ document.addEventListener('DOMContentLoaded', function() {
   dseSavedSettlements.forEach(function(s) { dseAddSettlement(s.adv_type === 'GIVEN' ? 'GIVEN' : 'RECEIVED', s); });
   dseSavedPetty.forEach(function(p) { dseAddPetty(p); });
   dseSavedCommission.forEach(function(c) { dseAddCommission(c); });
+  dseRefreshPickers();   // mark what the saved rows already use
   dseRecalc();
 });
 </script>
