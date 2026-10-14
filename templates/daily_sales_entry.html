@@ -277,7 +277,8 @@
         {% if not readonly %}<button type="button" class="btn btn-sm btn-outline-primary" onclick="dseAddPetty()"><i class="fas fa-plus"></i> Add Petty Cash Line</button>{% endif %}
       </div>
       <div class="alert alert-light border small">
-        <i class="fas fa-info-circle me-1"></i> When the day is posted, the total is <strong>debited to the Petty Cash Account</strong> and each line is <strong>credited to its Account</strong>,
+        <i class="fas fa-info-circle me-1"></i> When the day is posted, each line is <strong>debited to its Account</strong> (the expense goes up)
+        and the total is <strong>credited to the Petty Cash Account</strong> (the cash goes down),
         and shows under Petty Cash in the Cash Book report.
         The <strong>Petty Cash (from takings)</strong> box below is typed separately and is what reduces the Expected Receipt.
       </div>
