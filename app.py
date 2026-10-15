@@ -24769,6 +24769,8 @@ def management_account_mapping():
 #                 Dr Card account     = Credit Card - Commission
 #                 Dr Commission exp.  = Commission
 #   Cash + Credit Card must equal Sales before it can be posted.
+#   The service charge is included in the card amount, so it is extracted
+#   from it: card x rate / (100 + rate) - a 10% charge on 26,290 is 2,390.
 # ================================================================
 
 BAR_SALES_SECTIONS = (('bar', 'Bar Sales'), ('food', 'Bar Food Sales'))
@@ -24931,10 +24933,16 @@ def _bar_sales_save_day(entry_date, f, issues_in, user):
     for sec, _ in BAR_SALES_SECTIONS:
         for part in ('sales', 'cash', 'bank', 'card', 'commission'):
             vals[f'{sec}_{part}'] = round(parse_float(f.get(f'{sec}_{part}')), 2)
-    # Service Charge is always the rate % of the card amount; Cash Sales is the
-    # balance: Sales - (Credit Card - Service Charge)
+    # The Service Charge is already INSIDE the card amount, so it's extracted
+    # from it, not added on top: card x rate / (100 + rate).
+    # e.g. 10% on a 26,290.00 card amount = 26,290 / 110 x 10 = 2,390.00,
+    # leaving 23,900.00 of card sales (not 2,629.00 / 23,661.00).
+    # Cash Sales is then the balance: Sales - (Card - Service Charge) - Bank.
+    rate = vals['commission_rate']
+    divisor = 100.0 + rate
     for sec, _ in BAR_SALES_SECTIONS:
-        vals[f'{sec}_commission'] = round(vals[f'{sec}_card'] * vals['commission_rate'] / 100.0, 2)
+        vals[f'{sec}_commission'] = (round(vals[f'{sec}_card'] * rate / divisor, 2)
+                                     if divisor > 0 else 0.0)
         vals[f'{sec}_cash'] = round(vals[f'{sec}_sales'] - (vals[f'{sec}_card'] - vals[f'{sec}_commission'])
                                     - vals[f'{sec}_bank'], 2)
     ctm_raw = str(f.get('cash_to_management') or '').replace(',', '').strip()
