@@ -84,7 +84,7 @@
     {# ------------------------------------------------ posted to GL #}
     <div class="d-flex align-items-center gap-2 mb-2">
       <span class="bs-gl-badge"><i class="fas fa-book me-1"></i>POSTS TO GL</span>
-      <span class="small text-muted">The card amount includes the Service Charge (always the % above of the card amount &mdash; change the % if it differs), which is not sales. Cash Sales = Sales &minus; (Card &minus; Service Charge) &minus; Bank Transfer. Posting: Dr Cash, Dr Bank, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
+      <span class="small text-muted">The card amount <strong>includes</strong> the Service Charge, so it is taken out of the card amount: Card &divide; (100 + %) &times; % &mdash; at 10%, a Credit Card of 26,290.00 gives a Service Charge of 2,390.00 and Card Sales of 23,900.00. Change the % if it differs. Cash Sales = Sales &minus; (Card &minus; Service Charge) &minus; Bank Transfer. Posting: Dr Cash, Dr Bank, Dr Credit Card control (full card amount); Cr Sales, Cr Service Charge.</span>
     </div>
     <div class="row g-3 mb-3">
       {% for sec, sec_label in sections %}
@@ -298,15 +298,18 @@ function bsFmt(v) { return (Math.round((v || 0) * 100) / 100).toLocaleString('en
 
 function bsRecalc(rateChanged) {
   const rate = bsParse(document.getElementById('bsRate').value);
-  document.querySelectorAll('.bs-rate-label').forEach(function(s) { s.textContent = '(' + rate + '%)'; });
+  document.querySelectorAll('.bs-rate-label').forEach(function(s) {
+    s.textContent = '(' + rate + '% included in the card amount: card ÷ ' + (100 + rate) + ' × ' + rate + ')';
+  });
   document.querySelectorAll('.bs-sec[data-sec]').forEach(function(box) {
     const sales = bsParse(box.querySelector('.bs-sales').value);
     const card = bsParse(box.querySelector('.bs-card').value);
     const commEl = box.querySelector('.bs-comm');
     const cashEl = box.querySelector('.bs-cash');
-    // Service charge is always the % of the card amount
+    // The service charge is already inside the card amount, so take it out of
+    // it: card x rate / (100 + rate). 10% of a 26,290 card amount = 2,390.
     if (!commEl.disabled) {
-      const c = Math.round(card * rate) / 100;
+      const c = (100 + rate) > 0 ? Math.round(card * rate / (100 + rate) * 100) / 100 : 0;
       commEl.value = card ? bsFmt(c) : '';
     }
     const comm = bsParse(commEl.value);
