@@ -30038,30 +30038,39 @@ End Function
 ' change it there at any time; Setup B5 follows, so Bar Sales and the history
 ' sheets use the same day. Setup B5 is still used if H3 is empty.
 Private Function EntryDate() As String
-    Dim v As Variant, ws As Worksheet
+    ' The day can be set in two places - Setup B5 and the Daily Sales sheet's
+    ' own H3 box. Whichever one was just edited has to win, or typing a date
+    ' into Setup is thrown away and the old day is used instead. Setup Z1
+    ' remembers the day last used, so the box that differs from it is the one
+    ' the user changed.
+    Dim ws As Worksheet, setupTxt As String, sheetTxt As String, lastTxt As String, winner As String
     On Error Resume Next
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
     On Error GoTo 0
-    If Not ws Is Nothing Then
-        v = ws.Range("H3").Value
-        If IsDate(v) Then
-            EntryDate = Format$(CDate(v), "yyyy-mm-dd")
-            If DateText(SetupSheet().Range("B5").Value, "yyyy-mm-dd") <> EntryDate Then
-                SetupSheet().Range("B5").Value = "'" & EntryDate
-            End If
-            Exit Function
-        End If
-    End If
-    v = SetupSheet().Range("B5").Value
-    If IsDate(v) Then
-        EntryDate = Format$(CDate(v), "yyyy-mm-dd")
+
+    setupTxt = DateText(SetupSheet().Range("B5").Value, "yyyy-mm-dd")
+    If setupTxt = "" Then setupTxt = Trim$(CStr(SetupSheet().Range("B5").Value))
+    If Not ws Is Nothing Then sheetTxt = DateText(ws.Range("H3").Value, "yyyy-mm-dd")
+    lastTxt = Trim$(CStr(SetupSheet().Range("Z1").Value))
+
+    If setupTxt <> "" And setupTxt <> lastTxt Then
+        winner = setupTxt
+    ElseIf sheetTxt <> "" And sheetTxt <> lastTxt Then
+        winner = sheetTxt
+    ElseIf sheetTxt <> "" Then
+        winner = sheetTxt
     Else
-        EntryDate = Trim$(CStr(v))
+        winner = setupTxt
     End If
-    ' Keep the sheet's own box showing the same day
-    If Not ws Is Nothing And EntryDate <> "" Then
-        If DateText(ws.Range("H3").Value, "yyyy-mm-dd") <> EntryDate Then ws.Range("H3").Value = CDate(EntryDate)
+    EntryDate = winner
+    If winner = "" Then Exit Function
+
+    ' Put the chosen day in both boxes so they never disagree again
+    If setupTxt <> winner Then SetupSheet().Range("B5").Value = "'" & winner
+    If Not ws Is Nothing Then
+        If sheetTxt <> winner Then ws.Range("H3").Value = CDate(winner)
     End If
+    SetupSheet().Range("Z1").Value = winner
 End Function
 
 Private Sub SayResult(ByVal msg As String)
@@ -30965,6 +30974,7 @@ Public Sub Auto_Open()
     On Error Resume Next
     SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
     ThisWorkbook.Worksheets("Daily Sales").Range("H3").Value = Date
+    SetupSheet().Range("Z1").Value = Format$(Date, "yyyy-mm-dd")   ' baseline for EntryDate
     AddButtons
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
     On Error GoTo 0
@@ -31620,7 +31630,8 @@ def excel_workbook():
     rows = [
         ('Server URL', base_url, 'Your system address - do not change'),
         ('API Key', '', 'Paste the key from Settings > Excel Data Entry'),
-        ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are working on (set to today on opening)'),
+        ('Entry Date', date.today().strftime('%Y-%m-%d'),
+         'The day you are working on - change it here or in the box on the Daily Sales sheet, either works'),
         ('Last result', '', 'Filled in by the buttons'),
         ('History From', date.today().replace(day=1).strftime('%Y-%m-%d'),
          'First day for the History sheets - set to the 1st of this month; blank = from the start'),
