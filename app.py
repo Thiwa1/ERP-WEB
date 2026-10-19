@@ -30719,6 +30719,22 @@ Private Function LoadTable(ByVal sheetName As String, ByVal path As String) As L
     LoadTable = n
 End Function
 
+Public Sub HistoryThisMonth()
+    ' Set the range to the month we are in, then load - the usual case, so it
+    ' should not need two dates typed by hand every time.
+    SetupSheet().Range("B7").Value = Format$(DateSerial(Year(Date), Month(Date), 1), "yyyy-mm-dd")
+    SetupSheet().Range("B8").Value = Format$(Date, "yyyy-mm-dd")
+    GetAllHistory
+End Sub
+
+Public Sub HistoryLastMonth()
+    Dim first As Date
+    first = DateSerial(Year(Date), Month(Date) - 1, 1)
+    SetupSheet().Range("B7").Value = Format$(first, "yyyy-mm-dd")
+    SetupSheet().Range("B8").Value = Format$(DateSerial(Year(first), Month(first) + 1, 0), "yyyy-mm-dd")
+    GetAllHistory
+End Sub
+
 Public Sub GetAllHistory()
     Dim q As String, a As Long, b As Long, c As Long, d As Long, e As Long
     q = HistoryQuery()
@@ -30910,7 +30926,8 @@ Public Sub AddSetupButtons()
 End Sub
 
 Public Sub AddButtons()
-    PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "Load History", "GetAllHistory")
+    PutButtons "Setup", "E3", Array("Test Connection", "TestConnection", "This Month", "HistoryThisMonth", _
+                                   "Last Month", "HistoryLastMonth", "Load History", "GetAllHistory")
     PutButtons "Daily Sales", "J1", Array("Load Day", "GetDailySales", "Submit Day", "SendDailySales", _
                                           "Post Day", "PostDailySales", "Find in list", "PickFromList")
     PutButtons "Bar Sales", "F1", Array("Load Day", "GetBarSales", "Submit", "SendBarSales", _
@@ -30925,10 +30942,10 @@ Public Sub AddButtons()
     PutButtons "VAT Report", "I1", Array("Load VAT", "LoadVAT", "Purchases only", "LoadVATPurchases")
     EnsureSheet "Daily Report", "Daily Revenue Report & Cash Book"
     PutButtons "Daily Report", "I1", Array("Load Report", "LoadDailyReport")
-    PutButtons "Sales History", "I1", Array("Load History", "GetAllHistory")
-    PutButtons "Credit History", "I1", Array("Load History", "GetAllHistory")
-    PutButtons "Advance History", "I1", Array("Load History", "GetAllHistory")
-    PutButtons "Bar History", "I1", Array("Load History", "GetAllHistory")
+    PutButtons "Sales History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
+    PutButtons "Credit History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
+    PutButtons "Advance History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
+    PutButtons "Bar History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
     ' Go to a sheet straight from Setup
     PutNavButtons "E10", Array("Daily Sales", "GoDailySales", "Bar Sales", "GoBarSales", _
                                "Payments", "GoPayments", "Management Acc", "GoManagementAccount")
@@ -31605,8 +31622,10 @@ def excel_workbook():
         ('API Key', '', 'Paste the key from Settings > Excel Data Entry'),
         ('Entry Date', date.today().strftime('%Y-%m-%d'), 'The day you are working on (set to today on opening)'),
         ('Last result', '', 'Filled in by the buttons'),
-        ('History From', '', 'First day for the History sheets (YYYY-MM-DD) - blank = from the start'),
-        ('History To', '', 'Last day for the History sheets (YYYY-MM-DD) - blank = up to today'),
+        ('History From', date.today().replace(day=1).strftime('%Y-%m-%d'),
+         'First day for the History sheets - set to the 1st of this month; blank = from the start'),
+        ('History To', date.today().strftime('%Y-%m-%d'),
+         'Last day for the History sheets - set to today; blank = up to today'),
     ]
     for i, (k, v, note) in enumerate(rows, start=3):
         ws.cell(row=i, column=1, value=k).font = label_font
@@ -31635,7 +31654,8 @@ def excel_workbook():
                        'Schedule 02 on its own). They arrive as "VAT ..." sheets.'),
         ('Daily Report', 'Type the date, then Load Report for R1 Daily Revenue and R2 Cash Book, with To Day '
                          'and Month To Date. They arrive as "RPT ..." sheets.'),
-        ('History sheets', 'Load History fills Sales, Credit, Advance and Bar history (range from B7 / B8).'),
+        ('History sheets', 'This Month fills Sales, Credit, Advance and Bar history for the month you are in. '
+                           'Last Month does the month before. Load History uses whatever dates are in B7 / B8.'),
         ('Lists', 'Accounts and open items used by the dropdowns - kept up to date by the buttons.'),
         ('Find in a dropdown', 'Click the cell, then press Ctrl+Shift+F (or the Find in list button). Type part '
                                'of the name, pick the number - for accounts, cash accounts, suppliers and the '
