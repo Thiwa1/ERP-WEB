@@ -37169,8 +37169,11 @@ def excel_food_costing_workbook():
         t = ws.cell(row=1, column=1, value=title)
         t.font = Font(bold=True, size=14, color='FFFFFF')
         t.alignment = Alignment(vertical='center', indent=1)
-        s = ws.cell(row=2, column=2, value=sub)
+        # Row 2 is merged from column 1, so only column 1 is writable - every
+        # other cell in the range is a MergedCell and setting .value raises.
+        s = ws.cell(row=2, column=1, value=sub)
         s.font = Font(italic=True, size=10, color=NAVY)
+        s.alignment = Alignment(vertical='center', indent=1)
         for c in range(1, ncols + 1):
             ws.cell(row=1, column=c).fill = fill(NAVY)
             ws.cell(row=2, column=c).fill = fill('EEF3FA')
@@ -37270,9 +37273,11 @@ def excel_food_costing_workbook():
     inp(ws.cell(row=4, column=3))
     ws['C4'] = date.today()
     ws['C4'].number_format = 'yyyy-mm-dd'
+    # The three figures land in column F (rows 4-6); column E holds their
+    # labels, so Cost % has to divide F5 by F4, not E5 by E4.
     for i, (lb, formula) in enumerate((('Total sales', '=ROUND(SUM(D8:D207),2)'),
                                        ('Food cost', '=ROUND(SUM(F8:F207),2)'),
-                                       ('Cost %', '=IF(E4=0,"",ROUND(E5/E4*100,2))'))):
+                                       ('Cost %', '=IF(F4=0,"",ROUND(F5/F4*100,2))'))):
         ws.cell(row=4 + i, column=5, value=lb).font = label_font
         c = ws.cell(row=4 + i, column=6, value=formula)
         c.number_format, c.border = ('0.00' if lb == 'Cost %' else AMT), box
