@@ -30738,6 +30738,58 @@ Private Function LoadTable(ByVal sheetName As String, ByVal path As String) As L
     LoadTable = n
 End Function
 
+Public Sub LoadDays()
+    ' The Recent Entries list: one row per day with its total and status, the
+    ' same three columns the website shows.
+    Dim r As String, ws As Worksheet, rows_ As Variant, p As Variant
+    Dim i As Long, n As Long
+    r = HttpCall("GET", "/api/xl/daily_sales/history?" & HistoryQuery(), "")
+    If Failed(r) Then Exit Sub
+    Set ws = ThisWorkbook.Worksheets("Days")
+    If ws.AutoFilterMode Then ws.AutoFilterMode = False
+    ws.Range("A4:C100000").Clear
+    rows_ = Split(Replace(r, vbCrLf, vbLf), vbLf)
+    For i = 0 To UBound(rows_)
+        If Left$(rows_(i), 4) = "ROW" & vbTab Then
+            p = Split(rows_(i), vbTab)
+            If UBound(p) >= 4 Then
+                n = n + 1
+                ws.Cells(3 + n, 1).NumberFormat = "@"
+                ws.Cells(3 + n, 1).Value = p(1)                  ' Date
+                ws.Cells(3 + n, 2).Value = Val(p(4))             ' Total Income
+                ws.Cells(3 + n, 2).NumberFormat = "#,##0.00"
+                ws.Cells(3 + n, 3).Value = p(2)                  ' Status
+                If p(2) = "Posted" Then
+                    ws.Cells(3 + n, 3).Font.Color = RGB(16, 124, 16)
+                Else
+                    ws.Cells(3 + n, 3).Font.Color = RGB(176, 122, 0)
+                End If
+            End If
+        End If
+    Next i
+    If n > 0 Then
+        ws.Range(ws.Cells(3, 1), ws.Cells(3 + n, 3)).Borders.LineStyle = 1
+        ws.Range(ws.Cells(3, 1), ws.Cells(3 + n, 3)).AutoFilter
+    End If
+    SayResult "Days loaded: " & n
+    ws.Activate
+End Sub
+
+Public Sub OpenDay()
+    ' Load the day on the selected row of the Days sheet.
+    Dim ws As Worksheet, d As String
+    Set ws = ThisWorkbook.Worksheets("Days")
+    If ActiveSheet.Name <> "Days" Then ws.Activate
+    d = Trim$(CStr(ws.Cells(Selection.Row, 1).Value))
+    If d = "" Or Selection.Row < 4 Then
+        MsgBox "Click a row with a date on it first.", vbExclamation, "Suwin ERP"
+        Exit Sub
+    End If
+    SetupSheet().Range("B5").Value = "'" & d
+    SetupSheet().Range("Z1").Value = ""      ' force Setup to win in EntryDate
+    GetDailySales
+End Sub
+
 Public Sub HistoryThisMonth()
     ' Set the range to the month we are in, then load - the usual case, so it
     ' should not need two dates typed by hand every time.
@@ -30764,6 +30816,7 @@ Public Sub GetAllHistory()
     If b < 0 Then GoTo Done
     c = LoadTable("Advance History", "/api/xl/daily_sales/advance_history?" & q)
     If c < 0 Then GoTo Done
+    LoadDays
     d = LoadTable("Bar History", "/api/xl/bar_sales/history?" & q)
     If d < 0 Then GoTo Done
     EnsureSheet "Payment History", "Supplier Payment History"
@@ -30961,6 +31014,8 @@ Public Sub AddButtons()
     PutButtons "VAT Report", "I1", Array("Load VAT", "LoadVAT", "Purchases only", "LoadVATPurchases")
     EnsureSheet "Daily Report", "Daily Revenue Report & Cash Book"
     PutButtons "Daily Report", "I1", Array("Load Report", "LoadDailyReport")
+    PutButtons "Days", "E1", Array("Load Days", "LoadDays", "Open Day", "OpenDay", _
+                                   "This Month", "HistoryThisMonth")
     PutButtons "Sales History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
     PutButtons "Credit History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
     PutButtons "Advance History", "I1", Array("This Month", "HistoryThisMonth", "Load History", "GetAllHistory")
@@ -31996,6 +32051,13 @@ def excel_workbook():
     ws['B7'] = 'The old RPT sheets are replaced each time you load.'
     for rw in (5, 6, 7):
         ws.cell(row=rw, column=2).font = note_font
+
+    # ================= Days (the Recent Entries list) =================
+    ws = wb.create_sheet('Days')
+    sheet_setup(ws, '0F6CBD', freeze='A4', landscape=False)
+    banner(ws, 'Recent Entries (Day-wise)', 'Every day in the Setup B7 / B8 range - press Load Days. '
+           'Click a row and press Open Day to load it on the Daily Sales sheet.', 1, 3)
+    head_row(ws, 3, ['Date', 'Total Income', 'Status'], widths=[18, 20, 14])
 
     # ================= History sheets (filled by GetAllHistory) =================
     for title, note, tab in (('Sales History', 'Daily Sales - one row per day', '5B9BD5'),
