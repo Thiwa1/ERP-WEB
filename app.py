@@ -30043,32 +30043,42 @@ Private Function EntryDate() As String
     ' into Setup is thrown away and the old day is used instead. Setup Z1
     ' remembers the day last used, so the box that differs from it is the one
     ' the user changed.
-    Dim ws As Worksheet, setupTxt As String, sheetTxt As String, lastTxt As String, winner As String
+    Dim ws As Worksheet, bs As Worksheet
+    Dim setupTxt As String, sheetTxt As String, barTxt As String, lastTxt As String, winner As String
     On Error Resume Next
     Set ws = ThisWorkbook.Worksheets("Daily Sales")
+    Set bs = ThisWorkbook.Worksheets("Bar Sales")
     On Error GoTo 0
 
     setupTxt = DateText(SetupSheet().Range("B5").Value, "yyyy-mm-dd")
     If setupTxt = "" Then setupTxt = Trim$(CStr(SetupSheet().Range("B5").Value))
     If Not ws Is Nothing Then sheetTxt = DateText(ws.Range("H3").Value, "yyyy-mm-dd")
+    If Not bs Is Nothing Then barTxt = DateText(bs.Range("E2").Value, "yyyy-mm-dd")
     lastTxt = Trim$(CStr(SetupSheet().Range("Z1").Value))
 
     If setupTxt <> "" And setupTxt <> lastTxt Then
         winner = setupTxt
     ElseIf sheetTxt <> "" And sheetTxt <> lastTxt Then
         winner = sheetTxt
+    ElseIf barTxt <> "" And barTxt <> lastTxt Then
+        winner = barTxt
     ElseIf sheetTxt <> "" Then
         winner = sheetTxt
+    ElseIf barTxt <> "" Then
+        winner = barTxt
     Else
         winner = setupTxt
     End If
     EntryDate = winner
     If winner = "" Then Exit Function
 
-    ' Put the chosen day in both boxes so they never disagree again
+    ' Put the chosen day in every box so they never disagree again
     If setupTxt <> winner Then SetupSheet().Range("B5").Value = "'" & winner
     If Not ws Is Nothing Then
         If sheetTxt <> winner Then ws.Range("H3").Value = CDate(winner)
+    End If
+    If Not bs Is Nothing Then
+        If barTxt <> winner Then bs.Range("E2").Value = CDate(winner)
     End If
     SetupSheet().Range("Z1").Value = winner
 End Function
@@ -30974,6 +30984,7 @@ Public Sub Auto_Open()
     On Error Resume Next
     SetupSheet().Range("B5").Value = "'" & Format$(Date, "yyyy-mm-dd")
     ThisWorkbook.Worksheets("Daily Sales").Range("H3").Value = Date
+    ThisWorkbook.Worksheets("Bar Sales").Range("E2").Value = Date
     SetupSheet().Range("Z1").Value = Format$(Date, "yyyy-mm-dd")   ' baseline for EntryDate
     AddButtons
     Application.OnKey "^+F", "PickFromList"   ' Ctrl+Shift+F searches the dropdown in the selected cell
@@ -31828,8 +31839,20 @@ def excel_workbook():
     # ================= Bar Sales =================
     ws = wb.create_sheet('Bar Sales')
     sheet_setup(ws, 'CA5010', freeze='A5', hide_a=True, landscape=False)
-    banner(ws, 'Bar Sales Record', 'Load Day  >  type in the yellow cells  >  Submit. Service charge and cash '
-           'sales are worked out by the system.', 2, 4)
+    banner(ws, 'Bar Sales Record', 'Set the date in E2 (or Setup B5)  >  Load Day  >  type in the yellow cells  '
+           '>  Submit. Service charge and cash sales are worked out by the system.', 2, 4)
+    # The day this sheet is on, so it is never a guess which date Submit writes
+    # to. Typing here sets the day, the same as the box on Daily Sales. Column
+    # E, because the banner merges B..D and a merged cell cannot be written.
+    d1 = ws['E1']
+    d1.value = 'Loaded day'
+    d1.font, d1.fill = Font(bold=True, color='FFFFFF'), fill(BLUE)
+    d1.alignment = Alignment(horizontal='center', vertical='center')
+    d2 = ws['E2']
+    d2.font, d2.fill, d2.border = Font(bold=True, size=12, color=NAVY), fill(PALE), box
+    d2.alignment = Alignment(horizontal='center', vertical='center')
+    d2.number_format = 'yyyy-mm-dd'
+    ws.column_dimensions['E'].width = 14
     head_row(ws, 4, ['Field', 'Description', 'Value', ''], widths=[28, 42, 16, 16])
     ws.cell(row=4, column=4).fill = PatternFill(fill_type=None)
     ws.cell(row=4, column=4).border = Border()
